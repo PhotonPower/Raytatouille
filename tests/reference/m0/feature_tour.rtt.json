@@ -1,0 +1,206 @@
+{
+  "schema_version": "0.1.0",
+  "name": "Feature tour: every model element of schema 0.1",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"temperature_c": 22.0, "pressure_atm": 0.95},
+  "object": {
+    "at_infinity": false,
+    "distance": {"value": 250.0, "variable": true}
+  },
+  "wavelengths": [
+    {"um": 0.532, "reference": true},
+    {"um": 1.064, "weight": 0.5}
+  ],
+  "aperture": {"type": "object_na", "value": 0.05},
+  "fields": {
+    "type": "object_height",
+    "points": [
+      {},
+      {"x": 1.0, "y": 2.0, "weight": 0.5}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "assembly",
+        "name": "polarization optics",
+        "pose": {"position": [0.0, 0.0, 10.0], "pivot": [0.0, 0.0, 2.5]},
+        "children": [
+          {
+            "type": "thin_element",
+            "name": "polarizer",
+            "surfaces": [
+              {
+                "id": "POL",
+                "aperture": {"type": "circular", "radius": 8.0},
+                "interaction": {
+                  "type": "ideal_polarizer",
+                  "transmission_axis": [0.0, 1.0, 0.0],
+                  "extinction_ratio": 1e-05
+                }
+              }
+            ]
+          },
+          {
+            "type": "thin_element",
+            "name": "quarter wave plate",
+            "pose": {"position": [0.0, 0.0, 5.0], "rotation_deg": [0.0, 0.0, 45.0]},
+            "surfaces": [
+              {
+                "id": "QWP",
+                "aperture": {"type": "circular", "radius": 8.0},
+                "interaction": {"type": "ideal_retarder"}
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "stop",
+        "name": "stop",
+        "pose": {"position": [0.0, 0.0, 20.0]},
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 6.0, "inner_radius": 1.0}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "asphere",
+        "pose": {"position": [0.0, 0.0, 25.0]},
+        "material": "SCHOTT:N-BK7",
+        "surfaces": [
+          {
+            "id": "A.S1",
+            "shape": {
+              "base": {
+                "type": "even_asphere",
+                "radius": {"value": 30.0, "variable": true},
+                "conic": -0.8,
+                "coefficients": [
+                  1.2e-06,
+                  {"value": -3.4e-09, "variable": true}
+                ]
+              },
+              "terms": [
+                {
+                  "type": "zernike_sag",
+                  "normalization_radius": 9.0,
+                  "coefficients": [0.0, 0.0, 0.0, 0.0, 5e-05]
+                }
+              ]
+            },
+            "aperture": {"type": "elliptical", "semi_axis_x": 9.0, "semi_axis_y": 8.0},
+            "interaction": {"type": "coating", "name": "AR_VIS"}
+          },
+          {
+            "id": "A.S2",
+            "pose": {
+              "position": [
+                0.0,
+                0.0,
+                {"value": 6.0, "pickup": "2 * 3"}
+              ]
+            },
+            "shape": {
+              "base": {"type": "conic", "radius": -80.0}
+            },
+            "aperture": {"type": "circular", "radius": 9.0},
+            "phases": [
+              {
+                "type": "radial_phase",
+                "normalization_radius": 9.0,
+                "coefficients": [-12.0, 0.4]
+              }
+            ],
+            "interaction": {"type": "ideal_anti_reflection"}
+          }
+        ]
+      },
+      {
+        "type": "plate",
+        "name": "grating plate",
+        "pose": {"position": [0.0, 0.0, 60.0], "rotation_deg": [0.0, 10.0, 0.0]},
+        "material": "SCHOTT:N-BK7",
+        "surfaces": [
+          {
+            "id": "G.S1",
+            "aperture": {"type": "rectangular", "half_width_x": 10.0, "half_width_y": 10.0},
+            "phases": [
+              {
+                "type": "linear_grating",
+                "lines_per_mm": 300.0,
+                "orientation_deg": 90.0
+              }
+            ]
+          },
+          {
+            "id": "G.S2",
+            "pose": {"position": [0.0, 0.0, 3.0]},
+            "aperture": {"type": "rectangular", "half_width_x": 10.0, "half_width_y": 10.0},
+            "interaction": {
+              "type": "ideal_beam_splitter",
+              "reflectance_s": 0.3,
+              "reflectance_p": 0.1
+            }
+          }
+        ]
+      },
+      {
+        "type": "mirror",
+        "name": "dump",
+        "pose": {"position": [0.0, 30.0, 70.0], "rotation_deg": [90.0, 0.0, 0.0]},
+        "surfaces": [
+          {
+            "id": "DUMP",
+            "interaction": {"type": "absorber"}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 120.0]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {
+      "name": "first order",
+      "events": [
+        {"surface": "POL", "kind": "transmit"},
+        {"surface": "QWP", "kind": "transmit"},
+        {"surface": "STO", "kind": "transmit"},
+        {"surface": "A.S1"},
+        {"surface": "A.S2"},
+        {"surface": "G.S1", "kind": "diffract", "order": 1},
+        {"surface": "G.S2"},
+        {"surface": "IMG", "kind": "transmit"}
+      ]
+    },
+    {
+      "name": "ghost G.S2-A.S2",
+      "events": [
+        {"surface": "POL", "kind": "transmit"},
+        {"surface": "QWP", "kind": "transmit"},
+        {"surface": "STO", "kind": "transmit"},
+        {"surface": "A.S1"},
+        {"surface": "A.S2"},
+        {"surface": "G.S1", "kind": "diffract", "order": 1},
+        {"surface": "G.S2", "kind": "reflect"},
+        {"surface": "G.S1", "kind": "diffract", "order": -1},
+        {"surface": "A.S2", "kind": "reflect"},
+        {"surface": "G.S1", "kind": "diffract", "order": 1},
+        {"surface": "G.S2"},
+        {"surface": "IMG", "kind": "transmit"}
+      ]
+    }
+  ]
+}

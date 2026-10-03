@@ -1,0 +1,77 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": { "RTT_BUILD_TESTS": "ON" }
+    },
+    {
+      "name": "vcpkg",
+      "hidden": true,
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+    },
+    {
+      "name": "dev",
+      "displayName": "Development (system packages, Ninja, Debug)",
+      "inherits": "base",
+      "generator": "Ninja",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "ci-linux-gcc",
+      "inherits": ["base", "vcpkg"],
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER": "g++",
+        "RTT_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "ci-linux-clang",
+      "inherits": ["base", "vcpkg"],
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "RTT_WARNINGS_AS_ERRORS": "ON",
+        "RTT_ENABLE_CLANG_TIDY": "ON"
+      }
+    },
+    {
+      "name": "ci-linux-sanitizers",
+      "inherits": ["base", "vcpkg"],
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "RTT_WARNINGS_AS_ERRORS": "ON",
+        "RTT_ENABLE_SANITIZERS": "ON"
+      }
+    },
+    {
+      "name": "ci-windows-msvc",
+      "inherits": ["base", "vcpkg"],
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "cacheVariables": { "RTT_WARNINGS_AS_ERRORS": "ON" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "dev", "configurePreset": "dev" },
+    { "name": "ci-linux-gcc", "configurePreset": "ci-linux-gcc" },
+    { "name": "ci-linux-clang", "configurePreset": "ci-linux-clang" },
+    { "name": "ci-linux-sanitizers", "configurePreset": "ci-linux-sanitizers" },
+    { "name": "ci-windows-msvc", "configurePreset": "ci-windows-msvc", "configuration": "Release" }
+  ],
+  "testPresets": [
+    { "name": "dev", "configurePreset": "dev", "output": { "outputOnFailure": true } },
+    { "name": "ci-linux-gcc", "configurePreset": "ci-linux-gcc", "output": { "outputOnFailure": true } },
+    { "name": "ci-linux-clang", "configurePreset": "ci-linux-clang", "output": { "outputOnFailure": true } },
+    { "name": "ci-linux-sanitizers", "configurePreset": "ci-linux-sanitizers", "output": { "outputOnFailure": true } },
+    { "name": "ci-windows-msvc", "configurePreset": "ci-windows-msvc", "configuration": "Release", "output": { "outputOnFailure": true } }
+  ]
+}

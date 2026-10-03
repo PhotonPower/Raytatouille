@@ -1,0 +1,302 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/PhotonPower/Raytatouille/schema/raytatouille.schema.json",
+  "title": "Raytatouille system file (.rtt.json), schema 0.1",
+  "description": "Units: lengths mm, wavelengths um, angles in degree where the key ends in _deg. Parsing in rtt-io is the reference; this schema must accept exactly what rtt-io accepts structurally.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "units", "wavelengths", "aperture", "fields", "root", "paths"],
+  "properties": {
+    "schema_version": {"type": "string", "pattern": "^0\\.1\\.[0-9]+$"},
+    "name": {"type": "string"},
+    "units": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["length", "wavelength"],
+      "properties": {"length": {"const": "mm"}, "wavelength": {"const": "um"}}
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "temperature_c": {"type": "number"},
+        "pressure_atm": {"type": "number"},
+        "medium": {"type": "string"}
+      }
+    },
+    "object": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["at_infinity"],
+      "properties": {"at_infinity": {"type": "boolean"}, "distance": {"$ref": "#/$defs/param"}}
+    },
+    "wavelengths": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["um"],
+        "properties": {
+          "um": {"type": "number"},
+          "weight": {"type": "number"},
+          "reference": {"type": "boolean"}
+        }
+      }
+    },
+    "aperture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {"enum": ["epd", "image_fnumber", "object_na", "stop_size"]},
+        "value": {"$ref": "#/$defs/param"}
+      },
+      "if": {"properties": {"type": {"not": {"const": "stop_size"}}}},
+      "then": {"required": ["value"]}
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["points"],
+      "properties": {
+        "type": {"enum": ["angle_deg", "object_height", "paraxial_image_height"]},
+        "points": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "x": {"type": "number"},
+              "y": {"type": "number"},
+              "weight": {"type": "number"}
+            }
+          }
+        }
+      }
+    },
+    "root": {"$ref": "#/$defs/assembly"},
+    "paths": {"type": "array", "items": {"$ref": "#/$defs/path"}}
+  },
+  "$defs": {
+    "param": {
+      "oneOf": [
+        {"type": "number"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value"],
+          "properties": {
+            "value": {"type": "number"},
+            "variable": {"type": "boolean"},
+            "pickup": {"type": "string"}
+          }
+        }
+      ]
+    },
+    "param_list": {"type": "array", "items": {"$ref": "#/$defs/param"}},
+    "param3": {"type": "array", "items": {"$ref": "#/$defs/param"}, "minItems": 3, "maxItems": 3},
+    "vec3": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+    "pose": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "position": {"$ref": "#/$defs/param3"},
+        "rotation_deg": {"$ref": "#/$defs/param3"},
+        "pivot": {"$ref": "#/$defs/vec3"}
+      }
+    },
+    "node": {
+      "oneOf": [{"$ref": "#/$defs/assembly"}, {"$ref": "#/$defs/element"}]
+    },
+    "assembly": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "name", "children"],
+      "properties": {
+        "type": {"const": "assembly"},
+        "name": {"type": "string"},
+        "pose": {"$ref": "#/$defs/pose"},
+        "children": {"type": "array", "items": {"$ref": "#/$defs/node"}}
+      }
+    },
+    "element": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "name", "surfaces"],
+      "properties": {
+        "type": {"enum": ["lens", "mirror", "plate", "thin_element", "stop", "detector"]},
+        "name": {"type": "string"},
+        "pose": {"$ref": "#/$defs/pose"},
+        "material": {"type": "string"},
+        "surfaces": {"type": "array", "items": {"$ref": "#/$defs/surface"}}
+      }
+    },
+    "surface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": {"type": "string"},
+        "pose": {"$ref": "#/$defs/pose"},
+        "shape": {"$ref": "#/$defs/shape"},
+        "aperture": {"$ref": "#/$defs/aperture"},
+        "phases": {"type": "array", "items": {"$ref": "#/$defs/phase"}},
+        "interaction": {"$ref": "#/$defs/interaction"}
+      }
+    },
+    "shape": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "base": {"$ref": "#/$defs/base_shape"},
+        "terms": {"type": "array", "items": {"$ref": "#/$defs/shape_term"}}
+      }
+    },
+    "base_shape": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["type"],
+          "properties": {"type": {"const": "plane"}}
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "radius"],
+          "properties": {
+            "type": {"const": "conic"},
+            "radius": {"$ref": "#/$defs/param"},
+            "conic": {"$ref": "#/$defs/param"}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "radius"],
+          "properties": {
+            "type": {"const": "even_asphere"},
+            "radius": {"$ref": "#/$defs/param"},
+            "conic": {"$ref": "#/$defs/param"},
+            "coefficients": {"$ref": "#/$defs/param_list"}
+          }
+        }
+      ]
+    },
+    "shape_term": {
+      "type": "object", "additionalProperties": false, "required": ["type", "normalization_radius"],
+      "properties": {
+        "type": {"const": "zernike_sag"},
+        "normalization_radius": {"$ref": "#/$defs/param"},
+        "coefficients": {"$ref": "#/$defs/param_list"}
+      }
+    },
+    "aperture": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "radius"],
+          "properties": {
+            "type": {"const": "circular"},
+            "radius": {"type": "number"},
+            "inner_radius": {"type": "number"}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "half_width_x", "half_width_y"],
+          "properties": {
+            "type": {"const": "rectangular"},
+            "half_width_x": {"type": "number"},
+            "half_width_y": {"type": "number"}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "semi_axis_x", "semi_axis_y"],
+          "properties": {
+            "type": {"const": "elliptical"},
+            "semi_axis_x": {"type": "number"},
+            "semi_axis_y": {"type": "number"}
+          }
+        }
+      ]
+    },
+    "phase": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "lines_per_mm"],
+          "properties": {
+            "type": {"const": "linear_grating"},
+            "lines_per_mm": {"$ref": "#/$defs/param"},
+            "orientation_deg": {"type": "number"}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "normalization_radius"],
+          "properties": {
+            "type": {"const": "radial_phase"},
+            "normalization_radius": {"$ref": "#/$defs/param"},
+            "coefficients": {"$ref": "#/$defs/param_list"}
+          }
+        }
+      ]
+    },
+    "interaction": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["type"],
+          "properties": {"type": {"enum": ["fresnel", "ideal_mirror", "ideal_anti_reflection", "absorber"]}}
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type"],
+          "properties": {
+            "type": {"const": "ideal_beam_splitter"},
+            "reflectance_s": {"type": "number"},
+            "reflectance_p": {"type": "number"}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "name"],
+          "properties": {"type": {"const": "coating"}, "name": {"type": "string"}}
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type"],
+          "properties": {
+            "type": {"const": "ideal_polarizer"},
+            "transmission_axis": {"$ref": "#/$defs/vec3"},
+            "extinction_ratio": {"type": "number"}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type"],
+          "properties": {
+            "type": {"const": "ideal_retarder"},
+            "fast_axis": {"$ref": "#/$defs/vec3"},
+            "retardance_waves": {"type": "number"}
+          }
+        }
+      ]
+    },
+    "path": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "events"],
+      "properties": {
+        "name": {"type": "string"},
+        "events": {
+          "oneOf": [
+            {"const": "auto"},
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["surface"],
+                "properties": {
+                  "surface": {"type": "string"},
+                  "kind": {"enum": ["refract", "reflect", "transmit", "ordinary", "extraordinary", "diffract"]},
+                  "order": {"type": "integer"}
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
