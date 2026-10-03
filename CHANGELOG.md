@@ -6,6 +6,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
 
 ### Hinzugefügt
 - Anleitung `docs/agenten.md` und Review-Subagent `.claude/agents/physik-reviewer.md`.
+- `rtt-geom`: `Shape<T>`-Schnittstelle, `Plane<T>` und `Conic<T>` (Sag, Gradient, Definitionsbereich)
+  sowie analytischer Strahlschnitt mit Status `Missed` statt NaN (#3).
 
 ## [0.1.0] – M0 Fundament
 
