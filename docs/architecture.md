@@ -219,7 +219,7 @@ class Shape {
 };
 ```
 
-- Schnitt: analytisch mit der Basis-Konik, dann Newton auf F(t) = z(t) − sag(x(t), y(t)); Toleranz 1e−12 mm, höchstens 30 Iterationen, sonst `NoConvergence`. Die nächste Lösung mit t > ε in Ausbreitungsrichtung gilt.
+- Schnitt: analytisch mit der Basis-Konik, dann Newton auf F(t) = z(t) − sag(x(t), y(t)); Toleranz 1e−12 mm, höchstens 30 Iterationen, sonst `NoConvergence`. Die nächste Lösung mit t > ε in Ausbreitungsrichtung gilt; ε = 1e−9 mm (`kDefaultTMin` in `rtt-geom`), überall im Schnitt einheitlich zu verwenden.
 - Normale aus dem Gradienten: n = (−∂z/∂x, −∂z/∂y, 1) normiert.
 - Flächentypen v1: Ebene, Sphäre/Konik, gerade und ungerade Asphäre, Forbes Q-con und Q-bfs, Biconic, Toroid/Zylinder, Axicon, Zernike-Sag (Standard, Fringe), XY-Polynom, Grid-Sag (bikubisch).
 
