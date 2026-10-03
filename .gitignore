@@ -1,0 +1,12 @@
+/build/
+/out/
+/vcpkg_installed/
+.vs/
+.vscode/
+.idea/
+*.user
+compile_commands.json
+__pycache__/
+.pytest_cache/
+*.pyc
+.cache/

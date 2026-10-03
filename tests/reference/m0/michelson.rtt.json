@@ -1,0 +1,94 @@
+{
+  "schema_version": "0.1.0",
+  "name": "Michelson interferometer with ideal beam splitter",
+  "units": {"length": "mm", "wavelength": "um"},
+  "wavelengths": [
+    {"um": 0.6328, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 5.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "interferometer",
+    "children": [
+      {
+        "type": "thin_element",
+        "name": "beam splitter",
+        "pose": {"position": [0.0, 0.0, 50.0], "rotation_deg": [45.0, 0.0, 0.0]},
+        "surfaces": [
+          {
+            "id": "BS",
+            "aperture": {"type": "circular", "radius": 12.5},
+            "interaction": {"type": "ideal_beam_splitter"}
+          }
+        ]
+      },
+      {
+        "type": "mirror",
+        "name": "reference mirror",
+        "pose": {"position": [0.0, 0.0, 100.0]},
+        "surfaces": [
+          {
+            "id": "M1",
+            "aperture": {"type": "circular", "radius": 12.5},
+            "interaction": {"type": "ideal_mirror"}
+          }
+        ]
+      },
+      {
+        "type": "mirror",
+        "name": "test mirror",
+        "pose": {
+          "position": [
+            0.0,
+            {"value": 50.0, "variable": true},
+            50.0
+          ],
+          "rotation_deg": [-90.0, 0.0, 0.0]
+        },
+        "surfaces": [
+          {
+            "id": "M2",
+            "aperture": {"type": "circular", "radius": 12.5},
+            "interaction": {"type": "ideal_mirror"}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "camera",
+        "pose": {"position": [0.0, -50.0, 50.0], "rotation_deg": [-90.0, 0.0, 0.0]},
+        "surfaces": [
+          {
+            "id": "DET",
+            "aperture": {"type": "rectangular", "half_width_x": 4.0, "half_width_y": 3.0}
+          }
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {
+      "name": "reference arm",
+      "events": [
+        {"surface": "BS", "kind": "transmit"},
+        {"surface": "M1", "kind": "reflect"},
+        {"surface": "BS", "kind": "reflect"},
+        {"surface": "DET", "kind": "transmit"}
+      ]
+    },
+    {
+      "name": "test arm",
+      "events": [
+        {"surface": "BS", "kind": "reflect"},
+        {"surface": "M2", "kind": "reflect"},
+        {"surface": "BS", "kind": "transmit"},
+        {"surface": "DET", "kind": "transmit"}
+      ]
+    }
+  ]
+}
