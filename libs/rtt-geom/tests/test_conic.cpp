@@ -42,8 +42,10 @@ TEST_CASE("paraboloid sag equals r^2 / (2 R)", "[conic][sag]") {
   // k = -1 removes the square root: z = c r^2 / 2 (Welford, Ch. 2).
   const double radius = 100.0;
   const Conic<double> parabola(1.0 / radius, -1.0);
+  // 1e-12 mm scaled with (1 + z): floating-point resolution at large z (ulp(5000) ~ 9e-13 mm).
   for (const double r : {0.0, 1.0, 20.0, 150.0, 1000.0}) {
-    REQUIRE(near(parabola.sag(0.0, r), r * r / (2.0 * radius), 1e-12 * (1.0 + r * r / radius)));
+    const double z = r * r / (2.0 * radius);
+    REQUIRE(near(parabola.sag(0.0, r), z, 1e-12 * (1.0 + z)));
   }
 }
 
@@ -51,11 +53,9 @@ TEST_CASE("hyperboloid sag equals (sqrt(1 + c^2 r^2) - 1) / c for k = -2", "[con
   // For k = -2 the implicit form c r^2 - 2 z - c z^2 = 0 has the root below.
   const double c = 0.02;
   const Conic<double> hyperbola(c, -2.0);
-  // The reference cancels for small c r (absolute error ~ eps / c), hence a tolerance in mm
-  // (1e-12 mm, scaled with the sag) instead of a purely relative one.
   for (const double r : {0.0, 5.0, 30.0, 400.0}) {
     const double expected = (std::sqrt(1.0 + c * c * r * r) - 1.0) / c;
-    REQUIRE(near(hyperbola.sag(r, 0.0), expected, 1e-12 * (1.0 + expected)));
+    REQUIRE(near(hyperbola.sag(r, 0.0), expected));
   }
 }
 

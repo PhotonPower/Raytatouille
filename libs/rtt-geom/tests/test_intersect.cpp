@@ -173,6 +173,7 @@ TEST_CASE("paraboloid: parallel ray hits at z = y^2 / (2 R)", "[intersect][parab
     const auto hit = rtt::geom::intersect(parabola, o, Vec3(0.0, 0.0, 1.0));
     REQUIRE(hit.status == HitStatus::Hit);
     const double z = y * y / (2.0 * radius);
+    // 1e-12 mm scaled with (1 + z): floating-point resolution at large z.
     REQUIRE(near(hit.t, z + 5.0, 1e-12 * (1.0 + z)));
     REQUIRE(near(hit.point, Vec3(0.0, y, z), 1e-12 * (1.0 + z)));
     // n ~ (-dz/dx, -dz/dy, 1) = (0, -c y, 1)
@@ -198,7 +199,7 @@ TEST_CASE("hyperboloid: parallel ray hits at the analytic sag", "[intersect][hyp
     const auto hit = rtt::geom::intersect(hyperbola, Vec3(0.0, y, -1.0), Vec3(0.0, 0.0, 1.0));
     REQUIRE(hit.status == HitStatus::Hit);
     const double z = (std::sqrt(1.0 + c * c * y * y) - 1.0) / c;
-    REQUIRE(near(hit.point.z(), z, 1e-12 * (1.0 + z)));
+    REQUIRE(near(hit.point.z(), z));
     const auto [gx, gy] = hyperbola.grad(0.0, y);
     REQUIRE(near(hit.normal, Vec3(-gx, -gy, 1.0).normalized()));
   }
