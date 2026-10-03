@@ -33,6 +33,7 @@ set(RTT_REFERENCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/reference")
 
 add_subdirectory(libs/rtt-math)
 add_subdirectory(libs/rtt-geom)
+add_subdirectory(libs/rtt-material)
 add_subdirectory(libs/rtt-model)
 add_subdirectory(libs/rtt-io)
 
