@@ -8,6 +8,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
 - Anleitung `docs/agenten.md` und Review-Subagent `.claude/agents/physik-reviewer.md`.
 - `rtt-geom`: `Shape<T>`-Schnittstelle, `Plane<T>` und `Conic<T>` (Sag, Gradient, Definitionsbereich)
   sowie analytischer Strahlschnitt mit Status `Missed` statt NaN (#3).
+- `rtt-material`: Schnittstelle `Material` (komplexer Index n + iκ über Vakuumwellenlänge in µm
+  und Temperatur in °C) und thread-sichere `MaterialLibrary` mit den Verweisen `VACUUM`, `AIR`
+  (vorläufig n = 1), `CONST:<n>` und `CONST:<n>,<kappa>`; Kataloge folgen in M2 (#2).
 
 ## [0.1.0] – M0 Fundament
 
