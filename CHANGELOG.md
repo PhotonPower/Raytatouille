@@ -4,6 +4,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
 
 ## [Unreleased]
 
+### Hinzugefügt
+- Anleitung `docs/agenten.md` und Review-Subagent `.claude/agents/physik-reviewer.md`.
+
 ## [0.1.0] – M0 Fundament
 
 ### Hinzugefügt
