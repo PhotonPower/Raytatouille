@@ -38,7 +38,9 @@ struct Intersection {
 inline constexpr double kDefaultTMin = 1e-9;
 
 /// Newton iteration stops when |F(t)| = |z(t) - sag(x(t), y(t))| < kNewtonTolerance, in mm
-/// (docs/architecture.md, Physik-Module, Geometrie).
+/// (docs/architecture.md, Physik-Module, Geometrie). The tolerance is absolute and meant for
+/// double: it is reachable only while the rounding error of origin + t * direction stays below
+/// it, i.e. for |origin| and t up to about 1e4 mm. Rays should start close to the surface.
 inline constexpr double kNewtonTolerance = 1e-12;
 
 /// Maximum number of Newton steps before the status is NoConvergence (docs/architecture.md).
@@ -153,14 +155,16 @@ template <rtt::math::Real T>
 /// @param direction direction in local coordinates; must have length 1 so that t is in mm
 /// @param t_min     smallest accepted ray parameter in mm
 /// @return Hit with |F| < kNewtonTolerance and the number of Newton steps; Missed if no start
-///         point exists, the start lies outside the shape's domain or the result has t <= t_min;
-///         NoConvergence after kMaxNewtonIterations steps or if the iteration fails.
+///         point exists or the start lies outside the shape's domain; NoConvergence after
+///         kMaxNewtonIterations steps, if an iterate leaves the domain, if F or the gradient is
+///         not finite, if F'(t) = 0, or if Newton converges onto a crossing with t <= t_min.
 template <rtt::math::Real T>
 [[nodiscard]] Intersection<T> intersect(const Shape<T>& shape,
                                         const rtt::math::Vec3T<T>& origin,
                                         const rtt::math::Vec3T<T>& direction,
                                         T t_min = T(kDefaultTMin)) {
   using std::abs;
+  using std::isfinite;
   using Vec = rtt::math::Vec3T<T>;
   // Start value: analytic hit of the base conic (docs/architecture.md); if that is missed,
   // the hit of the vertex plane z = 0.
@@ -193,14 +197,12 @@ template <rtt::math::Real T>
     failed.iterations = iteration;
     const T f = p.z() - shape.sag(p.x(), p.y());
     const auto [gx, gy] = shape.grad(p.x(), p.y());
-    if (!std::isfinite(f) || !std::isfinite(gx) || !std::isfinite(gy)) {
+    if (!isfinite(f) || !isfinite(gx) || !isfinite(gy)) {
       return failed;
     }
     if (abs(f) < T(kNewtonTolerance)) {
       if (!(t > t_min)) {
-        Intersection<T> missed;
-        missed.iterations = iteration;
-        return missed;  // converged onto a crossing behind the ray
+        return failed;  // converged behind the ray; a crossing ahead is not ruled out
       }
       // Normal from the gradient: (-dz/dx, -dz/dy, 1) normalised (docs/architecture.md).
       Intersection<T> hit;

@@ -13,7 +13,8 @@
 namespace rtt::geom {
 
 /// Even asphere z(r) = c r^2 / (1 + sqrt(1 - (1 + k) c^2 r^2)) + A4 r^4 + A6 r^6 + ...,
-/// r^2 = x^2 + y^2 (conic part: W. T. Welford, Aberrations of Optical Systems, Ch. 2).
+/// r^2 = x^2 + y^2 (conic part: W. T. Welford, Aberrations of Optical Systems, Ch. 2; full
+/// form: ISO 10110-12, equation of the rotationally symmetric aspheric surface).
 /// Sign conventions of c and k as for Conic. The coefficients follow the model
 /// (rtt/model/surface.hpp): coefficients[i] = A_(2 i + 4) in mm^(-(2 i + 3)).
 template <rtt::math::Real T>

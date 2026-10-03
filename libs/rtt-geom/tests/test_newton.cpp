@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
+#include <limits>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -38,9 +39,10 @@ double residual(const rtt::geom::Shape<double>& shape, const Vec3& p) {
 }
 
 /// Test shape z = (b + 2) u - u^3 - 2 with u = x / a. For the ray p(t) = (a (t - 1), 0, b (t - 1))
-/// (|d| = 1 for a^2 + b^2 = 1) and tau = t - 1 this gives F = tau^3 - 2 tau + 2, the textbook case
-/// in which Newton's method cycles 0 -> 1 -> 0 (e.g. Burden & Faires, Numerical Analysis,
-/// Sec. 2.3). The plane start z = 0 lies at tau = 0, so Newton never converges.
+/// (|d| = 1 for a^2 + b^2 = 1) and tau = t - 1 this gives F = tau^3 - 2 tau + 2 with
+/// F' = 3 tau^2 - 2. Newton cycles: tau = 0 -> 0 - 2 / (-2) = 1 -> 1 - 1 / 1 = 0. The cycle is
+/// superattracting (F''(0) = 0), so rounding cannot break it. The plane start z = 0 lies at
+/// tau = 0, so Newton never converges.
 class NewtonCycleShape final : public rtt::geom::Shape<double> {
  public:
   static constexpr double kA = 0.6;
@@ -57,6 +59,51 @@ class NewtonCycleShape final : public rtt::geom::Shape<double> {
   [[nodiscard]] std::pair<double, double> base_conic() const override { return {0.0, 0.0}; }
   [[nodiscard]] std::optional<double> max_radius() const override { return std::nullopt; }
 };
+/// Tilted plane z = slope * x with an optional domain limit, for the failure branches of Newton.
+/// F is linear in t, so Newton lands on the exact crossing in one step.
+class TiltedShape final : public rtt::geom::Shape<double> {
+ public:
+  TiltedShape(double slope, std::optional<double> max_radius)
+      : slope_(slope), max_radius_(max_radius) {}
+
+  [[nodiscard]] double sag(double x, double /*y*/) const override { return slope_ * x; }
+  [[nodiscard]] std::pair<double, double> grad(double /*x*/, double /*y*/) const override {
+    return {slope_, 0.0};
+  }
+  [[nodiscard]] std::pair<double, double> base_conic() const override { return {0.0, 0.0}; }
+  [[nodiscard]] std::optional<double> max_radius() const override { return max_radius_; }
+
+ private:
+  double slope_;
+  std::optional<double> max_radius_;
+};
+
+/// Independent reference: first sign change of F(t) = z(t) - sag(x(t), y(t)) on a fine scan
+/// of (t_lo, t_hi], refined by bisection.
+double first_crossing(
+    const rtt::geom::Shape<double>& shape, const Vec3& o, const Vec3& d, double t_lo, double t_hi) {
+  const auto f = [&](double t) { return residual(shape, o + t * d); };
+  const int steps = 200000;
+  double prev = t_lo;
+  for (int i = 1; i <= steps; ++i) {
+    const double next = t_lo + (t_hi - t_lo) * i / steps;
+    if ((f(prev) < 0.0) != (f(next) < 0.0)) {
+      double lo = prev;
+      double hi = next;
+      for (int j = 0; j < 200 && hi - lo > 1e-15; ++j) {
+        const double mid = 0.5 * (lo + hi);
+        if ((f(lo) < 0.0) == (f(mid) < 0.0)) {
+          lo = mid;
+        } else {
+          hi = mid;
+        }
+      }
+      return 0.5 * (lo + hi);
+    }
+    prev = next;
+  }
+  return std::numeric_limits<double>::quiet_NaN();
+}
 }  // namespace
 
 TEST_CASE("asphere without coefficients intersects like the conic", "[newton]") {
@@ -162,4 +209,50 @@ TEST_CASE("asphere on a flat base: start from the plane", "[newton]") {
   REQUIRE(hit.status == HitStatus::Hit);
   REQUIRE(near(hit.point.z(), 1.0, 1e-12));
   REQUIRE(near(hit.t, 6.0, 1e-12));
+}
+
+TEST_CASE("asphere: Newton finds the first crossing along the ray", "[newton]") {
+  // Strong quartic bowl z = 0.01 r^4 and an oblique ray; the reference is a scan plus bisection
+  // that does not use the gradient.
+  const EvenAsphere<double> asphere(0.0, 0.0, {0.01});
+  for (const auto& [o, d] : {
+           std::pair{Vec3(-2.0, 0.0, -1.0), Vec3(0.3, 0.0, 1.0).normalized()},
+           std::pair{Vec3(1.0, 1.0, -2.0), Vec3(-0.2, 0.1, 1.0).normalized()},
+           std::pair{Vec3(0.5, -3.0, 2.0), Vec3(0.0, 0.4, -1.0).normalized()},
+       }) {
+    const auto hit = rtt::geom::intersect(asphere, o, d);
+    REQUIRE(hit.status == HitStatus::Hit);
+    REQUIRE(near(hit.t, first_crossing(asphere, o, d, rtt::geom::kDefaultTMin, 20.0), 1e-9));
+  }
+}
+
+TEST_CASE("Newton leaving the domain of the shape reports NoConvergence", "[newton]") {
+  // z = x / 2 limited to r <= 1. Ray o = (0, 0, -1), d = (0.6, 0, 0.8): the plane start is at
+  // t = 1.25 (x = 0.75, inside); the crossing -1 + 0.8 t = 0.3 t lies at t = 2, x = 1.2 (outside).
+  const TiltedShape tilted(0.5, 1.0);
+  const auto hit = rtt::geom::intersect<double>(tilted, Vec3(0.0, 0.0, -1.0), Vec3(0.6, 0.0, 0.8));
+  REQUIRE(hit.status == HitStatus::NoConvergence);
+  REQUIRE(hit.iterations == 1);
+  REQUIRE(all_finite(hit));
+}
+
+TEST_CASE("Newton with F' = 0 (ray parallel to the surface) reports NoConvergence", "[newton]") {
+  // z = x / 2 and d ~ (2, 0, 1): F'(t) = d_z - d_x / 2 = 0, F = -0.1 mm everywhere.
+  const TiltedShape tilted(0.5, 1.0);
+  const auto hit =
+      rtt::geom::intersect<double>(tilted, Vec3(0.0, 0.0, -0.1), Vec3(2.0, 0.0, 1.0).normalized());
+  REQUIRE(hit.status == HitStatus::NoConvergence);
+  REQUIRE(hit.iterations == 0);
+  REQUIRE(all_finite(hit));
+}
+
+TEST_CASE("Newton converging behind the ray reports NoConvergence", "[newton]") {
+  // z = 2 x, o = (0, 0, -1), d = (0.6, 0, 0.8): plane start at t = 1.25, but the only crossing
+  // -1 + 0.8 t = 1.2 t is at t = -2.5. Newton cannot rule out a crossing ahead, so the result
+  // is NoConvergence rather than Missed.
+  const TiltedShape tilted(2.0, std::nullopt);
+  const auto hit = rtt::geom::intersect<double>(tilted, Vec3(0.0, 0.0, -1.0), Vec3(0.6, 0.0, 0.8));
+  REQUIRE(hit.status == HitStatus::NoConvergence);
+  REQUIRE(hit.iterations == 1);
+  REQUIRE(all_finite(hit));
 }
