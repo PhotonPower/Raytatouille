@@ -19,18 +19,14 @@ namespace rtt::geom {
 template <rtt::math::Real T>
 class Shape {
  public:
-  Shape() = default;
-  Shape(const Shape&) = default;
-  Shape(Shape&&) noexcept = default;
-  Shape& operator=(const Shape&) = default;
-  Shape& operator=(Shape&&) noexcept = default;
   virtual ~Shape() = default;
 
   /// Surface height z at the local point (x, y), all in mm. Outside the domain of the shape
   /// (see max_radius()) the result is NaN; the tracer must check the domain or use a status.
   [[nodiscard]] virtual T sag(T x, T y) const = 0;
 
-  /// Surface slopes (dz/dx, dz/dy) at (x, y) in mm, dimensionless. NaN outside the domain.
+  /// Surface slopes (dz/dx, dz/dy) at (x, y) in mm, dimensionless. NaN outside the domain;
+  /// a component may be +-infinity where the surface is vertical (rim r = max_radius()).
   [[nodiscard]] virtual std::pair<T, T> grad(T x, T y) const = 0;
 
   /// Best-fit base conic (curvature c in 1/mm, conic constant k) used as starting value for
@@ -40,6 +36,14 @@ class Shape {
   /// Largest radial distance r = sqrt(x^2 + y^2) in mm on which the shape is defined, or
   /// std::nullopt if the shape is defined for all r.
   [[nodiscard]] virtual std::optional<T> max_radius() const = 0;
+
+ protected:
+  // Copy and move only through concrete shapes, which prevents slicing (C++ Core Guidelines C.67).
+  Shape() = default;
+  Shape(const Shape&) = default;
+  Shape(Shape&&) noexcept = default;
+  Shape& operator=(const Shape&) = default;
+  Shape& operator=(Shape&&) noexcept = default;
 };
 
 }  // namespace rtt::geom

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <utility>
@@ -50,7 +51,8 @@ TEST_CASE("hyperboloid sag equals (sqrt(1 + c^2 r^2) - 1) / c for k = -2", "[con
   // For k = -2 the implicit form c r^2 - 2 z - c z^2 = 0 has the root below.
   const double c = 0.02;
   const Conic<double> hyperbola(c, -2.0);
-  // The reference cancels for small c r (absolute error ~ eps / c), hence an absolute tolerance.
+  // The reference cancels for small c r (absolute error ~ eps / c), hence a tolerance in mm
+  // (1e-12 mm, scaled with the sag) instead of a purely relative one.
   for (const double r : {0.0, 5.0, 30.0, 400.0}) {
     const double expected = (std::sqrt(1.0 + c * c * r * r) - 1.0) / c;
     REQUIRE(near(hyperbola.sag(r, 0.0), expected, 1e-12 * (1.0 + expected)));

@@ -12,7 +12,8 @@
 
 namespace rtt::geom {
 
-/// Outcome of an intersection. Never an exception, never NaN (ADR 0009).
+/// Outcome of an intersection. The intersection never throws and reports problems as a status
+/// instead of NaN (ADR 0009: status flags in tracing loops).
 enum class HitStatus : std::uint8_t {
   Hit,     ///< t, point and normal are valid
   Missed,  ///< no intersection with t > t_min on the surface; t, point and normal are zero
@@ -33,9 +34,9 @@ inline constexpr double kDefaultTMin = 1e-9;
 
 /// Intersection of a ray with the conic z = c r^2 / (1 + sqrt(1 - (1 + k) c^2 r^2)).
 /// @param c         curvature in 1/mm, positive if the centre of curvature is on the +z side
-/// @param k         conic constant
+/// @param k         conic constant, dimensionless
 /// @param origin    ray origin in local coordinates, mm
-/// @param direction unit direction in local coordinates
+/// @param direction direction in local coordinates; must have length 1 so that t is in mm
 /// @param t_min     smallest accepted ray parameter in mm
 /// @return nearest hit with t > t_min on the sheet through the vertex, or Missed.
 template <rtt::math::Real T>
@@ -43,7 +44,7 @@ template <rtt::math::Real T>
                                               T k,
                                               const rtt::math::Vec3T<T>& origin,
                                               const rtt::math::Vec3T<T>& direction,
-                                              T t_min = T(kDefaultTMin)) {
+                                              T t_min = T(kDefaultTMin)) noexcept {
   using std::sqrt;
   // Rearranging the sag z = c r^2 / (1 + s), s = sqrt(1 - (1 + k) c^2 r^2) (Welford,
   // Aberrations of Optical Systems, Ch. 2) gives the quadric
@@ -95,24 +96,24 @@ template <rtt::math::Real T>
   return best;
 }
 
-/// Intersection of a ray with a conic, see intersect_conic().
+/// Intersection of a ray with a conic, see intersect_conic() for units and conventions.
 template <rtt::math::Real T>
 [[nodiscard]] Intersection<T> intersect(const Conic<T>& conic,
                                         const rtt::math::Vec3T<T>& origin,
                                         const rtt::math::Vec3T<T>& direction,
-                                        T t_min = T(kDefaultTMin)) {
+                                        T t_min = T(kDefaultTMin)) noexcept {
   return intersect_conic(conic.curvature(), conic.conic_constant(), origin, direction, t_min);
 }
 
 /// Intersection of a ray with the plane z = 0. Normal is always +z.
 /// @param origin    ray origin in local coordinates, mm
-/// @param direction unit direction in local coordinates
+/// @param direction direction in local coordinates; must have length 1 so that t is in mm
 /// @param t_min     smallest accepted ray parameter in mm
 template <rtt::math::Real T>
 [[nodiscard]] Intersection<T> intersect(const Plane<T>& /*plane*/,
                                         const rtt::math::Vec3T<T>& origin,
                                         const rtt::math::Vec3T<T>& direction,
-                                        T t_min = T(kDefaultTMin)) {
+                                        T t_min = T(kDefaultTMin)) noexcept {
   // o_z + t d_z = 0. A ray parallel to the plane (d_z = 0) never reaches it.
   if (direction.z() == T(0)) {
     return {};

@@ -34,7 +34,7 @@ class Conic final : public Shape<T> {
   /// Sag z in mm at (x, y) in mm; NaN for r > max_radius().
   [[nodiscard]] T sag(T x, T y) const override;
 
-  /// Slopes (dz/dx, dz/dy); NaN for r > max_radius().
+  /// Slopes (dz/dx, dz/dy); NaN for r > max_radius(), +-infinity at r = max_radius().
   [[nodiscard]] std::pair<T, T> grad(T x, T y) const override;
 
   /// (c, k) of this conic.

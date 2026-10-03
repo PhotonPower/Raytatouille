@@ -112,6 +112,22 @@ TEST_CASE("sphere: the far sheet behind the centre is not part of the surface",
   REQUIRE(all_finite(miss));
 }
 
+TEST_CASE("sphere: of two valid hits on the vertex cap the nearer one is taken",
+          "[intersect][sphere]") {
+  // R = 50, centre (0, 0, 50). The line z = 10, x = 0 crosses the cap at y = +-sqrt(50^2 - 40^2)
+  // = +-30, both with z <= R. From y = -60 travelling +y: t = 30 (not 90).
+  const Conic<double> sphere(0.02, 0.0);
+  const auto hit = rtt::geom::intersect(sphere, Vec3(0.0, -60.0, 10.0), Vec3(0.0, 1.0, 0.0));
+  REQUIRE(hit.status == HitStatus::Hit);
+  REQUIRE(near(hit.t, 30.0));
+  REQUIRE(near(hit.point, Vec3(0.0, -30.0, 10.0)));
+  // Same line travelling -y from y = +60.
+  const auto back = rtt::geom::intersect(sphere, Vec3(0.0, 60.0, 10.0), Vec3(0.0, -1.0, 0.0));
+  REQUIRE(back.status == HitStatus::Hit);
+  REQUIRE(near(back.t, 30.0));
+  REQUIRE(near(back.point, Vec3(0.0, 30.0, 10.0)));
+}
+
 TEST_CASE("only solutions with t > epsilon in propagation direction count", "[intersect]") {
   const Conic<double> sphere(0.02, 0.0);
   // Surface lies behind the ray.
@@ -188,8 +204,21 @@ TEST_CASE("hyperboloid: parallel ray hits at the analytic sag", "[intersect][hyp
   }
 }
 
+TEST_CASE("hyperboloid: of two valid hits on the vertex sheet the nearer one is taken",
+          "[intersect][hyperboloid]") {
+  // k = -2, c = 0.02: z = (sqrt(1 + c^2 y^2) - 1) / c = 10 gives y^2 = 1100. Both crossings of
+  // the line z = 10 lie on the vertex sheet (w = 1 + c z > 0). From y = -60: t = 60 - sqrt(1100).
+  const Conic<double> hyperbola(0.02, -2.0);
+  const auto hit = rtt::geom::intersect(hyperbola, Vec3(0.0, -60.0, 10.0), Vec3(0.0, 1.0, 0.0));
+  REQUIRE(hit.status == HitStatus::Hit);
+  REQUIRE(near(hit.t, 60.0 - std::sqrt(1100.0)));
+  REQUIRE(near(hit.point.z(), hyperbola.sag(hit.point.x(), hit.point.y())));
+}
+
 TEST_CASE("hyperboloid: ray parallel to the asymptote (linear case)", "[intersect][hyperboloid]") {
   // For |d| = 1 the quadratic coefficient is c (1 + k d_z^2); it vanishes for d_z^2 = -1 / k.
+  // Here it is zero only up to rounding, so the root g / q carries the hit. The exact branch
+  // a == 0 is reached by the axial paraboloid case (d = +z, k = -1) and the flat conic (c = 0).
   const double c = 0.02;
   const double k = -2.0;
   const Conic<double> hyperbola(c, k);
