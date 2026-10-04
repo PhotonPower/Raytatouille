@@ -217,12 +217,15 @@ FirstOrder first_order(const compile::CompiledSystem& system,
     fo.efl = 1.0 / phi;
     fo.front_focal_length = n1 / phi;
     fo.rear_focal_length = fo.image_index / phi;
-    fo.ffl = m.d * n1 / phi;
+    const double ffl = m.d * n1 / phi;
+    const double front_focal_z = z_v1 - ffl;
+    const double rear_focal_z = z_vk + m.a * n_img / phi;
+    fo.ffl = ffl;
     fo.bfl = m.a * fo.image_index / phi;
-    fo.front_focal_z = z_v1 - *fo.ffl;
-    fo.rear_focal_z = z_vk + m.a * n_img / phi;
-    fo.front_principal_z = *fo.front_focal_z + n1 / phi;
-    fo.rear_principal_z = *fo.rear_focal_z - n_img / phi;
+    fo.front_focal_z = front_focal_z;
+    fo.rear_focal_z = rear_focal_z;
+    fo.front_principal_z = front_focal_z + n1 / phi;
+    fo.rear_principal_z = rear_focal_z - n_img / phi;
   }
 
   // Paraxial image of the axial object point: the axial ray (y, nu) = (0, n1) from the object
@@ -244,27 +247,28 @@ FirstOrder first_order(const compile::CompiledSystem& system,
   }
 
   // Pupils: images of the stop through the steps before and after it.
-  std::optional<std::size_t> stop;
+  std::size_t stop = steps.size();  // index of the stop event; steps.size() = no stop
   for (std::size_t i = 0; i < steps.size(); ++i) {
     if (steps[i].stop) {
       stop = i;
       break;
     }
   }
-  if (!stop) return fo;
+  if (stop == steps.size()) return fo;
 
-  const compile::CompiledSurface& stop_surface = system.surfaces()[steps[*stop].surface];
-  const auto* circle = stop_surface.aperture
-                           ? std::get_if<model::CircularAperture>(&*stop_surface.aperture)
-                           : nullptr;
+  const compile::CompiledSurface& stop_surface = system.surfaces()[steps[stop].surface];
+  const model::CircularAperture* circle = nullptr;
+  if (stop_surface.aperture.has_value()) {
+    circle = std::get_if<model::CircularAperture>(&stop_surface.aperture.value());
+  }
   if (circle == nullptr) {
-    throw ParaxialError("paraxial: the stop " + surface_name(system, steps[*stop].surface) +
+    throw ParaxialError("paraxial: the stop " + surface_name(system, steps[stop].surface) +
                         " needs a circular aperture for the pupils");
   }
-  const double z_stop = steps[*stop].z;
+  const double z_stop = steps[stop].z;
   // Object space -> stop plane, and stop plane -> image space (the stop itself only transmits).
-  const Matrix front = propagate(steps, 0, *stop, z_first, n1, z_stop);
-  const Matrix back = propagate(steps, *stop + 1, steps.size(), z_stop, front.n_out, z_last);
+  const Matrix front = propagate(steps, 0, stop, z_first, n1, z_stop);
+  const Matrix back = propagate(steps, stop + 1, steps.size(), z_stop, front.n_out, z_last);
 
   // Entrance pupil, derived from the y-nu equations with front = [[a, b], [c, d]] from z_first
   // (object space) to the stop plane:
