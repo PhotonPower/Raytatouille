@@ -265,6 +265,8 @@ TEST_CASE("aperture rims include the aiming tolerance", "[apply_event]") {
   REQUIRE(status_at(ellipse, 0.0, 2.0 + inside) == RayStatus::Alive);
   REQUIRE(status_at(ellipse, 4.0 + outside, 0.0) == RayStatus::Vignetted);
   REQUIRE(status_at(ellipse, 0.0, -2.0 - outside) == RayStatus::Vignetted);
+  // An inner radius below the tolerance has no inner rim: the axis point passes.
+  REQUIRE(status_at(rtt::model::CircularAperture{10.0, 0.5e-9}, 0.0, 0.0) == RayStatus::Alive);
   REQUIRE(rtt::trace::kApertureTolerance == 1e-9);
 }
 

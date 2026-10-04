@@ -72,15 +72,18 @@ struct SurfaceHit {
 [[nodiscard]] SurfaceHit intersect_surface(const RayState& ray,
                                            const compile::CompiledSurface& surface) noexcept;
 
-/// Tolerance of the aperture check, mm: a hit counts as inside if it lies at most this far
-/// outside a rim (outer and inner rims). Equal to the convergence limit of ray aiming
-/// (rtt::trace::kAimTolerance), so rays aimed exactly at a stop rim pass (decided for #50).
+/// Tolerance of the aperture check, mm: a hit counts as inside if it lies about this far outside
+/// a rim (outer and inner rims; exact for circles and rectangle edges, see inside_aperture()).
+/// Equal to the convergence limit of ray aiming (rtt::trace::kAimTolerance), so rays aimed exactly
+/// at a stop rim pass (decided for #50).
 inline constexpr double kApertureTolerance = 1e-9;
 
 /// True if the local hit point lies inside the surface aperture or the surface has no aperture;
 /// rims are inclusive with kApertureTolerance. Circular (r <= R + tol, with an inner radius
-/// r >= R_i - tol), rectangular (|x| <= a + tol, |y| <= b + tol) and elliptical apertures
-/// (semi-axes enlarged by tol) in local x, y, mm.
+/// r >= R_i - tol), rectangular (|x| <= a + tol, |y| <= b + tol, i.e. up to sqrt(2) tol at the
+/// corners) and elliptical apertures (semi-axes a + tol, b + tol: the normal allowance is tol on
+/// the axes and between 2 sqrt(ab) / (a + b) tol and tol elsewhere, never more than tol), all in
+/// local x, y, mm.
 [[nodiscard]] bool inside_aperture(const compile::CompiledSurface& surface,
                                    const SurfaceHit& hit) noexcept;
 

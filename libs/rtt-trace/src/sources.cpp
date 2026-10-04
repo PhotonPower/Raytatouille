@@ -58,10 +58,12 @@ struct Context {
   /// Signed paraxial stop height of a ray through the EP point at unit height: the stop target
   /// of pupil point (px, py) is (px, py) * r_ep * stop_scale (negative for an inverted image).
   double stop_scale = 1.0;
-  /// First-order data at the reference wavelength: field values are converted with them, so a
-  /// field point is the same physical direction or object point for every wavelength (#31).
+  /// First-order data for the field conversion, so a field point is the same physical direction
+  /// or object point for every wavelength (#31). Set at the reference wavelength only for the
+  /// field types that need it (paraxial image height, angle with a finite object); otherwise a
+  /// copy of the ray-wavelength data that make_field does not read.
   paraxial::FirstOrder first_order_ref;
-  double z_ep_ref = 0.0;  ///< global z of the paraxial entrance pupil at the reference, mm
+  double z_ep_ref = 0.0;  ///< global z of the paraxial entrance pupil for the conversion, mm
 };
 
 /// Ray start for one field.
