@@ -9,6 +9,7 @@
 
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/io/json_io.hpp"
+#include "rtt/material/air.hpp"
 #include "test_support.hpp"
 
 using Catch::Matchers::ContainsSubstring;
@@ -87,12 +88,41 @@ TEST_CASE("SCHOTT:N-BK7 in a system file resolves through an AGF test catalogue"
   const System s = rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m0/singlet.rtt.json");
   const CompiledSystem cs = rtt::compile::compile(s, lib);
   const auto& glass = cs.media()[medium_index(cs, "SCHOTT:N-BK7")];
-  // Same value as the catalogue material itself; n_d = 1.5168 in the SCHOTT data sheet.
+  // Same value as the catalogue material itself.
+  const double wl = cs.wavelengths_um()[cs.reference_wavelength()];
   const auto expected = lib.resolve("SCHOTT:N-BK7")
-                            ->index(cs.wavelengths_um()[cs.reference_wavelength()],
-                                    s.environment.temperature_c, s.environment.pressure_atm);
+                            ->index(wl, s.environment.temperature_c, s.environment.pressure_atm);
   REQUIRE(glass.index[cs.reference_wavelength()] == expected);
-  REQUIRE(std::abs(expected.real() - 1.5168) < 5e-6);
+  // Since #25 the index is absolute; relative to the surrounding AIR (20 degC = T_ref, 1 atm) it
+  // is the catalogue value n_d = 1.5168 (SCHOTT data sheet). The file wavelength 0.5876 um is a
+  // vacuum wavelength, 0.17 nm above the d line in air, hence the tolerance of 2e-5; the exact
+  // n_d check with the air wavelength is in rtt-material (test_agf.cpp).
+  const auto& air = cs.media()[cs.environment_medium()];
+  REQUIRE(std::abs(expected.real() / air.index[cs.reference_wavelength()].real() - 1.5168) < 2e-5);
+}
+
+TEST_CASE("the AIR environment depends on temperature and pressure", "[compile][media][air]") {
+  // Acceptance criterion of #25: AIR is Ciddor air at the system temperature and pressure.
+  const MaterialLibrary lib;
+  System s = singlet("CONST:1.5");
+  REQUIRE(s.environment.medium == "AIR");
+  const auto air_index = [&](double t_c, double p_atm) {
+    s.environment.temperature_c = t_c;
+    s.environment.pressure_atm = p_atm;
+    const CompiledSystem cs = rtt::compile::compile(s, lib);
+    return cs.media()[cs.environment_medium()].index;
+  };
+  const auto at_20 = air_index(20.0, 1.0);
+  const auto at_40 = air_index(40.0, 1.0);
+  const auto at_low = air_index(20.0, 0.5);
+  for (std::size_t i = 0; i < at_20.size(); ++i) {
+    const double wl = s.wavelengths[i].um;
+    INFO(wl);
+    REQUIRE(at_20[i].real() ==
+            rtt::material::ciddor_air_index(wl, 20.0, rtt::material::kStandardAtmospherePa));
+    REQUIRE(at_40[i].real() < at_20[i].real());
+    REQUIRE(at_low[i].real() < at_20[i].real());
+  }
 }
 
 TEST_CASE("compile passes temperature and pressure of the environment to the materials",

@@ -34,9 +34,12 @@ constexpr double kAbs = 1e-12;  // mm, for values that are zero
 
 // ------------------------------------------------------------------ builders -----
 
+/// The reference values below are formulas for a surrounding index of exactly 1, so the tests
+/// run in VACUUM; since #25 AIR is Ciddor air (n = 1.00027).
 System base_system() {
   System s;
   s.name = "paraxial test";
+  s.environment.medium = "VACUUM";
   s.wavelengths = {{0.5876, 1.0, true}};
   s.aperture = {rtt::model::SystemApertureType::EntrancePupilDiameter, Param(10.0)};
   s.fields = {rtt::model::FieldType::AngleDeg, {{0.0, 0.0, 1.0}}};
@@ -199,8 +202,11 @@ TEST_CASE("thick lens: EFL, BFL, FFL and principal planes from the lensmaker for
 TEST_CASE("reference singlet with CONST:1.5168", "[paraxial]") {
   // tests/reference/m1/singlet_const.rtt.json: plano-convex, R1 = 51.68 mm, d = 4 mm, vertex
   // at z = 5, stop (radius 10) at z = 0, EPD 20 mm. f = R1 / (n - 1) = 100 mm.
-  const CompiledSystem cs =
-      compile(rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m1/singlet_const.rtt.json"));
+  // Lensmaker reference for n_outside = 1: the file's AIR is replaced by VACUUM here (#25).
+  System singlet =
+      rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m1/singlet_const.rtt.json");
+  singlet.environment.medium = "VACUUM";
+  const CompiledSystem cs = compile(singlet);
   const ThickLens ref = hecht_thick_lens(1.5168, 1.0 / 51.68, 0.0, 4.0);
   REQUIRE_THAT(ref.f, WithinRel(100.0, 1e-12));
 

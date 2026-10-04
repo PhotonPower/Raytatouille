@@ -76,8 +76,11 @@ TEST_CASE("paraboloid mirror focuses axial rays at R/2", "[sequential]") {
   // Concave paraboloid (k = -1) with R = -200 mm: centre of curvature on the -z side, focus at
   // z = R/2 = -100 mm in front of the mirror (focal property of the paraboloid; reference case
   // of docs/architecture.md, Validierung). Issue #6: RMS spot < 1e-9 mm.
-  const System s =
+  // The OPL reference below is a path length for n = 1; the file's AIR (Ciddor since #25) is
+  // replaced by VACUUM here.
+  System s =
       rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m1/paraboloid_mirror.rtt.json");
+  s.environment.medium = "VACUUM";
   const MaterialLibrary lib;
   const CompiledSystem cs = compile(s, lib);
 
@@ -124,6 +127,7 @@ TEST_CASE("plane-parallel plate shifts the ray by d sin(theta - theta') / cos(th
   const double thickness = 5.0;
   const double n = 1.5;
   System s = bare_system();
+  s.environment.medium = "VACUUM";  // closed formula for n_outside = 1 (AIR is Ciddor since #25)
   s.root.children.push_back({Element{"P",
                                      ElementKind::Plate,
                                      Pose::along_z(10.0),

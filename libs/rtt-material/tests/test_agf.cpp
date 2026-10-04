@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <chrono>
 #include <cmath>
@@ -8,10 +9,12 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <variant>
 #include <vector>
 
 #include "rtt/material/agf.hpp"
+#include "rtt/material/air.hpp"
 #include "rtt/material/dispersion.hpp"
 #include "rtt/material/material.hpp"
 
@@ -227,7 +230,9 @@ TEST_CASE("CD order of formulas 1 and 2 reproduces N(d) and V(d) of the NM recor
   const auto check = [&](const AgfGlass& glass, const std::string& catalog) {
     INFO(glass.name);
     const CatalogMaterial m(glass, catalog);
-    const auto n = [&](double wl) { return m.index(wl, 20.0, 1.0).real(); };
+    // The formula itself (relative index over relative wavelength, as in the NM record); since
+    // #25 index() is absolute and takes the vacuum wavelength, see the test below.
+    const auto n = [&](double wl) { return rtt::material::refractive_index(m.formula(), wl); };
     REQUIRE(std::abs(n(kD) - glass.nd) <= 5e-6);
     REQUIRE(std::abs((n(kD) - 1.0) / (n(kF) - n(kC)) - glass.vd) <= 0.005);
   };
@@ -291,14 +296,32 @@ TEST_CASE("UTF-16 and ANSI catalogues with the same content give the same glasse
   }
 }
 
-TEST_CASE("catalogue glass gives bit-identical values to the direct formula", "[agf]") {
+TEST_CASE("catalogue glass: absolute index consistent with the relative catalogue data",
+          "[agf][air]") {
+  // #25: the catalogue formula gives the index relative to air at T_ref and 1 atm as a function
+  // of the wavelength in that air. So at T = T_ref: n_abs / n_air(lambda_vac, T_ref, 1 atm) =
+  // n_rel(lambda_vac / n_air) with the formula of #23 (relative 1e-14), for any pressure of the
+  // medium (a solid ignores it).
   const AgfCatalog cat = load_agf(kSchottFile);
   const CatalogMaterial nbk7(cat.glasses[0], cat.name);
-  const DispersionMaterial direct(kNbk7, WavelengthRange{0.3, 2.5});
+  REQUIRE(nbk7.formula() == rtt::material::DispersionFormula{kNbk7});
+  const double t_ref = 20.0;  // TD record of N-BK7
   for (const double wl : {0.3, 0.4861, 0.5876, 0.6563, 1.064, 2.5}) {
     INFO(wl);
-    REQUIRE(nbk7.index(wl, 20.0, 1.0) == direct.index(wl, 20.0, 1.0));
+    const double n_air = rtt::material::ciddor_air_index(wl, t_ref, 101325.0);
+    const double n_rel = rtt::material::refractive_index(kNbk7, wl / n_air);
+    for (const double p : {0.0, 1.0, 2.0}) {
+      const auto n = nbk7.index(wl, t_ref, p);
+      REQUIRE_THAT(n.real() / n_air, Catch::Matchers::WithinRel(n_rel, 1e-14));
+      REQUIRE(n.imag() == 0.0);
+    }
   }
+  // n_d of the SCHOTT data sheet (1.51680 at the d line, 587.56 nm in air; SCHOTT TIE-29 p. 1):
+  // the vacuum wavelength is the air wavelength times n_air.
+  const double lambda_d = 0.58756 * rtt::material::ciddor_air_index(0.58756, t_ref, 101325.0);
+  const double n_d = nbk7.index(lambda_d, t_ref, 1.0).real() /
+                     rtt::material::ciddor_air_index(lambda_d, t_ref, 101325.0);
+  REQUIRE(std::abs(n_d - 1.51680) <= 5e-6);
   REQUIRE(nbk7.wavelength_range_um() == WavelengthRange{0.3, 2.5});
   REQUIRE(nbk7.glass().name == "N-BK7");
   REQUIRE(nbk7.glass().thermal.has_value());  // stored for #25
@@ -311,13 +334,44 @@ TEST_CASE("catalogue glass gives bit-identical values to the direct formula", "[
   REQUIRE_THROWS_AS(CatalogMaterial(bad, "SCHOTT"), std::invalid_argument);
 }
 
+TEST_CASE("catalogue glass: dn/dT matches the SCHOTT data sheet", "[agf][air]") {
+  // SCHOTT N-BK7 data sheet (as of 01-Dec-2023, p. 13): "Temperature Coefficients of the
+  // Refractive Index", Delta n_abs / Delta T in 1e-6/K for +20/+40 degC: 1.1 at 1060.0 nm,
+  // 1.6 at the e line (546.1 nm), 2.1 at the g line (435.8 nm); rounded to 0.1e-6/K, so the
+  // tolerance is 0.05e-6/K. Model: TIE-19 Eq. (3)/(4) with the TD record of the catalogue.
+  const AgfCatalog cat = load_agf(kSchottFile);
+  const CatalogMaterial nbk7(cat.glasses[0], cat.name);
+  for (const auto& [wl, sheet] : {std::pair{1.0600, 1.1}, {0.5461, 1.6}, {0.4358, 2.1}}) {
+    INFO(wl);
+    const double slope =
+        (nbk7.index(wl, 40.0, 1.0).real() - nbk7.index(wl, 20.0, 1.0).real()) / 20.0;
+    REQUIRE(std::abs(slope * 1e6 - sheet) <= 0.05);
+  }
+}
+
+TEST_CASE("catalogue glass without TD record has no temperature dependence", "[agf][air]") {
+  // Without the six coefficients there is no thermal model (#25, P4): T_ref = 20 degC.
+  AgfGlass glass = load_agf(kSchottFile).glasses[0];
+  glass.thermal.reset();
+  const CatalogMaterial m(glass, "SCHOTT");
+  REQUIRE(m.index(0.5876, -20.0, 1.0) == m.index(0.5876, 60.0, 1.0));
+  const double n_air = rtt::material::ciddor_air_index(0.5876, 20.0, 101325.0);
+  REQUIRE_THAT(
+      m.index(0.5876, 60.0, 1.0).real() / n_air,
+      Catch::Matchers::WithinRel(rtt::material::refractive_index(kNbk7, 0.5876 / n_air), 1e-14));
+  // A TD record must have the seven values D0 D1 D2 E0 E1 Ltk Temp.
+  glass.thermal = std::vector<double>{1e-6, 1e-8};
+  REQUIRE_THROWS_AS(CatalogMaterial(glass, "SCHOTT"), std::invalid_argument);
+}
+
 TEST_CASE("add_catalog: resolve KATALOG:NAME, same object, thread-safe", "[agf]") {
   MaterialLibrary lib;
   lib.add_catalog(kSchottFile);
   const auto nbk7 = lib.resolve("SCHOTT:N-BK7");
   REQUIRE(lib.resolve("SCHOTT:N-BK7") == nbk7);
-  REQUIRE(nbk7->index(0.5876, 20.0, 1.0) ==
-          DispersionMaterial(kNbk7, WavelengthRange{0.3, 2.5}).index(0.5876, 20.0, 1.0));
+  const auto* catalog_glass = dynamic_cast<const CatalogMaterial*>(nbk7.get());
+  REQUIRE(catalog_glass != nullptr);
+  REQUIRE(catalog_glass->formula() == rtt::material::DispersionFormula{kNbk7});
   REQUIRE(lib.resolve("SCHOTT:F2") != nbk7);
 
   std::vector<const rtt::material::Material*> seen(8, nullptr);

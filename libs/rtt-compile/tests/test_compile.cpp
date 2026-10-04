@@ -13,6 +13,7 @@
 
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/io/json_io.hpp"
+#include "rtt/material/air.hpp"
 #include "test_support.hpp"
 
 using Catch::Matchers::ContainsSubstring;
@@ -176,7 +177,9 @@ TEST_CASE("Michelson reference system compiles with all media in air", "[compile
   REQUIRE(cs.temperature_c() == 20.0);
   REQUIRE(cs.media().size() == 1);
   REQUIRE(cs.media()[cs.environment_medium()].reference == "AIR");
-  REQUIRE(cs.media()[0].index == std::vector<Complex>{Complex(1.0, 0.0)});
+  // AIR is Ciddor air at 20 degC and 1 atm since #25 (was n = 1 in M1).
+  REQUIRE(cs.media()[0].index ==
+          std::vector<Complex>{Complex(rtt::material::ciddor_air_index(0.6328, 20.0, 101325.0))});
 
   REQUIRE(cs.surfaces().size() == 4);
   REQUIRE(surface_index(cs, "BS") == 0);
@@ -238,7 +241,11 @@ TEST_CASE("singlet with CONST:1.5168 goes air -> glass -> air", "[compile]") {
   REQUIRE(cs.media().size() == 2);
   const auto glass = medium_index(cs, "CONST:1.5168");
   REQUIRE(cs.media()[glass].index == std::vector<Complex>(3, Complex(1.5168, 0.0)));
-  REQUIRE(cs.media()[cs.environment_medium()].index == std::vector<Complex>(3, Complex(1.0)));
+  // AIR is Ciddor air at 20 degC and 1 atm since #25 (was n = 1 in M1).
+  for (std::size_t i = 0; i < 3; ++i) {
+    REQUIRE(cs.media()[cs.environment_medium()].index[i] ==
+            Complex(rtt::material::ciddor_air_index(cs.wavelengths_um()[i], 20.0, 101325.0)));
+  }
 
   // Vertices on the axis: stop at 0, lens at 5 with thickness 4, image at 106.363 mm.
   const std::vector<std::pair<std::string, double>> vertices{

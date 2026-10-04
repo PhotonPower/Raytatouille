@@ -11,6 +11,8 @@
 #include <system_error>
 #include <utility>
 
+#include "rtt/material/air.hpp"
+
 namespace rtt::material {
 namespace {
 
@@ -286,13 +288,29 @@ CatalogMaterial::CatalogMaterial(AgfGlass glass, const std::string& catalog)
                                   catalog + ": the LD range must be finite with 0 < min < max");
     }
   }
+  if (glass_.thermal) {
+    const std::vector<double>& td = *glass_.thermal;
+    if (td.size() != 7) {
+      throw std::invalid_argument("CatalogMaterial: glass " + glass_.name + " of catalog " +
+                                  catalog + ": TD needs D0 D1 D2 E0 E1 Ltk Temp (7 values)");
+    }
+    thermal_ = SchottThermalCoefficients{td[0], td[1], td[2], td[3], td[4], td[5], td[6]};
+  }
 }
 
 math::Complex CatalogMaterial::index(double wavelength_um,
-                                     double /*temperature_c*/,
+                                     double temperature_c,
                                      double /*pressure_atm*/) const {
-  // Formula value unchanged until the conversion relative to air and dn/dT (#25).
-  return {refractive_index(formula_, wavelength_um), 0.0};
+  // Conversion decided for #25 (class comment): relative wavelength and index at T_ref, 1 atm.
+  const double t_ref = thermal_ ? thermal_->reference_temperature_c : 20.0;
+  const double n_air = ciddor_air_index(wavelength_um, t_ref, kStandardAtmospherePa);
+  const double n_rel = refractive_index(formula_, wavelength_um / n_air);
+  double n_abs = n_rel * n_air;  // TIE-19 Eq. (5) at T_ref and 1 atm
+  if (thermal_) {
+    // TIE-19 Eq. (3) with n_rel for n(lambda, T0) and (4); lambda is the vacuum wavelength.
+    n_abs += schott_delta_n_abs(n_rel, wavelength_um, temperature_c - t_ref, *thermal_);
+  }
+  return {n_abs, 0.0};
 }
 
 }  // namespace rtt::material

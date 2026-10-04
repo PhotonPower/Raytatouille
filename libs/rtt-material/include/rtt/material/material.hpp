@@ -76,7 +76,7 @@ class UnknownMaterial : public std::runtime_error {
 /// | Reference           | Medium                                                  |
 /// | ------------------- | ------------------------------------------------------- |
 /// | `VACUUM`            | n = 1                                                   |
-/// | `AIR`               | n = 1 (Ciddor air and relative glass data follow in M2) |
+/// | `AIR`               | dry air after Ciddor at T and p (rtt/material/air.hpp)  |
 /// | `CONST:<n>`         | constant real index, n > 0, e.g. `CONST:1.5168`         |
 /// | `CONST:<n>,<kappa>` | constant complex index n + i*kappa, n > 0, kappa >= 0   |
 ///

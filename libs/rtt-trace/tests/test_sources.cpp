@@ -307,7 +307,10 @@ TEST_CASE("paraxial image height is converted with the paraxial chief ray", "[so
   const MaterialLibrary lib;
   SECTION("object at infinity: tan(theta) = y' / EFL") {
     // Paraxial image height of a distant object: y' = EFL tan(theta), independent of the stop.
+    // That relation holds for object and image space with n = 1, so the file's AIR (Ciddor
+    // since #25) is replaced by VACUUM here.
     System s = singlet();
+    s.environment.medium = "VACUUM";
     s.fields = {FieldType::ParaxialImageHeight, {{0.0, 0.0, 1.0}, {1.0, 2.0, 1.0}}};
     const CompiledSystem cs = compile(s, lib);
     const double efl = *rtt::paraxial::first_order(cs, PathId{0}, 1).efl;
