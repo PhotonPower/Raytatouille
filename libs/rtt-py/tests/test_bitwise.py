@@ -10,21 +10,20 @@ with 4 threads; the result must not depend on it (ADR 0004, rule 7).
 from __future__ import annotations
 
 import math
-import os
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import numpy.typing as npt
 import pytest
+from conftest import REFERENCE_EXE
 
 import raytatouille as rt
 from raytatouille.trace import Aiming, PupilSampling, RayStatus
 
-EXE = os.environ.get("RTT_PY_REFERENCE_EXE")
 pytestmark = pytest.mark.skipif(
-    not EXE, reason="RTT_PY_REFERENCE_EXE not set (run through ctest in the build tree)"
+    REFERENCE_EXE is None,
+    reason="RTT_PY_REFERENCE_EXE not set (run through ctest in the build tree)",
 )
 
 COLUMNS = [
@@ -141,17 +140,6 @@ def python_results(case: Case, reference_dir: Path, catalog_dir: Path,
     wl = cs.reference_wavelength if case.wavelength is None else case.wavelength
     results["first_order"] = first_order_values(rt.paraxial.first_order(cs, 0, wl))
     return results
-
-
-@pytest.fixture(scope="module", params=[1, 4], ids=lambda t: f"cpp{t}threads")
-def cpp_dir(request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory) -> Path:
-    from conftest import CATALOG_DIR, REFERENCE_DIR
-
-    out = tmp_path_factory.mktemp(f"cpp{request.param}")
-    assert EXE is not None
-    subprocess.run([EXE, str(REFERENCE_DIR), str(CATALOG_DIR), str(out), str(request.param)],
-                   check=True)
-    return out
 
 
 @pytest.mark.parametrize("threads", [1, 4], ids=lambda t: f"py{t}threads")

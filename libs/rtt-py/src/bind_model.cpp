@@ -64,6 +64,26 @@ void bind_model(nb::module_& m) {
       .def("__eq__", &equal<model::Environment>, "other"_a)
       .attr("__hash__") = nb::none();  // mutable with value equality: not hashable
 
+  nb::class_<model::Field>(
+      m, "Field",
+      "Field value: degree for field angles, mm for object and paraxial image heights (the "
+      "system's field type decides).")
+      .def(
+          "__init__",
+          [](model::Field* f, double x, double y, double weight) {
+            new (f) model::Field{x, y, weight};
+          },
+          "x"_a = 0.0, "y"_a = 0.0, "weight"_a = 1.0)
+      .def_rw("x", &model::Field::x)
+      .def_rw("y", &model::Field::y)
+      .def_rw("weight", &model::Field::weight, "Field weight, dimensionless.")
+      .def("__eq__", &equal<model::Field>, "other"_a)
+      .def("__repr__",
+           [](const model::Field& f) {
+             return nb::str("Field(x={!r}, y={!r}, weight={!r})").format(f.x, f.y, f.weight);
+           })
+      .attr("__hash__") = nb::none();  // mutable with value equality: not hashable
+
   nb::class_<model::Wavelength>(m, "Wavelength", "One system wavelength (read-only copy).")
       .def_ro("um", &model::Wavelength::um, "Vacuum wavelength in um.")
       .def_ro("weight", &model::Wavelength::weight, "Weight, dimensionless.")

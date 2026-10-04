@@ -48,6 +48,14 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   `ci-linux-python` und `ci-windows-python`, CI-Job „Python“ (#32).
 - ADR 0018: Python-Build- und Testwerkzeuge über `pyproject.toml` statt vcpkg; AGENTS.md
   Regel 4 verweist darauf (#32).
+- `rtt-py`: Analysen aus Python (`raytatouille.analysis`): Spot-Diagramm, Ray Fans, OPD-Karte
+  und -Fans, Farblängs- und Farbquerfehler, Verzeichnung und Bildfeldwölbung (Verlauf und
+  einzelner Feldwert) sowie Seidel-Summen (`rt.paraxial.seidel`, Alias `rt.analysis.seidel`);
+  `System` oder `CompiledSystem` als erstes Argument, Kurzform für Pupillenverteilungen wie
+  `rays="hexapolar:12"`, `threads`; Ergebnislisten als read-only NumPy-Kopien; `rt.Field`;
+  `AnalysisError`. Plots in `raytatouille.plot` mit optionalem matplotlib (`raytatouille[plot]`,
+  Nachtrag zu ADR 0018). Bitgleiche Tests gegen C++ für jede Analyse, auch mit Vignettierung;
+  Beispiel `examples/python/analysis.py` (#33).
 
 ### Geändert
 - `cmake`: `rtt_add_test` setzt unter MinGW den `PATH` für Testerkennung und Testläufe auf das

@@ -8,6 +8,7 @@ used and the bitwise comparison with C++ is skipped.
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,8 @@ def _directory(variable: str, default: Path) -> Path:
 
 REFERENCE_DIR = _directory("RTT_REFERENCE_DIR", REPO_ROOT / "tests" / "reference")
 CATALOG_DIR = _directory("RTT_CATALOG_DIR", REPO_ROOT / "tests" / "catalogs")
+#: The C++ program rtt_py_reference (ctest only); None skips the bitwise tests.
+REFERENCE_EXE = os.environ.get("RTT_PY_REFERENCE_EXE") or None
 
 
 def reference_files() -> list[Path]:
@@ -37,3 +40,15 @@ def reference_dir() -> Path:
 @pytest.fixture
 def catalog_dir() -> Path:
     return CATALOG_DIR
+
+
+@pytest.fixture(scope="session", params=[1, 4], ids=lambda t: f"cpp{t}threads")
+def cpp_dir(request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Output directory of rtt_py_reference, run once per number of threads (1 and 4)."""
+    assert REFERENCE_EXE is not None
+    out = tmp_path_factory.mktemp(f"cpp{request.param}")
+    subprocess.run(
+        [REFERENCE_EXE, str(REFERENCE_DIR), str(CATALOG_DIR), str(out), str(request.param)],
+        check=True,
+    )
+    return out

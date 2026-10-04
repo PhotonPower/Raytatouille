@@ -1,10 +1,12 @@
-// Writes the C++ results of the cases in test_bitwise.py as .npy files, so that pytest can
-// compare the Python results bit for bit (issue #32). Built in the same CMake tree with the same
+// Writes the C++ results of the cases in test_bitwise.py (rays, #32) and
+// test_bitwise_analysis.py (analyses, #33) as .npy files, so that pytest can compare the Python
+// results bit for bit. Built in the same CMake tree with the same
 // flags as the extension module raytatouille._core.
 //
 // Usage: rtt_py_reference <reference dir> <catalog dir> <output dir> <threads>
 // Output: <output dir>/<case>.<column>.npy for every RayBatch column after the trace, the
-// stats and the first-order values (see first_order_values()).
+// stats and the first-order values (see first_order_values()); the analysis cases are in
+// analysis_cases.cpp.
 
 #include <oneapi/tbb/task_arena.h>
 
@@ -25,6 +27,7 @@
 #include <string_view>
 #include <vector>
 
+#include "npy_writer.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/io/json_io.hpp"
 #include "rtt/material/material.hpp"
@@ -34,42 +37,10 @@
 #include "rtt/trace/sources.hpp"
 
 namespace fs = std::filesystem;
+using rtt::py::reference::write_column;
 using rtt::trace::RayBatch;
 
 namespace {
-
-static_assert(std::endian::native == std::endian::little, ".npy descriptors below are '<'");
-
-/// Writes a C-contiguous array as NumPy .npy file, format version 1.0.
-void write_npy(const fs::path& file,
-               std::string_view descr,
-               const std::vector<std::size_t>& shape,
-               std::span<const char> bytes) {
-  std::string dims;
-  for (const std::size_t d : shape) dims += std::to_string(d) + ", ";
-  if (shape.size() > 1) dims.resize(dims.size() - 2);  // "(N,)" for 1-D, "(N, 3, 3)" else
-  std::string header = "{'descr': '" + std::string(descr) + "', 'fortran_order': False, " +
-                       "'shape': (" + dims + "), }";
-  // Magic (6) + version (2) + header length (2) + header + '\n' is a multiple of 64.
-  const std::size_t total = 10 + header.size() + 1;
-  header.append((64 - total % 64) % 64, ' ');
-  header += '\n';
-  std::ofstream out(file, std::ios::binary);
-  out.write("\x93NUMPY\x01\x00", 8);
-  const auto length = static_cast<std::uint16_t>(header.size());
-  const char length_bytes[2] = {static_cast<char>(length & 0xffU), static_cast<char>(length >> 8U)};
-  out.write(length_bytes, 2);
-  out.write(header.data(), static_cast<std::streamsize>(header.size()));
-  out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-  if (!out) throw std::runtime_error("cannot write " + file.string());
-}
-
-template <typename T>
-void write_column(const fs::path& file, std::string_view descr, std::span<const T> values) {
-  const std::span<const std::byte> bytes = std::as_bytes(values);
-  write_npy(file, descr, {values.size()},
-            {reinterpret_cast<const char*>(bytes.data()), bytes.size()});
-}
 
 /// First-order values in the order of FIRST_ORDER_FIELDS in test_bitwise.py; NaN for None.
 std::vector<double> first_order_values(const rtt::paraxial::FirstOrder& fo) {
@@ -217,6 +188,7 @@ int main(int argc, char** argv) {
     if (threads < 1) throw std::invalid_argument("threads must be at least 1");
     fs::create_directories(args[2]);
     for (const Case& c : cases()) run(c, args[0], args[1], args[2], threads);
+    rtt::py::reference::run_analysis_cases(args[0], args[1], args[2], threads);
     return 0;
   } catch (const std::exception& e) {
     std::cerr << "rtt_py_reference: " << e.what() << '\n';

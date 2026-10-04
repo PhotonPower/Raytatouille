@@ -29,9 +29,10 @@ nanobind_add_module(_core NB_STATIC NB_SUPPRESS_WARNINGS
   src/bind_model.cpp
   src/bind_compile.cpp
   src/bind_paraxial.cpp
-  src/bind_trace.cpp)
+  src/bind_trace.cpp
+  src/bind_analysis.cpp)
 target_link_libraries(_core PRIVATE
-  rtt::io rtt::model rtt::material rtt::compile rtt::paraxial rtt::trace TBB::tbb)
+  rtt::io rtt::model rtt::material rtt::compile rtt::paraxial rtt::trace rtt::analysis TBB::tbb)
 rtt_target_defaults(_core)
 # The $<1:...> keeps multi-config generators from appending a configuration directory.
 set_target_properties(_core PROPERTIES
@@ -40,8 +41,11 @@ set_target_properties(_core PROPERTIES
 
 set(RTT_PY_SOURCES
   python/raytatouille/__init__.py
+  python/raytatouille/_util.py
+  python/raytatouille/analysis.py
   python/raytatouille/errors.py
   python/raytatouille/paraxial.py
+  python/raytatouille/plot.py
   python/raytatouille/trace.py
   python/raytatouille/py.typed)
 set(RTT_PY_COPIES "")
@@ -55,6 +59,9 @@ foreach(file IN LISTS RTT_PY_SOURCES)
   list(APPEND RTT_PY_COPIES "${RTT_PY_PACKAGE_DIR}/${name}")
 endforeach()
 add_custom_target(rtt_py_package ALL DEPENDS ${RTT_PY_COPIES})
+# Whoever builds _core (CI builds only named targets) gets the complete package in the build
+# tree; the stubs no longer depend on it (stubgen uses the staging package below).
+add_dependencies(_core rtt_py_package)
 
 # TBB is a shared library; on Windows its DLL has to sit next to _core. Only TBB: the runtime
 # DLLs of _core also include python3*.dll, which must not be copied into the package.
@@ -64,11 +71,27 @@ if(WIN32)
             "$<TARGET_FILE:TBB::tbb>" "${RTT_PY_PACKAGE_DIR}")
 endif()
 
+# The stubs depend on _core only: stubgen imports raytatouille._core from a staging package
+# that holds nothing but _core (and the TBB DLL) and an empty __init__.py, so the package's
+# own __init__ with its runtime imports (numpy, ...) is not loaded. The build environment of
+# pip install . has no numpy (a runtime dependency only).
+set(RTT_PY_STUBGEN_DIR "${CMAKE_BINARY_DIR}/stubgen")
+add_custom_command(TARGET _core POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${RTT_PY_STUBGEN_DIR}/raytatouille"
+  COMMAND ${CMAKE_COMMAND} -E touch "${RTT_PY_STUBGEN_DIR}/raytatouille/__init__.py"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "$<TARGET_FILE:_core>" "${RTT_PY_STUBGEN_DIR}/raytatouille")
+if(WIN32)
+  add_custom_command(TARGET _core POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:TBB::tbb>" "${RTT_PY_STUBGEN_DIR}/raytatouille")
+endif()
+
 nanobind_add_stub(rtt_py_stub
   MODULE raytatouille._core
   OUTPUT "${RTT_PY_PACKAGE_DIR}/_core.pyi"
-  PYTHON_PATH "${RTT_PY_BUILD_DIR}"
-  DEPENDS _core rtt_py_package)
+  PYTHON_PATH "${RTT_PY_STUBGEN_DIR}"
+  DEPENDS _core)
 
 # Installation into the wheel (scikit-build-core): the pure Python modules come from
 # wheel.packages in pyproject.toml.
@@ -79,10 +102,10 @@ if(WIN32)
 endif()
 
 if(RTT_BUILD_TESTS)
-  # Writes the C++ results of the cases in tests/test_bitwise.py as .npy files.
-  add_executable(rtt_py_reference tests/rtt_py_reference.cpp)
+  # Writes the C++ results of the cases in tests/test_bitwise*.py as .npy files.
+  add_executable(rtt_py_reference tests/rtt_py_reference.cpp tests/analysis_cases.cpp)
   target_link_libraries(rtt_py_reference PRIVATE
-    rtt::io rtt::material rtt::compile rtt::paraxial rtt::trace TBB::tbb)
+    rtt::io rtt::material rtt::compile rtt::paraxial rtt::trace rtt::analysis TBB::tbb)
   rtt_target_defaults(rtt_py_reference)
 
   add_test(NAME rtt_py_pytest
@@ -93,7 +116,7 @@ if(RTT_BUILD_TESTS)
       "PYTHONPATH=${RTT_PY_BUILD_DIR};RTT_PY_REFERENCE_EXE=$<TARGET_FILE:rtt_py_reference>;RTT_REFERENCE_DIR=${RTT_REFERENCE_DIR};RTT_CATALOG_DIR=${PROJECT_SOURCE_DIR}/tests/catalogs")
   add_test(NAME rtt_py_mypy
     COMMAND "${Python_EXECUTABLE}" -m mypy --config-file "${PROJECT_SOURCE_DIR}/pyproject.toml"
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests")
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests" "${RTT_PY_PACKAGE_DIR}")
   set_tests_properties(rtt_py_mypy PROPERTIES
     ENVIRONMENT "MYPYPATH=${RTT_PY_BUILD_DIR}")
 endif()
