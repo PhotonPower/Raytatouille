@@ -64,11 +64,13 @@ def _layer(doc):
         lambda d: _layer(d).update(qwot=-1),
         lambda d: _layer(d).update(material=""),
         lambda d: _layer(d).update(n=1.5),
+        lambda d: d["coatings"][0].update(name="A:B"),
+        lambda d: d.update(catalog=""),
     ],
     ids=["unknown-key", "format", "version", "catalog-colon", "missing-catalog",
          "missing-name", "no-layers", "qwot-without-design-wavelength",
          "design-wavelength-zero", "both-thicknesses", "no-thickness", "negative-qwot",
-         "empty-material", "unknown-layer-key"],
+         "empty-material", "unknown-layer-key", "coating-name-colon", "empty-catalog"],
 )
 def test_structural_errors_are_rejected(mutate):
     assert not VALIDATOR.is_valid(_broken(mutate))

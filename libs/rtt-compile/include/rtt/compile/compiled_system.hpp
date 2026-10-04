@@ -17,7 +17,6 @@
 #include <variant>
 #include <vector>
 
-#include "rtt/coating/catalog.hpp"
 #include "rtt/coating/transfer_matrix.hpp"
 #include "rtt/geom/asphere.hpp"
 #include "rtt/geom/conic.hpp"
@@ -26,6 +25,10 @@
 #include "rtt/math/isometry.hpp"
 #include "rtt/math/types.hpp"
 #include "rtt/model/model.hpp"
+
+namespace rtt::coating {
+class CoatingLibrary;  // rtt/coating/catalog.hpp
+}  // namespace rtt::coating
 
 namespace rtt::compile {
 

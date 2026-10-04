@@ -11,6 +11,7 @@
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -23,6 +24,21 @@ namespace rtt::coating {
 namespace {
 
 using Json = nlohmann::json;
+
+/// A key as JSON pointer token (RFC 6901: ~ -> ~0, / -> ~1).
+std::string token(const std::string& key) {
+  std::string out;
+  for (const char c : key) {
+    if (c == '~') {
+      out += "~0";
+    } else if (c == '/') {
+      out += "~1";
+    } else {
+      out += c;
+    }
+  }
+  return out;
+}
 
 /// Strict reader of one catalogue (ADR 0008): every error names the file and a JSON pointer.
 class Reader {
@@ -40,7 +56,7 @@ class Reader {
     if (!j.is_object()) fail(pointer, "expected an object");
     for (const auto& item : j.items()) {
       if (std::find(allowed.begin(), allowed.end(), item.key()) == allowed.end()) {
-        fail(pointer + "/" + item.key(), "unknown key '" + item.key() + "'");
+        fail(pointer + "/" + token(item.key()), "unknown key '" + item.key() + "'");
       }
     }
   }
@@ -150,8 +166,10 @@ CoatingCatalog parse_coating_catalog(std::string_view json_text, const std::stri
   Json j;
   try {
     j = Json::parse(json_text);
-  } catch (const Json::parse_error& e) {
-    r.fail("", std::string("JSON syntax error: ") + e.what());
+  } catch (const Json::exception& e) {
+    // parse_error for the syntax, out_of_range (406) for a number that overflows double: the
+    // only way a JSON number can be non-finite.
+    r.fail("", std::string("invalid JSON: ") + e.what());
   }
   r.object(j, "", {"format", "schema_version", "catalog", "coatings"});
   if (r.string(r.required(j, "", "format"), "/format") != kCatalogFormat) {
@@ -185,10 +203,46 @@ CoatingCatalog load_coating_catalog(const std::filesystem::path& file) {
   return parse_coating_catalog(text.str(), file.string());
 }
 
-void CoatingLibrary::add(const CoatingCatalog& catalog) {
-  if (catalog.name.empty() || catalog.name.find(':') != std::string::npos) {
-    throw std::invalid_argument("CoatingLibrary::add: invalid catalog name '" + catalog.name + "'");
+namespace {
+
+/// The checks of the parser for a catalogue built in code (CoatingLibrary::add).
+/// @throws std::invalid_argument naming catalogue, coating and layer
+void validate_catalog(const CoatingCatalog& catalog) {
+  const auto bad = [&](const std::string& message) {
+    throw std::invalid_argument("CoatingLibrary: catalog '" + catalog.name + "': " + message);
+  };
+  const auto valid_name = [](const std::string& name) {
+    return !name.empty() && name.find(':') == std::string::npos;
+  };
+  if (!valid_name(catalog.name)) bad("the catalog name must not be empty or contain ':'");
+  std::set<std::string, std::less<>> names;
+  for (const CoatingDesign& design : catalog.coatings) {
+    const std::string coating = "coating '" + design.name + "': ";
+    if (!valid_name(design.name)) bad(coating + "the name must not be empty or contain ':'");
+    if (!names.insert(design.name).second) bad(coating + "duplicate name");
+    if (design.design_wavelength_um &&
+        !(std::isfinite(*design.design_wavelength_um) && *design.design_wavelength_um > 0.0)) {
+      bad(coating + "the design wavelength must be finite and > 0 um");
+    }
+    if (design.layers.empty()) bad(coating + "at least one layer");
+    for (std::size_t k = 0; k < design.layers.size(); ++k) {
+      const LayerSpec& layer = design.layers[k];
+      const std::string where = coating + "layer " + std::to_string(k) + ": ";
+      if (layer.material.empty()) bad(where + "empty material reference");
+      try {
+        // Checks thickness, count and design wavelength (index 1: only validated here).
+        (void)physical_thickness_um(layer.thickness, 1.0);
+      } catch (const std::invalid_argument& e) {
+        bad(where + e.what());
+      }
+    }
   }
+}
+
+}  // namespace
+
+void CoatingLibrary::add(const CoatingCatalog& catalog) {
+  validate_catalog(catalog);
   const std::scoped_lock lock(mutex_);
   if (catalogs_.contains(catalog.name)) {
     throw std::invalid_argument("CoatingLibrary::add: catalog " + catalog.name +

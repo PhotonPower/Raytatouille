@@ -69,6 +69,9 @@ struct CoatingCatalog {
 /// Error in a coating catalogue. what() names the file and the JSON pointer.
 class CoatingCatalogError : public std::runtime_error {
  public:
+  /// @param file    file name (may be empty for text without file)
+  /// @param pointer JSON pointer to the offending value, empty for the whole file
+  /// @param message description of the error
   CoatingCatalogError(std::string file, std::string pointer, const std::string& message);
 
   [[nodiscard]] const std::string& file() const noexcept { return file_; }
@@ -105,9 +108,12 @@ class CoatingLibrary {
  public:
   CoatingLibrary() = default;
 
-  /// Registers the designs of a catalogue under "CATALOG:NAME".
+  /// Registers the designs of a catalogue under "CATALOG:NAME". A catalogue built in code is
+  /// checked like a parsed file.
   /// @throws std::invalid_argument if the catalogue name is empty, contains ':' or is already
-  ///         registered; nothing is registered then
+  ///         registered, or a design breaks a rule of the file format (name, duplicate name,
+  ///         no layers, empty material, negative or non-finite thickness or count, design
+  ///         wavelength not > 0); nothing is registered then
   void add(const CoatingCatalog& catalog);
 
   /// Loads catalogue files: a .json file, or a directory whose *.json files (case-insensitive,

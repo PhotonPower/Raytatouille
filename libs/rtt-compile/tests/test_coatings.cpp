@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
+#include <cmath>
 #include <complex>
 #include <memory>
 #include <optional>
@@ -151,17 +152,99 @@ TEST_CASE("layer materials resolve through the MaterialLibrary", "[compile][coat
   REQUIRE_THAT(e.what(), ContainsSubstring("layer 0 of coating 'DEMO:GLASS_SPACER'"));
   REQUIRE_THAT(e.what(), ContainsSubstring("SCHOTT"));
   REQUIRE(e.diagnostics().size() == 1);  // reported once, not per surface
-  // With it, the layer index is the catalogue glass at the environment temperature/pressure.
+  // With it, the layer index is the catalogue glass at the environment temperature and pressure
+  // (here 30 degC and 0.9 atm, away from the catalogue's 20 degC / 1 atm).
   MaterialLibrary materials;
   materials.add_catalog(std::string(RTT_CATALOG_DIR) + "/schott.agf");
-  const CompiledSystem cs = rtt::compile::compile(s, materials, coatings);
+  System warm = s;
+  warm.environment.temperature_c = 30.0;
+  warm.environment.pressure_atm = 0.9;
+  const CompiledSystem cs = rtt::compile::compile(warm, materials, coatings);
   const auto glass = materials.resolve("SCHOTT:N-BK7");
   for (std::size_t w = 0; w < cs.wavelengths_um().size(); ++w) {
-    REQUIRE(cs.coatings()[0].layers[w][0].index == glass->index(cs.wavelengths_um()[w],
-                                                                s.environment.temperature_c,
-                                                                s.environment.pressure_atm));
+    const double wl = cs.wavelengths_um()[w];
+    const std::complex<double> n = cs.coatings()[0].layers[w][0].index;
+    REQUIRE_THAT(n.real(), WithinAbs(glass->index(wl, 30.0, 0.9).real(), 1e-15));
+    REQUIRE(std::abs(n.real() - glass->index(wl, 20.0, 1.0).real()) > 1e-6);
     REQUIRE(cs.coatings()[0].layers[w][0].thickness_um == 0.2);
   }
+}
+
+TEST_CASE("QWOT uses the index at the design wavelength and the environment conditions",
+          "[compile][coating]") {
+  // Dispersive test material n(lambda, T, p) = 1.3 + 0.1 lambda + 0.001 (T - 20) + 0.01 (p - 1)
+  // and a design wavelength 0.6 um that is no system wavelength: d = lambda0 / (4 n(lambda0))
+  // at the environment (30 degC, 0.9 atm), the same at every system wavelength, while the
+  // layer index follows n(lambda) (thickness.hpp, Byrnes Eq. (8) with (2)).
+  class Dispersive final : public rtt::material::Material {
+   public:
+    [[nodiscard]] rtt::math::Complex index(double wavelength_um,
+                                           double temperature_c,
+                                           double pressure_atm) const override {
+      return {
+          1.3 + 0.1 * wavelength_um + 0.001 * (temperature_c - 20.0) + 0.01 * (pressure_atm - 1.0),
+          0.0};
+    }
+  };
+  MaterialLibrary materials;
+  materials.add("TEST:DISP", std::make_shared<const Dispersive>());
+  CoatingLibrary coatings;
+  coatings.add(CoatingCatalog{
+      "T", {CoatingDesign{"QW", "", 0.6, {LayerSpec{"TEST:DISP", QuarterWaves{1.0, 0.6}}}}}});
+  System s = coated_singlet("T:QW");
+  s.environment.temperature_c = 30.0;
+  s.environment.pressure_atm = 0.9;
+  const CompiledSystem cs = rtt::compile::compile(s, materials, coatings);
+  const auto n = [](double wl) { return 1.3 + 0.1 * wl + 0.001 * 10.0 + 0.01 * -0.1; };
+  const double d = 0.6 / (4.0 * n(0.6));
+  for (std::size_t w = 0; w < cs.wavelengths_um().size(); ++w) {
+    const double wl = cs.wavelengths_um()[w];
+    INFO("wavelength " << wl);
+    REQUIRE_THAT(cs.coatings()[0].layers[w][0].thickness_um, WithinAbs(d, 1e-15));
+    REQUIRE_THAT(cs.coatings()[0].layers[w][0].index.real(), WithinAbs(n(wl), 1e-15));
+  }
+  // The design index differs from the index at every system wavelength.
+  for (const double wl : cs.wavelengths_um()) REQUIRE(std::abs(n(wl) - n(0.6)) > 1e-3);
+}
+
+TEST_CASE("QWOT with Re n <= 0 at the design wavelength is a CompileError", "[compile][coating]") {
+  class Negative final : public rtt::material::Material {
+   public:
+    [[nodiscard]] rtt::math::Complex index(double /*wavelength_um*/,
+                                           double /*temperature_c*/,
+                                           double /*pressure_atm*/) const override {
+      return {-0.5, 0.0};
+    }
+  };
+  MaterialLibrary materials;
+  materials.add("TEST:NEG", std::make_shared<const Negative>());
+  CoatingLibrary coatings;
+  coatings.add(CoatingCatalog{
+      "T", {CoatingDesign{"QW", "", 0.55, {LayerSpec{"TEST:NEG", QuarterWaves{1.0, 0.55}}}}}});
+  const CompileError e = compile_error(coated_singlet("T:QW"), materials, coatings);
+  REQUIRE(has_error_at(e.diagnostics(), "/root/children/1/surfaces/0/interaction/name"));
+  REQUIRE_THAT(e.what(), ContainsSubstring("QWOT needs a finite index > 0"));
+}
+
+TEST_CASE("cemented lens: first and last surface have their own segment as substrate",
+          "[compile][coating]") {
+  const MaterialLibrary materials;
+  const auto demo_library = demo();
+  System s = coated_singlet("DEMO:AR_MGF2");
+  Element& lens = element(s, 1);
+  rtt::model::Surface back = lens.surfaces[1];
+  back.id = rtt::model::SurfaceId("L1.S3");
+  back.pose = rtt::model::Pose::along_z(6.0);
+  lens.surfaces[1].interaction = rtt::model::Fresnel{};  // the cemented surface stays uncoated
+  lens.surfaces.push_back(back);
+  lens.material.reset();
+  lens.segment_materials = {"CONST:1.52", "CONST:1.62"};
+  const CompiledSystem cs = rtt::compile::compile(s, materials, *demo_library);
+  const auto front = cs.surfaces()[*cs.find_surface(rtt::model::SurfaceId("L1.S1"))].coating;
+  const auto rear = cs.surfaces()[*cs.find_surface(rtt::model::SurfaceId("L1.S3"))].coating;
+  REQUIRE(front->substrate_medium == medium_index(cs, "CONST:1.52"));
+  REQUIRE(rear->substrate_medium == medium_index(cs, "CONST:1.62"));
+  REQUIRE_FALSE(cs.surfaces()[*cs.find_surface(rtt::model::SurfaceId("L1.S2"))].coating);
 }
 
 TEST_CASE("unknown coatings are CompileErrors at the interaction name", "[compile][coating]") {

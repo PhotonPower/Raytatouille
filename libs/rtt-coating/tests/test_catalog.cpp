@@ -1,12 +1,18 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
+#include <chrono>
+#include <cmath>
 #include <complex>
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <system_error>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -26,13 +32,29 @@ namespace {
 
 const fs::path kDemo = fs::path(RTT_CATALOG_DIR) / "coatings" / "demo.json";
 
-/// Fresh empty directory under the temporary directory.
-fs::path temp_dir(const std::string& name) {
-  const fs::path dir = fs::temp_directory_path() / ("rtt_coating_test_" + name);
-  fs::remove_all(dir);
-  fs::create_directories(dir);
-  return dir;
-}
+/// Fresh empty directory under the temporary directory, removed again at the end of the test.
+/// The name is unique (clock ticks), so tests in parallel worktrees do not collide.
+class TempDir {
+ public:
+  explicit TempDir(const std::string& name)
+      : path_(fs::temp_directory_path() /
+              ("rtt_coating_test_" + name + "_" +
+               std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()))) {
+    fs::create_directories(path_);
+  }
+  TempDir(const TempDir&) = delete;
+  TempDir& operator=(const TempDir&) = delete;
+  TempDir(TempDir&&) = delete;
+  TempDir& operator=(TempDir&&) = delete;
+  ~TempDir() {
+    std::error_code ignored;
+    fs::remove_all(path_, ignored);
+  }
+  [[nodiscard]] const fs::path& path() const noexcept { return path_; }
+
+ private:
+  fs::path path_;
+};
 
 void write(const fs::path& file, const std::string& text) {
   std::ofstream(file, std::ios::binary) << text;
@@ -104,7 +126,8 @@ TEST_CASE("CoatingLibrary resolves CATALOG:NAME", "[coating][catalog]") {
 }
 
 TEST_CASE("CoatingLibrary loads a directory, all or nothing", "[coating][catalog]") {
-  const fs::path dir = temp_dir("directory");
+  const TempDir directory("directory");
+  const fs::path& dir = directory.path();
   write(dir / "a.json", catalog_text("A", kOneLayer));
   write(dir / "b.JSON", catalog_text("B", kOneLayer));
   write(dir / "notes.txt", "not a catalogue");
@@ -113,23 +136,66 @@ TEST_CASE("CoatingLibrary loads a directory, all or nothing", "[coating][catalog
   REQUIRE(library.find("A:C") != nullptr);
   REQUIRE(library.find("B:C") != nullptr);
 
-  const fs::path twice = temp_dir("twice");
+  const TempDir twice_dir("twice");
+  const fs::path& twice = twice_dir.path();
   write(twice / "1.json", catalog_text("X", kOneLayer));
   write(twice / "2.json", catalog_text("X", kOneLayer));
   CoatingLibrary other;
   REQUIRE_THROWS_AS(other.add_catalog(twice), std::invalid_argument);
   REQUIRE(other.find("X:C") == nullptr);  // nothing registered
 
-  const fs::path broken = temp_dir("broken");
+  const TempDir broken_dir("broken");
+  const fs::path& broken = broken_dir.path();
   write(broken / "1.json", catalog_text("OK", kOneLayer));
   write(broken / "2.json", "{");
   REQUIRE_THROWS_AS(other.add_catalog(broken), CoatingCatalogError);
   REQUIRE(other.find("OK:C") == nullptr);
 
-  REQUIRE_THROWS_AS(other.add_catalog(temp_dir("empty")), std::invalid_argument);
-  fs::remove_all(dir);
-  fs::remove_all(twice);
-  fs::remove_all(broken);
+  const TempDir empty("empty");
+  REQUIRE_THROWS_AS(other.add_catalog(empty.path()), std::invalid_argument);
+
+  // A directory with a catalogue that the library already has: nothing of it is added.
+  const TempDir again_dir("again");
+  write(again_dir.path() / "a.json", catalog_text("A", kOneLayer));
+  write(again_dir.path() / "new.json", catalog_text("NEW", kOneLayer));
+  REQUIRE_THROWS_AS(library.add_catalog(again_dir.path()), std::invalid_argument);
+  REQUIRE(library.find("NEW:C") == nullptr);
+}
+
+TEST_CASE("CoatingLibrary::add checks a catalogue built in code like a file",
+          "[coating][catalog]") {
+  using rtt::coating::CoatingCatalog;
+  using rtt::coating::CoatingDesign;
+  using rtt::coating::LayerSpec;
+  using rtt::coating::PhysicalThickness;
+  const LayerSpec ok{"CONST:1.5", PhysicalThickness{0.1}};
+  const auto design = [&](std::string name, std::vector<LayerSpec> layers,
+                          std::optional<double> l0 = std::nullopt) {
+    return CoatingDesign{std::move(name), "", l0, std::move(layers)};
+  };
+  const std::vector<CoatingCatalog> bad = {
+      {"", {design("C", {ok})}},
+      {"A:B", {design("C", {ok})}},
+      {"K", {design("", {ok})}},
+      {"K", {design("C:D", {ok})}},
+      {"K", {design("C", {ok}), design("C", {ok})}},
+      {"K", {design("C", {})}},
+      {"K", {design("C", {LayerSpec{"", PhysicalThickness{0.1}}})}},
+      {"K", {design("C", {LayerSpec{"M", PhysicalThickness{-0.1}}})}},
+      {"K", {design("C", {LayerSpec{"M", PhysicalThickness{std::nan("")}}})}},
+      {"K", {design("C", {LayerSpec{"M", QuarterWaves{-1.0, 0.55}}})}},
+      {"K", {design("C", {LayerSpec{"M", QuarterWaves{1.0, 0.0}}})}},
+      {"K", {design("C", {ok}, 0.0)}},
+  };
+  for (std::size_t i = 0; i < bad.size(); ++i) {
+    INFO("case " << i);
+    CoatingLibrary library;
+    REQUIRE_THROWS_AS(library.add(bad[i]), std::invalid_argument);
+    REQUIRE(library.find("K:C") == nullptr);
+  }
+  CoatingLibrary library;
+  REQUIRE_NOTHROW(library.add(CoatingCatalog{"K", {design("C", {ok})}}));
+  REQUIRE(library.find("K:C") != nullptr);
 }
 
 TEST_CASE("catalogue errors name the file and the JSON pointer", "[coating][catalog]") {
@@ -140,7 +206,10 @@ TEST_CASE("catalogue errors name the file and the JSON pointer", "[coating][cata
   };
   const std::string prefix = R"({"format": "raytatouille-coatings", "schema_version": "0.1.0", )";
   const std::vector<Case> cases = {
-      {"{", "", "JSON syntax error"},
+      {"{", "", "invalid JSON"},
+      // A number that overflows double: the only non-finite JSON number (nlohmann out_of_range).
+      {catalog_text("D", R"({"name": "C", "layers": [{"material": "M", "qwot": 1e400}]})"), "",
+       "invalid JSON"},
       {"[]", "", "expected an object"},
       {prefix + R"("catalog": "D", "coatings": [], "extra": 1})", "/extra", "unknown key"},
       {R"({"format": "x", "schema_version": "0.1.0", "catalog": "D", "coatings": []})", "/format",
@@ -189,7 +258,8 @@ TEST_CASE("catalogue errors name the file and the JSON pointer", "[coating][cata
 }
 
 TEST_CASE("a missing catalogue file is a CoatingCatalogError", "[coating][catalog]") {
-  const fs::path missing = temp_dir("missing") / "nope.json";
+  const TempDir dir("missing");
+  const fs::path missing = dir.path() / "nope.json";
   try {
     (void)rtt::coating::load_coating_catalog(missing);
     FAIL("no error");

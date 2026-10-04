@@ -8,11 +8,14 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <system_error>
 #include <utility>
 #include <vector>
 
+#include "rtt/coating/catalog.hpp"
+#include "rtt/coating/thickness.hpp"
 #include "rtt/compile/compiled_system.hpp"
 
 namespace rtt::compile {
@@ -243,6 +246,7 @@ class Compiler {
     CompiledCoating compiled{
         reference, std::vector<std::vector<coating::Layer<double>>>(wavelengths_um_.size())};
     bool ok = true;
+    std::vector<CoatingCheck> checks;  // appended to coating_checks_ only on success
     for (std::size_t k = 0; k < design->layers.size(); ++k) {
       const coating::LayerSpec& spec = design->layers[k];
       const std::string what = "layer " + std::to_string(k) + " of coating '" + reference + "'";
@@ -254,37 +258,40 @@ class Compiler {
         ok = false;
         continue;
       }
-      double thickness_um = 0.0;
-      if (const auto* physical = std::get_if<coating::PhysicalThickness>(&spec.thickness)) {
-        thickness_um = physical->um;
-      } else {
-        const auto& qwot = std::get<coating::QuarterWaves>(spec.thickness);
-        const double l0 = qwot.design_wavelength_um;
+      // QWOT: d = count lambda0 / (4 Re n(lambda0)) at the environment temperature and pressure
+      // (thickness.hpp, Byrnes Eq. (8) with (2)); the design wavelength must lie in the range of
+      // the material. physical_thickness_um() also rejects Re n <= 0 or not finite.
+      double index_at_design = 1.0;  // unused for a physical thickness
+      if (const auto* qwot = std::get_if<coating::QuarterWaves>(&spec.thickness)) {
+        const double l0 = qwot->design_wavelength_um;
         const auto range = material->wavelength_range_um();
-        const double n0 = material->index(l0, t, p).real();
         if (range && !range->contains(l0)) {
           error(location, what + ": design wavelength " + number(l0) +
                               " um is outside the valid range of material '" + spec.material + "'");
           ok = false;
           continue;
         }
-        if (!(n0 > 0.0)) {
-          error(location, what + ": QWOT needs Re n > 0 at the design wavelength");
-          ok = false;
-          continue;
-        }
-        thickness_um = coating::quarter_wave_thickness_um(qwot.count, l0, n0);
+        index_at_design = material->index(l0, t, p).real();
+      }
+      double thickness_um = 0.0;
+      try {
+        thickness_um = coating::physical_thickness_um(spec.thickness, index_at_design);
+      } catch (const std::invalid_argument& e) {
+        error(location, what + ": " + e.what());
+        ok = false;
+        continue;
       }
       for (std::size_t w = 0; w < wavelengths_um_.size(); ++w) {
         compiled.layers[w].push_back({material->index(wavelengths_um_[w], t, p), thickness_um});
       }
-      coating_checks_.push_back({index, k, spec.material, material->wavelength_range_um()});
+      checks.push_back({index, k, spec.material, material->wavelength_range_um()});
     }
     if (!ok) {
       coating_index_.emplace(reference, std::nullopt);
       return std::nullopt;
     }
     compiled_coatings_.push_back(std::move(compiled));
+    coating_checks_.insert(coating_checks_.end(), checks.begin(), checks.end());
     coating_index_.emplace(reference, index);
     return index;
   }
