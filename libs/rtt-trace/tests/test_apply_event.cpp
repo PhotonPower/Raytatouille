@@ -16,9 +16,10 @@ using rtt::model::EventKind;
 using rtt::trace::RayState;
 using rtt::trace::RayStatus;
 
-// Laws of refraction and reflection, cf. M. Born, E. Wolf, Principles of Optics, 7th ed.,
-// Sec. 3.2.2 (equation number: see #19). Refraction: n2 sin(theta2) = n1 sin(theta1), the
-// refracted direction lies in the plane of incidence. Reflection: r = d - 2 (d . n) n.
+// Laws of refraction and reflection: B. de Greve, Reflections and Refractions in Ray Tracing
+// (2006), Eqs. (13), (22)-(25), Sec. 6; see also M. Born, E. Wolf, Principles of Optics, 7th ed.,
+// Sec. 3.2.2. Refraction: n2 sin(theta2) = n1 sin(theta1), the refracted direction lies in the
+// plane of incidence; critical angle arcsin(n2 / n1) (Eq. (25)). Reflection: r = d - 2 (d . n) n.
 
 namespace {
 constexpr double kAngleTol = 1e-14;  // rad, issue #6
@@ -83,6 +84,32 @@ TEST_CASE("refraction is independent of the orientation of the surface normal", 
   REQUIRE(out.status == RayStatus::Alive);
   REQUIRE(out.dir.z() < 0.0);
   REQUIRE(std::abs(angle_to_axis(out.dir) - std::asin(std::sin(theta) / 1.5)) <= kAngleTol);
+}
+
+TEST_CASE("rays travelling -z: refraction and TIR from Snell's law by hand", "[apply_event]") {
+  // The surface normal from rtt-geom is +z, so for d_z < 0 it points into the incident medium
+  // already; for d_z > 0 it has to be flipped (de Greve, Sec. 6). Both cases must agree.
+  const CompiledSurface plane = plane_surface();
+  // d = (0, sin a, -cos a) from glass n1 = 1.5 into n2 = 1.2, a = 0.5 rad. By hand:
+  // sin a' = 1.5 sin(0.5) / 1.2, refracted d' = (0, sin a', -cos a').
+  const double a = 0.5;
+  RayState in;
+  in.dir = Vec3(0.0, std::sin(a), -std::cos(a));
+  in.pos = -4.0 / std::cos(a) * in.dir;  // starts at z = +4 mm
+  const RayState out = rtt::trace::sequential_step(in, plane, 0, EventKind::Refract, 1.5, 1.2);
+  REQUIRE(out.status == RayStatus::Alive);
+  const double sin_t = 1.5 * std::sin(a) / 1.2;
+  REQUIRE(near(out.dir, Vec3(0.0, sin_t, -std::sqrt(1.0 - sin_t * sin_t)), 1e-15));
+  REQUIRE(std::abs(angle_to_axis(out.dir) - std::asin(sin_t)) <= kAngleTol);
+  // Total internal reflection in -z direction: critical angle arcsin(1.2 / 1.5).
+  const double critical = std::asin(1.2 / 1.5);
+  for (const double delta : {-1e-9, 1e-9}) {
+    RayState r;
+    r.dir = Vec3(0.0, std::sin(critical + delta), -std::cos(critical + delta));
+    r.pos = -4.0 / std::cos(critical + delta) * r.dir;  // starts at z = +4 mm
+    const RayState t = rtt::trace::sequential_step(r, plane, 1, EventKind::Refract, 1.5, 1.2);
+    REQUIRE(t.status == (delta < 0.0 ? RayStatus::Alive : RayStatus::Tir));
+  }
 }
 
 TEST_CASE("total internal reflection just above the critical angle", "[apply_event]") {

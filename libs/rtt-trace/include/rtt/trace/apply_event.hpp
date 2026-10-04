@@ -41,10 +41,12 @@ struct SurfaceHit {
   math::Vec3 direction = math::Vec3::Zero();  ///< incident unit direction, local
 };
 
-/// Refracted direction, derived from Snell's law in vector form (n2 t - n1 d parallel to the
-/// normal, n2 sin(theta_t) = n1 sin(theta_i)), cf. M. Born, E. Wolf, Principles of Optics,
-/// 7th ed., Sec. 3.2.2 (equation number: see #19):
-/// t = mu d + (mu cos_i - cos_t) n with mu = n1 / n2, cos_i = -d . n, n oriented against d.
+/// Refracted direction (B. de Greve, Reflections and Refractions in Ray Tracing, 2006, Sec. 6,
+/// Eqs. (22), (23), (28); see also M. Born, E. Wolf, Principles of Optics, 7th ed., Sec. 3.2.2):
+/// t = mu d + (mu cos_i - cos_t) n with mu = n1 / n2, cos_i = -d . n,
+/// sin_t^2 = mu^2 (1 - cos_i^2), cos_t = sqrt(1 - sin_t^2). As in de Greve, n is oriented into
+/// the incident medium (n . d < 0); the given normal is flipped if necessary.
+/// Total internal reflection for sin_t^2 > 1 (de Greve, Eq. (24)).
 /// @param d      unit incident direction
 /// @param normal unit surface normal, either orientation
 /// @param n1     refractive index before the surface (real part)
@@ -55,8 +57,9 @@ struct SurfaceHit {
                                                 double n1,
                                                 double n2) noexcept;
 
-/// Reflected direction r = d - 2 (d . n) n, derived from the law of reflection in vector form,
-/// cf. Born & Wolf, Principles of Optics, 7th ed., Sec. 3.2.2 (equation number: see #19).
+/// Reflected direction r = d - 2 (d . n) n (B. de Greve, Reflections and Refractions in Ray
+/// Tracing, 2006, Eq. (13); independent of the orientation of n; see also Born & Wolf,
+/// Principles of Optics, 7th ed., Sec. 3.2.2).
 /// @param d      unit incident direction
 /// @param normal unit surface normal, either orientation
 [[nodiscard]] math::Vec3 reflect(const math::Vec3& d, const math::Vec3& normal) noexcept;

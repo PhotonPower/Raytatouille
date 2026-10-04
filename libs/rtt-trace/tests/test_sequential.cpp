@@ -119,7 +119,7 @@ TEST_CASE("plane-parallel plate shifts the ray by d sin(theta - theta') / cos(th
   // Inside the plate the ray travels d / cos(theta') along a direction rotated by
   // theta - theta' against the incident one; the perpendicular offset after the plate is
   // therefore d sin(theta - theta') / cos(theta'), and the exit direction equals the incident
-  // one (Snell's law, cf. Born & Wolf, Principles of Optics, 7th ed., Sec. 3.2.2, see #19).
+  // one (Snell's law: de Greve, Reflections and Refractions in Ray Tracing, 2006, Eq. (23)).
   // Issue #6: 1e-12 mm.
   const double thickness = 5.0;
   const double n = 1.5;

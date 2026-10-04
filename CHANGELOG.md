@@ -35,6 +35,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   `tests/reference/m1/paraboloid_mirror.rtt.json` (#6).
 - `rtt-compile`: `EvenAsphere` in `CompiledShape`; Mangin-Spiegel auf dem automatischen Pfad
   ergibt einen `CompileError` (#6).
+- Quelle für Brechung und Reflexion in Vektorform: de Greve, „Reflections and Refractions in Ray
+  Tracing“ (2006), Gl. (13), (22)–(25), Abschnitt 6; Born & Wolf §3.2.2 als ergänzende Angabe (#19).
 
 ### Abhängigkeiten
 - oneTBB (`tbb` in `vcpkg.json`, `libtbb-dev` für den apt-Weg), Apache-2.0, kompatibel mit MIT

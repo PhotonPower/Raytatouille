@@ -38,11 +38,12 @@ std::optional<math::Vec3> refract(const math::Vec3& d,
                                   const math::Vec3& normal,
                                   double n1,
                                   double n2) noexcept {
-  // Derived from Snell's law in vector form (cf. Born & Wolf, Principles of Optics, 7th ed.,
-  // Sec. 3.2.2, equation number: see #19): n2 t - n1 d is parallel to the normal and
-  // n2 sin(theta_t) = n1 sin(theta_i). With n oriented against d (cos_i = -d . n
-  // >= 0) and mu = n1 / n2 this gives t = mu d + (mu cos_i - cos_t) n,
-  // cos_t = sqrt(1 - mu^2 (1 - cos_i^2)); a negative radicand is total internal reflection.
+  // B. de Greve, Reflections and Refractions in Ray Tracing (2006), Sec. 6, Eqs. (22), (23),
+  // (28): t = mu d + (mu cos_i - cos_t) n, mu = n1 / n2, sin_t^2 = mu^2 (1 - cos_i^2),
+  // cos_t = sqrt(1 - sin_t^2); total internal reflection for sin_t^2 > 1 (Eq. (24)).
+  // de Greve's n points into the incident medium, so cos_i = -d . n >= 0 (Sec. 6). Note: the
+  // text after Eq. (20a) writes cos_i = i . n, which contradicts that orientation; Sec. 6 is
+  // correct. rtt-geom returns n with +z at the vertex, so n is flipped when d . n > 0.
   math::Vec3 n = normal;
   double cos_i = -d.dot(n);
   if (cos_i < 0.0) {
@@ -50,15 +51,16 @@ std::optional<math::Vec3> refract(const math::Vec3& d,
     cos_i = -cos_i;
   }
   const double mu = n1 / n2;
-  const double cos_t2 = 1.0 - mu * mu * (1.0 - cos_i * cos_i);
-  if (cos_t2 < 0.0) {
+  const double sin_t2 = mu * mu * (1.0 - cos_i * cos_i);
+  if (sin_t2 > 1.0) {
     return std::nullopt;
   }
+  const double cos_t2 = 1.0 - sin_t2;
   return math::Vec3(mu * d + (mu * cos_i - std::sqrt(cos_t2)) * n).normalized();
 }
 
 math::Vec3 reflect(const math::Vec3& d, const math::Vec3& normal) noexcept {
-  // Law of reflection in vector form, cf. Born & Wolf, 7th ed., Sec. 3.2.2 (see #19).
+  // de Greve (2006), Eq. (13); valid for either orientation of n.
   return d - 2.0 * d.dot(normal) * normal;
 }
 
