@@ -112,6 +112,15 @@ TEST_CASE("other element kinds have no segment material list", "[validate][segme
   REQUIRE(has_error_at(validate(s), "/root/children/1/material"));
 }
 
+TEST_CASE("a thin element has no segment material list", "[validate][segments]") {
+  System s = make_singlet();
+  Element& thin = element(s, 2);  // the detector, one surface
+  thin.kind = ElementKind::ThinElement;
+  REQUIRE_FALSE(has_errors(validate(s)));
+  thin.segment_materials = {"SCHOTT:N-BK7"};
+  REQUIRE(has_error_at(validate(s), "/root/children/2/material"));
+}
+
 TEST_CASE("segment_material resolves shorthand and list", "[model][segments]") {
   System s = make_doublet();
   Element& lens = element(s, 1);
