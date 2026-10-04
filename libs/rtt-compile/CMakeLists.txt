@@ -8,7 +8,7 @@ rtt_target_defaults(rtt_compile LIBRARY)
 if(RTT_BUILD_TESTS)
   # rtt::io only loads the reference systems in the tests; the library does not depend on it.
   rtt_add_test(rtt_compile_tests
-    SOURCES tests/test_compile.cpp
+    SOURCES tests/test_compile.cpp tests/test_media.cpp
     LIBS rtt::compile rtt::io)
   target_include_directories(rtt_compile_tests PRIVATE ${PROJECT_SOURCE_DIR}/libs/rtt-model/tests)
 endif()

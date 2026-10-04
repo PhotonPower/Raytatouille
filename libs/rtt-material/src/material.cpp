@@ -3,7 +3,9 @@
 #include <charconv>
 #include <cmath>
 #include <optional>
+#include <stdexcept>
 #include <system_error>
+#include <utility>
 
 namespace rtt::material {
 namespace {
@@ -17,7 +19,8 @@ class ConstantMaterial final : public Material {
   explicit ConstantMaterial(math::Complex index) : index_(index) {}
 
   [[nodiscard]] math::Complex index(double /*wavelength_um*/,
-                                    double /*temperature_c*/) const override {
+                                    double /*temperature_c*/,
+                                    double /*pressure_atm*/) const override {
     return index_;
   }
 
@@ -65,9 +68,10 @@ std::shared_ptr<const Material> make_material(std::string_view reference) {
     return std::make_shared<const ConstantMaterial>(
         parse_constant(reference, reference.substr(kConstPrefix.size())));
   }
-  throw UnknownMaterial("unknown material reference '" + std::string(reference) +
-                        "': supported are VACUUM, AIR, CONST:<n> and CONST:<n>,<kappa>; "
-                        "glass catalogs follow in M2");
+  throw UnknownMaterial(
+      "unknown material reference '" + std::string(reference) +
+      "': supported are VACUUM, AIR, CONST:<n>, CONST:<n>,<kappa> and "
+      "materials registered with MaterialLibrary::add; glass catalogs follow in M2");
 }
 
 }  // namespace
@@ -78,6 +82,21 @@ std::shared_ptr<const Material> MaterialLibrary::resolve(std::string_view refere
   auto material = make_material(reference);
   cache_.emplace(std::string(reference), material);
   return material;
+}
+
+void MaterialLibrary::add(std::string name, std::shared_ptr<const Material> material) {
+  if (name.empty()) throw std::invalid_argument("MaterialLibrary::add: empty material name");
+  if (name == "VACUUM" || name == "AIR" || name.starts_with(kConstPrefix)) {
+    throw std::invalid_argument("MaterialLibrary::add: '" + name + "' is a reserved name");
+  }
+  if (material == nullptr) {
+    throw std::invalid_argument("MaterialLibrary::add: material '" + name + "' is null");
+  }
+  const std::scoped_lock lock(mutex_);
+  if (cache_.contains(name)) {
+    throw std::invalid_argument("MaterialLibrary::add: '" + name + "' is already in use");
+  }
+  cache_.emplace(std::move(name), std::move(material));
 }
 
 }  // namespace rtt::material

@@ -25,7 +25,7 @@ constexpr std::array<double, 3> kTemperaturesC{-40.0, 20.0, 80.0};
 void require_constant_index(const Material& material, const Complex& expected) {
   for (const double wl : kWavelengthsUm) {
     for (const double t : kTemperaturesC) {
-      REQUIRE(material.index(wl, t) == expected);
+      REQUIRE(material.index(wl, t, 1.0) == expected);
     }
   }
 }
@@ -157,14 +157,95 @@ TEST_CASE("kappa = -0 is stored as +0", "[material]") {
   // [complex.value.ops], C99 Annex G), e.g. cos(theta_t) under TIR. kappa >= 0 must hold
   // including the sign bit.
   const MaterialLibrary lib;
-  const Complex index = lib.resolve("CONST:1.5,-0")->index(0.5876, 20.0);
+  const Complex index = lib.resolve("CONST:1.5,-0")->index(0.5876, 20.0, 1.0);
   REQUIRE(index == Complex(1.5, 0.0));
   REQUIRE_FALSE(std::signbit(index.imag()));
-  REQUIRE_FALSE(std::signbit(lib.resolve("CONST:1.5,-0.0e3")->index(0.5876, 20.0).imag()));
+  REQUIRE_FALSE(std::signbit(lib.resolve("CONST:1.5,-0.0e3")->index(0.5876, 20.0, 1.0).imag()));
 }
 
 TEST_CASE("a comma separates n and kappa", "[material]") {
   // There is no decimal comma: "CONST:1,5" is n = 1, kappa = 5.
   const MaterialLibrary lib;
   require_constant_index(*lib.resolve("CONST:1,5"), Complex(1.0, 5.0));
+}
+
+namespace {
+
+/// Test material with a fixed index and range.
+class FixedMaterial final : public Material {
+ public:
+  explicit FixedMaterial(double n) : n_(n) {}
+  [[nodiscard]] Complex index(double /*wavelength_um*/,
+                              double /*temperature_c*/,
+                              double /*pressure_atm*/) const override {
+    return {n_, 0.0};
+  }
+
+ private:
+  double n_;
+};
+
+}  // namespace
+
+TEST_CASE("built-in materials are unbounded in wavelength", "[material]") {
+  const MaterialLibrary lib;
+  for (const char* reference : {"VACUUM", "AIR", "CONST:1.5", "CONST:1.5,0.1"}) {
+    INFO(reference);
+    REQUIRE_FALSE(lib.resolve(reference)->wavelength_range_um().has_value());
+  }
+}
+
+TEST_CASE("add registers a material that resolve returns as the same object", "[material]") {
+  MaterialLibrary lib;
+  const auto glass = std::make_shared<const FixedMaterial>(1.6);
+  lib.add("TEST:SELL1", glass);
+  REQUIRE(lib.resolve("TEST:SELL1") == glass);
+  REQUIRE(lib.resolve("TEST:SELL1") == lib.resolve("TEST:SELL1"));
+  REQUIRE(lib.resolve("TEST:SELL1")->index(0.5876, 20.0, 1.0) == Complex(1.6, 0.0));
+  // Other names are still unknown.
+  REQUIRE_THROWS_AS(lib.resolve("TEST:OTHER"), UnknownMaterial);
+}
+
+TEST_CASE("add rejects reserved, used and empty names and null materials", "[material]") {
+  MaterialLibrary lib;
+  const auto glass = std::make_shared<const FixedMaterial>(1.6);
+  lib.add("TEST:A", glass);
+  REQUIRE_THROWS_AS(lib.add("TEST:A", glass), std::invalid_argument);  // already registered
+  for (const char* name : {"VACUUM", "AIR", "CONST:1.5", "CONST:", ""}) {
+    INFO(name);
+    REQUIRE_THROWS_AS(lib.add(name, glass), std::invalid_argument);
+  }
+  REQUIRE_THROWS_AS(lib.add("TEST:NULL", nullptr), std::invalid_argument);
+  // A rejected add leaves the library unchanged.
+  REQUIRE(lib.resolve("TEST:A") == glass);
+  REQUIRE_THROWS_AS(lib.resolve("TEST:NULL"), UnknownMaterial);
+}
+
+TEST_CASE("add and resolve are thread-safe", "[material]") {
+  MaterialLibrary lib;
+  constexpr int kThreads = 8;
+  std::vector<std::shared_ptr<const Material>> added(kThreads);
+  std::vector<int> ok(kThreads, 0);  // not vector<bool>: one element per thread, no shared bits
+  {
+    std::vector<std::jthread> threads;
+    threads.reserve(kThreads);
+    for (int t = 0; t < kThreads; ++t) {
+      threads.emplace_back([&lib, &added, &ok, t] {
+        const auto i = static_cast<std::size_t>(t);
+        added[i] = std::make_shared<const FixedMaterial>(1.0 + 0.1 * t);
+        lib.add("TEST:T" + std::to_string(t), added[i]);
+        bool same = true;
+        for (int rep = 0; rep < 100; ++rep) {
+          same = same && lib.resolve("TEST:T" + std::to_string(t)) == added[i];
+          same = same && lib.resolve("VACUUM") != nullptr;
+        }
+        ok[i] = same ? 1 : 0;
+      });
+    }
+  }
+  for (int t = 0; t < kThreads; ++t) {
+    INFO(t);
+    REQUIRE(ok[static_cast<std::size_t>(t)] == 1);
+    REQUIRE(lib.resolve("TEST:T" + std::to_string(t)) == added[static_cast<std::size_t>(t)]);
+  }
 }
