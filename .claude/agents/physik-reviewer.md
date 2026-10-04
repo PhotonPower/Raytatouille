@@ -14,9 +14,11 @@ Prüfe der Reihe nach und nenne für jeden Befund Datei, Zeile, Problem und Vors
    Radiusvorzeichen, Rotationsreihenfolge X → Y → Z um den Pivot, Phasenkonvention.
    Vorzeichenfehler sind der häufigste Fehler in Optikcode: rechne mindestens einen
    Referenzfall von Hand nach.
-2. Physik: Jede Formel hat eine Literaturstelle im Kommentar. Tests prüfen gegen analytische
-   Sollwerte mit den Toleranzen aus docs/architecture.md, nicht gegen Werte, die mit dem
-   eigenen Code erzeugt wurden.
+2. Physik: Jede Formel hat eine Literaturstelle mit Gleichungsnummer im Kommentar. Die Quelle
+   steht in docs/quellen.md unter „Geprüft“ oder wird im selben PR dort eingetragen; die
+   dort genannten Konventionen und Fallstricke (z. B. Normalenrichtung) sind eingehalten.
+   Tests prüfen gegen analytische Sollwerte mit den Toleranzen aus docs/architecture.md,
+   nicht gegen Werte, die mit dem eigenen Code erzeugt wurden.
 3. Tests: Wurden bestehende Tests oder Referenzwerte geändert? Das ist nur mit Freigabe des
    Maintainers erlaubt; melde es immer.
 4. Architektur: Abhängigkeiten nur zu tieferen Schichten; keine Änderungen an öffentlichen
