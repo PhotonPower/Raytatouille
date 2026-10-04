@@ -59,6 +59,9 @@ foreach(file IN LISTS RTT_PY_SOURCES)
   list(APPEND RTT_PY_COPIES "${RTT_PY_PACKAGE_DIR}/${name}")
 endforeach()
 add_custom_target(rtt_py_package ALL DEPENDS ${RTT_PY_COPIES})
+# Whoever builds _core (CI builds only named targets) gets the complete package in the build
+# tree; the stubs no longer depend on it (stubgen uses the staging package below).
+add_dependencies(_core rtt_py_package)
 
 # TBB is a shared library; on Windows its DLL has to sit next to _core. Only TBB: the runtime
 # DLLs of _core also include python3*.dll, which must not be copied into the package.
