@@ -17,6 +17,8 @@
 #include <variant>
 #include <vector>
 
+#include "rtt/coating/catalog.hpp"
+#include "rtt/coating/transfer_matrix.hpp"
 #include "rtt/geom/asphere.hpp"
 #include "rtt/geom/conic.hpp"
 #include "rtt/geom/plane.hpp"
@@ -32,6 +34,23 @@ namespace rtt::compile {
 using CompiledShape =
     std::variant<geom::Plane<double>, geom::Conic<double>, geom::EvenAsphere<double>>;
 
+/// Coating of a surface (ADR 0019): which compiled coating, and which side is the substrate.
+struct SurfaceCoating {
+  std::uint32_t coating = 0;  ///< index into CompiledSystem::coatings()
+  /// Index into CompiledSystem::media() of the substrate: the inside of the element the surface
+  /// belongs to. Light that arrives from this medium sees the layers in reverse order.
+  std::uint32_t substrate_medium = 0;
+};
+
+/// A coating design evaluated at all system wavelengths (ADR 0019).
+struct CompiledCoating {
+  std::string reference;  ///< coating reference as in the model, e.g. "DEMO:AR_MGF2"
+  /// Layers per system wavelength (same order as wavelengths_um()), each from the ambient side
+  /// to the substrate: complex index at the environment temperature and pressure, physical
+  /// thickness in um (QWOT converted at the design wavelength, same conditions).
+  std::vector<std::vector<coating::Layer<double>>> layers;
+};
+
 /// One surface with everything the tracer needs, independent of the model.
 struct CompiledSurface {
   model::SurfaceId id;  ///< stable surface id from the model, e.g. "L1.S1"
@@ -46,6 +65,8 @@ struct CompiledSurface {
   std::optional<model::Aperture> aperture;  ///< in local coordinates, mm; none = unbounded
   std::vector<model::PhaseLayer> phases;    ///< copied as values; evaluated from M4 on
   model::Interaction interaction = model::Fresnel{};
+  /// Set for a CoatingRef interaction: the resolved coating and its substrate side.
+  std::optional<SurfaceCoating> coating;
 };
 
 /// A homogeneous medium evaluated at all system wavelengths.
@@ -136,8 +157,25 @@ class CompiledSystem;
 /// Refract, Ordinary or Extraordinary event at an inner surface reached from outside the
 /// element when the segments on its two sides have different materials (ambiguous side).
 ///
-/// The result holds no references or pointers into `system` or `materials`.
+/// Coatings (ADR 0019): every CoatingRef is resolved with `coatings`, its layer materials with
+/// `materials`, and the layers are evaluated at every system wavelength at the environment
+/// temperature and pressure (QWOT thickness at the design wavelength under the same
+/// conditions). The substrate is the inside of the element the surface belongs to: the
+/// adjacent segment of a Lens or Plate (the plate's material for a Plate of one material), the
+/// substrate of a Mirror. CompileError at .../interaction or .../interaction/name for an
+/// unknown coating, an unknown layer material, a QWOT whose design wavelength lies outside the
+/// material's range or has Re n <= 0, a system wavelength outside the range of a layer material
+/// (only for coatings on surfaces that a path uses), and a surface without unambiguous
+/// substrate: an inner surface between two segments, a Mirror without material, a ThinElement,
+/// Stop or Detector.
+///
+/// The result holds no references or pointers into `system`, `materials` or `coatings`.
 /// @throws CompileError as described above
+[[nodiscard]] CompiledSystem compile(const model::System& system,
+                                     const material::MaterialLibrary& materials,
+                                     const coating::CoatingLibrary& coatings);
+
+/// compile() with an empty CoatingLibrary: a system with a CoatingRef gives a CompileError.
 [[nodiscard]] CompiledSystem compile(const model::System& system,
                                      const material::MaterialLibrary& materials);
 
@@ -170,6 +208,10 @@ class CompiledSystem {
   [[nodiscard]] const std::vector<CompiledMedium>& media() const noexcept { return media_; }
   [[nodiscard]] std::uint32_t environment_medium() const noexcept { return 0; }
 
+  /// Coatings used by the surfaces (SurfaceCoating::coating indexes this list), evaluated at
+  /// all system wavelengths.
+  [[nodiscard]] const std::vector<CompiledCoating>& coatings() const noexcept { return coatings_; }
+
   /// All paths in model order.
   [[nodiscard]] const std::vector<CompiledPath>& paths() const noexcept { return paths_; }
   /// Path by id.
@@ -182,7 +224,9 @@ class CompiledSystem {
   [[nodiscard]] std::optional<PathId> find_path(std::string_view name) const;
 
  private:
-  friend CompiledSystem compile(const model::System&, const material::MaterialLibrary&);
+  friend CompiledSystem compile(const model::System&,
+                                const material::MaterialLibrary&,
+                                const coating::CoatingLibrary&);
   CompiledSystem() = default;
 
   std::vector<double> wavelengths_um_;
@@ -194,6 +238,7 @@ class CompiledSystem {
   model::ObjectSpace object_;
   std::vector<CompiledSurface> surfaces_;
   std::vector<CompiledMedium> media_;
+  std::vector<CompiledCoating> coatings_;
   std::vector<CompiledPath> paths_;
 };
 

@@ -48,8 +48,10 @@ struct ElementInfo {
 /// Collects the pieces of a CompiledSystem and all errors found on the way.
 class Compiler {
  public:
-  Compiler(const model::System& system, const material::MaterialLibrary& materials)
-      : system_(system), materials_(materials) {
+  Compiler(const model::System& system,
+           const material::MaterialLibrary& materials,
+           const coating::CoatingLibrary& coatings)
+      : system_(system), materials_(materials), coatings_(coatings) {
     for (const auto& w : system.wavelengths) wavelengths_um_.push_back(w.um);
   }
 
@@ -70,6 +72,7 @@ class Compiler {
   std::vector<double> wavelengths_um_;
   std::vector<CompiledSurface> surfaces_;
   std::vector<CompiledMedium> media_;
+  std::vector<CompiledCoating> compiled_coatings_;
   std::vector<CompiledPath> paths_;
 
  private:
@@ -110,6 +113,7 @@ class Compiler {
   /// the events are placeholders that may not even exist in media_.
   void check_wavelength_ranges() {
     if (!errors_.empty()) return;
+    check_coating_ranges();
     std::vector<std::optional<std::string>> where(media_.size());
     for (const CompiledPath& path : paths_) {
       for (const CompiledEvent& event : path.events) {
@@ -141,6 +145,148 @@ class Compiler {
         break;
       }
     }
+  }
+
+  /// Every system wavelength must lie in the valid range of every layer material of a coating
+  /// on a surface that a path uses (as for media, #23). One error per coating and layer, at
+  /// the interaction of the first such surface.
+  void check_coating_ranges() {
+    std::vector<std::optional<std::string>> where(compiled_coatings_.size());
+    for (const CompiledPath& path : paths_) {
+      for (const CompiledEvent& event : path.events) {
+        const auto& coating = surfaces_[event.surface].coating;
+        if (coating && !where[coating->coating]) {
+          where[coating->coating] = surface_locations_[event.surface] + "/interaction/name";
+        }
+      }
+    }
+    for (const CoatingCheck& check : coating_checks_) {
+      const std::optional<std::string>& location = where[check.coating];
+      if (!location.has_value() || !check.range.has_value()) continue;
+      const material::WavelengthRange& valid = check.range.value();
+      for (const double wl : wavelengths_um_) {
+        if (valid.contains(wl)) continue;
+        error(location.value(), "wavelength " + number(wl) + " um is outside the valid range [" +
+                                    number(valid.min_um) + ", " + number(valid.max_um) +
+                                    "] um of material '" + check.material + "' in layer " +
+                                    std::to_string(check.layer) + " of coating '" +
+                                    compiled_coatings_[check.coating].reference + "'");
+        break;
+      }
+    }
+  }
+
+  /// Substrate side and compiled design of a CoatingRef at surface j of an element (ADR 0019).
+  /// `location` is the JSON pointer of the interaction.
+  std::optional<SurfaceCoating> surface_coating(const model::CoatingRef& ref,
+                                                const ElementInfo& info,
+                                                std::size_t j,
+                                                const std::string& location) {
+    std::optional<std::uint32_t> substrate;
+    const std::size_t last = info.surface_count - 1;
+    switch (info.kind) {
+      case model::ElementKind::Lens:
+      case model::ElementKind::Plate:
+        if (info.media.empty()) {
+          error(location, "coating on an element without material: no substrate (ADR 0019)");
+        } else if (!info.segmented || j == 0) {
+          // Every face of a plate of one material bounds its inside; the first surface of a
+          // segmented element bounds segment 0.
+          substrate = info.media[0];
+        } else if (j == last) {
+          substrate = info.media[last - 1];
+        } else {
+          error(location,
+                "coating on an inner surface between two segments: the substrate side is "
+                "ambiguous (ADR 0019)");
+        }
+        break;
+      case model::ElementKind::Mirror:
+        if (info.media.empty()) {
+          error(location,
+                "coating on a mirror without substrate material: no substrate "
+                "(ADR 0019; use ideal_mirror for a mirror without substrate)");
+        } else {
+          substrate = info.media[0];
+        }
+        break;
+      case model::ElementKind::ThinElement:
+      case model::ElementKind::Stop:
+      case model::ElementKind::Detector:
+        error(location,
+              "coating on a surface of a thin element, stop or detector: only lens, plate and "
+              "mirror surfaces have a substrate (ADR 0019)");
+        break;
+    }
+    const std::optional<std::uint32_t> coating = compiled_coating(ref.name, location + "/name");
+    if (!substrate || !coating) return std::nullopt;
+    return SurfaceCoating{*coating, *substrate};
+  }
+
+  /// Index of the compiled coating for `reference`, resolving and evaluating it on first use.
+  std::optional<std::uint32_t> compiled_coating(const std::string& reference,
+                                                const std::string& location) {
+    if (const auto it = coating_index_.find(reference); it != coating_index_.end()) {
+      return it->second;
+    }
+    std::shared_ptr<const coating::CoatingDesign> design;
+    try {
+      design = coatings_.resolve(reference);
+    } catch (const coating::UnknownCoating& e) {
+      error(location, e.what());
+      coating_index_.emplace(reference, std::nullopt);  // report once
+      return std::nullopt;
+    }
+    const auto index = static_cast<std::uint32_t>(compiled_coatings_.size());
+    const double t = system_.environment.temperature_c;
+    const double p = system_.environment.pressure_atm;
+    CompiledCoating compiled{
+        reference, std::vector<std::vector<coating::Layer<double>>>(wavelengths_um_.size())};
+    bool ok = true;
+    for (std::size_t k = 0; k < design->layers.size(); ++k) {
+      const coating::LayerSpec& spec = design->layers[k];
+      const std::string what = "layer " + std::to_string(k) + " of coating '" + reference + "'";
+      std::shared_ptr<const material::Material> material;
+      try {
+        material = materials_.resolve(spec.material);
+      } catch (const material::UnknownMaterial& e) {
+        error(location, what + ": " + e.what());
+        ok = false;
+        continue;
+      }
+      double thickness_um = 0.0;
+      if (const auto* physical = std::get_if<coating::PhysicalThickness>(&spec.thickness)) {
+        thickness_um = physical->um;
+      } else {
+        const auto& qwot = std::get<coating::QuarterWaves>(spec.thickness);
+        const double l0 = qwot.design_wavelength_um;
+        const auto range = material->wavelength_range_um();
+        const double n0 = material->index(l0, t, p).real();
+        if (range && !range->contains(l0)) {
+          error(location, what + ": design wavelength " + number(l0) +
+                              " um is outside the valid range of material '" + spec.material + "'");
+          ok = false;
+          continue;
+        }
+        if (!(n0 > 0.0)) {
+          error(location, what + ": QWOT needs Re n > 0 at the design wavelength");
+          ok = false;
+          continue;
+        }
+        thickness_um = coating::quarter_wave_thickness_um(qwot.count, l0, n0);
+      }
+      for (std::size_t w = 0; w < wavelengths_um_.size(); ++w) {
+        compiled.layers[w].push_back({material->index(wavelengths_um_[w], t, p), thickness_um});
+      }
+      coating_checks_.push_back({index, k, spec.material, material->wavelength_range_um()});
+    }
+    if (!ok) {
+      coating_index_.emplace(reference, std::nullopt);
+      return std::nullopt;
+    }
+    compiled_coatings_.push_back(std::move(compiled));
+    coating_index_.emplace(reference, index);
+    return index;
   }
 
   /// Shortest text that reads back to the same double, independent of the global locale.
@@ -210,7 +356,11 @@ class Compiler {
       c.aperture = s.aperture;
       c.phases = s.phases;
       c.interaction = s.interaction;
+      if (const auto* ref = std::get_if<model::CoatingRef>(&s.interaction)) {
+        c.coating = surface_coating(*ref, info, j, surface_location + "/interaction");
+      }
       surface_index_.emplace(s.id, static_cast<std::uint32_t>(surfaces_.size()));
+      surface_locations_.push_back(surface_location);
       surface_element_.push_back(element_index);
       surfaces_.push_back(std::move(c));
     }
@@ -366,6 +516,18 @@ class Compiler {
 
   const model::System& system_;
   const material::MaterialLibrary& materials_;
+  const coating::CoatingLibrary& coatings_;
+  std::vector<std::string> surface_locations_;  // JSON pointer per surface
+  /// Compiled coating per reference; none once it failed (reported once).
+  std::map<std::string, std::optional<std::uint32_t>, std::less<>> coating_index_;
+  /// Valid wavelength range of each layer material, checked for coatings on a path.
+  struct CoatingCheck {
+    std::uint32_t coating;
+    std::size_t layer;
+    std::string material;
+    std::optional<material::WavelengthRange> range;
+  };
+  std::vector<CoatingCheck> coating_checks_;
   std::uint32_t environment_ = 0;
   std::vector<ElementInfo> elements_;
   std::vector<std::uint32_t> surface_element_;  // owning element per surface
@@ -387,6 +549,13 @@ CompileError::CompileError(std::vector<model::Diagnostic> diagnostics)
     : std::runtime_error(join_errors(diagnostics)), diagnostics_(std::move(diagnostics)) {}
 
 CompiledSystem compile(const model::System& system, const material::MaterialLibrary& materials) {
+  const coating::CoatingLibrary none;
+  return compile(system, materials, none);
+}
+
+CompiledSystem compile(const model::System& system,
+                       const material::MaterialLibrary& materials,
+                       const coating::CoatingLibrary& coatings) {
   std::vector<model::Diagnostic> diagnostics = model::validate(system);
   if (model::has_errors(diagnostics)) {
     std::erase_if(diagnostics,
@@ -394,7 +563,7 @@ CompiledSystem compile(const model::System& system, const material::MaterialLibr
     throw CompileError(std::move(diagnostics));
   }
 
-  Compiler compiler(system, materials);
+  Compiler compiler(system, materials, coatings);
   compiler.run();
   if (!compiler.errors_.empty()) throw CompileError(std::move(compiler.errors_));
 
@@ -410,6 +579,7 @@ CompiledSystem compile(const model::System& system, const material::MaterialLibr
   cs.object_ = system.object;
   cs.surfaces_ = std::move(compiler.surfaces_);
   cs.media_ = std::move(compiler.media_);
+  cs.coatings_ = std::move(compiler.compiled_coatings_);
   cs.paths_ = std::move(compiler.paths_);
   return cs;
 }
