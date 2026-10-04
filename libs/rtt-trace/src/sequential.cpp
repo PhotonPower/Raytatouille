@@ -22,6 +22,9 @@ TraceStats SequentialTracer::trace(const compile::CompiledSystem& system,
       throw std::invalid_argument("ray " + std::to_string(i) + ": wavelength index " +
                                   std::to_string(rays.wl()[i]) + " is not a system wavelength");
     }
+    if (static_cast<std::size_t>(rays.status()[i]) >= kRayStatusCount) {
+      throw std::invalid_argument("ray " + std::to_string(i) + ": invalid status");
+    }
   }
 
   // Rays are independent; every ray is written by exactly one task, so the result does not
@@ -42,8 +45,8 @@ TraceStats SequentialTracer::trace(const compile::CompiledSystem& system,
         // M1: real part of the complex index (absorption follows in M3).
         const double n_before = system.media()[event.medium_before].index[wl].real();
         const double n_after = system.media()[event.medium_after].index[wl].real();
-        ray = apply_event(ray, system.surfaces()[event.surface], event.surface, event.kind,
-                          n_before, n_after);
+        ray = sequential_step(ray, system.surfaces()[event.surface], event.surface, event.kind,
+                              n_before, n_after);
       }
       rays.pos_x()[i] = ray.pos.x();
       rays.pos_y()[i] = ray.pos.y();

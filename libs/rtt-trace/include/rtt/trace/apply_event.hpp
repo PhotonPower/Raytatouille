@@ -1,17 +1,21 @@
 #pragma once
 
 /// @file apply_event.hpp
-/// Execution of one surface event for one ray, independent of paths (docs/architecture.md,
-/// Engine 2). The sequential tracer calls it per path event; the non-sequential tracer (M9)
-/// reuses it unchanged.
+/// Building blocks of one surface interaction, independent of paths (docs/architecture.md,
+/// Engine 2): intersect_surface() finds the hit, inside_aperture() checks the aperture and
+/// apply_event(ray, hit, kind) executes the event. The sequential tracer combines them per path
+/// event; the non-sequential tracer (M9) reuses intersect_surface() and apply_event() unchanged
+/// but treats a hit outside the aperture as "surface not there" instead of Vignetted.
 ///
 /// Conventions (docs/architecture.md, Konventionen): positions in mm, unit directions, both in
-/// global coordinates (right-handed, optical axis +z); optical path length in mm.
+/// global coordinates (right-handed, optical axis +z) unless stated as local; optical path
+/// length in mm.
 
 #include <cstdint>
 #include <optional>
 
 #include "rtt/compile/compiled_system.hpp"
+#include "rtt/geom/intersect.hpp"
 #include "rtt/math/types.hpp"
 #include "rtt/model/path.hpp"
 #include "rtt/trace/ray_batch.hpp"
@@ -21,15 +25,25 @@ namespace rtt::trace {
 /// State of one ray in global coordinates (one row of a RayBatch, without the fields that
 /// M1 does not change).
 struct RayState {
-  math::Vec3 pos = math::Vec3::Zero();   ///< position, mm
-  math::Vec3 dir = math::Vec3::UnitZ();  ///< unit direction
+  math::Vec3 pos = math::Vec3::Zero();   ///< position, mm, global
+  math::Vec3 dir = math::Vec3::UnitZ();  ///< unit direction, global (|dir| = 1 is required)
   double opl = 0.0;                      ///< accumulated optical path length, mm
   RayStatus status = RayStatus::Alive;
   std::uint32_t last_surface = kNoSurface;  ///< index of the last surface hit
 };
 
-/// Refracted direction by the law of refraction in vector form
-/// (M. Born, E. Wolf, Principles of Optics, 7th ed., Sec. 3.2.2):
+/// Hit of a ray on a surface, in the local coordinates of the surface.
+struct SurfaceHit {
+  geom::HitStatus status = geom::HitStatus::Missed;
+  double t = 0.0;  ///< geometric path from the ray position to the hit point, mm
+  math::Vec3 point = math::Vec3::Zero();      ///< hit point, local, mm
+  math::Vec3 normal = math::Vec3::Zero();     ///< unit normal, local, +z at the vertex
+  math::Vec3 direction = math::Vec3::Zero();  ///< incident unit direction, local
+};
+
+/// Refracted direction, derived from Snell's law in vector form (n2 t - n1 d parallel to the
+/// normal, n2 sin(theta_t) = n1 sin(theta_i)), cf. M. Born, E. Wolf, Principles of Optics,
+/// 7th ed., Sec. 3.2.2 (equation number: see #19):
 /// t = mu d + (mu cos_i - cos_t) n with mu = n1 / n2, cos_i = -d . n, n oriented against d.
 /// @param d      unit incident direction
 /// @param normal unit surface normal, either orientation
@@ -41,42 +55,72 @@ struct RayState {
                                                 double n1,
                                                 double n2) noexcept;
 
-/// Reflected direction r = d - 2 (d . n) n (Born & Wolf, Principles of Optics, Sec. 3.2.2).
+/// Reflected direction r = d - 2 (d . n) n, derived from the law of reflection in vector form,
+/// cf. Born & Wolf, Principles of Optics, 7th ed., Sec. 3.2.2 (equation number: see #19).
 /// @param d      unit incident direction
 /// @param normal unit surface normal, either orientation
 [[nodiscard]] math::Vec3 reflect(const math::Vec3& d, const math::Vec3& normal) noexcept;
 
-/// Applies one event at `surface` to `ray`.
+/// Intersects the ray with the surface in its local coordinates: analytic for plane and conic,
+/// Newton for the even asphere (rtt::geom::intersect). Status Missed or NoConvergence if there
+/// is no valid hit; never throws (ADR 0009).
+/// @param ray     ray in global coordinates, |dir| = 1
+/// @param surface compiled surface (pose and shape are used)
+[[nodiscard]] SurfaceHit intersect_surface(const RayState& ray,
+                                           const compile::CompiledSurface& surface) noexcept;
+
+/// True if the local hit point lies inside the surface aperture (boundary included) or the
+/// surface has no aperture. Circular (with optional inner radius), rectangular and elliptical
+/// apertures in local x, y, mm.
+[[nodiscard]] bool inside_aperture(const compile::CompiledSurface& surface,
+                                   const SurfaceHit& hit) noexcept;
+
+/// Moves the ray to the hit point: position (global), OPL += n_before * t, last_surface.
+/// Direction and status are unchanged.
+/// @pre hit.status == Hit
+[[nodiscard]] RayState move_to_hit(const RayState& ray,
+                                   const compile::CompiledSurface& surface,
+                                   const SurfaceHit& hit,
+                                   std::uint32_t surface_index,
+                                   double n_before) noexcept;
+
+/// Executes `kind` at the hit (docs/architecture.md: apply_event(ray, hit, kind)).
 ///
-/// Steps (docs/architecture.md, Engine 2): transform into the local coordinates of the surface,
-/// intersect (analytic for plane and conic, Newton for the even asphere), check the aperture in
-/// local x, y, apply the event, transform back. The OPL grows by n_before times the geometric
-/// path to the hit point.
-///
-/// Outcome: a ray that is not Alive is returned unchanged. Missed and NoConvergence keep the
-/// ray as it was (position, direction, OPL, last_surface). Otherwise the ray moves to the hit
-/// point and last_surface becomes `surface_index`; then Vignetted (outside the aperture),
-/// Absorbed (Absorber interaction), EventImpossible (Diffract, Ordinary, Extraordinary before
-/// M4) and Tir (Refract beyond the critical angle) stop it there. Refract, Reflect and Transmit
-/// set the new direction.
+/// A ray that is not Alive is returned unchanged; a hit with status Missed or NoConvergence
+/// gives that status and leaves the ray unchanged. Otherwise the ray moves to the hit point
+/// (move_to_hit) and then: Absorber interaction -> Absorbed; Diffract, Ordinary, Extraordinary
+/// -> EventImpossible (M4); Refract -> refracted direction or Tir beyond the critical angle;
+/// Reflect -> reflected direction; Transmit -> unchanged direction. A stopped ray stays at the
+/// hit point with last_surface = surface_index. The aperture is not checked here.
 ///
 /// M1 limits: refraction and OPL use Re(n); absorption (kappa) and Fresnel weights follow in M3.
 /// Interactions other than Absorber (Fresnel, coatings, polarizers, retarders, ideal mirror,
 /// AR, beam splitter) do not change the ray before M3; the event kind alone decides between
 /// refraction and reflection. Phase layers are ignored before M4.
 ///
-/// Never throws for physical problems; they are status flags (ADR 0009).
-/// @param ray           incoming ray in global coordinates
-/// @param surface       compiled surface (pose, shape, aperture, interaction)
+/// Never throws; physical problems are status flags (ADR 0009).
+/// @param ray           incoming ray in global coordinates, |dir| = 1
+/// @param surface       compiled surface (pose and interaction are used)
+/// @param hit           result of intersect_surface(ray, surface)
 /// @param surface_index index of `surface` in CompiledSystem::surfaces(), stored in last_surface
 /// @param kind          event at this surface
 /// @param n_before      refractive index (real part) of the medium before the surface
 /// @param n_after       refractive index (real part) of the medium after the surface
 [[nodiscard]] RayState apply_event(const RayState& ray,
                                    const compile::CompiledSurface& surface,
+                                   const SurfaceHit& hit,
                                    std::uint32_t surface_index,
                                    model::EventKind kind,
                                    double n_before,
-                                   double n_after);
+                                   double n_after) noexcept;
+
+/// One sequential step: intersect_surface(), then Vignetted (ray at the hit point) if the hit
+/// lies outside the aperture, otherwise apply_event(). Parameters as for apply_event().
+[[nodiscard]] RayState sequential_step(const RayState& ray,
+                                       const compile::CompiledSurface& surface,
+                                       std::uint32_t surface_index,
+                                       model::EventKind kind,
+                                       double n_before,
+                                       double n_after) noexcept;
 
 }  // namespace rtt::trace

@@ -105,6 +105,13 @@ TEST_CASE("paraboloid mirror focuses axial rays at R/2", "[sequential]") {
   }
   const double rms = std::sqrt(sum_r2 / static_cast<double>(rays.size()));
   REQUIRE(rms < 1e-9);
+  // Equal optical paths to the focus (docs/architecture.md: OPD < 1e-6 waves): from the start
+  // plane z = -150 to the focus every ray travels 250 mm (directrix of the parabola at z = +100,
+  // so 150 + 100 from start plane to directrix equals the path via the mirror to the focus).
+  // 1e-6 waves at 0.5876 um is 5.9e-10 mm.
+  for (std::size_t i = 0; i < rays.size(); ++i) {
+    REQUIRE(std::abs(rays.opl()[i] - 250.0) <= 5e-10);
+  }
 }
 
 TEST_CASE("plane-parallel plate shifts the ray by d sin(theta - theta') / cos(theta')",
@@ -112,7 +119,8 @@ TEST_CASE("plane-parallel plate shifts the ray by d sin(theta - theta') / cos(th
   // Inside the plate the ray travels d / cos(theta') along a direction rotated by
   // theta - theta' against the incident one; the perpendicular offset after the plate is
   // therefore d sin(theta - theta') / cos(theta'), and the exit direction equals the incident
-  // one (Snell: Born & Wolf, Principles of Optics, 7th ed., Sec. 3.2.2). Issue #6: 1e-12 mm.
+  // one (Snell's law, cf. Born & Wolf, Principles of Optics, 7th ed., Sec. 3.2.2, see #19).
+  // Issue #6: 1e-12 mm.
   const double thickness = 5.0;
   const double n = 1.5;
   System s = bare_system();
@@ -132,7 +140,7 @@ TEST_CASE("plane-parallel plate shifts the ray by d sin(theta - theta') / cos(th
     set_ray(rays, i, Vec3(0.0, 1.0, 0.0), Vec3(0.0, std::sin(angles[i]), std::cos(angles[i])));
   }
   const RayBatch before = rays;
-  (void)SequentialTracer().trace(cs, PathId{0}, rays);
+  [[maybe_unused]] const auto stats = SequentialTracer().trace(cs, PathId{0}, rays);
   for (std::size_t i = 0; i < angles.size(); ++i) {
     INFO("theta = " << angles[i] << " rad");
     REQUIRE(rays.status()[i] == RayStatus::Alive);
@@ -224,5 +232,8 @@ TEST_CASE("invalid trace input throws before tracing", "[sequential]") {
   RayBatch rays(1);
   REQUIRE_THROWS_AS(SequentialTracer().trace(cs, PathId{5}, rays), std::out_of_range);
   rays.wl()[0] = 3;  // only one system wavelength
+  REQUIRE_THROWS_AS(SequentialTracer().trace(cs, PathId{0}, rays), std::invalid_argument);
+  rays.wl()[0] = 0;
+  rays.status()[0] = static_cast<RayStatus>(9);  // e.g. garbage from a foreign caller
   REQUIRE_THROWS_AS(SequentialTracer().trace(cs, PathId{0}, rays), std::invalid_argument);
 }

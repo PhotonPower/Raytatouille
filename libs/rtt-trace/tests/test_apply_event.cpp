@@ -16,9 +16,9 @@ using rtt::model::EventKind;
 using rtt::trace::RayState;
 using rtt::trace::RayStatus;
 
-// Law of refraction and reflection in vector form: M. Born, E. Wolf, Principles of Optics,
-// 7th ed., Sec. 3.2.2. Refraction: n2 sin(theta2) = n1 sin(theta1), the refracted direction lies
-// in the plane of incidence. Reflection: r = d - 2 (d . n) n.
+// Laws of refraction and reflection, cf. M. Born, E. Wolf, Principles of Optics, 7th ed.,
+// Sec. 3.2.2 (equation number: see #19). Refraction: n2 sin(theta2) = n1 sin(theta1), the
+// refracted direction lies in the plane of incidence. Reflection: r = d - 2 (d . n) n.
 
 namespace {
 constexpr double kAngleTol = 1e-14;  // rad, issue #6
@@ -57,7 +57,7 @@ TEST_CASE("refraction at a plane follows Snell's law to 1e-14 rad", "[apply_even
         continue;
       }
       const RayState out =
-          rtt::trace::apply_event(ray_at_angle(theta), plane, 3, EventKind::Refract, n1, n2);
+          rtt::trace::sequential_step(ray_at_angle(theta), plane, 3, EventKind::Refract, n1, n2);
       INFO("n1 = " << n1 << ", n2 = " << n2 << ", theta = " << theta_deg << " deg");
       REQUIRE(out.status == RayStatus::Alive);
       REQUIRE(out.last_surface == 3);
@@ -79,7 +79,7 @@ TEST_CASE("refraction is independent of the orientation of the surface normal", 
   const double theta = 0.3;
   in.dir = Vec3(std::sin(theta), 0.0, -std::cos(theta));
   in.pos = -5.0 / std::cos(theta) * in.dir;  // starts at z = +5 mm
-  const RayState out = rtt::trace::apply_event(in, plane, 0, EventKind::Refract, 1.0, 1.5);
+  const RayState out = rtt::trace::sequential_step(in, plane, 0, EventKind::Refract, 1.0, 1.5);
   REQUIRE(out.status == RayStatus::Alive);
   REQUIRE(out.dir.z() < 0.0);
   REQUIRE(std::abs(angle_to_axis(out.dir) - std::asin(std::sin(theta) / 1.5)) <= kAngleTol);
@@ -89,11 +89,11 @@ TEST_CASE("total internal reflection just above the critical angle", "[apply_eve
   // Critical angle arcsin(n2 / n1) from glass n1 = 1.5 into air n2 = 1.
   const CompiledSurface plane = plane_surface();
   const double critical = std::asin(1.0 / 1.5);
-  const RayState below = rtt::trace::apply_event(ray_at_angle(critical - 1e-9), plane, 1,
-                                                 EventKind::Refract, 1.5, 1.0);
+  const RayState below = rtt::trace::sequential_step(ray_at_angle(critical - 1e-9), plane, 1,
+                                                     EventKind::Refract, 1.5, 1.0);
   REQUIRE(below.status == RayStatus::Alive);
-  const RayState above = rtt::trace::apply_event(ray_at_angle(critical + 1e-9), plane, 1,
-                                                 EventKind::Refract, 1.5, 1.0);
+  const RayState above = rtt::trace::sequential_step(ray_at_angle(critical + 1e-9), plane, 1,
+                                                     EventKind::Refract, 1.5, 1.0);
   REQUIRE(above.status == RayStatus::Tir);
   // The ray stops at the hit point and remembers the surface.
   REQUIRE(near(above.pos, Vec3::Zero(), 1e-12));
@@ -104,7 +104,7 @@ TEST_CASE("reflection mirrors the direction about the normal", "[apply_event]") 
   const CompiledSurface plane = plane_surface();
   const double theta = 0.4;
   const RayState out =
-      rtt::trace::apply_event(ray_at_angle(theta), plane, 0, EventKind::Reflect, 1.0, 1.0);
+      rtt::trace::sequential_step(ray_at_angle(theta), plane, 0, EventKind::Reflect, 1.0, 1.0);
   REQUIRE(out.status == RayStatus::Alive);
   REQUIRE(near(out.dir, Vec3(0.0, std::sin(theta), -std::cos(theta)), 1e-15));
 }
@@ -112,7 +112,7 @@ TEST_CASE("reflection mirrors the direction about the normal", "[apply_event]") 
 TEST_CASE("transmit keeps the direction", "[apply_event]") {
   const CompiledSurface plane = plane_surface();
   const RayState in = ray_at_angle(0.2);
-  const RayState out = rtt::trace::apply_event(in, plane, 0, EventKind::Transmit, 1.0, 1.0);
+  const RayState out = rtt::trace::sequential_step(in, plane, 0, EventKind::Transmit, 1.0, 1.0);
   REQUIRE(out.status == RayStatus::Alive);
   REQUIRE(out.dir == in.dir);
 }
@@ -122,18 +122,18 @@ TEST_CASE("optical path length accumulates n_before times the geometric path", "
   RayState in = ray_at_angle(0.25);
   in.opl = 2.0;
   const double distance = (Vec3::Zero() - in.pos).norm();
-  const RayState out = rtt::trace::apply_event(in, plane, 0, EventKind::Refract, 1.333, 1.5);
+  const RayState out = rtt::trace::sequential_step(in, plane, 0, EventKind::Refract, 1.333, 1.5);
   REQUIRE(std::abs(out.opl - (2.0 + 1.333 * distance)) <= 1e-12);
 }
 
 TEST_CASE("surface pose: intersection in local coordinates, result in global", "[apply_event]") {
-  // Plane tilted by 45 deg about x at z = 20 mm; axial ray reflects into -y.
+  // Plane tilted by 45 deg about x at z = 20 mm; axial ray reflects into +y.
   CompiledSurface tilted = plane_surface();
   tilted.to_global = Isometry3::from_pose(Vec3(0.0, 0.0, 20.0), Vec3(45.0, 0.0, 0.0), Vec3::Zero());
   tilted.to_local = tilted.to_global.inverse();
   RayState in;
   in.pos = Vec3(0.0, 0.0, -5.0);
-  const RayState out = rtt::trace::apply_event(in, tilted, 7, EventKind::Reflect, 1.0, 1.0);
+  const RayState out = rtt::trace::sequential_step(in, tilted, 7, EventKind::Reflect, 1.0, 1.0);
   REQUIRE(out.status == RayStatus::Alive);
   REQUIRE(near(out.pos, Vec3(0.0, 0.0, 20.0), 1e-12));
   // Rx(45 deg) turns the local normal +z into n = (0, -sin 45, cos 45). For d = (0, 0, 1):
@@ -151,7 +151,7 @@ TEST_CASE("sphere and even asphere surfaces are intersected", "[apply_event]") {
     s.shape = shape;
     RayState in;
     in.pos = Vec3(0.0, 0.0, -3.0);
-    const RayState out = rtt::trace::apply_event(in, s, 0, EventKind::Refract, 1.0, 1.5);
+    const RayState out = rtt::trace::sequential_step(in, s, 0, EventKind::Refract, 1.0, 1.5);
     REQUIRE(out.status == RayStatus::Alive);
     REQUIRE(near(out.pos, Vec3::Zero(), 1e-12));
     REQUIRE(near(out.dir, Vec3::UnitZ(), 1e-15));
@@ -162,7 +162,7 @@ TEST_CASE("sphere and even asphere surfaces are intersected", "[apply_event]") {
   s.shape = asphere;
   RayState in;
   in.pos = Vec3(3.0, -4.0, -3.0);
-  const RayState out = rtt::trace::apply_event(in, s, 0, EventKind::Refract, 1.0, 1.5);
+  const RayState out = rtt::trace::sequential_step(in, s, 0, EventKind::Refract, 1.0, 1.5);
   REQUIRE(out.status == RayStatus::Alive);
   REQUIRE(std::abs(out.pos.z() - asphere.sag(3.0, -4.0)) <= 1e-12);
 }
@@ -174,7 +174,7 @@ TEST_CASE("intersection failures become Missed and keep the ray unchanged", "[ap
   in.pos = Vec3(0.0, 60.0, -5.0);
   in.opl = 1.0;
   in.last_surface = 2;
-  const RayState out = rtt::trace::apply_event(in, sphere, 4, EventKind::Refract, 1.0, 1.5);
+  const RayState out = rtt::trace::sequential_step(in, sphere, 4, EventKind::Refract, 1.0, 1.5);
   REQUIRE(out.status == RayStatus::Missed);
   REQUIRE(out.pos == in.pos);
   REQUIRE(out.dir == in.dir);
@@ -189,7 +189,7 @@ TEST_CASE("apertures vignette in local coordinates", "[apply_event]") {
     s.aperture = aperture;
     RayState in;
     in.pos = Vec3(x, y, -1.0);
-    const RayState out = rtt::trace::apply_event(in, s, 5, EventKind::Transmit, 1.0, 1.0);
+    const RayState out = rtt::trace::sequential_step(in, s, 5, EventKind::Transmit, 1.0, 1.0);
     if (out.status == RayStatus::Vignetted) {
       // Stops at the hit point on the vignetting surface.
       REQUIRE(out.pos == Vec3(x, y, 0.0));
@@ -215,7 +215,7 @@ TEST_CASE("events of later milestones are EventImpossible", "[apply_event]") {
   const CompiledSurface plane = plane_surface();
   for (const EventKind kind :
        {EventKind::Diffract, EventKind::Ordinary, EventKind::Extraordinary}) {
-    const RayState out = rtt::trace::apply_event(ray_at_angle(0.1), plane, 2, kind, 1.0, 1.5);
+    const RayState out = rtt::trace::sequential_step(ray_at_angle(0.1), plane, 2, kind, 1.0, 1.5);
     REQUIRE(out.status == RayStatus::EventImpossible);
     REQUIRE(near(out.pos, Vec3::Zero(), 1e-12));
     REQUIRE(out.last_surface == 2);
@@ -226,7 +226,7 @@ TEST_CASE("absorber stops the ray with status Absorbed", "[apply_event]") {
   CompiledSurface s = plane_surface();
   s.interaction = rtt::model::Absorber{};
   const RayState out =
-      rtt::trace::apply_event(ray_at_angle(0.1), s, 6, EventKind::Transmit, 1.0, 1.0);
+      rtt::trace::sequential_step(ray_at_angle(0.1), s, 6, EventKind::Transmit, 1.0, 1.0);
   REQUIRE(out.status == RayStatus::Absorbed);
   REQUIRE(near(out.pos, Vec3::Zero(), 1e-12));
   REQUIRE(out.last_surface == 6);
@@ -236,8 +236,43 @@ TEST_CASE("rays that are not alive are left untouched", "[apply_event]") {
   const CompiledSurface plane = plane_surface();
   RayState in = ray_at_angle(0.1);
   in.status = RayStatus::Vignetted;
-  const RayState out = rtt::trace::apply_event(in, plane, 2, EventKind::Refract, 1.0, 1.5);
+  const RayState out = rtt::trace::sequential_step(in, plane, 2, EventKind::Refract, 1.0, 1.5);
   REQUIRE(out.status == RayStatus::Vignetted);
   REQUIRE(out.pos == in.pos);
   REQUIRE(out.dir == in.dir);
+}
+
+TEST_CASE("Newton failure on an even asphere becomes NoConvergence", "[apply_event]") {
+  // Spherical base R = 50 bounds the asphere at r = 50 mm; the strong negative A4 term moves the
+  // surface far below the base sphere, so the Newton step of an oblique ray leaves the domain.
+  CompiledSurface s;
+  s.shape = rtt::geom::EvenAsphere<double>(0.02, 0.0, {-1e-4});
+  RayState in;
+  in.pos = Vec3(40.0, 0.0, -5.0);
+  in.dir = Vec3(0.3, 0.0, 1.0).normalized();
+  in.opl = 1.5;
+  const RayState out = rtt::trace::sequential_step(in, s, 3, EventKind::Refract, 1.0, 1.5);
+  REQUIRE(out.status == RayStatus::NoConvergence);
+  REQUIRE(out.pos == in.pos);
+  REQUIRE(out.dir == in.dir);
+  REQUIRE(out.opl == in.opl);
+  REQUIRE(out.last_surface == rtt::trace::kNoSurface);
+}
+
+TEST_CASE("apply_event does not check the aperture (reuse in non-sequential tracing)",
+          "[apply_event]") {
+  // The aperture decision belongs to the caller: sequential tracing vignettes, non-sequential
+  // tracing (M9) will treat the hit as "surface not there".
+  CompiledSurface s = plane_surface();
+  s.aperture = rtt::model::CircularAperture{1.0, 0.0};
+  RayState in;
+  in.pos = Vec3(0.0, 5.0, -1.0);
+  const auto hit = rtt::trace::intersect_surface(in, s);
+  REQUIRE(hit.status == rtt::geom::HitStatus::Hit);
+  REQUIRE_FALSE(rtt::trace::inside_aperture(s, hit));
+  const RayState out = rtt::trace::apply_event(in, s, hit, 0, EventKind::Transmit, 1.0, 1.0);
+  REQUIRE(out.status == RayStatus::Alive);
+  REQUIRE(near(out.pos, Vec3(0.0, 5.0, 0.0), 1e-15));
+  REQUIRE(rtt::trace::sequential_step(in, s, 0, EventKind::Transmit, 1.0, 1.0).status ==
+          RayStatus::Vignetted);
 }
