@@ -34,6 +34,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   Templates über `Real`; Quellen NIST (Gl. A21–A41) und SCHOTT TIE-19 in `docs/quellen.md` (#25).
 - `rtt-trace`: `aim_ray` für Feldwerte außerhalb der Feldliste des Modells (für Feldverläufe,
   #31).
+- `rtt-analysis`: Verzeichnung (real gegen paraxial in der Ebene des Bildflächenscheitels),
+  sagittale und tangentiale Bildfeldwölbung (Nachbarstrahlen, O(δ²)), Farblängsfehler paraxial
+  und real für ein Wellenlängenpaar, Farbquerfehler als Hauptstrahl je Wellenlänge; Feldverläufe
+  über das relative Feld (#31).
 
 ### Geändert
 - `cmake`: `rtt_add_test` setzt unter MinGW den `PATH` für Testerkennung und Testläufe auf das
