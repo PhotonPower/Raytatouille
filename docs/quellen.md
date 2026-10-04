@@ -66,3 +66,4 @@ Wer an diesen Themen arbeitet, sucht zuerst eine Quelle nach dem Verfahren oben.
 | Transfermatrix-Methode für Schichtsysteme | M3 |
 | 3D-Polarisations-Raytracing-Matrix | M3 |
 | Skalierung der sphärischen Längsaberration mit NA² (dritte Ordnung); im Test von #8 nur als Exponent geprüft, Sollwert ist der paraxiale Fokus aus #7 | M1 (#8) |
+| Skalierung der transversalen sphärischen Aberration mit p_y³ (dritte Ordnung, Bildfläche im paraxialen Fokus); im Test von #28 nur als Exponent geprüft | M2 (#28) |
