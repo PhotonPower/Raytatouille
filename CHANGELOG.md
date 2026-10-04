@@ -18,6 +18,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   Retardance (AR, Strahlteiler, Spiegel r_s = −1, r_p = +1) und tabellierte Coatings (bilinear über
   Winkel und Wellenlänge). Konvention „Polarisation und Fresnel“ aus #56, Quelle Byrnes ergänzt
   in `docs/quellen.md` (#58).
+- `rtt-polar`: 3D-Polarisations-Raytracing-Matrix P = O_out·diag(a_s, a_p, 1)·O_inᵀ (`prt_basis`,
+  `prt_matrix`) mit deterministischer s-Richtung bei senkrechtem Einfall, geometrische Transformation
+  Q (`geometric_transform`), Diattenuation aus den Singulärwerten des Transversalanteils und
+  Retardance über die Polarzerlegung, gesamt und physikalisch (Q⁻¹P); Golden-Test nach Lam
+  (drei Prismen); Quelle Lam, Dissertation Arizona (#57).
 
 ## [0.3.0] – M2 Materialien, Analyse
 
