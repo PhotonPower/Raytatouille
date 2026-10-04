@@ -321,11 +321,13 @@ TEST_CASE("golden: three prisms of Lam, Fig. 4.9 and Table 4.3", "[prt]") {
   // included): entries of Q within 0.076 + 5e-4, rotation within 0.076 rad, retardance within
   // 0.152 rad = 8.7 deg. Fresnel amplitudes: relative change <= sum g_j (delta_(j-1) + dN) =
   // 0.013 with g = max |dt/dtheta| / t (1.63 at most), plus basis mixing <= ||dQ||: within
-  // 0.845 * (0.013 + 0.076) = 0.075. These bounds are loose; the sign of the rotation (Q(0,1) =
-  // -0.092, a sign error would be off by 0.18) and the fast axis of Q are checked sharply.
-  // Lam, Table 4.3: the eigenvalues of Q are e^(-0.092 i) with eigenvector (1, i)/sqrt(2) (fast)
-  // and e^(+0.092 i); after the alignment Q is a rotation about z, whose eigenvectors are exactly
-  // (1, +-i)/sqrt(2) whatever the rounding of the normals: fast axis checked to 1e-12.
+  // 0.845 * (0.013 + 0.076) = 0.075. These bounds are loose, so this golden test is qualitative
+  // (fast axis, sign of the rotation) and only roughly quantitative; the retardance is secured
+  // quantitatively by the property tests and the consistency with #56. The sign of the rotation
+  // (Q(0,1) = -0.092, a sign error would be off by 0.18) and the fast axis of Q are checked
+  // sharply. Lam, Table 4.3: the eigenvalues of Q are e^(-0.092 i) with eigenvector (1, i)/sqrt(2)
+  // (fast) and e^(+0.092 i); after the alignment Q is a rotation about z, whose eigenvectors are
+  // exactly (1, +-i)/sqrt(2) whatever the rounding of the normals: fast axis checked to 1e-12.
   const std::array<Vec3, 6> normals{Vec3(0.0, -0.423, 0.906),   Vec3(0.0, 0.423, 0.906),
                                     Vec3(0.366, 0.211, 0.906),  Vec3(-0.366, -0.211, 0.906),
                                     Vec3(-0.380, 0.198, 0.903), Vec3(0.378, -0.201, 0.903)};
