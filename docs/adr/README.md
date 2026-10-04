@@ -18,6 +18,7 @@ Neue Entscheidungen bekommen die nächste Nummer. Bestehende ADRs werden nicht u
 | [0012](0012.md) | GUI in Python | angenommen |
 | [0013](0013.md) | Keine GPU in v1 | angenommen |
 | [0014](0014.md) | Laufzeit-Interface für Materialien in double | angenommen |
+| [0015](0015.md) | Real umfasst nur double | angenommen |
 
 ## Vorlage
 

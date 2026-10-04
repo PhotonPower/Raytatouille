@@ -277,11 +277,3 @@ TEST_CASE("shapes are usable through the Shape interface", "[shape]") {
   const rtt::geom::Shape<double>& shape = sphere;
   REQUIRE(near(shape.sag(0.0, 10.0), 50.0 - std::sqrt(2400.0)));
 }
-
-TEST_CASE("intersection works for float", "[intersect]") {
-  const auto hit =
-      rtt::geom::intersect(Conic<float>(0.02F, 0.0F), rtt::math::Vec3T<float>(0, 0, -3),
-                           rtt::math::Vec3T<float>(0, 0, 1));
-  REQUIRE(hit.status == HitStatus::Hit);
-  REQUIRE(std::abs(hit.t - 3.0F) <= 1e-6F);
-}
