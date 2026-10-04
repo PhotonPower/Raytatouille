@@ -46,19 +46,19 @@ struct Layer {
 /// reflected / incident and transmitted / incident field amplitude.
 template <math::Real T>
 struct Amplitudes {
-  std::complex<T> rs{0};
-  std::complex<T> rp{0};
-  std::complex<T> ts{0};
-  std::complex<T> tp{0};
+  std::complex<T> rs{0};  ///< reflected / incident amplitude, s
+  std::complex<T> rp{0};  ///< reflected / incident amplitude, p (Convention A)
+  std::complex<T> ts{0};  ///< transmitted / incident amplitude, s
+  std::complex<T> tp{0};  ///< transmitted / incident amplitude, p (Convention A)
 };
 
 /// Reflected and transmitted power as fractions of the incident power (Eq. (21)-(23)).
 template <math::Real T>
 struct Powers {
-  T reflectance_s{0};
-  T reflectance_p{0};
-  T transmittance_s{0};
-  T transmittance_p{0};
+  T reflectance_s{0};    ///< R_s = |r_s|^2, dimensionless
+  T reflectance_p{0};    ///< R_p = |r_p|^2, dimensionless
+  T transmittance_s{0};  ///< T_s by Eq. (21), dimensionless
+  T transmittance_p{0};  ///< T_p by Eq. (22), dimensionless
   /// A = 1 - R - T for s. Absorption in the stack only if the incident medium does not absorb
   /// (App. B: with an absorbing incident medium R + T + A = 1 does not describe absorption).
   [[nodiscard]] T absorptance_s() const noexcept { return T(1) - reflectance_s - transmittance_s; }
@@ -91,17 +91,22 @@ template <math::Real T>
 /// cos(theta_j) = q_j / n_j (q from normal_component()):
 /// r_s = (n1 cos1 - n2 cos2) / (n1 cos1 + n2 cos2), r_p = (n2 cos1 - n1 cos2) / (n2 cos1 + n1
 /// cos2), t_s = 2 n1 cos1 / (n1 cos1 + n2 cos2),           t_p = 2 n1 cos1 / (n2 cos1 + n1 cos2).
+/// @param n1 complex index of the medium the light comes from
+/// @param n2 complex index of the medium behind the interface
+/// @param xi tangential invariant n sin(theta), real
 /// @pre n1, n2 != 0; the denominators are not 0 (not at grazing incidence)
 template <math::Real T>
 [[nodiscard]] Amplitudes<T> interface_amplitudes(std::complex<T> n1,
                                                  std::complex<T> n2,
                                                  T xi) noexcept {
+  assert(n1 != T(0) && n2 != T(0));
   const std::complex<T> q1 = normal_component(n1, xi);
   const std::complex<T> q2 = normal_component(n2, xi);
   const std::complex<T> cos1 = q1 / n1;
   const std::complex<T> cos2 = q2 / n2;
   const std::complex<T> ds = n1 * cos1 + n2 * cos2;
   const std::complex<T> dp = n2 * cos1 + n1 * cos2;
+  assert(ds != T(0) && dp != T(0));
   return {(n1 * cos1 - n2 * cos2) / ds, (n2 * cos1 - n1 * cos2) / dp, T(2) * n1 * cos1 / ds,
           T(2) * n1 * cos1 / dp};
 }
@@ -128,7 +133,8 @@ template <math::Real T>
 }  // namespace detail
 
 /// Amplitudes r_s, r_p, t_s, t_p of a stack (Eq. (8), (11), (13), (15)):
-/// delta_n = 2 pi q_n d_n / lambda (q = n cos theta), M_n = diag(e^{-i delta_n}, e^{i delta_n})
+/// delta_n = d_n k_z with k_z = 2 pi n cos(theta) / lambda (Eq. (8) with (2)), i.e.
+/// delta_n = 2 pi q_n d_n / lambda, M_n = diag(e^{-i delta_n}, e^{i delta_n})
 /// (1/t_{n,n+1}) [[1, r_{n,n+1}], [r_{n,n+1}, 1]], M~ = (1/t_01) [[1, r_01], [r_01, 1]]
 /// M_1 ... M_{N-2}, t = 1 / M~_00, r = M~_10 / M~_00, separately for s and p with the interface
 /// amplitudes of Eq. (6). Without layers the result is interface_amplitudes(n_in, n_out, xi).
@@ -159,8 +165,9 @@ template <math::Real T>
   for (std::size_t j = 0; j < layers.size(); ++j) {
     assert(layers[j].thickness_um >= T(0));
     const std::complex<T> q = normal_component(layers[j].index, xi);
-    const std::complex<T> delta =
-        T(2) * std::numbers::pi_v<T> * q * layers[j].thickness_um / wavelength_um;  // Eq. (8)
+    assert(q != T(0));             // the next interface would divide by t = 0
+    const std::complex<T> delta =  // Eq. (8) with k_z from Eq. (2)
+        T(2) * std::numbers::pi_v<T> * q * layers[j].thickness_um / wavelength_um;
     const std::complex<T> forward = exp(-i * delta);
     const std::complex<T> backward = exp(i * delta);
     const detail::Matrix2<T> phase{forward, std::complex<T>(0), std::complex<T>(0), backward};
@@ -186,6 +193,7 @@ template <math::Real T>
   using std::norm;
   const std::complex<T> q_in = normal_component(n_in, xi);
   const std::complex<T> q_out = normal_component(n_out, xi);
+  assert(q_in.real() != T(0));
   const std::complex<T> cos_in = q_in / n_in;
   const std::complex<T> cos_out = q_out / n_out;
   return {norm(a.rs), norm(a.rp), norm(a.ts) * q_out.real() / q_in.real(),
@@ -194,9 +202,11 @@ template <math::Real T>
 
 /// Validates the inputs of stack_amplitudes() at the API boundary.
 /// @throws std::invalid_argument if the wavelength is not finite and > 0, a thickness is not
-///         finite and >= 0, an index is not finite or 0, an index has kappa < 0 (gain), xi is
-///         not finite or < 0, or xi >= n_in for a non-absorbing incident medium (grazing or
-///         beyond)
+///         finite and >= 0, an index is not finite, has Re n <= 0 (negative-index media are not
+///         supported, Byrnes App. D.5) or kappa < 0 (gain, App. C), xi is not finite or < 0,
+///         xi >= n_in for a non-absorbing incident medium (grazing or beyond), or a
+///         non-absorbing layer has n = xi exactly (q = 0: the interface formulation divides by
+///         t = 0); values close to that last case are allowed but ill-conditioned
 void check_stack(std::complex<double> n_in,
                  std::span<const Layer<double>> layers,
                  std::complex<double> n_out,

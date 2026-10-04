@@ -11,8 +11,10 @@
 
 namespace rtt::coating {
 
-/// Tabulated coating for fixed incident and exit media. Amplitudes as in transfer_matrix.hpp
-/// (basis [s, p, k] of rtt-polar, Convention A).
+/// Tabulated coating for fixed incident and exit media and one direction of incidence (one
+/// side of the surface). Amplitudes as in transfer_matrix.hpp (basis [s, p, k] of rtt-polar,
+/// Convention A). The angle is the angle of incidence theta in the NON-absorbing incident
+/// medium (xi = n_in sin(theta)).
 ///
 /// The angle grid covers the whole range [0, pi/2] (checked at construction), so every ray finds
 /// a value; the wavelength range is checked against the system wavelengths when the system is

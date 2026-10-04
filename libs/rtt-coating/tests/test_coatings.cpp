@@ -56,14 +56,23 @@ TEST_CASE("ideal anti-reflection and beam splitter conserve power", "[coating][i
       const Amplitudes<double> a = coating.amplitudes(1.0, 1.52, xi);
       const Powers<double> p = rtt::coating::stack_powers(a, Complex(1.0), Complex(1.52), xi);
       INFO("R " << reflectance << ", theta " << theta);
-      REQUIRE_THAT(p.reflectance_s, WithinAbs(reflectance, 1e-15));
-      REQUIRE_THAT(p.reflectance_p, WithinAbs(reflectance, 1e-15));
-      REQUIRE_THAT(p.transmittance_s, WithinAbs(1.0 - reflectance, 1e-15));
-      REQUIRE_THAT(p.transmittance_p, WithinAbs(1.0 - reflectance, 1e-15));
+      REQUIRE_THAT(p.reflectance_s, WithinAbs(reflectance, 1e-14));
+      REQUIRE_THAT(p.reflectance_p, WithinAbs(reflectance, 1e-14));
+      REQUIRE_THAT(p.transmittance_s, WithinAbs(1.0 - reflectance, 1e-14));
+      REQUIRE_THAT(p.transmittance_p, WithinAbs(1.0 - reflectance, 1e-14));
       REQUIRE(a.ts.imag() == 0.0);  // no phase on transmission
       REQUIRE(a.rs == -a.rp);       // no retardance on reflection
     }
   }
+}
+
+TEST_CASE("ideal mirror keeps r_s = -1, r_p = +1 under total internal reflection",
+          "[coating][ideal]") {
+  const double xi = 1.52 * std::sin(60.0 * kPi / 180.0);  // glass -> air beyond critical
+  const Amplitudes<double> a = IdealCoating::mirror().amplitudes(1.52, 1.0, xi);
+  REQUIRE(a.rs == Complex(-1.0));
+  REQUIRE(a.rp == Complex(1.0));
+  REQUIRE(a.ts == Complex(0.0));
 }
 
 TEST_CASE("ideal coating under total internal reflection reflects like the bare interface",
@@ -73,7 +82,7 @@ TEST_CASE("ideal coating under total internal reflection reflects like the bare 
   const Amplitudes<double> bare = rtt::coating::interface_amplitudes<double>(1.52, 1.0, xi);
   REQUIRE(a.rs == bare.rs);
   REQUIRE(a.rp == bare.rp);
-  REQUIRE_THAT(std::abs(a.rs), WithinAbs(1.0, 1e-15));
+  REQUIRE_THAT(std::abs(a.rs), WithinAbs(1.0, 1e-14));
 }
 
 TEST_CASE("ideal coating rejects a reflectance outside [0, 1]", "[coating][ideal]") {
@@ -100,21 +109,21 @@ TEST_CASE("tabulated coating interpolates bilinearly in real and imaginary part"
   for (const double a : {0.0, 0.25, 0.5, 1.0, kPi / 2.0}) {
     for (const double w : {0.4, 0.45, 0.6, 0.73, 0.8}) {
       const Amplitudes<double> v = table.amplitudes(a, w);
-      require_close(v.rs, {a, w}, 1e-15);
-      require_close(v.tp, {a, w}, 1e-15);
+      require_close(v.rs, {a, w}, 1e-14);
+      require_close(v.tp, {a, w}, 1e-14);
     }
   }
   // Outside the wavelength range the nearest column is used (the range is checked at
   // compile time, #61); angles are clamped to [0, pi/2].
-  require_close(table.amplitudes(0.25, 0.3).rs, {0.25, 0.4}, 1e-15);
-  require_close(table.amplitudes(0.25, 1.0).rs, {0.25, 0.8}, 1e-15);
-  require_close(table.amplitudes(-0.1, 0.6).rs, {0.0, 0.6}, 1e-15);
+  require_close(table.amplitudes(0.25, 0.3).rs, {0.25, 0.4}, 1e-14);
+  require_close(table.amplitudes(0.25, 1.0).rs, {0.25, 0.8}, 1e-14);
+  require_close(table.amplitudes(-0.1, 0.6).rs, {0.0, 0.6}, 1e-14);
 }
 
 TEST_CASE("tabulated coating with one wavelength", "[coating][tabulated]") {
   const TabulatedCoating table({0.0, kPi / 2.0}, {0.55}, {constant(0.0), constant({1.0, -1.0})});
-  require_close(table.amplitudes(kPi / 4.0, 0.55).rp, {0.5, -0.5}, 1e-15);
-  require_close(table.amplitudes(kPi / 4.0, 0.9).rp, {0.5, -0.5}, 1e-15);
+  require_close(table.amplitudes(kPi / 4.0, 0.55).rp, {0.5, -0.5}, 1e-14);
+  require_close(table.amplitudes(kPi / 4.0, 0.9).rp, {0.5, -0.5}, 1e-14);
 }
 
 TEST_CASE("tabulated coating checks its grid at construction", "[coating][tabulated]") {

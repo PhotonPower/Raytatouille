@@ -27,7 +27,7 @@ using Thickness = std::variant<PhysicalThickness, QuarterWaves>;
 
 /// Physical thickness of `count` quarter waves: d = count lambda0 / (4 n) (optical thickness
 /// n d = count lambda0 / 4 at normal incidence; then delta = 2 pi n d / lambda0 = count pi / 2,
-/// Byrnes Eq. (8)).
+/// Byrnes Eq. (8) with (2)).
 /// @param count         number of quarter waves, dimensionless
 /// @param wavelength_um design vacuum wavelength lambda0, um
 /// @param index         real part of the layer index at lambda0

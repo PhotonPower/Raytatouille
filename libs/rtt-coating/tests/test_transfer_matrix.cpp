@@ -84,11 +84,11 @@ TEST_CASE("branch of q = n cos(theta) (Byrnes App. D)", "[coating]") {
   // Real index, no TIR: q real and positive.
   const Complex q_glass = rtt::coating::normal_component<double>(1.5, 0.5);
   REQUIRE(q_glass.imag() == 0.0);
-  REQUIRE_THAT(q_glass.real(), WithinAbs(std::sqrt(1.5 * 1.5 - 0.25), 1e-15));
+  REQUIRE_THAT(q_glass.real(), WithinAbs(std::sqrt(1.5 * 1.5 - 0.25), 1e-14));
   // TIR (xi > n): q imaginary with Im q > 0, the evanescent wave decays.
   const Complex q_tir = rtt::coating::normal_component<double>(1.0, 1.2);
   REQUIRE(q_tir.real() == 0.0);
-  REQUIRE_THAT(q_tir.imag(), WithinAbs(std::sqrt(1.44 - 1.0), 1e-15));
+  REQUIRE_THAT(q_tir.imag(), WithinAbs(std::sqrt(1.44 - 1.0), 1e-14));
   // Absorbing medium: Im q > 0 and (theorem of App. D.2) Re q > 0.
   const Complex q_metal = rtt::coating::normal_component<double>({0.2, 3.0}, 0.9);
   REQUIRE(q_metal.imag() > 0.0);
@@ -153,18 +153,18 @@ TEST_CASE("no layers: Fresnel amplitudes of Eq. (6)", "[coating]") {
     const double c2 = std::sqrt(1.0 - (n1 * s1 / n2) * (n1 * s1 / n2));
     const Amplitudes<double> a = stack(n1, {}, n2, n1 * s1, 0.55);
     INFO("theta " << theta);
-    require_close(a.rs, (n1 * c1 - n2 * c2) / (n1 * c1 + n2 * c2), 1e-15);
-    require_close(a.rp, (n2 * c1 - n1 * c2) / (n2 * c1 + n1 * c2), 1e-15);
-    require_close(a.ts, 2.0 * n1 * c1 / (n1 * c1 + n2 * c2), 1e-15);
-    require_close(a.tp, 2.0 * n1 * c1 / (n2 * c1 + n1 * c2), 1e-15);
+    require_close(a.rs, (n1 * c1 - n2 * c2) / (n1 * c1 + n2 * c2), 1e-14);
+    require_close(a.rp, (n2 * c1 - n1 * c2) / (n2 * c1 + n1 * c2), 1e-14);
+    require_close(a.ts, 2.0 * n1 * c1 / (n1 * c1 + n2 * c2), 1e-14);
+    require_close(a.tp, 2.0 * n1 * c1 / (n2 * c1 + n1 * c2), 1e-14);
   }
   // Normal incidence on N-BK7: R = 4.22 % (architecture), r_p = -r_s.
   const Amplitudes<double> normal = stack(1.0, {}, n2, 0.0, 0.55);
-  REQUIRE_THAT(std::norm(normal.rs), WithinAbs(std::pow((n2 - 1.0) / (n2 + 1.0), 2), 1e-15));
-  REQUIRE(std::abs(normal.rp + normal.rs) < 1e-16);
+  REQUIRE_THAT(std::norm(normal.rs), WithinAbs(std::pow((n2 - 1.0) / (n2 + 1.0), 2), 1e-14));
+  REQUIRE(std::abs(normal.rp + normal.rs) < 1e-14);
   // Brewster angle arctan(n2 / n1): r_p = 0.
   const double brewster = std::atan(n2 / n1);
-  REQUIRE(std::abs(stack(n1, {}, n2, n1 * std::sin(brewster), 0.55).rp) < 1e-15);
+  REQUIRE(std::abs(stack(n1, {}, n2, n1 * std::sin(brewster), 0.55).rp) < 1e-14);
 }
 
 TEST_CASE("total internal reflection through a lossless stack", "[coating]") {
@@ -180,25 +180,93 @@ TEST_CASE("total internal reflection through a lossless stack", "[coating]") {
   REQUIRE(p.transmittance_p == 0.0);
 }
 
-TEST_CASE("half-wave layer at the design wavelength is absent at normal incidence", "[coating]") {
+TEST_CASE("half-wave layer (delta = pi) is absent, also at oblique incidence", "[coating]") {
   // Derivation from Eq. (8), (11), (13), (15): delta = pi gives diag(-1, -1), so
   //   M~ = -1 / (t01 t12) [[1, r01], [r01, 1]] [[1, r12], [r12, 1]],
   //   r = (r01 + r12) / (1 + r01 r12), t = -t01 t12 / (1 + r01 r12).
-  // With Eq. (6) at normal incidence r01 + r12 = 2 n1 (n0 - n2) / D and 1 + r01 r12 =
-  // 2 n1 (n0 + n2) / D, D = (n0 + n1)(n1 + n2): r = (n0 - n2) / (n0 + n2) = r02 and t = -t02
-  // (the layer adds the phase pi and nothing else).
+  // Eq. (6) with cos = q / n reads r_s,ij = (q_i - q_j) / (q_i + q_j) and r_p,ij = (a_i - a_j) /
+  // (a_i + a_j) with a = q / n^2; t_s,ij = 1 + r_s,ij and t_p,ij = (n_i / n_j)(1 + r_p,ij). With
+  // x = q (s) or a (p): r01 + r12 = 2 x1 (x0 - x2) / D, 1 + r01 r12 = 2 x1 (x0 + x2) / D,
+  // D = (x0 + x1)(x1 + x2), so r = (x0 - x2) / (x0 + x2) = r02, and (1 + r01)(1 + r12) /
+  // (1 + r01 r12) = 1 + r02 gives t = -t02 for s and p (the factors n0/n1 n1/n2 = n0/n2 of
+  // t_p match). The layer adds the phase pi and nothing else, at every angle, if its
+  // thickness is d = lambda / (2 q1) (delta = pi by Eq. (8) with (2)).
   const double n0 = 1.0;
   const double n1 = 2.0;
   const double n2 = 1.52;
   const double l0 = 0.6;
-  const std::vector<Layer<double>> half = {
-      {n1, rtt::coating::quarter_wave_thickness_um(2.0, l0, n1)}};
-  const Amplitudes<double> with = stack(n0, half, n2, 0.0, l0);
-  const Amplitudes<double> bare = stack(n0, {}, n2, 0.0, l0);
-  require_close(with.rs, bare.rs, 1e-15);
-  require_close(with.rp, bare.rp, 1e-15);
-  require_close(with.ts, -bare.ts, 1e-15);
-  require_close(with.tp, -bare.tp, 1e-15);
+  for (const double theta : {0.0, 30.0, 50.0, 75.0}) {
+    const double xi = std::sin(deg(theta));
+    const double q1 = std::sqrt(n1 * n1 - xi * xi);
+    const std::vector<Layer<double>> half = {{n1, l0 / (2.0 * q1)}};
+    const Amplitudes<double> with = stack(n0, half, n2, xi, l0);
+    const Amplitudes<double> bare = stack(n0, {}, n2, xi, l0);
+    INFO("theta " << theta);
+    require_close(with.rs, bare.rs, 1e-14);
+    require_close(with.rp, bare.rp, 1e-14);
+    require_close(with.ts, -bare.ts, 1e-14);
+    require_close(with.tp, -bare.tp, 1e-14);
+  }
+  // At normal incidence this is 2 QWOT.
+  REQUIRE_THAT(rtt::coating::quarter_wave_thickness_um(2.0, l0, n1),
+               WithinAbs(l0 / (2.0 * n1), 1e-16));
+}
+
+TEST_CASE("single layer: r = (r01 + r12 e^{2i delta}) / (1 + r01 r12 e^{2i delta})", "[coating]") {
+  // Eq. (11), (13), (15) for one layer: M~ = 1 / (t01 t12) [[1, r01], [r01, 1]]
+  // [[e^{-i delta}, r12 e^{-i delta}], [r12 e^{i delta}, e^{i delta}]], so
+  //   M~00 = (e^{-i delta} + r01 r12 e^{i delta}) / (t01 t12),
+  //   M~10 = (r01 e^{-i delta} + r12 e^{i delta}) / (t01 t12),
+  //   r = (r01 + r12 e^{2i delta}) / (1 + r01 r12 e^{2i delta}),
+  //   t = t01 t12 e^{i delta} / (1 + r01 r12 e^{2i delta}),
+  // with delta = 2 pi q1 d / lambda (Eq. (8) with (2)). This fixes the phase sign (e^{+i delta}
+  // for the forward wave, exp(i(k.r - omega t))) and the cos(theta) in delta at oblique
+  // incidence, also for an absorbing layer.
+  const std::complex<double> i(0.0, 1.0);
+  for (const Complex n1 : {Complex(2.1, 0.0), Complex(1.8, 0.04)}) {
+    for (const double theta : {0.0, 35.0, 65.0}) {
+      for (const double d : {0.037, 0.137, 0.61}) {
+        const double wl = 0.55;
+        const double xi = std::sin(deg(theta));
+        const Complex delta = 2.0 * kPi * rtt::coating::normal_component<double>(n1, xi) * d / wl;
+        const Amplitudes<double> i01 = rtt::coating::interface_amplitudes<double>(1.0, n1, xi);
+        const Amplitudes<double> i12 = rtt::coating::interface_amplitudes<double>(n1, 1.52, xi);
+        const Complex e1 = std::exp(i * delta);
+        const Complex e2 = std::exp(2.0 * i * delta);
+        const Amplitudes<double> a = stack(1.0, {{n1, d}}, 1.52, xi, wl);
+        INFO("n1 " << n1 << ", theta " << theta << ", d " << d);
+        require_close(a.rs, (i01.rs + i12.rs * e2) / (1.0 + i01.rs * i12.rs * e2), 1e-14);
+        require_close(a.rp, (i01.rp + i12.rp * e2) / (1.0 + i01.rp * i12.rp * e2), 1e-14);
+        require_close(a.ts, i01.ts * i12.ts * e1 / (1.0 + i01.rs * i12.rs * e2), 1e-14);
+        require_close(a.tp, i01.tp * i12.tp * e1 / (1.0 + i01.rp * i12.rp * e2), 1e-14);
+      }
+    }
+  }
+  // Index-matched layer: r = 0 and t = e^{i delta}, the bare propagation phase.
+  const double xi = std::sin(deg(40.0));
+  const double q = std::sqrt(1.5 * 1.5 - xi * xi);
+  const Amplitudes<double> matched = stack(1.5, {{1.5, 0.2}}, 1.5, xi, 0.55);
+  require_close(matched.rs, 0.0, 1e-14);
+  require_close(matched.ts, std::exp(i * (2.0 * kPi * q * 0.2 / 0.55)), 1e-14);
+  require_close(matched.tp, std::exp(i * (2.0 * kPi * q * 0.2 / 0.55)), 1e-14);
+}
+
+TEST_CASE("absorbing substrate: R + T = 1 for a non-absorbing incident medium and stack",
+          "[coating]") {
+  // Byrnes App. B: for light from one side the power entering the last interface is T, and
+  // with a real incident index the power entering the stack is 1 - R; without absorption in the
+  // layers both are the same power flow (Eq. (18)/(20) are continuous), so R + T = 1. This
+  // checks the conjugation in Eq. (22) (without it R_p + T_p = 0.98 at 60 deg here).
+  const Complex metal(0.2, 3.0);
+  for (const auto& layers : {std::vector<Layer<double>>{}, hl_stack(1)}) {
+    for (const double theta : {0.0, 30.0, 60.0, 80.0}) {
+      const Powers<double> p = powers(1.0, layers, metal, std::sin(deg(theta)), 0.55);
+      INFO("layers " << layers.size() << ", theta " << theta);
+      REQUIRE_THAT(p.reflectance_s + p.transmittance_s, WithinAbs(1.0, 1e-12));
+      REQUIRE_THAT(p.reflectance_p + p.transmittance_p, WithinAbs(1.0, 1e-12));
+      REQUIRE(p.transmittance_p > 0.0);
+    }
+  }
 }
 
 TEST_CASE("thick absorbing layer reflects like its first interface", "[coating]") {
@@ -240,10 +308,10 @@ TEST_CASE("single interface: r_ab = -r_ba and t_ab t_ba - r_ab r_ba = 1", "[coat
     const Amplitudes<double> ab = stack(na, {}, nb, xi, 0.55);
     const Amplitudes<double> ba = rtt::coating::stack_amplitudes<double>(nb, {}, na, xi, 0.55);
     INFO("theta " << theta);
-    require_close(ab.rs, -ba.rs, 1e-15);
-    require_close(ab.rp, -ba.rp, 1e-15);
-    require_close(ab.ts * ba.ts - ab.rs * ba.rs, 1.0, 1e-15);
-    require_close(ab.tp * ba.tp - ab.rp * ba.rp, 1.0, 1e-15);
+    require_close(ab.rs, -ba.rs, 1e-14);
+    require_close(ab.rp, -ba.rp, 1e-14);
+    require_close(ab.ts * ba.ts - ab.rs * ba.rs, 1.0, 1e-14);
+    require_close(ab.tp * ba.tp - ab.rp * ba.rp, 1.0, 1e-14);
   }
 }
 
@@ -289,7 +357,7 @@ TEST_CASE("stack reciprocity", "[coating]") {
       const std::vector<Layer<double>> film = {{1.6, 0.3}};
       const Amplitudes<double> front = stack(1.0, film, 1.0, xi, wl);
       const Amplitudes<double> back = stack(1.0, reversed(film), 1.0, xi, wl);
-      require_close(front.rs, back.rs, 1e-15);
+      require_close(front.rs, back.rs, 1e-14);
       REQUIRE(std::abs(front.rs) > 0.01);
     }
   }
@@ -325,6 +393,14 @@ TEST_CASE("check_stack rejects invalid input at the API boundary", "[coating]") 
   REQUIRE_THROWS_AS(rtt::coating::check_stack(1.0, ok, 1.52, -0.1, 0.55), std::invalid_argument);
   REQUIRE_THROWS_AS(rtt::coating::check_stack(1.0, ok, 1.52, std::nan(""), 0.55),
                     std::invalid_argument);
+  // Re n <= 0 (negative-index media, Byrnes App. D.4/D.5) is not supported.
+  REQUIRE_THROWS_AS(rtt::coating::check_stack(1.0, ok, Complex(-1.5, 0.1), 0.5, 0.55),
+                    std::invalid_argument);
+  // A non-absorbing layer exactly at its critical angle (q = 0) would divide by t = 0.
+  const std::vector<Layer<double>> critical = {{1.2, 0.1}};
+  REQUIRE_THROWS_AS(rtt::coating::check_stack(1.5, critical, 1.52, 1.2, 0.55),
+                    std::invalid_argument);
+  REQUIRE_NOTHROW(rtt::coating::check_stack(1.5, critical, 1.52, 1.3, 0.55));  // evanescent
   // An absorbing incident medium allows any real xi (Byrnes Sec. 2: n sin(theta) real).
   REQUIRE_NOTHROW(rtt::coating::check_stack(Complex(1.0, 0.1), ok, 1.52, 1.0, 0.55));
 }

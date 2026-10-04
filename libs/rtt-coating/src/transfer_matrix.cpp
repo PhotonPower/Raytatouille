@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <complex>
+#include <cstddef>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -10,8 +11,8 @@ namespace rtt::coating {
 namespace {
 
 void check_index(std::complex<double> n, const std::string& what) {
-  if (!std::isfinite(n.real()) || !std::isfinite(n.imag()) || n == 0.0) {
-    throw std::invalid_argument("coating: " + what + " must be finite and not 0");
+  if (!std::isfinite(n.real()) || !std::isfinite(n.imag()) || !(n.real() > 0.0)) {
+    throw std::invalid_argument("coating: " + what + " must be finite with Re n > 0");
   }
   if (n.imag() < 0.0) {
     throw std::invalid_argument("coating: " + what +
@@ -45,6 +46,12 @@ void check_stack(std::complex<double> n_in,
   if (n_in.imag() == 0.0 && !(xi < n_in.real())) {
     throw std::invalid_argument(
         "coating: xi = n sin(theta) must be below the incident index (no grazing incidence)");
+  }
+  for (std::size_t j = 0; j < layers.size(); ++j) {
+    if (layers[j].index.imag() == 0.0 && layers[j].index.real() == xi) {
+      throw std::invalid_argument("coating: layer " + std::to_string(j) +
+                                  " is exactly at its critical angle (n = xi, q = 0)");
+    }
   }
 }
 

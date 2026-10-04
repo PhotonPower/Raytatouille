@@ -1,5 +1,6 @@
 #include "rtt/coating/ideal.hpp"
 
+#include <cassert>
 #include <cmath>
 #include <complex>
 #include <stdexcept>
@@ -15,8 +16,10 @@ IdealCoating::IdealCoating(double reflectance) : reflectance_(reflectance) {
 Amplitudes<double> IdealCoating::amplitudes(std::complex<double> n_in,
                                             std::complex<double> n_out,
                                             double xi) const noexcept {
+  if (reflectance_ == 1.0) return {-1.0, 1.0, 0.0, 0.0};  // ideal mirror, also under TIR
   const std::complex<double> q_in = normal_component(n_in, xi);
   const std::complex<double> q_out = normal_component(n_out, xi);
+  assert(n_in.imag() == 0.0 && q_in.real() > 0.0);
   if (!(q_out.real() > 0.0)) return interface_amplitudes(n_in, n_out, xi);  // TIR
   // Power normalisation of Byrnes Eq. (21)/(22): T = |t|^2 w_out / w_in.
   const std::complex<double> cos_in = q_in / n_in;
