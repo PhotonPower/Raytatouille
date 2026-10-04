@@ -36,6 +36,15 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
 ### Geändert
 - `rtt::math::Real` umfasst nur noch `double` (ADR 0015); der `float`-Test in `rtt-geom` entfällt.
 
+### Geändert
+- Dateiformat Schema 0.2.0: `Lens` und `Plate` mit N Flächen tragen ein Material je Segment
+  (Segment i zwischen Fläche i und i + 1); `"material"` ist ein String (Kurzform für alle
+  Segmente) oder ein Array mit N − 1 Einträgen. `rtt-model`: `Element::segment_materials`,
+  `Element::segment_material(i)` und Validierung der Listenlänge mit JSON-Pointer; `rtt-io` liest
+  und schreibt beide Formen bitgleich und migriert Dateien mit Schema 0.1; JSON-Schema angepasst;
+  Referenzdateien mit `rtt format` neu geschrieben; ADR 0017; neues Beispiel
+  `tests/reference/m2/achromat.rtt.json` (#26).
+
 ### Hinzugefügt
 - Anleitung `docs/agenten.md` und Review-Subagent `.claude/agents/physik-reviewer.md`.
 - `rtt-geom`: `Shape<T>`-Schnittstelle, `Plane<T>` und `Conic<T>` (Sag, Gradient, Definitionsbereich)
