@@ -18,7 +18,8 @@ namespace rtt::coating {
 /// that T = 1 - R by Byrnes Eq. (21)/(22) for the given media. Under total internal reflection
 /// (no propagating wave in the exit medium) nothing can be transmitted: a coating with R < 1
 /// then reflects totally with the amplitudes of the bare interface (Eq. (6), with the TIR
-/// retardance); the ideal mirror (R = 1) keeps r_s = -1, r_p = +1.
+/// retardance); the ideal mirror (R = 1) keeps r_s = -1, r_p = +1. Both are deliberate model
+/// assumptions (decided in #58), not derived from a layer design.
 class IdealCoating {
  public:
   /// @param reflectance R for s and p, dimensionless
