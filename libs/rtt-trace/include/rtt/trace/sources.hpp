@@ -43,6 +43,8 @@ enum class Aiming : std::uint8_t {
 /// Convergence limit of real aiming: distance between the hit and the target point on the stop
 /// surface, in local stop coordinates, mm (issue #8).
 inline constexpr double kAimTolerance = 1e-9;
+static_assert(kAimTolerance == kApertureTolerance,
+              "rays aimed at a stop rim must pass the aperture check (#50)");
 
 /// Maximum number of Newton steps of real aiming before the ray gets NoConvergence.
 inline constexpr int kMaxAimIterations = 20;

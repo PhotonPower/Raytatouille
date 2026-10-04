@@ -13,17 +13,21 @@ inline constexpr bool kUnhandledAperture = false;
 
 /// True if the local point (x, y) lies inside the aperture; the boundary belongs to it.
 bool inside(const model::Aperture& aperture, double x, double y) noexcept {
+  // Rims are inclusive with kApertureTolerance (decided for #50).
+  constexpr double tol = kApertureTolerance;
   return std::visit(
       [x, y](const auto& a) {
         using A = std::decay_t<decltype(a)>;
         if constexpr (std::is_same_v<A, model::CircularAperture>) {
           const double r2 = x * x + y * y;
-          return r2 <= a.radius * a.radius && r2 >= a.inner_radius * a.inner_radius;
+          const double outer = a.radius + tol;
+          const double inner = a.inner_radius - tol;
+          return r2 <= outer * outer && (inner <= 0.0 || r2 >= inner * inner);
         } else if constexpr (std::is_same_v<A, model::RectangularAperture>) {
-          return std::abs(x) <= a.half_width_x && std::abs(y) <= a.half_width_y;
+          return std::abs(x) <= a.half_width_x + tol && std::abs(y) <= a.half_width_y + tol;
         } else if constexpr (std::is_same_v<A, model::EllipticalAperture>) {
-          const double u = x / a.semi_axis_x;
-          const double v = y / a.semi_axis_y;
+          const double u = x / (a.semi_axis_x + tol);
+          const double v = y / (a.semi_axis_y + tol);
           return u * u + v * v <= 1.0;
         } else {
           static_assert(kUnhandledAperture<A>, "aperture type not handled");

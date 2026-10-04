@@ -756,3 +756,23 @@ TEST_CASE("field values are converted at the reference wavelength", "[sources]")
     }
   }
 }
+
+TEST_CASE("rim rays of the reference singlet pass the stop", "[sources]") {
+  // Rays with |p| = 1 are aimed at the stop rim to within kAimTolerance; the aperture check
+  // includes the same tolerance (#50), so none of them is vignetted at the stop (previously 7 of
+  // the 36 rim rays per field were). The lens apertures (12.7 mm) do not vignette these fields.
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(singlet(), lib);
+  const std::vector<std::uint16_t> fields{0, 1, 2};
+  rtt::trace::RayBatch rays =
+      rtt::trace::make_rays(cs, PathId{0}, fields, 1, rtt::trace::HexapolarPupil{6});
+  [[maybe_unused]] const auto stats = rtt::trace::SequentialTracer().trace(cs, PathId{0}, rays);
+  std::size_t rim = 0;
+  for (std::size_t i = 0; i < rays.size(); ++i) {
+    INFO("field " << rays.field()[i] << ", pupil (" << rays.pupil_x()[i] << ", "
+                  << rays.pupil_y()[i] << ")");
+    REQUIRE(rays.status()[i] == RayStatus::Alive);
+    if (std::hypot(rays.pupil_x()[i], rays.pupil_y()[i]) > 1.0 - 1e-12) ++rim;
+  }
+  REQUIRE(rim == 3 * 36);
+}

@@ -40,6 +40,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   umgerechnet. Bisher geschah das je Strahl-Wellenlänge, sodass bei paraxialer Bildhöhe und bei
   Winkelfeldern mit endlichem Objekt jede Farbe einen anderen Feldpunkt bekam (Farbquerfehler,
   polychromatischer Spot). Fehler aus #8, gefunden in #31.
+- `rtt-trace`: Aperturränder sind inklusiv mit `kApertureTolerance` = 1e−9 mm (= Aiming-Toleranz),
+  außen wie innen. Randstrahlen mit |p| = 1, die exakt auf den Blendenrand gezielt werden, wurden
+  bisher durch Rundung teils als vignettiert markiert (am Referenz-Singlet 7 von 36 je Feld).
 
 ### Geändert
 - `cmake`: `rtt_add_test` setzt unter MinGW den `PATH` für Testerkennung und Testläufe auf das
