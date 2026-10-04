@@ -151,11 +151,14 @@ jobs:
       - name: Smoke test pip install .
         if: matrix.smoke
         shell: bash
-        env:
-          # Triplet explicitly, independent of the generator platform (a Visual Studio developer
-          # environment with Platform=x86 would make scikit-build-core configure Win32).
-          CMAKE_ARGS: -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/../vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}
         run: |
+          # CMake reads backslashes in CMAKE_ARGS as escapes, so the Windows path gets forward
+          # slashes. Triplet explicitly, independent of the generator platform (a Visual Studio
+          # developer environment with Platform=x86 would make scikit-build-core configure Win32).
+          toolchain="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          if [ "$RUNNER_OS" = "Windows" ]; then toolchain="$(cygpath -m "$toolchain")"; fi
+          export CMAKE_ARGS="-DCMAKE_TOOLCHAIN_FILE=$toolchain -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}"
+          echo "CMAKE_ARGS=$CMAKE_ARGS"
           python -m pip install . -v
           cd "$RUNNER_TEMP"
           python -c "import raytatouille as rt; print(rt.__version__, rt.__file__)"
