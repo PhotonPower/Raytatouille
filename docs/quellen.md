@@ -40,6 +40,7 @@ wer sie am Original prüft, verschiebt sie nach oben.
 | --- | --- | --- |
 | Newton-Verfahren, Abbruchkriterium | Press et al., *Numerical Recipes*, 3. Aufl., Abschn. 9.4 | `rtt-geom/intersect.hpp` |
 | Stabile Lösung der quadratischen Gleichung | Press et al., *Numerical Recipes*, 3. Aufl., Abschn. 5.6, Gl. 5.6.4–5.6.5 | `rtt-geom/intersect.hpp` |
+| Newton-Verfahren in 2D, gedämpfter Schritt (Ray Aiming) | Press et al., *Numerical Recipes*, 3. Aufl., Abschn. 9.6 und 9.7 | `rtt-trace/sources.cpp` (#8) |
 | Gerade Asphäre | ISO 10110-12 | `rtt-geom/asphere.hpp` |
 | Konik, allgemein | W. T. Welford, *Aberrations of Optical Systems*, Kap. 2 | `rtt-geom` |
 | Brechung, allgemein | M. Born, E. Wolf, *Principles of Optics*, 7. Aufl., §3.2.2 | `rtt-trace` (#6) |
@@ -59,3 +60,4 @@ Wer an diesen Themen arbeitet, sucht zuerst eine Quelle nach dem Verfahren oben.
 | Fresnel-Amplituden mit Phase, auch für komplexen Index | M3 |
 | Transfermatrix-Methode für Schichtsysteme | M3 |
 | 3D-Polarisations-Raytracing-Matrix | M3 |
+| Skalierung der sphärischen Längsaberration mit NA² (dritte Ordnung); im Test von #8 nur als Exponent geprüft, Sollwert ist der paraxiale Fokus aus #7 | M1 (#8) |

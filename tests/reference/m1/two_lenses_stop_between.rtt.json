@@ -1,0 +1,83 @@
+{
+  "schema_version": "0.1.0",
+  "name": "Two singlets, stop between, stop-size aperture",
+  "units": {"length": "mm", "wavelength": "um"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "stop_size"},
+  "fields": {
+    "points": [
+      {},
+      {"y": 5.0},
+      {"x": -3.0, "y": 4.0}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "lens",
+        "name": "L1",
+        "pose": {"position": [0.0, 0.0, 10.0]},
+        "material": "CONST:1.5168",
+        "surfaces": [
+          {
+            "id": "L1.S1",
+            "shape": {
+              "base": {"type": "conic", "radius": 60.0}
+            }
+          },
+          {
+            "id": "L1.S2",
+            "pose": {"position": [0.0, 0.0, 5.0]},
+            "shape": {
+              "base": {"type": "conic", "radius": -60.0}
+            }
+          }
+        ]
+      },
+      {
+        "type": "stop",
+        "name": "stop",
+        "pose": {"position": [0.0, 0.0, 20.0]},
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 4.0}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "L2",
+        "pose": {"position": [0.0, 0.0, 25.0]},
+        "material": "CONST:1.5168",
+        "surfaces": [
+          {
+            "id": "L2.S1",
+            "shape": {
+              "base": {"type": "conic", "radius": 45.0}
+            }
+          },
+          {
+            "id": "L2.S2",
+            "pose": {"position": [0.0, 0.0, 4.0]}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 80.0]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}
