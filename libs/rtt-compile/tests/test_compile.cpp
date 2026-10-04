@@ -913,3 +913,48 @@ TEST_CASE("lens of one glass with 3 surfaces follows the segments on an explicit
                     {"L.S3", EventKind::Refract, "CONST:1.5", "AIR"}});
   }
 }
+
+TEST_CASE("achromat reference system with the SCHOTT test catalogue", "[compile][cemented]") {
+  // Recommended in the review of #27: the file's own glasses through the AGF test catalogue
+  // (#24). rtt-paraxial may not be used here (ADR 0016: rtt-compile < rtt-paraxial), so the
+  // focal length is checked with a hand y-nu trace on the compiled data.
+  MaterialLibrary lib;
+  lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/schott.agf");
+  const CompiledSystem cs = compile(load("m2/achromat.rtt.json"), lib);
+  require_events(cs, "main",
+                 {{"STO", EventKind::Transmit, "AIR", "AIR"},
+                  {"L1.S1", EventKind::Refract, "AIR", "SCHOTT:N-BK7"},
+                  {"L1.S2", EventKind::Refract, "SCHOTT:N-BK7", "SCHOTT:F2"},
+                  {"L1.S3", EventKind::Refract, "SCHOTT:F2", "AIR"},
+                  {"IMG", EventKind::Transmit, "AIR", "AIR"}});
+
+  // Paraxial marginal ray at the reference wavelength (d line), Greivenkamp, OPTI-201/202
+  // Sec. 9, p. 9-2 (docs/quellen.md): n'u' = nu - y phi with phi = (n' - n) C, transfer
+  // y' = y + u' t'; p. 9-12: phi = -n'u'_k / y_1, f_E = 1/phi, BFD = -y_k / u'_k.
+  const std::size_t wl = cs.reference_wavelength();
+  const auto& events = cs.path(*cs.find_path("main")).events;
+  double y = 1.0;
+  double nu = 0.0;
+  double n = 1.0;
+  double z = 0.0;
+  bool first = true;
+  for (const auto& event : events) {
+    if (event.kind != EventKind::Refract) continue;
+    const auto& surface = cs.surfaces()[event.surface];
+    const double vertex_z = surface.to_global.translation().z();
+    if (!first) y += nu / n * (vertex_z - z);
+    first = false;
+    z = vertex_z;
+    const auto* conic = std::get_if<rtt::geom::Conic<double>>(&surface.shape);
+    REQUIRE(conic != nullptr);
+    const double n_after = cs.media()[event.medium_after].index[wl].real();
+    REQUIRE(cs.media()[event.medium_before].index[wl].real() == n);
+    nu -= y * (n_after - n) * conic->curvature();
+    n = n_after;
+  }
+  const double efl = -1.0 / nu;  // y_1 = 1, n' = 1 in air
+  const double bfd = -y / nu;
+  // Design values: EFL 101.013 mm; F' at the detector, z = 110.614 mm (L1.S3 at z = 14 mm).
+  REQUIRE_THAT(efl, Catch::Matchers::WithinRel(101.013, 1e-4));
+  REQUIRE_THAT(z + bfd, Catch::Matchers::WithinRel(110.614, 1e-4));
+}
