@@ -26,6 +26,10 @@ Nicht erlaubt: Gleichungsnummern aus dem Gedächtnis oder aus Zitaten anderer Ar
 | Brechung in Vektorform | wie oben | Gl. (22) mit (23) und (28); Zusammenfassung Abschnitt 6 | d′ = (n/n′) d + ((n/n′) cos θ − cos θ′) N mit **N zum Einfallsmedium** (N·d < 0) und cos θ = −d·N. Unsere Geometrie liefert N in +z am Scheitel: vor der Formel N so drehen, dass N·d < 0. **Fehler in der Quelle:** nach Gl. (20a) steht cos θ = i·n, richtig ist −i·n (wie in Abschnitt 6). | #19 |
 | Totalreflexion, Grenzwinkel | wie oben | Gl. (24) und (17); Grenzwinkel Gl. (25) | TIR, wenn sin² θ′ = (n/n′)² (1 − cos² θ) > 1. | #19 |
 | Fresnel-Reflexionsgrade (Leistung, unpolarisiert gemittelt) | wie oben | Gl. (27a), (27b), (29a) | Nur Leistungen, keine Amplituden und keine Phasen. Für die Polarisation (M3) **nicht ausreichend**. | – |
+| Paraxialer y-nu-Trace | J. E. Greivenkamp, OPTI-201/202 Geometrical and Instrumental Optics, Skript (2018), Sec. 9 „Paraxial Raytracing“, [PDF](https://wp.optics.arizona.edu/jgreivenkamp/wp-content/uploads/sites/11/2019/01/201-202-09-Paraxial-Raytracing.pdf) | S. 9-2 (Skript ohne Gleichungsnummern) | ω = n u, φ = (n′ − n) C, Brechung oder Reflexion n′u′ = nu − yφ, Transfer y′ = y + u′t′, τ′ = t′/n′. u = Steigung dy/dz, C = Scheitelkrümmung. Im Volltext gelesen, Symbol für Symbol mit `rtt-paraxial` verglichen. | #7 |
+| Paraxial: Spiegel mit Vorzeichenwechsel des Index | wie oben | S. 9-26/9-27 (Cassegrain-Beispiel) | n′ = −n bei jeder Reflexion, Abstände nach einem Spiegel negativ (t = −80 mm), τ = t/n bleibt positiv; R = −200 mm ⇒ C = −0,005 für Licht aus −z; u bleibt die globale Steigung dy/dz. Damit gelten die Gleichungen von S. 9-2 unverändert mit globalem z und globaler Krümmung. | #7 |
+| Kardinalpunkte aus einem Raytrace | wie oben | S. 9-12 (hintere), S. 9-14 (vordere) | φ = −n′u′_k/y₁, f_E = 1/φ, f′_R = n′/φ, BFD = −y_k/u′_k, d′ = BFD − f′_R; f_F = −n/φ, FFD = −y₁/u₁, d = FFD − f_F. BFD, FFD, d, d′ sind **gerichtete** Strecken in z ab dem Scheitel. **Fallstricke in `rtt-paraxial`:** `ffl` = −FFD und `front_focal_length` = −f_F (Hecht-Konvention, positiv für sammelnde Systeme); `rear_focal_length` = \|n′\|/φ und `bfl` entlang der Ausbreitungsrichtung, also nach einer ungeraden Zahl von Reflexionen mit anderem Vorzeichen als f′_R und BFD; Hauptpunkte H = V₁ + d, H′ = V_k + d′ wie in der Quelle. | #7 |
+| Pupillen, Winkel- und Lateralvergrößerung | hergeleitet in #7 aus Greivenkamp S. 9-2 | Herleitung im Kommentar von `rtt-paraxial/src/paraxial.cpp` | Pupillen = paraxiale Bilder der Blende über die reduzierte Matrix (det = 1); Lateralvergrößerung m = n u/(n′ u′), Winkelvergrößerung entlang der Ausbreitungsrichtung (Konventionen aus #7). | #7 |
 
 ## Im Code zitiert, aber nicht online geprüft
 
@@ -39,7 +43,8 @@ wer sie am Original prüft, verschiebt sie nach oben.
 | Gerade Asphäre | ISO 10110-12 | `rtt-geom/asphere.hpp` |
 | Konik, allgemein | W. T. Welford, *Aberrations of Optical Systems*, Kap. 2 | `rtt-geom` |
 | Brechung, allgemein | M. Born, E. Wolf, *Principles of Optics*, 7. Aufl., §3.2.2 | `rtt-trace` (#6) |
-| Linsenmacherformel | E. Hecht, *Optics*, Kap. 6 | `rtt-paraxial` (#7) |
+| Linsenmacherformel, dicke Linse (zusätzlich zur Herleitung aus Greivenkamp S. 9-2) | E. Hecht, *Optics*, Kap. 6 | `rtt-paraxial` Tests (#7) |
+| Gaußsche Abbildungsgleichung (zusätzlich zur Herleitung aus Greivenkamp S. 9-2) | E. Hecht, *Optics*, Kap. 5 | `rtt-paraxial` Tests (#7) |
 | Polarisations-Raytracing | Chipman, Lam, Young, *Polarized Light and Optical Systems* (2018) | `rtt-trace/ray_batch.hpp` |
 
 ## Noch ohne geprüfte Quelle (bald gebraucht)
@@ -48,7 +53,6 @@ Wer an diesen Themen arbeitet, sucht zuerst eine Quelle nach dem Verfahren oben.
 
 | Thema | Meilenstein |
 | --- | --- |
-| Paraxialer y-nu-Trace, Hauptebenen, Pupillen | M1 (#7) |
 | Dispersionsformeln (Sellmeier, Schott, Herzberger, Conrady), AGF-Format | M2 |
 | Brechzahl der Luft (Ciddor), dn/dT nach Schott | M2 |
 | Seidel-Koeffizienten | M2 |

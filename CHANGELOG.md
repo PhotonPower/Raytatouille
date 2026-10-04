@@ -40,6 +40,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   ergibt einen `CompileError` (#6).
 - Quelle für Brechung und Reflexion in Vektorform: de Greve, „Reflections and Refractions in Ray
   Tracing“ (2006), Gl. (13), (22)–(25), Abschnitt 6; Born & Wolf §3.2.2 als ergänzende Angabe (#19).
+- `rtt-paraxial`: y-nu-Trace (`trace_ray`) und Daten erster Ordnung (`first_order`): EFL, vordere
+  und hintere Brennweite, BFL, FFL, Brenn- und Hauptpunkte, paraxiales Bild, Abbildungsmaßstab,
+  Winkelvergrößerung, Eintritts- und Austrittspupille; Spiegel über Vorzeichenwechsel des Index;
+  `ParaxialError` für nicht rotationssymmetrische Pfade (#7).
 
 ### Abhängigkeiten
 - oneTBB (`tbb` in `vcpkg.json`, `libtbb-dev` für den apt-Weg), Apache-2.0, kompatibel mit MIT
