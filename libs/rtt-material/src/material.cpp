@@ -97,7 +97,7 @@ std::shared_ptr<const Material> MaterialLibrary::resolve(std::string_view refere
                             ")");
     }
     throw UnknownMaterial(text + "catalog " + std::string(catalog) +
-                          " is not loaded (glass catalogs, M2: MaterialLibrary::add_catalog)");
+                          " not loaded (use MaterialLibrary::add_catalog)");
   }
   auto material = make_material(reference);
   cache_.emplace(std::string(reference), material);

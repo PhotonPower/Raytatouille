@@ -367,11 +367,11 @@ TEST_CASE("invalid models throw CompileError with the validation diagnostics", "
 
 TEST_CASE("unknown materials throw CompileError pointing at the material", "[compile]") {
   SECTION("element material") {
-    // The M0 singlet uses SCHOTT:N-BK7; catalogs follow in M2.
+    // The M0 singlet uses SCHOTT:N-BK7; no catalogue is loaded here.
     const CompileError e = compile_error(load("m0/singlet.rtt.json"));
     REQUIRE(has_error_at(e, "/root/children/1/material"));
     REQUIRE_THAT(e.what(), ContainsSubstring("SCHOTT:N-BK7"));
-    REQUIRE_THAT(e.what(), ContainsSubstring("M2"));
+    REQUIRE_THAT(e.what(), ContainsSubstring("not loaded"));
   }
   SECTION("environment medium") {
     System s = load("m1/singlet_const.rtt.json");

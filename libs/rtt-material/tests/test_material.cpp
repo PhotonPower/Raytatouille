@@ -91,7 +91,8 @@ TEST_CASE("malformed CONST references are rejected", "[material]") {
 TEST_CASE("unknown references are rejected with a clear message", "[material]") {
   const MaterialLibrary lib;
   REQUIRE_THROWS_WITH(lib.resolve("SCHOTT:N-BK7"),
-                      Catch::Matchers::ContainsSubstring("M2") &&
+                      Catch::Matchers::ContainsSubstring("not loaded") &&
+                          Catch::Matchers::ContainsSubstring("add_catalog") &&
                           Catch::Matchers::ContainsSubstring("SCHOTT:N-BK7"));
   for (const char* reference : {"", "vacuum", "Air", "VACUUM ", "const:1.5", "BK7"}) {
     INFO(reference);
