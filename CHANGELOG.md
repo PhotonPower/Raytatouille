@@ -15,6 +15,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   Funktions-Templates über `Real` mit `DispersionMaterial`; `TabulatedMaterial` (n und κ linear in
   λ); `MaterialLibrary::add` registriert Materialien unter einem Namen. Quellen in
   `docs/quellen.md` (#23).
+- `rtt-material`: Import von Glaskatalogen im AGF-Format (`MaterialLibrary::add_catalog` für Datei
+  oder Verzeichnis, Katalogname = Dateiname in Großbuchstaben, Verweise `KATALOG:NAME`);
+  UTF-16LE mit BOM und ANSI/UTF-8, Fehler mit Datei und Zeile; Datensätze NM, CD, LD, TD, ED;
+  Formelnummern 1 (Schott) und 2 (Sellmeier 1), andere mit klarem Fehler (#42). Testkatalog
+  `tests/catalogs/schott.agf` mit N-BK7 und F2 aus dem freien SCHOTT-Katalog (#24).
 
 ## [0.2.0] – M1 Sequenzieller Kern
 

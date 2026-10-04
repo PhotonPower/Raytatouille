@@ -11,6 +11,7 @@
 /// - indices are absolute (against vacuum); catalogue data relative to air are converted with
 ///   Ciddor air (follows with #25, until then formula values are used unchanged).
 
+#include <filesystem>
 #include <functional>
 #include <map>
 #include <memory>
@@ -81,11 +82,11 @@ class UnknownMaterial : public std::runtime_error {
 ///
 /// Numbers use the C locale ('.' as decimal separator, optional exponent) without
 /// whitespace or a leading '+'; they must be finite. kappa = -0 is stored as +0.
-/// Matching is case-sensitive. Further materials (e.g. dispersion formulas, later glass
-/// catalogues as `KATALOG:NAME`) are registered with add().
+/// Matching is case-sensitive. Further materials are registered with add(); glass catalogues
+/// in the AGF format are loaded with add_catalog() and resolved as `KATALOG:NAME`.
 ///
-/// resolve and add are thread-safe; resolve returns the same object for identical reference
-/// strings for the lifetime of the library. Object identity does not mean "same medium":
+/// resolve, add and add_catalog are thread-safe; resolve returns the same object for identical
+/// reference strings for the lifetime of the library. Object identity does not mean "same medium":
 /// different strings such as `CONST:1.5` and `CONST:1.50` give distinct objects with equal
 /// indices. The cache holds every resolved or added reference until the library is destroyed.
 class MaterialLibrary {
@@ -106,9 +107,26 @@ class MaterialLibrary {
   ///         material is null
   void add(std::string name, std::shared_ptr<const Material> material);
 
+  /// Loads AGF glass catalogues (rtt/material/agf.hpp). Each file becomes the catalogue named
+  /// after the file name without extension in upper case (`schott.agf` -> `SCHOTT`); its glasses
+  /// resolve as `SCHOTT:N-BK7`. Glasses with an unsupported dispersion formula are listed and
+  /// make resolve() throw UnknownMaterial with formula, glass, file and line (#42).
+  /// Manufacturer catalogues are not shipped with Raytatouille; the user provides them.
+  /// @param path an .agf file, or a directory whose *.agf files (case-insensitive, not
+  ///             recursive) are loaded in sorted order
+  /// @throws AgfError for malformed files (with file and line)
+  /// @throws std::invalid_argument if the path has no .agf file, a catalogue name is empty,
+  ///         reserved or already loaded, or a glass name is already in use; nothing is
+  ///         registered in that case
+  void add_catalog(const std::filesystem::path& path);
+
  private:
   mutable std::mutex mutex_;
   mutable std::map<std::string, std::shared_ptr<const Material>, std::less<>> cache_;
+  /// Loaded catalogues: name -> file.
+  std::map<std::string, std::string, std::less<>> catalogs_;
+  /// Catalogue glasses that exist but cannot be evaluated: reference -> message.
+  std::map<std::string, std::string, std::less<>> unsupported_;
 };
 
 }  // namespace rtt::material

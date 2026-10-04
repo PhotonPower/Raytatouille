@@ -11,4 +11,6 @@ if(RTT_BUILD_TESTS)
     SOURCES tests/test_compile.cpp tests/test_media.cpp
     LIBS rtt::compile rtt::io)
   target_include_directories(rtt_compile_tests PRIVATE ${PROJECT_SOURCE_DIR}/libs/rtt-model/tests)
+  target_compile_definitions(rtt_compile_tests PRIVATE
+    RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs")
 endif()

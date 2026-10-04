@@ -109,7 +109,7 @@ Ein System ist eine Datei `*.rtt.json`. Die vollständige Struktur steht in `sch
 - **Versionierung:** `schema_version` SemVer; vor 1.0 müssen Major und Minor exakt passen. Jede Formatänderung erhöht die Version und bringt eine getestete Migration mit.
 - **Kanonisch:** `rtt::io::to_json` schreibt immer dieselben Bytes: 2 Leerzeichen Einzug, LF, abschließender Zeilenumbruch, Standardwerte weggelassen, kleine Objekte aus Skalaren auf einer Zeile. Für jede kanonische Datei gilt `to_json(parse(text)) == text`. `rtt format` bringt Dateien in diese Form.
 - **Parameter:** als Zahl (`51.68`) oder als Objekt (`{"value": 30.0, "variable": true}`).
-- **Import v1 (M8):** AGF-Glaskataloge der Hersteller; ZMX-Dateien als reines Austauschformat (sequenzieller Teil), nicht unterstützte Flächentypen ergeben eine klare Fehlermeldung. **Export v1:** CSV für Analysedaten. **Später:** STEP-Export der Flächen, ISO-10110-Zeichnung.
+- **Import v1:** AGF-Glaskataloge der Hersteller (M2, `rtt-material`); ZMX-Dateien (M8) als reines Austauschformat (sequenzieller Teil), nicht unterstützte Flächentypen ergeben eine klare Fehlermeldung. **Export v1:** CSV für Analysedaten. **Später:** STEP-Export der Flächen, ISO-10110-Zeichnung.
 
 Beispiel (gekürzt aus `tests/reference/m0/singlet.rtt.json`):
 

@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -7,6 +8,7 @@
 #include <vector>
 
 #include "rtt/compile/compiled_system.hpp"
+#include "rtt/io/json_io.hpp"
 #include "test_support.hpp"
 
 using Catch::Matchers::ContainsSubstring;
@@ -76,6 +78,22 @@ CompileError compile_error(const System& s, const MaterialLibrary& lib) {
 }
 
 }  // namespace
+
+TEST_CASE("SCHOTT:N-BK7 in a system file resolves through an AGF test catalogue",
+          "[compile][media]") {
+  // Acceptance criterion of #24: tests/reference/m0/singlet.rtt.json uses SCHOTT:N-BK7.
+  MaterialLibrary lib;
+  lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/schott.agf");
+  const System s = rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m0/singlet.rtt.json");
+  const CompiledSystem cs = rtt::compile::compile(s, lib);
+  const auto& glass = cs.media()[medium_index(cs, "SCHOTT:N-BK7")];
+  // Same value as the catalogue material itself; n_d = 1.5168 in the SCHOTT data sheet.
+  const auto expected = lib.resolve("SCHOTT:N-BK7")
+                            ->index(cs.wavelengths_um()[cs.reference_wavelength()],
+                                    s.environment.temperature_c, s.environment.pressure_atm);
+  REQUIRE(glass.index[cs.reference_wavelength()] == expected);
+  REQUIRE(std::abs(expected.real() - 1.5168) < 5e-6);
+}
 
 TEST_CASE("compile passes temperature and pressure of the environment to the materials",
           "[compile][media]") {
