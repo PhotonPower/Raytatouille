@@ -53,8 +53,8 @@ class Conic final : public Shape<T> {
 template <rtt::math::Real T>
 T Conic<T>::sag(T x, T y) const {
   using std::sqrt;
-  // Forbes, Opt. Express 19(10), 9923 (2011), Eq. (2.1). This form is used instead of the
-  // equivalent (1 - phi) / ((1 + k) c) because it stays finite and accurate for c -> 0 and
+  // Forbes, Opt. Express 19(10), 9923-9942 (2011), Eq. (2.1). This form is used instead of the
+  // equivalent (1 - phi) / ((1 + k) c) because it stays finite and accurate for c -> 0 or
   // k = -1 (where the other form is 0/0) and avoids cancellation of 1 - phi near the vertex.
   const T r2 = x * x + y * y;
   const T s2 = T(1) - (T(1) + k_) * c_ * c_ * r2;
