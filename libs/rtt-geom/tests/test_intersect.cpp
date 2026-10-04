@@ -13,7 +13,8 @@ using rtt::geom::Intersection;
 using rtt::geom::Plane;
 using Vec3 = rtt::math::Vec3T<double>;
 
-// Reference: sag formula of the conic (W. T. Welford, Aberrations of Optical Systems, Ch. 2).
+// Reference: sag formula of the conic (G. W. Forbes, Opt. Express 19(10), 9923-9942 (2011),
+// Eq. (2.1); see also W. T. Welford, Aberrations of Optical Systems, Ch. 2).
 // Sphere intersections are checked against the elementary ray-sphere solution
 // |o + t d - C|^2 = R^2 with centre C = (0, 0, R), which does not use the conic code.
 

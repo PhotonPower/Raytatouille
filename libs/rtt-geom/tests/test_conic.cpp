@@ -10,7 +10,9 @@ using rtt::geom::Conic;
 // Reference sag values are computed from closed forms that are independent of the
 // implementation's formula. Source of the conic sag
 //   z = c r^2 / (1 + sqrt(1 - (1 + k) c^2 r^2)):
-// W. T. Welford, Aberrations of Optical Systems, Ch. 2.
+// G. W. Forbes, Manufacturability estimates for optical aspheres, Opt. Express 19(10),
+// 9923-9942 (2011), Eq. (2.1) with the definition of phi that follows it (see also
+// W. T. Welford, Aberrations of Optical Systems, Ch. 2).
 // Rearranged, every point of the surface satisfies c r^2 - 2 z + (1 + k) c z^2 = 0.
 
 namespace {
@@ -26,7 +28,7 @@ bool near_rel(double a, double b, double rel) {
 }  // namespace
 
 TEST_CASE("sphere sag equals R - sqrt(R^2 - r^2)", "[conic][sag]") {
-  // Sphere of radius R with centre on the axis at z = R (Welford, Ch. 2, k = 0).
+  // Sphere of radius R with centre on the axis at z = R (Forbes 2011, Eq. (2.1), k = 0).
   for (const double radius : {50.0, -50.0, 12.5}) {
     const Conic<double> sphere(1.0 / radius, 0.0);
     for (const auto& [x, y] :
@@ -39,7 +41,7 @@ TEST_CASE("sphere sag equals R - sqrt(R^2 - r^2)", "[conic][sag]") {
 }
 
 TEST_CASE("paraboloid sag equals r^2 / (2 R)", "[conic][sag]") {
-  // k = -1 removes the square root: z = c r^2 / 2 (Welford, Ch. 2).
+  // k = -1 removes the square root: z = c r^2 / 2 (Forbes 2011, Eq. (2.1)).
   const double radius = 100.0;
   const Conic<double> parabola(1.0 / radius, -1.0);
   // 1e-12 mm scaled with (1 + z): floating-point resolution at large z (ulp(5000) ~ 9e-13 mm).

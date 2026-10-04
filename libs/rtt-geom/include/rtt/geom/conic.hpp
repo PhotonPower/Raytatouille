@@ -14,8 +14,10 @@ namespace rtt::geom {
 
 /// Conic of revolution about the local z axis with vertex at the origin.
 ///
-/// Sag (W. T. Welford, Aberrations of Optical Systems, Ch. 2):
-///   z(r) = c r^2 / (1 + sqrt(1 - (1 + k) c^2 r^2)),  r^2 = x^2 + y^2.
+/// Sag (G. W. Forbes, Manufacturability estimates for optical aspheres, Opt. Express 19(10),
+/// 9923-9942 (2011), Eq. (2.1) with the definition of phi that follows it; see also
+/// W. T. Welford, Aberrations of Optical Systems, Ch. 2):
+///   z(r) = c r^2 / (1 + phi),  phi = sqrt(1 - (1 + k) c^2 r^2),  r^2 = x^2 + y^2.
 /// k = 0 sphere, k = -1 paraboloid, k < -1 hyperboloid, -1 < k < 0 prolate and k > 0 oblate
 /// ellipsoid. c = 1/R in 1/mm; c > 0 places the centre of curvature on the +z side.
 template <rtt::math::Real T>
@@ -51,8 +53,9 @@ class Conic final : public Shape<T> {
 template <rtt::math::Real T>
 T Conic<T>::sag(T x, T y) const {
   using std::sqrt;
-  // Welford, Aberrations of Optical Systems, Ch. 2. The form with the square root in the
-  // denominator stays finite for all k and avoids cancellation near the vertex.
+  // Forbes, Opt. Express 19(10), 9923-9942 (2011), Eq. (2.1). This form is used instead of the
+  // equivalent (1 - phi) / ((1 + k) c) because it stays finite and accurate for c -> 0 or
+  // k = -1 (where the other form is 0/0) and avoids cancellation of 1 - phi near the vertex.
   const T r2 = x * x + y * y;
   const T s2 = T(1) - (T(1) + k_) * c_ * c_ * r2;
   if (s2 < T(0)) {

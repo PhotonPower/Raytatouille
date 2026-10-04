@@ -11,7 +11,8 @@ using rtt::geom::Conic;
 using rtt::geom::EvenAsphere;
 
 // Even asphere z = conic(r) + A4 r^4 + A6 r^6 + ... with the conic sag of
-// W. T. Welford, Aberrations of Optical Systems, Ch. 2; coefficient order as in the model
+// G. W. Forbes, Opt. Express 19(10), 9923-9942 (2011), Eq. (2.1) (see also W. T. Welford,
+// Aberrations of Optical Systems, Ch. 2); coefficient order as in the model
 // (rtt/model/surface.hpp, coefficients[0] = A4).
 
 namespace {
