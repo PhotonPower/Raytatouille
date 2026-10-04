@@ -110,12 +110,20 @@ const rtt::paraxial::Pupil& exit_pupil(const FirstOrder& fo) {
 
 // ------------------------------------------------------ reference formulas -----
 
-/// Thick lens in air (Hecht, Optics, Ch. 6, thick lenses; the chapter cited in issue #7):
+/// Thick lens in air: lensmaker formula (issue #7)
 ///   1/f = (n - 1) [1/R1 - 1/R2 + (n - 1) d / (n R1 R2)],
 ///   h1 = -f (n - 1) d / (R2 n),  h2 = -f (n - 1) d / (R1 n),
 /// h1, h2 = positions of the principal points H1, H2 relative to the vertices V1, V2, positive
-/// in the direction of the light. Hence ffl = V1 -> F1 = f - h1 (F1 upstream of V1 positive)
-/// and bfl = V2 -> F2 = f + h2. 1/R = 0 for a plane surface.
+/// in the direction of the light; ffl = V1 -> F1 = f - h1 (F1 upstream of V1 positive) and
+/// bfl = V2 -> F2 = f + h2. 1/R = 0 for a plane surface.
+/// Derivation by hand from the y-nu equations (Greivenkamp, OPTI-201/202 lecture notes, Sec. 9,
+/// p. 9-2: n'u' = nu - y phi, phi = (n' - n) C, y' = y + u t), phi1 = (n - 1)/R1,
+/// phi2 = (1 - n)/R2:
+///   ray (y, nu) = (1, 0): S1 -> nu = -phi1; transfer d in glass -> y2 = 1 - d phi1 / n;
+///   S2 -> nu' = -phi1 - y2 phi2 = -(phi1 + phi2 - d phi1 phi2 / n) = -1/f, which is the
+///   lensmaker formula; bfl = -y2 / u' = f (1 - d phi1 / n) = f (1 - (n - 1) d / (n R1)) = f + h2.
+///   Reversed light gives ffl = f (1 - d phi2 / n) = f (1 + (n - 1) d / (n R2)) = f - h1.
+/// See also Hecht, Optics, Ch. 6 (thick lenses), the chapter cited in issue #7.
 struct ThickLens {
   double f, h1, h2, ffl, bfl;
 };
@@ -129,7 +137,11 @@ ThickLens hecht_thick_lens(double n, double inv_r1, double inv_r2, double d) {
 
 /// Image distance b from the Gaussian lens equation 1/a + 1/b = 1/f with object distance a,
 /// distances positive for a real object in front of and a real image behind the lens
-/// (Gaussian lens equation, Hecht, Optics, Ch. 5, thin lenses).
+/// (Gaussian lens equation). Derivation from the y-nu equations (Greivenkamp, OPTI-201/202
+/// lecture notes, Sec. 9, p. 9-2) in air: an axial ray with slope u from the object reaches the
+/// lens at y = a u, leaves with u' = u - y / f, and meets the axis b = -y / u' behind it, so
+/// 1/b = 1/f - 1/a. For a mirror the same holds with f = |R|/2 along the reflected direction.
+/// See also Hecht, Optics, Ch. 5 (thin lenses).
 double gauss_image(double a, double f) {
   return 1.0 / (1.0 / f - 1.0 / a);
 }
