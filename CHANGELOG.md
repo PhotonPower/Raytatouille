@@ -21,6 +21,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   `tests/reference/m2/paraboloid_stop.rtt.json` (#28).
 - `rtt-compile`: `CompiledSystem::wavelength_weights()` mit den Wellenlängengewichten des
   Modells (#28).
+- `rtt-paraxial`: Seidel-Summen S_I–S_V pro Fläche und für den Pfad aus paraxialem Rand- und
+  Hauptstrahl (`seidel()`, `surface_seidel()`), mit Beiträgen von Konik und A4 und den chromatischen
+  Termen C_L, C_T für ein wählbares Wellenlängenpaar; Quellen (Sasian, OPTI 517/518; arXiv:2203.02302,
+  arXiv:2202.11378) in `docs/quellen.md` (#30).
 
 ### Geändert
 - `rtt-material`: `Material::index(wavelength_um, temperature_c, pressure_atm)` mit Luftdruck
