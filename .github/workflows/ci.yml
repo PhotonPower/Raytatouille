@@ -149,8 +149,8 @@ jobs:
         if: matrix.smoke
         shell: bash
         env:
-          # The triplet explicitly: without it vcpkg picks x86-windows under the Visual Studio
-          # generator of scikit-build-core.
+          # Triplet explicitly, independent of the generator platform (a Visual Studio developer
+          # environment with Platform=x86 would make scikit-build-core configure Win32).
           CMAKE_ARGS: -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/../vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}
         run: |
           python -m pip install . -v
