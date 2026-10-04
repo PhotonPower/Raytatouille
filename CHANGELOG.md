@@ -86,14 +86,17 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   und schreibt beide Formen bitgleich und migriert Dateien mit Schema 0.1; JSON-Schema angepasst;
   Referenzdateien mit `rtt format` neu geschrieben; ADR 0017; neues Beispiel
   `tests/reference/m2/achromat.rtt.json` (#26).
-- `rtt-compile`: Kittglieder auf automatischen und expliziten Pfaden. Die Medienfolge folgt den
-  Segmenten einer `Lens`/`Plate` (`Refract` an Fläche i: aus Segment i − 1 ins Segment i bzw.
-  zurück, an der ersten und letzten Fläche ins Umgebungsmedium); Kurzform und Materialliste
-  werden ausgewertet, Fehlerorte zeigen auf den Listeneintrag (`.../material/<i>`). Der
-  `CompileError` für `Lens`/`Plate` mit mehr als 2 Flächen auf einem automatischen Pfad entfällt;
-  eine innere Fläche von außen führt in das Material der angrenzenden Segmente, wenn beide gleich
-  sind (Prisma aus einem Glas), sonst ist sie ein `CompileError` am Event. Festgelegt: Elemente schachteln
-  nicht (Element B betreten, während der Strahl in A ist, verlässt A) (#27).
+- `rtt-compile`: Kittglieder auf automatischen und expliziten Pfaden. Kurzform und Materialliste
+  werden ausgewertet, Fehlerorte zeigen auf den Listeneintrag (`.../material/<i>`). Die Regel für
+  brechende Events hängt nur vom Element ab: `Lens` (einheitlich oder gemischt) und `Plate` mit
+  verschiedenen Segmentmaterialien folgen der Segmentregel (`Refract` an Fläche i: aus Segment
+  i − 1 ins Segment i bzw. zurück, an der ersten und letzten Fläche ins Umgebungsmedium); eine
+  `Plate` mit einheitlichem Material behält die Umschaltregel innen ↔ Umgebung an jeder Fläche.
+  Der `CompileError` für eine `Lens` mit mehr als 2 Flächen auf dem automatischen Pfad entfällt;
+  neu ist ein `CompileError` für eine einheitliche `Plate` mit mehr als 2 Flächen auf dem
+  automatischen Pfad und, unter der Segmentregel, für eine innere Fläche zwischen verschiedenen
+  Materialien, die ein Pfad von außen erreicht. Festgelegt: Elemente schachteln nicht (Element B
+  betreten, während der Strahl in A ist, verlässt A) (#27).
 - `rtt-model`: Test, dass ein `ThinElement` keine Materialliste annimmt (#26).
 
 ### Abhängigkeiten

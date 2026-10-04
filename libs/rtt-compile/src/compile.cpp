@@ -37,7 +37,9 @@ struct ElementInfo {
   /// JSON pointer of the material of each entry of `media`: .../material for the shorthand,
   /// .../material/<i> for a list entry.
   std::vector<std::string> media_locations;
-  bool segmented = false;           ///< Lens or Plate: the media follow the segments
+  /// The media follow the segments: every Lens, and a Plate with different segment materials.
+  /// Otherwise (Mirror, Plate of one material) Refract toggles inside <-> environment.
+  bool segmented = false;
   std::string location;             ///< JSON pointer of the element
   std::uint32_t first_surface = 0;  ///< surfaces [first_surface, first_surface + count)
   std::uint32_t surface_count = 0;
@@ -172,9 +174,9 @@ class Compiler {
     info.first_surface = static_cast<std::uint32_t>(surfaces_.size());
     info.surface_count = static_cast<std::uint32_t>(element.surfaces.size());
     // Unresolved materials are reported by medium(); index 0 is only a placeholder then.
-    info.segmented =
+    const bool lens_or_plate =
         element.kind == model::ElementKind::Lens || element.kind == model::ElementKind::Plate;
-    if (info.segmented && !element.segment_materials.empty()) {
+    if (lens_or_plate && !element.segment_materials.empty()) {
       for (std::size_t i = 0; i < element.segment_materials.size(); ++i) {
         info.media_locations.push_back(idx(location + "/material", i));
         info.media.push_back(
@@ -183,10 +185,15 @@ class Compiler {
     } else if (element.material) {
       // The shorthand holds for all segments; resolved once, reported once.
       const std::uint32_t m = medium(*element.material, location + "/material").value_or(0);
-      const std::size_t count = info.segmented ? element.surfaces.size() - 1 : 1;
+      const std::size_t count = lens_or_plate ? element.surfaces.size() - 1 : 1;
       info.media.assign(count, m);
       info.media_locations.assign(count, location + "/material");
     }
+    // Equal references share one medium index, so equal indices mean one material (#27).
+    const bool uniform = std::adjacent_find(info.media.begin(), info.media.end(),
+                                            std::not_equal_to<>()) == info.media.end();
+    info.segmented = element.kind == model::ElementKind::Lens ||
+                     (element.kind == model::ElementKind::Plate && !uniform);
     const auto element_index = static_cast<std::uint32_t>(elements_.size());
     elements_.push_back(info);
 
@@ -243,6 +250,17 @@ class Compiler {
           }
           continue;
         }
+        // A plate of one material with more than 2 surfaces is a prism or cube: which faces
+        // the ray uses depends on the design, so the tree order is no path (#27).
+        if (e.kind == model::ElementKind::Plate && !e.media.empty() && !e.segmented &&
+            e.surface_count > 2) {
+          if (uniform_plate_reported_.emplace(e.location).second) {
+            error(e.location + "/surfaces",
+                  "plate with more than 2 surfaces and uniform material needs an explicit path "
+                  "(prism or cube: the faces used depend on the design)");
+          }
+          continue;
+        }
         const model::EventKind kind = automatic_event(e.kind);
         for (std::uint32_t s = 0; s < e.surface_count; ++s) {
           compiled.events.push_back({e.first_surface + s, kind, 0, 0, 0});
@@ -279,14 +297,17 @@ class Compiler {
   /// "Medien entlang eines Pfads"). The ray starts in the environment. Reflect, Transmit and
   /// Diffract keep the medium, and so does every event at an element without material.
   /// Refract, Ordinary and Extraordinary
-  /// - at surface i of a Lens or Plate with N surfaces (segment j between surfaces j and j + 1):
+  /// - at surface i of a Lens, or of a Plate with different segment materials, with N surfaces
+  ///   (segment j between surfaces j and j + 1):
   ///   from segment i - 1 into segment i (the environment if i = N - 1), from segment i into
   ///   segment i - 1 (the environment if i = 0), from any other segment of the same element into
   ///   the environment; from outside the element through the first surface into segment 0,
   ///   through the last surface into segment N - 2, and through an inner surface into its two
   ///   neighbouring segments if they have the same material, otherwise it is an error (the
   ///   side is ambiguous);
-  /// - at a Mirror with substrate: toggle between the substrate and the environment (#6).
+  /// - at a Plate of one material (shorthand, or a list of equal entries; prisms, cubes) and
+  ///   at a Mirror with substrate (#6): toggle between the inside and the environment at every
+  ///   surface. For a Plate with 2 surfaces this equals the segment rule.
   /// Outside an element means in the environment or in another element: elements do not nest,
   /// so entering B while in A leaves A, and leaving B goes to the environment.
   /// `location` is the JSON pointer of the events; errors add the event index.
@@ -316,11 +337,11 @@ class Compiler {
           leave = i == 0;
           if (!leave) segment = i - 1;
         } else if (inside == element) {
-          leave = true;  // the surface does not bound the segment (prism on an explicit path)
+          leave = true;  // the surface does not bound the segment
         } else if (i == 0 || i == last) {
           segment = i == 0 ? 0 : last - 1;
         } else if (info.media[i - 1] == info.media[i]) {
-          segment = i;  // both sides are the same material (e.g. a prism of one glass)
+          segment = i;  // both sides are the same material
         } else {
           error(idx(location, k),
                 "inner surface " + surfaces_[event.surface].id.str() + " of element '" +
@@ -356,7 +377,8 @@ class Compiler {
     std::string location;
   };
   std::vector<MediumCheck> media_checks_;
-  std::set<std::string> mangin_reported_;  // mirrors already reported as Mangin mirrors
+  std::set<std::string> mangin_reported_;         // mirrors already reported as Mangin mirrors
+  std::set<std::string> uniform_plate_reported_;  // plates already reported, see build_path
 };
 
 }  // namespace

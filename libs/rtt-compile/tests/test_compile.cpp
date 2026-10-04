@@ -644,7 +644,7 @@ TEST_CASE("two-surface lens with a one-entry material list has that material",
                   {"L.S2", EventKind::Refract, "CONST:1.6", "AIR"}});
 }
 
-TEST_CASE("plate with more than 2 surfaces on the automatic path follows its segments",
+TEST_CASE("plate with different segment materials follows its segments on any path",
           "[compile][cemented]") {
   System s = bare_system();
   s.environment.medium = "CONST:1.333";
@@ -656,24 +656,56 @@ TEST_CASE("plate with more than 2 surfaces on the automatic path follows its seg
                  plane_surface("P.S4", 3.0)}};
   plate.segment_materials = {"CONST:1.5", "CONST:1.6", "CONST:1.5"};
   s.root.children.push_back({plate});
+  s.paths = {
+      {"auto", true, {}},
+      {"explicit", false, {refract("P.S4"), refract("P.S3"), refract("P.S2"), refract("P.S1")}}};
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+  REQUIRE(cs.media().size() == 3);
+  require_events(cs, "auto",
+                 {{"P.S1", EventKind::Refract, "CONST:1.333", "CONST:1.5"},
+                  {"P.S2", EventKind::Refract, "CONST:1.5", "CONST:1.6"},
+                  {"P.S3", EventKind::Refract, "CONST:1.6", "CONST:1.5"},
+                  {"P.S4", EventKind::Refract, "CONST:1.5", "CONST:1.333"}});
+  require_events(cs, "explicit",
+                 {{"P.S4", EventKind::Refract, "CONST:1.333", "CONST:1.5"},
+                  {"P.S3", EventKind::Refract, "CONST:1.5", "CONST:1.6"},
+                  {"P.S2", EventKind::Refract, "CONST:1.6", "CONST:1.5"},
+                  {"P.S1", EventKind::Refract, "CONST:1.5", "CONST:1.333"}});
+}
+
+TEST_CASE("plate of one material with more than 2 surfaces needs an explicit path",
+          "[compile][cemented]") {
+  // Decided for #27: a prism or cube of one glass toggles inside <-> environment at every face,
+  // so the tree order of its faces is no meaningful automatic path (compare the Mangin case).
+  const MaterialLibrary lib;
+  System s = bare_system();
   s.root.children.push_back(
       {Element{"cube",
                ElementKind::Plate,
                Pose::along_z(20.0),
                "CONST:1.7",
                {plane_surface("C.S1"), plane_surface("C.S2", 1.0), plane_surface("C.S3", 2.0)}}});
-  s.paths = {{"auto", true, {}}};
-  const MaterialLibrary lib;
-  const CompiledSystem cs = compile(s, lib);
-  REQUIRE(cs.media().size() == 4);
-  require_events(cs, "auto",
-                 {{"P.S1", EventKind::Refract, "CONST:1.333", "CONST:1.5"},
-                  {"P.S2", EventKind::Refract, "CONST:1.5", "CONST:1.6"},
-                  {"P.S3", EventKind::Refract, "CONST:1.6", "CONST:1.5"},
-                  {"P.S4", EventKind::Refract, "CONST:1.5", "CONST:1.333"},
-                  {"C.S1", EventKind::Refract, "CONST:1.333", "CONST:1.7"},
-                  {"C.S2", EventKind::Refract, "CONST:1.7", "CONST:1.7"},
-                  {"C.S3", EventKind::Refract, "CONST:1.7", "CONST:1.333"}});
+  s.paths = {{"auto", true, {}}, {"again", true, {}}};
+  const CompileError e = compile_error(s);
+  REQUIRE(e.diagnostics().size() == 1);  // reported once per element
+  REQUIRE(has_error_at(e, "/root/children/0/surfaces"));
+  REQUIRE_THAT(e.what(),
+               ContainsSubstring("plate with more than 2 surfaces and uniform material needs an "
+                                 "explicit path"));
+
+  SECTION("also with a list of equal entries") {
+    std::get<Element>(s.root.children[0].value).material.reset();
+    std::get<Element>(s.root.children[0].value).segment_materials = {"CONST:1.7", "CONST:1.7"};
+    REQUIRE(has_error_at(compile_error(s), "/root/children/0/surfaces"));
+  }
+  SECTION("a plate of one material with 2 surfaces stays on the automatic path") {
+    std::get<Element>(s.root.children[0].value).surfaces.pop_back();
+    const CompiledSystem cs = compile(s, lib);
+    require_events(cs, "auto",
+                   {{"C.S1", EventKind::Refract, "AIR", "CONST:1.7"},
+                    {"C.S2", EventKind::Refract, "CONST:1.7", "AIR"}});
+  }
 }
 
 TEST_CASE("achromat reference system goes air -> crown -> flint -> air", "[compile][cemented]") {
@@ -751,8 +783,7 @@ TEST_CASE("Refract at a surface that does not bound the current segment", "[comp
   s.root.children.push_back({segmented_lens(4, {"CONST:1.5", "CONST:1.6", "CONST:1.7"})});
 
   SECTION("from inside the element: the ray leaves it into the environment") {
-    // As for prisms in "plates with more than 2 surfaces are fine on explicit paths": through a
-    // surface, only the segments on its two sides are reached.
+    // Segment rule: through a surface, only the segments on its two sides are reached.
     s.paths = {{"skip",
                 false,
                 {refract("L.S1"),
@@ -793,8 +824,8 @@ TEST_CASE("entering a cemented doublet through the cemented surface is ambiguous
 }
 
 TEST_CASE("a prism of one glass can be entered through an inner surface", "[compile][cemented]") {
-  // Decided for #27: if all segments next to the surface have the same material, entering
-  // through it from outside is unambiguous and goes into that material.
+  // Decided for #27: a plate of one material toggles inside <-> environment at every face, so
+  // it can be entered through any of them.
   const MaterialLibrary lib;
   SECTION("plate with the shorthand, 3 surfaces") {
     System s = bare_system();
@@ -828,5 +859,57 @@ TEST_CASE("a prism of one glass can be entered through an inner surface", "[comp
     require_events(cs, "side",
                    {{"P.S3", EventKind::Ordinary, "AIR", "CONST:1.6"},
                     {"P.S1", EventKind::Refract, "CONST:1.6", "AIR"}});
+  }
+}
+
+TEST_CASE("prism of one glass is left through a side face into the environment",
+          "[compile][cemented]") {
+  // Decided for #27: a Plate of one material (shorthand, or a list of equal entries) keeps the
+  // #5 rule, inside <-> environment at every surface, as before #27.
+  System s = bare_system();
+  s.root.children.push_back(
+      {Element{"prism",
+               ElementKind::Plate,
+               Pose::along_z(10.0),
+               "CONST:1.5",
+               {plane_surface("P.S1"), plane_surface("P.S2", 1.0), plane_surface("P.S3", 2.0)}}});
+  s.paths = {{"through a side face", false, {refract("P.S1"), refract("P.S2")}}};
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+  require_events(cs, "through a side face",
+                 {{"P.S1", EventKind::Refract, "AIR", "CONST:1.5"},
+                  {"P.S2", EventKind::Refract, "CONST:1.5", "AIR"}});
+}
+
+TEST_CASE("explicit path through a cemented doublet follows the segments", "[compile][cemented]") {
+  System s = bare_system();
+  s.root.children.push_back({segmented_lens(3, {"CONST:1.5", "CONST:1.7"})});
+  s.paths = {{"forward", false, {refract("L.S1"), refract("L.S2"), refract("L.S3")}}};
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+  require_events(cs, "forward",
+                 {{"L.S1", EventKind::Refract, "AIR", "CONST:1.5"},
+                  {"L.S2", EventKind::Refract, "CONST:1.5", "CONST:1.7"},
+                  {"L.S3", EventKind::Refract, "CONST:1.7", "AIR"}});
+}
+
+TEST_CASE("lens of one glass with 3 surfaces follows the segments on an explicit path too",
+          "[compile][cemented]") {
+  // Decided for #27: the rule depends on the element, not on the kind of path. An inner surface
+  // of a lens is no exit, so the same events give the same media on automatic and explicit
+  // paths.
+  System s = bare_system();
+  Element lens = segmented_lens(3, {});
+  lens.material = "CONST:1.5";
+  s.root.children.push_back({lens});
+  s.paths = {{"auto", true, {}},
+             {"explicit", false, {refract("L.S1"), refract("L.S2"), refract("L.S3")}}};
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+  for (const char* path : {"auto", "explicit"}) {
+    require_events(cs, path,
+                   {{"L.S1", EventKind::Refract, "AIR", "CONST:1.5"},
+                    {"L.S2", EventKind::Refract, "CONST:1.5", "CONST:1.5"},
+                    {"L.S3", EventKind::Refract, "CONST:1.5", "AIR"}});
   }
 }
