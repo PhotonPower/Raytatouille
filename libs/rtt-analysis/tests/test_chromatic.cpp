@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <cstdint>
+#include <numbers>
 #include <stdexcept>
 #include <string>
 #include <variant>
@@ -13,6 +14,7 @@
 #include "rtt/material/material.hpp"
 #include "rtt/model/model.hpp"
 #include "rtt/paraxial/paraxial.hpp"
+#include "rtt/paraxial/seidel.hpp"
 #include "rtt/trace/sequential.hpp"
 
 using rtt::compile::compile;
@@ -106,9 +108,9 @@ TEST_CASE("achromat N-BK7/F2: longitudinal colour against an independent y-nu tr
   const auto lc = rtt::analysis::longitudinal_colour(cs, PathId{0});
   for (const auto& f : lc.foci) {
     INFO("wavelength " << f.wavelength);
-    REQUIRE(std::abs(f.paraxial_z - focus(f.wavelength)) <= 1e-9);
+    REQUIRE(std::abs(f.paraxial_z - focus(f.wavelength)) <= 1e-10);
   }
-  REQUIRE(std::abs(lc.paraxial - (focus(0) - focus(2))) <= 1e-9);
+  REQUIRE(std::abs(lc.paraxial - (focus(0) - focus(2))) <= 1e-10);
   // The achromat corrects F against C far better than the N-BK7 singlet of similar power.
   MaterialLibrary lib2;
   add_schott(lib2);
@@ -154,6 +156,43 @@ TEST_CASE("lateral colour: chief ray per wavelength relative to the reference", 
   for (const auto& o : none.offset) {
     REQUIRE(o.x == 0.0);
     REQUIRE(o.y == 0.0);
+  }
+}
+
+TEST_CASE("lateral colour at small fields agrees with the Seidel term C_T", "[colour]") {
+  // W contains C_T (eta . rho) for the pair (first, second) with dn = n(first) - n(second)
+  // (Sasian, OPTI 517 L4 p. 23: d_lambda W111 = C_T; see docs/quellen.md and seidel.hpp). In
+  // the paraxial image plane a wavefront term W gives the transverse aberration
+  // eps = (dW/drho) / (n'_K u'_K) (seidel.hpp, checked against real rays in #30), so the chief
+  // ray of `first` lies C_T eta / (n'_K u'_K) from that of `second`, to first order in dn and
+  // in the field (C_T per surface: Sasian, OPTI 518 L6). Image surface in the paraxial image
+  // plane of the reference wavelength. The remainder is mainly of second order in dn, because
+  // n_d does not lie midway between n_F and n_C: 1/2 (f''/f') [(n_F - n_d)^2 - (n_C - n_d)^2]
+  // / (n_F - n_C) ~ -3.4e-4 relative for this singlet (f = image height as a function of n);
+  // the field-dependent part is ~1e-4 eta^2. Observed 3.2e-4 and 2.4e-4; tolerance 1e-3.
+  MaterialLibrary lib;
+  add_schott(lib);
+  System s = load("m0/singlet.rtt.json");
+  const CompiledSystem initial = compile(s, lib);
+  const std::uint16_t ref = initial.reference_wavelength();
+  std::get<rtt::model::Element>(s.root.children[2].value).pose =
+      rtt::model::Pose::along_z(*rtt::paraxial::first_order(initial, PathId{0}, ref).rear_focal_z);
+  s.fields.points = {{0.0, 0.0, 1.0}, {0.0, 0.25, 1.0}, {0.0, 0.5, 1.0}};
+  const CompiledSystem cs = compile(s, lib);
+  const rtt::paraxial::ChromaticPair pair{0, 2};
+  const auto seidel = rtt::paraxial::seidel(cs, PathId{0}, ref, pair);
+  const auto marginal = rtt::paraxial::trace_ray(cs, PathId{0}, ref, seidel.marginal.z,
+                                                 seidel.marginal.y, seidel.marginal.u);
+  const double nu = marginal.back().n * marginal.back().u;
+  for (std::uint16_t f = 1; f < 3; ++f) {
+    const double eta = std::tan(cs.fields().points[f].y * std::numbers::pi / 180.0) /
+                       std::tan(0.5 * std::numbers::pi / 180.0);
+    const double expected = seidel.sum.c_t * eta / nu;
+    const auto lat = rtt::analysis::lateral_colour(cs, PathId{0}, f);
+    const double real = lat.chief[pair.first].y - lat.chief[pair.second].y;
+    INFO("field " << f << ": real " << real << ", Seidel " << expected);
+    REQUIRE(expected != 0.0);
+    REQUIRE(std::abs(real - expected) <= 1e-3 * std::abs(expected));
   }
 }
 
