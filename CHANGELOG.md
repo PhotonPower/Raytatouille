@@ -56,6 +56,14 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   `AnalysisError`. Plots in `raytatouille.plot` mit optionalem matplotlib (`raytatouille[plot]`,
   Nachtrag zu ADR 0018). Bitgleiche Tests gegen C++ für jede Analyse, auch mit Vignettierung;
   Beispiel `examples/python/analysis.py` (#33).
+- Abnahmetests M2 (`rtt-analysis`, `test_m2_acceptance.cpp`, Tag `[m2]`, #34):
+  - Plankonvexlinse: S_I gleich Fit an reale Strahlen (Querabweichung und OPD), relativ 1e−3.
+  - Achromat: realer Farblängsfehler gegen einen unabhängigen meridionalen Realstrahl; C_L gegen
+    die paraxiale Farbe eines engen Wellenlängenpaars.
+  - Cooke-Triplet als Golden-Test nach Sasian (OPTI 517 L20), verglichen mit ray-optics
+    (erste Ordnung, Seidel je Fläche, 36 reale Strahlen) und Sasian.
+  - Neues Referenzsystem `tests/reference/m2/cooke_triplet.rtt.json`, Glaskatalog
+    `tests/catalogs/m2/schott.agf` (N-LAK9, N-SF5). Quellen in `docs/quellen.md`.
 
 ### Geändert
 - `cmake`: `rtt_add_test` setzt unter MinGW den `PATH` für Testerkennung und Testläufe auf das

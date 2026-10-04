@@ -1,0 +1,120 @@
+{
+  "schema_version": "0.2.0",
+  "name": "Cooke triplet (Geiser), f = 50 mm, f/4, 20 deg; Sasian OPTI 517 L20",
+  "units": {"length": "mm", "wavelength": "um"},
+  "wavelengths": [
+    {"um": 0.4862661791313749},
+    {"um": 0.587721870012617, "reference": true},
+    {"um": 0.6564506940778654}
+  ],
+  "aperture": {"type": "epd", "value": 12.5},
+  "fields": {
+    "points": [
+      {},
+      {"y": 14.0},
+      {"y": 20.0}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "lens",
+        "name": "L1",
+        "material": "SCHOTT:N-LAK9",
+        "surfaces": [
+          {
+            "id": "L1.S1",
+            "shape": {
+              "base": {"type": "conic", "radius": 23.713}
+            }
+          },
+          {
+            "id": "L1.S2",
+            "pose": {"position": [0.0, 0.0, 4.831]},
+            "shape": {
+              "base": {"type": "conic", "radius": 7331.288}
+            }
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "L2",
+        "pose": {"position": [0.0, 0.0, 10.691]},
+        "material": "SCHOTT:N-SF5",
+        "surfaces": [
+          {
+            "id": "L2.S1",
+            "shape": {
+              "base": {"type": "conic", "radius": -24.456}
+            }
+          },
+          {
+            "id": "L2.S2",
+            "pose": {"position": [0.0, 0.0, 0.975]},
+            "shape": {
+              "base": {"type": "conic", "radius": 21.896}
+            }
+          }
+        ]
+      },
+      {
+        "type": "stop",
+        "name": "stop",
+        "pose": {"position": [0.0, 0.0, 10.69100001]},
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 10.0}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "L3",
+        "pose": {"position": [0.0, 0.0, 16.488]},
+        "material": "SCHOTT:N-LAK9",
+        "surfaces": [
+          {
+            "id": "L3.S1",
+            "shape": {
+              "base": {"type": "conic", "radius": 86.759}
+            }
+          },
+          {
+            "id": "L3.S2",
+            "pose": {"position": [0.0, 0.0, 3.127]},
+            "shape": {
+              "base": {"type": "conic", "radius": -20.4942}
+            }
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 60.71846]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {
+      "name": "main",
+      "events": [
+        {"surface": "L1.S1"},
+        {"surface": "L1.S2"},
+        {"surface": "L2.S1"},
+        {"surface": "STO", "kind": "transmit"},
+        {"surface": "L2.S2"},
+        {"surface": "L3.S1"},
+        {"surface": "L3.S2"},
+        {"surface": "IMG", "kind": "transmit"}
+      ]
+    }
+  ]
+}

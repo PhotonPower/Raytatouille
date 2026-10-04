@@ -10,7 +10,7 @@ if(RTT_BUILD_TESTS)
   # determinism test.
   rtt_add_test(rtt_analysis_tests
     SOURCES tests/test_spot.cpp tests/test_fans.cpp tests/test_opd.cpp tests/test_field.cpp
-            tests/test_chromatic.cpp
+            tests/test_chromatic.cpp tests/test_m2_acceptance.cpp
     LIBS rtt::analysis rtt::io TBB::tbb)
   target_compile_definitions(rtt_analysis_tests PRIVATE
     RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs")

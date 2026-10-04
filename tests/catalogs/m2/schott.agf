@@ -1,0 +1,16 @@
+CC Raytatouille test catalogue: N-LAK9 and N-SF5 from the free SCHOTT catalogue
+! Origin: SCHOTT AG, "Optical Glass Overview ZEMAX" (schott.com, optical glass downloads),
+! file "schott glasses preferred and special June-2025-B.AGF", downloaded 2026-10-04.
+! Only the NM, ED, CD, TD and LD records of these two glasses are reproduced; the
+! coefficients are measured data. Not the manufacturer file (docs/quellen.md, #24, #34).
+! Glasses of the Cooke triplet golden test (tests/reference/m2/cooke_triplet.rtt.json).
+NM N-LAK9 2 691547.351 1.691 54.71 0 1
+ED 6.300000 7.500000 3.510000 -0.007100 0
+CD 1.462319050E+00 7.242701560E-03 3.443995890E-01 2.433531310E-02 1.155083720E+00 8.546868680E+01 0.000000000E+00 0.000000000E+00
+TD 2.110000E-06 1.110000E-08 1.820000E-12 4.740000E-07 -3.470000E-10 1.460000E-01 2.000000E+01
+LD 3.20000E-01 2.50000E+00
+NM N-SF5 2 673323.286 1.67271 32.25 0 1
+ED 7.940000 9.210000 2.858000 0.008800 0
+CD 1.524818890E+00 1.125475600E-02 1.870855270E-01 5.889953920E-02 1.427290150E+00 1.291416750E+02 0.000000000E+00 0.000000000E+00
+TD -2.510000E-07 1.070000E-08 -2.400000E-11 7.850000E-07 1.150000E-09 2.780000E-01 2.000000E+01
+LD 3.70000E-01 2.50000E+00
