@@ -21,6 +21,7 @@ include(RttTargets)
 
 find_package(Eigen3 CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
+find_package(TBB CONFIG REQUIRED)
 
 if(RTT_BUILD_TESTS)
   find_package(Catch2 3 CONFIG REQUIRED)

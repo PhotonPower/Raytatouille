@@ -391,12 +391,6 @@ TEST_CASE("model features beyond M1 throw CompileError", "[compile]") {
   System s = load("m1/singlet_const.rtt.json");
   auto& lens = std::get<Element>(s.root.children[1].value);
 
-  SECTION("even asphere (tracer support follows in #6)") {
-    lens.surfaces[0].shape.base = rtt::model::EvenAsphere{Param(51.68), Param(0.0), {Param(1e-6)}};
-    const CompileError e = compile_error(s);
-    REQUIRE(has_error_at(e, "/root/children/1/surfaces/0/shape/base"));
-    REQUIRE_THAT(e.what(), ContainsSubstring("#6"));
-  }
   SECTION("Zernike sag term (M8)") {
     lens.surfaces[0].shape.terms.push_back(rtt::model::ZernikeSag{Param(10.0), {Param(1e-3)}});
     const CompileError e = compile_error(s);
@@ -407,6 +401,47 @@ TEST_CASE("model features beyond M1 throw CompileError", "[compile]") {
     const CompileError e = compile_error(s);
     REQUIRE(has_error_at(e, "/root/children/1/surfaces"));
     REQUIRE_THAT(e.what(), ContainsSubstring("#14"));
+  }
+}
+
+TEST_CASE("even asphere compiles to geom::EvenAsphere with c = 1/R", "[compile]") {
+  // Supported since #6; coefficients as in the model (coefficients[0] = A4).
+  System s = load("m1/singlet_const.rtt.json");
+  auto& lens = std::get<Element>(s.root.children[1].value);
+  lens.surfaces[0].shape.base =
+      rtt::model::EvenAsphere{Param(51.68), Param(-0.5), {Param(1e-6), Param(-2e-9)}};
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+  const auto& shape = cs.surfaces()[surface_index(cs, "L1.S1")].shape;
+  const auto* asphere = std::get_if<rtt::geom::EvenAsphere<double>>(&shape);
+  REQUIRE(asphere != nullptr);
+  REQUIRE(asphere->base_conic() == std::pair{1.0 / 51.68, -0.5});
+  REQUIRE(asphere->coefficients() == std::vector<double>{1e-6, -2e-9});
+}
+
+TEST_CASE("mirror with substrate material and several surfaces needs an explicit path",
+          "[compile]") {
+  // A Mangin mirror refracts at its front surface; the automatic path would reflect at every
+  // surface of a Mirror, which is physically wrong (#6).
+  System s = bare_system();
+  Surface back = plane_surface("M.S2", 3.0);
+  back.interaction = rtt::model::IdealMirror{};
+  s.root.children.push_back({Element{
+      "M", ElementKind::Mirror, Pose::along_z(30.0), "CONST:1.6", {plane_surface("M.S1"), back}}});
+  s.paths = {{"auto", true, {}}};
+  const CompileError e = compile_error(s);
+  REQUIRE(has_error_at(e, "/root/children/0/surfaces"));
+  REQUIRE_THAT(e.what(), ContainsSubstring("mirror with substrate material on the automatic path"));
+  REQUIRE_THAT(e.what(), ContainsSubstring("explicit path"));
+
+  SECTION("a single-surface mirror on a substrate stays on the automatic path") {
+    System one = bare_system();
+    one.root.children.push_back({Element{
+        "M", ElementKind::Mirror, Pose::along_z(30.0), "CONST:1.6", {plane_surface("M.S1")}}});
+    one.paths = {{"auto", true, {}}};
+    const MaterialLibrary lib;
+    const CompiledSystem cs = compile(one, lib);
+    require_events(cs, "auto", {{"M.S1", EventKind::Reflect, "AIR", "AIR"}});
   }
 }
 

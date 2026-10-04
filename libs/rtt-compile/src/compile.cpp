@@ -140,8 +140,13 @@ class Compiler {
       // c = 1/R (docs/architecture.md, Konventionen); validate() guarantees R finite, != 0.
       return geom::Conic<double>(1.0 / conic->radius.value, conic->conic.value);
     }
-    if (std::holds_alternative<model::EvenAsphere>(shape.base)) {
-      error(location + "/base", "even asphere: not yet supported by the tracer, see #6");
+    if (const auto* asphere = std::get_if<model::EvenAsphere>(&shape.base)) {
+      // Same c = 1/R as the conic; coefficients[0] = A4 in model and rtt-geom.
+      std::vector<double> coefficients;
+      coefficients.reserve(asphere->coefficients.size());
+      for (const model::Param& a : asphere->coefficients) coefficients.push_back(a.value);
+      return geom::EvenAsphere<double>(1.0 / asphere->radius.value, asphere->conic.value,
+                                       std::move(coefficients));
     }
     return geom::Plane<double>{};
   }
@@ -157,6 +162,16 @@ class Compiler {
             error(e.location + "/surfaces",
                   "cemented groups: not supported before M2, see #14 (automatic path through an "
                   "element with more than 2 surfaces)");
+          }
+          continue;
+        }
+        // A mirror on a substrate with several surfaces (Mangin mirror) refracts at its front
+        // surface; reflecting at every surface would be wrong (#6).
+        if (e.kind == model::ElementKind::Mirror && e.medium && e.surface_count > 1) {
+          if (mangin_reported_.emplace(e.location).second) {
+            error(e.location + "/surfaces",
+                  "mirror with substrate material on the automatic path: use an explicit path "
+                  "(Refract, Reflect, Refract)");
           }
           continue;
         }
@@ -227,6 +242,7 @@ class Compiler {
   std::map<model::SurfaceId, std::uint32_t> surface_index_;
   std::map<std::string, std::uint32_t, std::less<>> medium_index_;
   std::set<std::string> cemented_reported_;  // elements already reported as cemented groups
+  std::set<std::string> mangin_reported_;    // mirrors already reported as Mangin mirrors
 };
 
 }  // namespace
