@@ -116,13 +116,15 @@ class Compiler {
       }
     }
     for (std::size_t m = 0; m < media_.size(); ++m) {
-      const auto& range = media_checks_[m].range;
-      if (!where[m] || !range) continue;
+      const std::optional<material::WavelengthRange>& range = media_checks_[m].range;
+      const std::optional<std::string>& location = where[m];
+      if (!location.has_value() || !range.has_value()) continue;
+      const material::WavelengthRange& valid = range.value();
       for (const double wl : wavelengths_um_) {
-        if (range->contains(wl)) continue;
-        error(*where[m], "wavelength " + number(wl) + " um is outside the valid range [" +
-                             number(range->min_um) + ", " + number(range->max_um) +
-                             "] um of material '" + media_[m].reference + "'");
+        if (valid.contains(wl)) continue;
+        error(location.value(), "wavelength " + number(wl) + " um is outside the valid range [" +
+                                    number(valid.min_um) + ", " + number(valid.max_um) +
+                                    "] um of material '" + media_[m].reference + "'");
         break;
       }
     }
