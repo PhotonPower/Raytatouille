@@ -46,8 +46,9 @@ inline constexpr double kDefaultTMin = 1e-9;
 /// step size: Press et al., Numerical Recipes, 3rd ed., Sec. 9.4.
 inline constexpr double kNewtonTolerance = 1e-12;
 
-/// Factor of the rounding-limit step criterion, see kNewtonTolerance. A safety factor over the
-/// rounding error of a few operations, not derived.
+/// Factor of the rounding-limit step criterion, see kNewtonTolerance. Estimate: evaluating F
+/// at o + t d has a rounding error of about eps (|o| + |t|) (1 + |grad sag|), so the Newton step
+/// carries noise of about that error / |F'|. The factor 8 gives margin over this estimate.
 inline constexpr double kNewtonStepFactor = 8.0;
 
 /// Maximum number of Newton steps before the status is NoConvergence (docs/architecture.md).
@@ -67,8 +68,9 @@ template <rtt::math::Real T>
                                               const rtt::math::Vec3T<T>& direction,
                                               T t_min = T(kDefaultTMin)) noexcept {
   using std::sqrt;
-  // Rearranging the sag z = c r^2 / (1 + s), s = sqrt(1 - (1 + k) c^2 r^2) (Welford,
-  // Aberrations of Optical Systems, Ch. 2) gives the quadric
+  // Rearranging the sag z = c r^2 / (1 + s), s = sqrt(1 - (1 + k) c^2 r^2) (Forbes, Opt.
+  // Express 19(10), 9923 (2011), Eq. (2.1), s = phi there; see also Welford, Aberrations of
+  // Optical Systems, Ch. 2) gives the quadric
   //   F(x, y, z) = c (x^2 + y^2) + (1 + k) c z^2 - 2 z = 0,
   // whose solutions are z = (1 -+ s) / ((1 + k) c). The sag is the "-" root, i.e. the sheet
   // through the vertex, on which w = 1 - (1 + k) c z = s >= 0.
