@@ -141,7 +141,7 @@ class Compiler {
       return geom::Conic<double>(1.0 / conic->radius.value, conic->conic.value);
     }
     if (std::holds_alternative<model::EvenAsphere>(shape.base)) {
-      error(location + "/base", "even aspheres are not supported yet (rtt-geom, issue #4)");
+      error(location + "/base", "even asphere: not yet supported by the tracer, see #6");
     }
     return geom::Plane<double>{};
   }

@@ -108,7 +108,8 @@ class CompiledSystem;
 ///   medium to B's, and leaving B then goes to the environment; that case is not settled
 ///   yet and is part of the question on cemented groups (#14).
 ///
-/// Not supported in M1 (CompileError): even aspheres, Zernike sag terms, and Lens or Plate
+/// Not supported yet (CompileError): even aspheres (added to CompiledShape with the tracer, #6),
+/// Zernike sag terms (M8), and Lens or Plate
 /// elements with more than 2 surfaces on an automatic path (cemented groups, see #14).
 ///
 /// The result holds no references or pointers into `system` or `materials`.

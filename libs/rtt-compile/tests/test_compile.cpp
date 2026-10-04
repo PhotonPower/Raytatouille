@@ -391,11 +391,11 @@ TEST_CASE("model features beyond M1 throw CompileError", "[compile]") {
   System s = load("m1/singlet_const.rtt.json");
   auto& lens = std::get<Element>(s.root.children[1].value);
 
-  SECTION("even asphere (rtt-geom #4)") {
+  SECTION("even asphere (tracer support follows in #6)") {
     lens.surfaces[0].shape.base = rtt::model::EvenAsphere{Param(51.68), Param(0.0), {Param(1e-6)}};
     const CompileError e = compile_error(s);
     REQUIRE(has_error_at(e, "/root/children/1/surfaces/0/shape/base"));
-    REQUIRE_THAT(e.what(), ContainsSubstring("#4"));
+    REQUIRE_THAT(e.what(), ContainsSubstring("#6"));
   }
   SECTION("Zernike sag term (M8)") {
     lens.surfaces[0].shape.terms.push_back(rtt::model::ZernikeSag{Param(10.0), {Param(1e-3)}});

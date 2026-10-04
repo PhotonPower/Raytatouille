@@ -41,6 +41,8 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 | 0011 | Linux und Windows; getestet mit GCC 13, Clang 18, MSVC 2022; kein `-ffast-math` |
 | 0012 | GUI später in Python (PySide6, pyvista/VTK, matplotlib) nur über die öffentliche API |
 | 0013 | Keine GPU in v1 |
+| 0014 | Laufzeit-Interface `Material` in `double`; Formelkerne als Templates |
+| 0015 | `rtt::math::Real` umfasst nur `double` (später Dual-Zahlen) |
 | 0016 | `CompiledSystem` in eigener Bibliothek `rtt-compile`; feste Reihenfolge in der Schicht Tracing |
 
 **Konventionen (verbindlich für alle Bibliotheken)**
