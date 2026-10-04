@@ -77,7 +77,9 @@ struct FanYPupil {
 
 /// `count` points uniformly distributed in the unit disk. Generator std::mt19937_64 seeded with
 /// `seed`; per ray two draws u1, u2 in [0, 1) as (x >> 11) * 2^-53 (in this order), then
-/// r = sqrt(u1), phi = 2 pi u2, (px, py) = (r sin phi, r cos phi). Identical on all platforms.
+/// r = sqrt(u1), phi = 2 pi u2, (px, py) = (r sin phi, r cos phi). The draws are identical on
+/// all platforms; px and py may differ by a few ulp because std::sin and std::cos are not
+/// correctly rounded.
 struct RandomPupil {
   std::size_t count = 100;
   std::uint64_t seed = 0;
@@ -102,23 +104,30 @@ struct AimedRay {
   /// Start of the ray in global coordinates (OPL 0). Status Alive, or NoConvergence if real
   /// aiming failed (the ray then holds the last iterate).
   RayState ray;
-  int iterations = 0;     ///< Newton steps taken (0 for paraxial aiming)
-  double residual = 0.0;  ///< distance to the target on the stop surface, mm (real aiming)
+  int iterations = 0;  ///< Newton steps taken (0 for paraxial aiming)
+  /// Distance to the target on the stop surface, mm (real aiming; 0 for paraxial aiming;
+  /// +infinity if no iterate reached the stop).
+  double residual = 0.0;
 };
 
 /// Aims one ray of field `field` at normalised pupil coordinates (px, py).
 ///
 /// Object at infinity: the direction is the field direction; the ray starts on a plane
-/// perpendicular to it, placed per field so that the whole bundle starts at least 1 mm before
-/// the entrance pupil and before every surface of the path (OPL starts on this plane wave).
+/// perpendicular to it, placed per field so that the bundle (up to 3 EP radii around the chief
+/// ray) starts at least 1 mm before the entrance pupil and before every surface of the path,
+/// sampled within its aperture and shape domain (OPL starts on this plane wave). A field angle
+/// with a finite object places the object point on the chief ray through the EP centre.
 /// Finite object: the ray starts in the object point (OPL 0).
 /// The target is (px R_s, py R_s) in the local coordinates of the stop surface (first Stop event
 /// of the path), R_s = paraxial stop radius belonging to the entrance pupil. Apertures are
 /// ignored while aiming; vignetting is left to the tracer.
-/// @throws std::invalid_argument if the path, field or wavelength does not exist, the field type
-///         does not fit the object (object height at infinity), the path has no stop, or the
-///         entrance pupil is not defined (rtt::paraxial::first_order)
-/// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric
+/// @throws std::invalid_argument if the path, field or wavelength does not exist; px or py is
+///         not finite; the field type does not fit the object (object height at infinity); a
+///         field angle is not in (-90, 90) degree; a paraxial image height is requested without
+///         a finite paraxial image; the path has no stop; or the entrance pupil is not defined
+///         (rtt::paraxial::first_order: pupil at infinity, no diameter for this aperture type)
+/// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric or the stop
+///         aperture is not circular
 [[nodiscard]] AimedRay aim_ray(const compile::CompiledSystem& system,
                                compile::PathId path,
                                std::uint16_t field,

@@ -51,7 +51,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   Eintrittspupille; Ray Aiming real (Newton mit Dämpfung auf den Zielpunkt der Blende,
   1e−9 mm, sonst `NoConvergence`) oder paraxial; Startebene als ebene Welle vor dem System bei
   Objekt im Unendlichen; Verteilungen hexapolar, Gitter, Fächer x/y, Zufall mit Seed
-  (plattformunabhängig), Einzelstrahl; `make_rays` und `aim_ray` (#8).
+  (plattformunabhängig), Einzelstrahl; `make_rays` und `aim_ray`. Referenzsystem
+  `tests/reference/m1/two_lenses_stop_between.rtt.json` (Aperturtyp `stop_size`) (#8).
 - Feldwinkel, Objekthöhe und normierte Pupillenkoordinaten als Konvention in
   `docs/architecture.md` (#8).
 

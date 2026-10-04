@@ -25,6 +25,10 @@ constexpr double kTwoPi = 2.0 * std::numbers::pi;
 /// Maximum number of step halvings per Newton step of real aiming.
 constexpr int kMaxAimHalvings = 10;
 
+/// Half-width of the bundle of one field in units of the EP radius, around the chief ray
+/// through the EP centre: reserve for the pupil aberration found by real aiming.
+constexpr double kBundleReserve = 3.0;
+
 /// Draw in [0, 1) from the upper 53 bits of a 64-bit engine output; identical on all platforms
 /// (std::uniform_real_distribution is implementation-defined).
 double unit_draw(std::mt19937_64& engine) {
@@ -54,7 +58,6 @@ struct Context {
   /// Signed paraxial stop height of a ray through the EP point at unit height: the stop target
   /// of pupil point (px, py) is (px, py) * r_ep * stop_scale (negative for an inverted image).
   double stop_scale = 1.0;
-  double z_min = 0.0;  ///< start limit: rays of an infinite object start at least 1 mm before it
 };
 
 /// Ray start for one field.
@@ -98,32 +101,66 @@ Context make_context(const CompiledSystem& system, PathId path, std::uint16_t wa
   // The EP plane and the stop plane are conjugate, so the stop height of a paraxial ray from
   // the EP plane does not depend on its slope: y_stop = stop_scale * y_ep.
   c.stop_scale = paraxial::trace_ray(system, path, wavelength, c.z_ep, 1.0, 0.0)[c.stop_event].y;
-
-  // Lowest z the bundle may reach before the system: every surface of the path is bounded by a
-  // sphere of radius rho around its vertex, rho = outer extent of its aperture (or 3 EP radii
-  // without aperture); this holds for planes, spheres and ellipsoids within their aperture.
-  double z_min = c.z_ep;
-  for (const auto& e : events) {
-    const compile::CompiledSurface& s = system.surfaces()[e.surface];
-    double rho = 3.0 * c.r_ep;
-    if (s.aperture) {
-      rho = std::visit(
-          [](const auto& a) {
-            using A = std::decay_t<decltype(a)>;
-            if constexpr (std::is_same_v<A, model::CircularAperture>) {
-              return a.radius;
-            } else if constexpr (std::is_same_v<A, model::RectangularAperture>) {
-              return std::hypot(a.half_width_x, a.half_width_y);
-            } else {
-              return std::max(a.semi_axis_x, a.semi_axis_y);
-            }
-          },
-          *s.aperture);
-    }
-    z_min = std::min(z_min, s.to_global.translation().z() - rho);
-  }
-  c.z_min = z_min - 1.0;
   return c;
+}
+
+/// Outer radius of an aperture in local x, y, mm.
+double aperture_extent(const model::Aperture& aperture) {
+  return std::visit(
+      [](const auto& a) {
+        using A = std::decay_t<decltype(a)>;
+        if constexpr (std::is_same_v<A, model::CircularAperture>) {
+          return a.radius;
+        } else if constexpr (std::is_same_v<A, model::RectangularAperture>) {
+          return std::hypot(a.half_width_x, a.half_width_y);
+        } else {
+          return std::max(a.semi_axis_x, a.semi_axis_y);
+        }
+      },
+      aperture);
+}
+
+/// Lowest global z of the part of `surface` that the bundle of an infinite-object field can
+/// reach. The bundle is bounded by a cylinder of radius r_bundle around the chief ray through
+/// the EP centre (slope tan_field against the axis), so at global z it is at most
+/// r_bundle + |z - z_ep| tan_field off the axis. The surface is sampled in local coordinates up
+/// to that radius, capped by its aperture and by the domain of its shape; since a surface that
+/// curves back upstream meets the bundle where it is wider, the radius is re-evaluated at the
+/// lowest z found until it no longer drops (decided for #8, start plane).
+double lowest_z(const compile::CompiledSurface& surface,
+                double z_ep,
+                double r_bundle,
+                double tan_field) {
+  constexpr int kRadialSamples = 64;
+  constexpr int kAzimuthSamples = 8;
+  constexpr int kMaxRounds = 50;
+  double cap = std::numeric_limits<double>::infinity();
+  if (surface.aperture) cap = aperture_extent(*surface.aperture);
+  const std::optional<double> domain =
+      std::visit([](const auto& shape) { return shape.max_radius(); }, surface.shape);
+  if (domain) cap = std::min(cap, *domain);
+  const auto sag = [&](double x, double y) {
+    return std::visit([x, y](const auto& shape) { return shape.sag(x, y); }, surface.shape);
+  };
+  double z = surface.to_global.translation().z();
+  for (int round = 0; round < kMaxRounds; ++round) {
+    const double rho = std::min(cap, r_bundle + std::abs(z - z_ep) * tan_field);
+    double low = surface.to_global.translation().z();
+    for (int i = 1; i <= kRadialSamples; ++i) {
+      const double r = rho * i / kRadialSamples;
+      for (int j = 0; j < kAzimuthSamples; ++j) {
+        const double phi = kTwoPi * j / kAzimuthSamples;
+        const double x = r * std::sin(phi);
+        const double y = r * std::cos(phi);
+        const double h = sag(x, y);
+        if (!std::isfinite(h)) continue;
+        low = std::min(low, surface.to_global.apply_point(Vec3(x, y, h)).z());
+      }
+    }
+    if (low >= z - 1e-9) return std::min(z, low);
+    z = low;
+  }
+  return z;
 }
 
 /// Paraxial image height (at the paraxial image plane) of the chief ray with unit field value:
@@ -201,11 +238,21 @@ FieldStart make_field(const Context& c, std::uint16_t field) {
     return start;
   }
   start.direction = Vec3(tx, ty, 1.0).normalized();
-  // Start plane perpendicular to d through E - L d (E = EP centre). A ray through (a, b, z_ep)
-  // starts at z_ep - (a d_x + b d_y + L) d_z; with |(a, b)| <= 3 r_ep this is <= z_min for
-  // L >= (z_ep - z_min) / d_z + 3 r_ep |d_xy| (decided for #8, same L for all rays of a field).
   const Vec3& d = start.direction;
-  start.plane_offset = (c.z_ep - c.z_min) / d.z() + 3.0 * c.r_ep * std::hypot(d.x(), d.y());
+  const double d_xy = std::hypot(d.x(), d.y());
+  // The bundle reaches at most 3 EP radii off the chief ray (reserve for real aiming); every
+  // ray must start at least 1 mm before the EP and before every surface of the path it can
+  // reach (lowest_z).
+  const double r_bundle = kBundleReserve * c.r_ep;
+  double z_min = c.z_ep;
+  for (const auto& e : system.path(c.path).events) {
+    z_min = std::min(z_min, lowest_z(system.surfaces()[e.surface], c.z_ep, r_bundle, d_xy / d.z()));
+  }
+  z_min -= 1.0;
+  // Start plane perpendicular to d through E - L d (E = EP centre). A ray through (a, b, z_ep)
+  // starts at z_ep - (a d_x + b d_y + L) d_z; with |(a, b)| <= r_bundle this is <= z_min for
+  // L >= (z_ep - z_min) / d_z + r_bundle |d_xy| (decided for #8, same L for all rays of a field).
+  start.plane_offset = (c.z_ep - z_min) / d.z() + r_bundle * d_xy;
   return start;
 }
 
@@ -254,6 +301,7 @@ AimedRay aim(const Context& c, const FieldStart& f, double px, double py, Aiming
 
   // Real aiming: Newton on the residual at the stop, central-difference Jacobian (ADR 0007;
   // Newton's method in 2D, e.g. Press et al., Numerical Recipes, 3rd ed., Sec. 9.6).
+  out.residual = std::numeric_limits<double>::infinity();  // until the stop is reached
   const double r_s = c.r_ep * c.stop_scale;
   const double tx = px * r_s;
   const double ty = py * r_s;
@@ -364,6 +412,9 @@ AimedRay aim_ray(const compile::CompiledSystem& system,
                  double px,
                  double py,
                  Aiming aiming) {
+  if (!std::isfinite(px) || !std::isfinite(py)) {
+    throw std::invalid_argument("sources: pupil coordinates must be finite");
+  }
   const Context c = make_context(system, path, wavelength);
   return aim(c, make_field(c, field), px, py, aiming);
 }
@@ -376,6 +427,11 @@ RayBatch make_rays(const compile::CompiledSystem& system,
                    Aiming aiming) {
   const Context c = make_context(system, path, wavelength);
   const std::vector<PupilPoint> points = pupil_points(sampling);
+  for (const PupilPoint& p : points) {
+    if (!std::isfinite(p.px) || !std::isfinite(p.py)) {
+      throw std::invalid_argument("sources: pupil coordinates must be finite");
+    }
+  }
   std::vector<FieldStart> starts;
   starts.reserve(fields.size());
   for (const std::uint16_t f : fields) starts.push_back(make_field(c, f));

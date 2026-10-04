@@ -74,12 +74,12 @@ System two_lenses(StopPlace place, bool finite_object = false) {
              ElementKind::Lens,
              Pose::along_z(10.0),
              "CONST:1.5168",
-             {surface("L1.S1", 0.0, 120.0), surface("L1.S2", 6.0, -120.0)}};
+             {surface("L1.S1", 0.0, 60.0), surface("L1.S2", 5.0, -60.0)}};
   Element l2{"L2",
              ElementKind::Lens,
              Pose::along_z(25.0),
              "CONST:1.5168",
-             {surface("L2.S1", 0.0, 100.0), surface("L2.S2", 5.0)}};
+             {surface("L2.S1", 0.0, 45.0), surface("L2.S2", 4.0)}};
   Element stop_at = stop_element;
   switch (place) {
     case StopPlace::Before:
@@ -115,19 +115,22 @@ std::size_t stop_event(const CompiledSystem& cs) {
   return 0;
 }
 
-/// Traces the ray to the stop surface (apertures included) and returns the hit in local stop
-/// coordinates.
+/// Traces the ray to the stop surface (apertures of the surfaces before the stop included) and
+/// returns the hit in local stop coordinates; the stop aperture itself is not applied, so that
+/// rays aimed exactly at its rim can be checked.
 Vec3 hit_on_stop(const CompiledSystem& cs, RayState ray) {
   const auto& events = cs.path(PathId{0}).events;
   const std::size_t stop = stop_event(cs);
-  for (std::size_t i = 0; i <= stop; ++i) {
+  for (std::size_t i = 0; i < stop; ++i) {
     const auto& e = events[i];
     ray = rtt::trace::sequential_step(ray, cs.surfaces()[e.surface], e.surface, e.kind,
                                       cs.media()[e.medium_before].index[0].real(),
                                       cs.media()[e.medium_after].index[0].real());
   }
   REQUIRE(ray.status == RayStatus::Alive);
-  return cs.surfaces()[events[stop].surface].to_local.apply_point(ray.pos);
+  const auto hit = rtt::trace::intersect_surface(ray, cs.surfaces()[events[stop].surface]);
+  REQUIRE(hit.status == rtt::geom::HitStatus::Hit);
+  return hit.point;
 }
 
 /// Signed paraxial stop radius that belongs to the entrance pupil: height of the paraxial
@@ -471,4 +474,138 @@ TEST_CASE("invalid source input throws at the API boundary", "[sources]") {
   no_stop.root.children.erase(no_stop.root.children.begin() + 1);
   const CompiledSystem cs2 = compile(no_stop, lib);
   REQUIRE_THROWS_AS(rtt::trace::aim_ray(cs2, PathId{0}, 0, 0, 0.0, 0.0), std::invalid_argument);
+}
+
+TEST_CASE("field angle with a finite object: object point on the chief ray through the EP",
+          "[sources]") {
+  // Decided for #8: a field angle with a finite object places the object point on the chief
+  // ray d ~ (tan theta_x, tan theta_y, 1) through the EP centre, i.e. at
+  // ((z_obj - z_ep) tan theta_x, (z_obj - z_ep) tan theta_y, z_obj).
+  const MaterialLibrary lib;
+  for (const StopPlace place : {StopPlace::Before, StopPlace::Between, StopPlace::After}) {
+    System s = two_lenses(place, true);
+    s.fields = {FieldType::AngleDeg, {{0.0, 0.0, 1.0}, {-3.0, 4.0, 1.0}}};
+    const CompiledSystem cs = compile(s, lib);
+    const double z_ep = *rtt::paraxial::first_order(cs, PathId{0}, 0).entrance_pupil->z;
+    const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, 1, 0, 0.0, 0.0);
+    INFO("stop " << static_cast<int>(place));
+    REQUIRE(aimed.ray.status == RayStatus::Alive);
+    const double dz = -100.0 - z_ep;
+    REQUIRE(std::abs(aimed.ray.pos.x() - dz * std::tan(-3.0 * kDeg)) <= 1e-12);
+    REQUIRE(std::abs(aimed.ray.pos.y() - dz * std::tan(4.0 * kDeg)) <= 1e-12);
+    REQUIRE(aimed.ray.pos.z() == -100.0);
+    const Vec3 hit = hit_on_stop(cs, aimed.ray);
+    REQUIRE(std::hypot(hit.x(), hit.y()) < 1e-9);
+  }
+}
+
+TEST_CASE("start plane lies before a surface that curves back upstream", "[sources]") {
+  // Strongly concave first surface without aperture and a steep field: the bundle meets the
+  // surface far upstream of its vertex (review of #8). Every ray must start before it.
+  const MaterialLibrary lib;
+  System s;
+  s.name = "concave front";
+  s.wavelengths = {{0.5876, 1.0, true}};
+  s.aperture = {rtt::model::SystemApertureType::EntrancePupilDiameter, Param(1.0)};
+  s.fields = {FieldType::AngleDeg, {{0.0, 0.0, 1.0}, {0.0, 40.0, 1.0}}};
+  s.root.name = "root";
+  s.root.children.push_back({Element{"L",
+                                     ElementKind::Lens,
+                                     Pose::along_z(10.0),
+                                     "CONST:1.5168",
+                                     {surface("L.S1", 0.0, -40.0), surface("L.S2", 5.0, -60.0)}}});
+  Surface stop = surface("STO");
+  stop.aperture = rtt::model::CircularAperture{0.6, 0.0};
+  s.root.children.push_back(
+      {Element{"S", ElementKind::Stop, Pose::along_z(30.0), std::nullopt, {stop}}});
+  s.paths = {{"main", true, {}}};
+  const CompiledSystem cs = compile(s, lib);
+  const auto rays = rtt::trace::make_rays(cs, PathId{0}, std::vector<std::uint16_t>{1}, 0,
+                                          rtt::trace::HexapolarPupil{2});
+  for (std::size_t i = 0; i < rays.size(); ++i) {
+    INFO("pupil (" << rays.pupil_x()[i] << ", " << rays.pupil_y()[i] << ")");
+    REQUIRE(rays.status()[i] == RayStatus::Alive);
+    RayState r;
+    r.pos = Vec3(rays.pos_x()[i], rays.pos_y()[i], rays.pos_z()[i]);
+    r.dir = Vec3(rays.dir_x()[i], rays.dir_y()[i], rays.dir_z()[i]);
+    // The first surface lies ahead of the start point and is hit from upstream.
+    const auto hit = rtt::trace::intersect_surface(r, cs.surfaces()[0]);
+    REQUIRE(hit.status == rtt::geom::HitStatus::Hit);
+    REQUIRE(hit.t > 0.0);
+  }
+  const auto chief = rtt::trace::aim_ray(cs, PathId{0}, 1, 0, 0.0, 0.0);
+  REQUIRE(chief.ray.status == RayStatus::Alive);
+  const Vec3 h = hit_on_stop(cs, chief.ray);
+  REQUIRE(std::hypot(h.x(), h.y()) < 1e-9);
+}
+
+TEST_CASE("inverted pupil: pupil coordinates refer to the entrance pupil", "[sources]") {
+  // Stop behind the focus of a positive lens (f = R / (n - 1) = 200 mm): the stop sees the
+  // entrance pupil inverted, R_s < 0. Pupil point py = 1 must still start at +y on the EP side
+  // and hit the stop at py R_s < 0 (decided for #8: R_s signed).
+  const MaterialLibrary lib;
+  System s;
+  s.name = "stop behind focus";
+  s.wavelengths = {{0.5876, 1.0, true}};
+  s.aperture = {rtt::model::SystemApertureType::EntrancePupilDiameter, Param(4.0)};
+  s.fields = {FieldType::AngleDeg, {{0.0, 0.0, 1.0}}};
+  s.root.name = "root";
+  s.root.children.push_back({Element{"L",
+                                     ElementKind::Lens,
+                                     Pose::along_z(10.0),
+                                     "CONST:1.5168",
+                                     {surface("L.S1", 0.0, 103.36), surface("L.S2", 3.0)}}});
+  Surface stop = surface("STO");
+  stop.aperture = rtt::model::CircularAperture{5.0, 0.0};
+  s.root.children.push_back(
+      {Element{"S", ElementKind::Stop, Pose::along_z(300.0), std::nullopt, {stop}}});
+  s.paths = {{"main", true, {}}};
+  const CompiledSystem cs = compile(s, lib);
+  const double r_s = paraxial_stop_radius(cs);
+  REQUIRE(r_s < 0.0);
+  for (const Aiming aiming : {Aiming::Paraxial, Aiming::Real}) {
+    const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, 0, 0, 0.0, 1.0, aiming);
+    REQUIRE(aimed.ray.status == RayStatus::Alive);
+    REQUIRE(aimed.ray.pos.y() > 1.9);  // EP radius 2 mm at +y
+  }
+  const auto real = rtt::trace::aim_ray(cs, PathId{0}, 0, 0, 0.0, 1.0);
+  const Vec3 hit = hit_on_stop(cs, real.ray);
+  REQUIRE(std::abs(hit.y() - r_s) < 1e-9);
+}
+
+TEST_CASE("stop_size aperture: the pupil rim hits the stop at its aperture radius", "[sources]") {
+  // With aperture type stop_size the stop radius defines the pupil, so (px, py) on the unit
+  // circle lands on the stop rim: R_s = stop aperture radius, independent of the paraxial
+  // pupil computation. Reference system tests/reference/m1/two_lenses_stop_between.rtt.json.
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(
+      rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m1/two_lenses_stop_between.rtt.json"),
+      lib);
+  for (std::uint16_t f = 0; f < 3; ++f) {
+    for (const auto& [px, py] : {std::pair{0.0, 1.0}, std::pair{1.0, 0.0}, std::pair{-0.6, -0.8}}) {
+      INFO("field " << f << ", p = (" << px << ", " << py << ")");
+      const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, f, 0, px, py);
+      REQUIRE(aimed.ray.status == RayStatus::Alive);
+      const Vec3 hit = hit_on_stop(cs, aimed.ray);
+      REQUIRE(std::abs(std::hypot(hit.x(), hit.y()) - 4.0) < 1e-9);
+      REQUIRE(std::hypot(hit.x() - 4.0 * px, hit.y() - 4.0 * py) < 1e-9);
+    }
+  }
+}
+
+TEST_CASE("residual and pupil coordinates at the API boundary", "[sources]") {
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(two_lenses(StopPlace::Between), lib);
+  REQUIRE_THROWS_AS(rtt::trace::aim_ray(cs, PathId{0}, 0, 0, std::nan(""), 0.0),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(rtt::trace::make_rays(cs, PathId{0}, std::vector<std::uint16_t>{0}, 0,
+                                          rtt::trace::SinglePupilPoint{0.0, INFINITY}),
+                    std::invalid_argument);
+  // A ray that never reaches the stop reports an infinite residual.
+  System s = two_lenses(StopPlace::After);
+  s.fields = {FieldType::AngleDeg, {{0.0, 0.0, 1.0}, {0.0, 80.0, 1.0}}};
+  const CompiledSystem steep = compile(s, lib);
+  const auto aimed = rtt::trace::aim_ray(steep, PathId{0}, 1, 0, 0.0, 1.0);
+  REQUIRE(aimed.ray.status == RayStatus::NoConvergence);
+  REQUIRE(aimed.residual > 0.0);
 }
