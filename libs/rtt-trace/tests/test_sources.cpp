@@ -704,7 +704,10 @@ TEST_CASE("field values are converted at the reference wavelength", "[sources]")
   };
   constexpr double kTheta = 4.0;  // degree
   SECTION("object at infinity: angle and paraxial image height") {
+    // y' = EFL tan(theta) needs n = 1 in object and image space; Ciddor AIR (since #25) gives
+    // y' = n_air EFL tan(theta), so the environment is VACUUM here.
     System angle = dispersive(two_lenses(StopPlace::Between));
+    angle.environment.medium = "VACUUM";
     const CompiledSystem ca = compile(angle, lib);
     const auto fo = rtt::paraxial::first_order(ca, PathId{0}, ca.reference_wavelength());
     REQUIRE(fo.efl);
