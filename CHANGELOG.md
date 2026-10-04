@@ -4,6 +4,18 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
 
 ## [Unreleased]
 
+### Geändert
+- `rtt-material`: `Material::index(wavelength_um, temperature_c, pressure_atm)` mit Luftdruck
+  (ADR 0014, Punkt 3) und `wavelength_range_um()`; `rtt-compile` übergibt
+  `environment.pressure_atm` und meldet Systemwellenlängen außerhalb des gültigen Bereichs eines
+  benutzten Mediums als `CompileError` mit JSON-Pointer (#23).
+
+### Hinzugefügt
+- `rtt-material`: Dispersionsformeln Schott, Sellmeier 1–5, Herzberger, Conrady und Cauchy als
+  Funktions-Templates über `Real` mit `DispersionMaterial`; `TabulatedMaterial` (n und κ linear in
+  λ); `MaterialLibrary::add` registriert Materialien unter einem Namen. Quellen in
+  `docs/quellen.md` (#23).
+
 ## [0.2.0] – M1 Sequenzieller Kern
 
 ### Dokumentation

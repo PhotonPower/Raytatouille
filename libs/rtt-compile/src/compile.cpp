@@ -1,3 +1,5 @@
+#include <array>
+#include <charconv>
 #include <cstddef>
 #include <functional>
 #include <limits>
@@ -6,6 +8,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -49,6 +52,7 @@ class Compiler {
     environment_ = medium(system_.environment.medium, "/environment/medium").value_or(0);
     add_assembly(system_.root, model::to_isometry(system_.root.pose), "/root");
     for (const model::Path& path : system_.paths) paths_.push_back(build_path(path));
+    check_wavelength_ranges();
   }
 
   std::vector<model::Diagnostic> errors_;
@@ -78,12 +82,59 @@ class Compiler {
     CompiledMedium m{reference, {}};
     m.index.reserve(wavelengths_um_.size());
     for (const double wl : wavelengths_um_) {
-      m.index.push_back(material->index(wl, system_.environment.temperature_c));
+      m.index.push_back(
+          material->index(wl, system_.environment.temperature_c, system_.environment.pressure_atm));
     }
     const auto index = static_cast<std::uint32_t>(media_.size());
     media_.push_back(std::move(m));
+    media_checks_.push_back({material->wavelength_range_um(), location});
     medium_index_.emplace(reference, index);
     return index;
+  }
+
+  /// Every system wavelength must lie in the valid range of every medium that a path uses
+  /// (decided for #23); unused media are not checked. One error per medium, at the first place
+  /// on a path where the ray meets it: /environment/medium or the material of an element.
+  /// Runs only if nothing failed before: after an unresolved material the medium indices of
+  /// the events are placeholders that may not even exist in media_.
+  void check_wavelength_ranges() {
+    if (!errors_.empty()) return;
+    std::vector<std::optional<std::string>> where(media_.size());
+    for (const CompiledPath& path : paths_) {
+      for (const CompiledEvent& event : path.events) {
+        const ElementInfo& element = elements_[surface_element_[event.surface]];
+        for (const std::uint32_t m : {event.medium_before, event.medium_after}) {
+          if (where[m]) continue;
+          if (m == environment_) {
+            where[m] = "/environment/medium";
+          } else if (element.medium == m) {
+            where[m] = element.location + "/material";
+          } else {
+            where[m] = media_checks_[m].location;  // medium of an element entered earlier
+          }
+        }
+      }
+    }
+    for (std::size_t m = 0; m < media_.size(); ++m) {
+      const std::optional<material::WavelengthRange>& range = media_checks_[m].range;
+      const std::optional<std::string>& location = where[m];
+      if (!location.has_value() || !range.has_value()) continue;
+      const material::WavelengthRange& valid = range.value();
+      for (const double wl : wavelengths_um_) {
+        if (valid.contains(wl)) continue;
+        error(location.value(), "wavelength " + number(wl) + " um is outside the valid range [" +
+                                    number(valid.min_um) + ", " + number(valid.max_um) +
+                                    "] um of material '" + media_[m].reference + "'");
+        break;
+      }
+    }
+  }
+
+  /// Shortest text that reads back to the same double, independent of the global locale.
+  static std::string number(double value) {
+    std::array<char, 32> buffer{};
+    const auto [end, ec] = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
+    return ec == std::errc{} ? std::string(buffer.data(), end) : std::string("?");
   }
 
   void add_assembly(const model::Assembly& assembly,
@@ -241,6 +292,12 @@ class Compiler {
   std::vector<std::uint32_t> surface_element_;  // owning element per surface
   std::map<model::SurfaceId, std::uint32_t> surface_index_;
   std::map<std::string, std::uint32_t, std::less<>> medium_index_;
+  /// Valid wavelength range and first referencing JSON pointer, per entry of media_.
+  struct MediumCheck {
+    std::optional<material::WavelengthRange> range;
+    std::string location;
+  };
+  std::vector<MediumCheck> media_checks_;
   std::set<std::string> cemented_reported_;  // elements already reported as cemented groups
   std::set<std::string> mangin_reported_;    // mirrors already reported as Mangin mirrors
 };

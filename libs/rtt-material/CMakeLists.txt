@@ -1,4 +1,4 @@
-add_library(rtt_material src/material.cpp)
+add_library(rtt_material src/material.cpp src/dispersion.cpp src/tabulated.cpp)
 add_library(rtt::material ALIAS rtt_material)
 target_include_directories(rtt_material PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
@@ -8,6 +8,6 @@ rtt_target_defaults(rtt_material LIBRARY)
 if(RTT_BUILD_TESTS)
   find_package(Threads REQUIRED)
   rtt_add_test(rtt_material_tests
-    SOURCES tests/test_material.cpp
+    SOURCES tests/test_material.cpp tests/test_dispersion.cpp tests/test_tabulated.cpp
     LIBS rtt::material Threads::Threads)
 endif()
