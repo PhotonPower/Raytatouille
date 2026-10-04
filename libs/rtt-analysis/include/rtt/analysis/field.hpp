@@ -8,12 +8,14 @@
 /// - Field sweep: relative field fraction f in [0, 1] along +y of the largest field point of the
 ///   system (largest hypot(x, y) of its field values); the field value is (0, f * max) in the
 ///   units of the system's field type (degree for angles, linear in the angle; mm for heights).
-/// - Image surface as in spot.hpp: the surface of the last path event; heights are taken in its
-///   local x, y plane.
+/// - Image surface as in spot.hpp: the surface of the last path event.
+/// - Heights are signed: the offset from the image-surface vertex projected on the field
+///   direction (x, y) / |(x, y)| in the global x-y plane (+y on axis), so an inverted image has
+///   negative heights. The path is rotationally symmetric about z (required by the aiming).
 /// - Distortion D = (h_real - h_par) / h_par * 100 %. h_real is the real chief ray (pupil centre)
-///   on the image surface, projected on the direction of the paraxial point; h_par is the
-///   paraxial chief ray (rtt-paraxial) evaluated in the plane of the image-surface vertex, NOT in
-///   the paraxial image plane (some programs use the latter). D = 0 on axis.
+///   on the image surface; h_par is the paraxial chief ray (rtt-paraxial) evaluated in the plane
+///   of the image-surface vertex, NOT in the paraxial image plane (some programs use the
+///   latter). D = 0 on axis.
 /// - Field curvature, numerically with neighbour rays: for a field, two rays at normalised pupil
 ///   coordinates +-delta along the tangential direction (towards the field point; +y on axis)
 ///   and two along the sagittal direction are aimed and traced to the image surface. The focus
@@ -41,8 +43,8 @@ struct FieldSweepOptions {
 struct DistortionPoint {
   double fraction = 0.0;         ///< relative field (sweep) or hypot(value) / max (field_at)
   model::Field field;            ///< field value in the units of the system's field type
-  double real_height = 0.0;      ///< real chief ray on the image surface, mm (see file comment)
-  double paraxial_height = 0.0;  ///< paraxial chief ray at the image-surface vertex plane, mm
+  double real_height = 0.0;      ///< signed real chief-ray height on the image surface, mm
+  double paraxial_height = 0.0;  ///< signed paraxial chief-ray height at the vertex plane, mm
   double percent = 0.0;          ///< D in percent; 0 on axis
 };
 

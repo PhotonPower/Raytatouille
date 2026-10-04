@@ -51,6 +51,24 @@ inline trace::RayBatch trace_rays(const CompiledSystem& system,
   return rays;
 }
 
+/// Traces one aimed ray through the whole path (batch of size 1).
+inline trace::RayBatch trace_aimed(const CompiledSystem& system,
+                                   PathId path,
+                                   const trace::AimedRay& aimed,
+                                   std::uint16_t wavelength) {
+  trace::RayBatch rays(1);
+  rays.pos_x()[0] = aimed.ray.pos.x();
+  rays.pos_y()[0] = aimed.ray.pos.y();
+  rays.pos_z()[0] = aimed.ray.pos.z();
+  rays.dir_x()[0] = aimed.ray.dir.x();
+  rays.dir_y()[0] = aimed.ray.dir.y();
+  rays.dir_z()[0] = aimed.ray.dir.z();
+  rays.wl()[0] = wavelength;
+  rays.status()[0] = aimed.ray.status;
+  [[maybe_unused]] const auto stats = trace::SequentialTracer().trace(system, path, rays);
+  return rays;
+}
+
 /// True if ray i ended Alive on the image surface.
 inline bool arrived(const trace::RayBatch& rays, std::size_t i, std::uint32_t image) {
   return rays.status()[i] == trace::RayStatus::Alive && rays.last_surface()[i] == image;
