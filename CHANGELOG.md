@@ -23,6 +23,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   Modells (#28).
 
 ### Geändert
+- `cmake`: `rtt_add_test` setzt unter MinGW den `PATH` für Testerkennung und Testläufe auf das
+  Compiler-Verzeichnis (`DL_PATHS`); `ctest` startet GCC/MSYS2-Tests damit unabhängig von der
+  Shell (Git Bash brachte eine falsche `libstdc++-6.dll` mit) (#47).
 - `rtt-material`: `Material::index(wavelength_um, temperature_c, pressure_atm)` mit Luftdruck
   (ADR 0014, Punkt 3) und `wavelength_range_um()`; `rtt-compile` übergibt
   `environment.pressure_atm` und meldet Systemwellenlängen außerhalb des gültigen Bereichs eines

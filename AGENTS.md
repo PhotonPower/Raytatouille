@@ -27,6 +27,11 @@ pip install -r tests/schema/requirements.txt && pytest -q tests/schema
 ./build/dev/apps/rtt-cli/rtt format tests/reference/m0/*.rtt.json
 ```
 
+Windows/MSYS2 (Preset `dev` mit GCC aus `C:\msys64\ucrt64`): Tests über `ctest` starten; CMake setzt
+dort den `PATH` der Tests selbst (Compiler-Verzeichnis vorn). Direkt gestartete `.exe` aus Git Bash
+brauchen `export PATH=/c/msys64/ucrt64/bin:$PATH`, weil Git for Windows eine inkompatible
+msvcrt-`libstdc++-6.dll` in `/mingw64/bin` mitbringt (Einsprungpunkt-Fehler beim Start).
+
 Vor jedem PR müssen lokal grün sein: Build mit `-DRTT_WARNINGS_AS_ERRORS=ON`, alle Tests,
 `clang-format --dry-run -Werror`, die Schema-Tests. Clang-tidy läuft mit
 `-DRTT_ENABLE_CLANG_TIDY=ON`, Sanitizer mit `-DRTT_ENABLE_SANITIZERS=ON`.
