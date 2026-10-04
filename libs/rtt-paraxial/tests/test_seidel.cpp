@@ -94,6 +94,14 @@ System load(const std::string& name) {
   return rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/" + name);
 }
 
+/// Reference file with n = 1 outside: the Python reference values assume a surrounding index of
+/// exactly 1, while AIR is Ciddor air since #25 (n = 1.00027).
+System load_in_vacuum(const std::string& name) {
+  System s = load(name);
+  s.environment.medium = "VACUUM";
+  return s;
+}
+
 double tan_deg(double deg) {
   return std::tan(deg * std::numbers::pi / 180.0);
 }
@@ -220,7 +228,7 @@ TEST_CASE("reference singlet: Seidel sums by hand, Petzval sum and Lagrange inva
           "[seidel]") {
   // tests/reference/m1/singlet_const.rtt.json: stop (r = 10) at z = 0, plano-convex lens
   // CONST:1.5168, R1 = 51.68 at z = 5, plane at z = 9; fields 0, 3.5 and 5 deg (maximum 5 deg).
-  const CompiledSystem cs = compile(load("m1/singlet_const.rtt.json"));
+  const CompiledSystem cs = compile(load_in_vacuum("m1/singlet_const.rtt.json"));
   const double n = 1.5168;
   const double t = tan_deg(5.0);
   // Python (see top of file).
@@ -257,7 +265,7 @@ TEST_CASE("reference singlet: Seidel sums by hand, Petzval sum and Lagrange inva
     // EFL = R1 / (n - 1) = 100 mm, object at infinity: the 5 deg chief ray reaches the paraxial
     // image at h' = EFL tan 5 deg. The sign of a field value does not matter (maximum of the
     // radial value).
-    System s = load("m1/singlet_const.rtt.json");
+    System s = load_in_vacuum("m1/singlet_const.rtt.json");
     s.fields = {rtt::model::FieldType::ParaxialImageHeight,
                 {{0.0, 0.0, 1.0}, {0.0, -100.0 * t, 1.0}, {0.0, 50.0 * t, 1.0}}};
     const Seidel res = seidel(compile(s), PathId{0}, 1);
@@ -270,7 +278,8 @@ TEST_CASE("two singlets with the stop between: Seidel sums by hand", "[seidel]")
   // fields 0, (0, 5) and (-3, 4) deg. Largest radial value tan theta = tan 5 deg
   // (hypot(tan 3, tan 4) = 0.08739 < tan 5 = 0.08749). Entrance pupil (Python): z = 19.196...,
   // r = 4.511...
-  const Seidel res = seidel(compile(load("m1/two_lenses_stop_between.rtt.json")), PathId{0}, 0);
+  const Seidel res =
+      seidel(compile(load_in_vacuum("m1/two_lenses_stop_between.rtt.json")), PathId{0}, 0);
   // Python (see top of file).
   require_sums(res.sum, {0.0093739209101174215, -0.0062266351246948425, 0.004220499333761403,
                          0.0029484609542615144, -0.00061714305623997135});
