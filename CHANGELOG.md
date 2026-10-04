@@ -20,6 +20,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   höchstens 30 Schritte, Status `NoConvergence`, Iterationszahl im Ergebnis) (#4).
 - `rtt-geom`: Quelle der Konik-Sag-Formel ist Forbes, Opt. Express 19(10) (2011), Gl. (2.1);
   Begründung der stabilen Form im Kommentar (#13).
+- `rtt-trace`: `compile()` erzeugt ein unveränderliches `CompiledSystem` (globale Flächenlagen,
+  Formen `Plane`/`Conic`, Medien je Wellenlänge, Pfade mit Medium vor und nach jedem Event,
+  automatische Pfade) mit `CompileError` samt JSON-Pointer; `RayBatch` als Structure-of-Arrays.
+  Referenzsystem `tests/reference/m1/singlet_const.rtt.json` (#5).
 
 ## [0.1.0] – M0 Fundament
 

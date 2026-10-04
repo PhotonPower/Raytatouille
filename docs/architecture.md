@@ -172,6 +172,8 @@ Tracing läuft immer über ein unveränderliches `CompiledSystem`: Das Modell wi
 4. Flächentypen in `std::variant` auflösen, damit der Hot Path ohne virtuelle Aufrufe auskommt.
 5. Ergebnis ist unveränderlich, thread-sicher lesbar, hält keine Zeiger ins Modell und hat einen Hash für Caching.
 
+**Medien entlang eines Pfads** (festgelegt in #5): Der Strahl startet im Umgebungsmedium. `Refract`, `Ordinary` und `Extraordinary` an einer Fläche eines Elements mit Material wechseln zwischen dem Inneren dieses Elements und der Umgebung; `Reflect`, `Transmit`, `Diffract` und alle Events an Elementen ohne Material behalten das Medium. Der automatische Pfad besucht alle Flächen in Baumreihenfolge: `Lens`/`Plate` → `Refract`, `Mirror` → `Reflect`, `Stop`/`Detector`/`ThinElement` → `Transmit`. Kittglieder sind noch offen (#14); bis dahin ist eine `Lens`/`Plate` mit mehr als 2 Flächen auf einem automatischen Pfad ein Kompilierfehler. Stand M1: Formen `Plane` und `Conic`; Pickups werden noch nicht ausgewertet; der Hash folgt, wenn Caching gebraucht wird.
+
 **Strahl-Batch (Structure-of-Arrays)**
 
 | Feld | Typ je Strahl | Bedeutung |
