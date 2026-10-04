@@ -74,6 +74,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
     (erste Ordnung, Seidel je Fläche, 36 reale Strahlen) und Sasian.
   - Neues Referenzsystem `tests/reference/m2/cooke_triplet.rtt.json`, Glaskatalog
     `tests/catalogs/m2/schott.agf` (N-LAK9, N-SF5). Quellen in `docs/quellen.md`.
+- `rtt-coating` (neue Bibliothek, Schicht Physik): Transfermatrix-Methode für Schichtsysteme mit
+  komplexen Indizes nach Byrnes (arXiv:1603.02720), Amplituden r_s, r_p, t_s, t_p in der Basis
+  [s, p, k] von `rtt-polar` (Convention A, r_p = −r_s bei senkrechtem Einfall), Leistungen R, T, A;
+  Winkel als Tangentialinvariante ξ = n sinθ; Dicke in µm oder als QWOT; ideale Coatings ohne
+  Retardance (AR, Strahlteiler, Spiegel r_s = −1, r_p = +1) und tabellierte Coatings (bilinear über
+  Winkel und Wellenlänge). Konvention „Polarisation und Fresnel“ in `docs/architecture.md`, Quelle
+  in `docs/quellen.md` (#58).
 
 ### Geändert
 - `cmake`: `rtt_add_test` setzt unter MinGW den `PATH` für Testerkennung und Testläufe auf das
