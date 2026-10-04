@@ -19,6 +19,7 @@ Neue Entscheidungen bekommen die nächste Nummer. Bestehende ADRs werden nicht u
 | [0013](0013.md) | Keine GPU in v1 | angenommen |
 | [0014](0014.md) | Laufzeit-Interface für Materialien in double | angenommen |
 | [0015](0015.md) | Real umfasst nur double | angenommen |
+| [0016](0016.md) | CompiledSystem in eigener Bibliothek rtt-compile | angenommen |
 
 ## Vorlage
 

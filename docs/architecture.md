@@ -41,6 +41,9 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 | 0011 | Linux und Windows; getestet mit GCC 13, Clang 18, MSVC 2022; kein `-ffast-math` |
 | 0012 | GUI später in Python (PySide6, pyvista/VTK, matplotlib) nur über die öffentliche API |
 | 0013 | Keine GPU in v1 |
+| 0014 | Laufzeit-Interface `Material` in `double`; Formelkerne als Templates |
+| 0015 | `rtt::math::Real` umfasst nur `double` (später Dual-Zahlen) |
+| 0016 | `CompiledSystem` in eigener Bibliothek `rtt-compile`; feste Reihenfolge in der Schicht Tracing |
 
 **Konventionen (verbindlich für alle Bibliotheken)**
 
@@ -53,19 +56,19 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 
 ## Systemübersicht
 
-14 CMake-Bibliotheken bzw. -Programme in sieben Schichten. Jede darf nur Bibliotheken aus tieferen Schichten verwenden.
+15 CMake-Bibliotheken bzw. -Programme in sieben Schichten. Jede darf nur Bibliotheken aus tieferen Schichten verwenden. Einzige Ausnahme ist die Schicht Tracing mit der festen Reihenfolge `rtt-compile` < `rtt-paraxial` < `rtt-trace`: Dort darf eine Bibliothek zusätzlich die in dieser Reihenfolge vor ihr stehenden verwenden (ADR 0016).
 
 | Schicht | Bibliotheken | Status |
 | --- | --- | --- |
 | Schnittstellen | `rtt-py` (Python-API), `apps/rtt-cli` (Kommandozeile), `rtt-io` (Dateien) | `rtt-cli`, `rtt-io`: M0 |
 | Workflows | `rtt-optim`, `rtt-tolerance` | M5, M7 |
 | Auswertung | `rtt-analysis` | M2, M6 |
-| Tracing | `rtt-paraxial`, `rtt-trace` | M1 |
+| Tracing | `rtt-compile` < `rtt-paraxial` < `rtt-trace` | M1 |
 | Modell | `rtt-model` | M0 |
 | Physik | `rtt-geom`, `rtt-material`, `rtt-coating`, `rtt-polar` | M1–M4 |
 | Basis | `rtt-math` | M0 |
 
-Die vier Physik-Bibliotheken kennen weder Modell noch Tracer und können daher parallel gebaut werden. `rtt-model` beschreibt nur, `rtt-trace` rechnet, `rtt-analysis` wertet aus. CMake-Targets heißen `rtt_<name>` mit Alias `rtt::<name>`.
+Die vier Physik-Bibliotheken kennen weder Modell noch Tracer und können daher parallel gebaut werden. `rtt-model` beschreibt nur, `rtt-compile` macht daraus ein unveränderliches `CompiledSystem`, `rtt-paraxial` und `rtt-trace` rechnen, `rtt-analysis` wertet aus. CMake-Targets heißen `rtt_<name>` mit Alias `rtt::<name>`.
 
 ## Datenmodell (`rtt-model`, umgesetzt in M0)
 
@@ -164,13 +167,15 @@ Alle Modellelemente zeigt `tests/reference/m0/feature_tour.rtt.json`, Mehrfachpf
 
 Tracing läuft immer über ein unveränderliches `CompiledSystem`: Das Modell wird einmal kompiliert, dann tracen beliebig viele Threads lesend darauf.
 
-**Kompilierung (`rtt-trace`)**
+**Kompilierung (`rtt-compile`, ADR 0016)**
 
 1. Baum flach machen: globale Transformation jeder Fläche, Pickups und Konfigurationen auflösen.
 2. Materialien bei allen Wellenlängen, Temperatur und Druck auswerten (komplexer Index; bei Doppelbrechung n_o, n_e und optische Achse).
 3. Beschichtungen vorberechnen: wahlweise Tabellen über Einfallswinkel je Wellenlänge oder exakt pro Strahl.
 4. Flächentypen in `std::variant` auflösen, damit der Hot Path ohne virtuelle Aufrufe auskommt.
 5. Ergebnis ist unveränderlich, thread-sicher lesbar, hält keine Zeiger ins Modell und hat einen Hash für Caching.
+
+**Medien entlang eines Pfads** (festgelegt in #5): Der Strahl startet im Umgebungsmedium. `Refract`, `Ordinary` und `Extraordinary` an einer Fläche eines Elements mit Material wechseln zwischen dem Inneren dieses Elements und der Umgebung; `Reflect`, `Transmit`, `Diffract` und alle Events an Elementen ohne Material behalten das Medium. Der automatische Pfad besucht alle Flächen in Baumreihenfolge: `Lens`/`Plate` → `Refract`, `Mirror` → `Reflect`, `Stop`/`Detector`/`ThinElement` → `Transmit`. Kittglieder sind noch offen (#14); bis dahin ist eine `Lens`/`Plate` mit mehr als 2 Flächen auf einem automatischen Pfad ein Kompilierfehler. Stand M1: Formen `Plane` und `Conic`; Pickups werden noch nicht ausgewertet; der Hash folgt, wenn Caching gebraucht wird.
 
 **Strahl-Batch (Structure-of-Arrays)**
 
