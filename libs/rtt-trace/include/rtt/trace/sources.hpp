@@ -122,7 +122,8 @@ struct AimedRay {
 /// perpendicular to it, placed per field so that the bundle (up to 3 EP radii around the chief
 /// ray) starts at least 1 mm before the entrance pupil and before every surface of the path,
 /// sampled within its aperture and shape domain (OPL starts on this plane wave). A field angle
-/// with a finite object places the object point on the chief ray through the EP centre.
+/// with a finite object places the object point on the chief ray through the EP centre at the
+/// reference wavelength.
 /// Finite object: the ray starts in the object point (OPL 0).
 /// The target is (px R_s, py R_s) in the local coordinates of the stop surface (first Stop event
 /// of the path), R_s = paraxial stop radius belonging to the entrance pupil. Apertures are
@@ -131,9 +132,11 @@ struct AimedRay {
 ///         not finite; the field type does not fit the object (object height at infinity); a
 ///         field angle is not in (-90, 90) degree; no start plane exists before a surface
 ///         without aperture that curves back against a steep field (object at infinity); a
-///         paraxial image height is requested without
-///         a finite paraxial image; the path has no stop; or the entrance pupil is not defined
-///         (rtt::paraxial::first_order: pupil at infinity, no diameter for this aperture type)
+///         paraxial image height is requested without a finite paraxial image; the path has no
+///         stop; or the entrance pupil is not defined at the ray's wavelength or (for paraxial
+///         image heights and angles with a finite object) at the reference wavelength
+///         (rtt::paraxial::first_order: pupil at infinity, no diameter for this aperture type,
+///         pupil in the object plane)
 /// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric or the stop
 ///         aperture is not circular
 [[nodiscard]] AimedRay aim_ray(const compile::CompiledSystem& system,

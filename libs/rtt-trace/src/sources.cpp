@@ -105,8 +105,13 @@ Context make_context(const CompiledSystem& system, PathId path, std::uint16_t wa
   // The EP plane and the stop plane are conjugate, so the stop height of a paraxial ray from
   // the EP plane does not depend on its slope: y_stop = stop_scale * y_ep.
   c.stop_scale = paraxial::trace_ray(system, path, wavelength, c.z_ep, 1.0, 0.0)[c.stop_event].y;
-  // Field conversion at the reference wavelength (decided for #31, fix of #8).
-  if (wavelength == system.reference_wavelength()) {
+  // Field conversion at the reference wavelength (decided for #31, fix of #8). Only paraxial
+  // image heights and angles with a finite object need paraxial data for the conversion; other
+  // field types skip the extra first-order computation.
+  const bool needs_ref =
+      system.fields().type == model::FieldType::ParaxialImageHeight ||
+      (system.fields().type == model::FieldType::AngleDeg && !system.object().at_infinity);
+  if (wavelength == system.reference_wavelength() || !needs_ref) {
     c.first_order_ref = c.first_order;
     c.z_ep_ref = c.z_ep;
   } else {
@@ -205,6 +210,9 @@ double unit_image_height(const Context& c) {
     ray = paraxial::trace_ray(system, c.path, ref, c.z_ep_ref, 0.0, 1.0);
   } else {
     const double z_obj = -system.object().distance.value;
+    if (c.z_ep_ref == z_obj) {
+      throw std::invalid_argument("sources: entrance pupil in the object (reference wavelength)");
+    }
     ray = paraxial::trace_ray(system, c.path, ref, z_obj, 1.0, -1.0 / (c.z_ep_ref - z_obj));
   }
   const auto& last = ray.back();
@@ -243,6 +251,9 @@ FieldStart make_field(const Context& c, const model::Field& f) {
       ty = std::tan(f.y * std::numbers::pi / 180.0);
       // Finite object: the object point on the chief ray through the EP centre at the
       // reference wavelength (#31).
+      if (!infinite && c.z_ep_ref == z_obj) {
+        throw std::invalid_argument("sources: entrance pupil in the object (reference wavelength)");
+      }
       hx = (z_obj - c.z_ep_ref) * tx;
       hy = (z_obj - c.z_ep_ref) * ty;
       break;
