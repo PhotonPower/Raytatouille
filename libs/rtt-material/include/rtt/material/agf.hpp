@@ -28,6 +28,7 @@
 
 #include "rtt/material/dispersion.hpp"
 #include "rtt/material/material.hpp"
+#include "rtt/material/thermal.hpp"
 
 namespace rtt::material {
 
@@ -53,7 +54,7 @@ struct AgfGlass {
   double vd = 0.0;                             ///< V(d) from NM, for reference only
   std::vector<double> coefficients;            ///< CD, as in the file
   std::optional<WavelengthRange> range;        ///< LD in um
-  std::optional<std::vector<double>> thermal;  ///< TD: D0 D1 D2 E0 E1 Ltk Temp (unused, #25)
+  std::optional<std::vector<double>> thermal;  ///< TD: D0 D1 D2 E0 E1 Ltk Temp (thermal.hpp)
   std::optional<std::vector<double>> extra;    ///< ED (unused)
   std::size_t line = 0;                        ///< line of the NM record
 };
@@ -88,35 +89,51 @@ struct AgfCatalog {
 /// @throws AgfError as parse_agf, or if the file cannot be read
 [[nodiscard]] AgfCatalog load_agf(const std::filesystem::path& file);
 
-/// Non-absorbing material of a catalogue glass with a supported formula. The index is the
-/// formula value, absolute until the conversion relative to air (#25); temperature and pressure
-/// are ignored until then. The AGF data (including TD and ED) stay available via glass().
+/// Non-absorbing material of a catalogue glass with a supported formula.
+///
+/// Catalogue data are relative to air at the reference temperature T_ref of the glass and
+/// 1 atm, as a function of the wavelength in that air (SCHOTT TIE-29 p. 1; Ansys OpticStudio
+/// "Index of Refraction Computation"). index() returns the absolute index at temperature T
+/// (decided for #25):
+///   n_air = n_air(lambda_vac, T_ref, 1 atm)            (Ciddor, air.hpp)
+///   n_rel = formula(lambda_vac / n_air)                 (relative wavelength)
+///   n_abs = n_rel * n_air + Delta n_abs(T - T_ref)      (TIE-19 Eq. (5) and (3)/(4))
+/// T_ref and the coefficients of Delta n_abs come from the TD record (thermal.hpp); without TD,
+/// Delta n_abs = 0 and T_ref = 20 degC. The pressure of the medium is ignored (a solid).
+/// The AGF data (including TD and ED) stay available via glass().
 class CatalogMaterial final : public Material {
  public:
   /// @param glass   glass data, e.g. from parse_agf
   /// @param catalog catalogue name for messages
-  /// @throws std::invalid_argument if the formula number is not supported (see agf_formula) or
-  ///         the LD range is not finite with 0 < min < max
+  /// @throws std::invalid_argument if the formula number is not supported (see agf_formula),
+  ///         the LD range is not finite with 0 < min < max, or a TD record does not have the
+  ///         seven values D0 D1 D2 E0 E1 Ltk Temp
   CatalogMaterial(AgfGlass glass, const std::string& catalog);
 
-  /// n(lambda) + 0i of the glass formula; see Material::index.
+  /// Absolute index n + 0i at the vacuum wavelength and temperature, see the class comment.
   [[nodiscard]] math::Complex index(double wavelength_um,
                                     double temperature_c,
                                     double pressure_atm) const override;
 
-  /// LD range of the glass; none if the catalogue has no LD record for it.
+  /// LD range of the glass; none if the catalogue has no LD record for it. LD is given in the
+  /// relative wavelength; it is compared with vacuum wavelengths (difference < 0.03 %).
   [[nodiscard]] std::optional<WavelengthRange> wavelength_range_um() const override {
     return glass_.range;
   }
 
   /// The glass data as read from the catalogue.
   [[nodiscard]] const AgfGlass& glass() const noexcept { return glass_; }
-  /// The dispersion formula built from the CD record.
+  /// The dispersion formula built from the CD record (relative index over relative wavelength).
   [[nodiscard]] const DispersionFormula& formula() const noexcept { return formula_; }
+  /// Thermal coefficients from the TD record; none without TD.
+  [[nodiscard]] const std::optional<SchottThermalCoefficients>& thermal() const noexcept {
+    return thermal_;
+  }
 
  private:
   AgfGlass glass_;
   DispersionFormula formula_;
+  std::optional<SchottThermalCoefficients> thermal_;
 };
 
 /// Builds the dispersion formula of a glass. Supported: formula 1 (Schott, CD = a0..a5) and

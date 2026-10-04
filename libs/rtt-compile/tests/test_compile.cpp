@@ -13,6 +13,7 @@
 
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/io/json_io.hpp"
+#include "rtt/material/air.hpp"
 #include "test_support.hpp"
 
 using Catch::Matchers::ContainsSubstring;
@@ -176,7 +177,9 @@ TEST_CASE("Michelson reference system compiles with all media in air", "[compile
   REQUIRE(cs.temperature_c() == 20.0);
   REQUIRE(cs.media().size() == 1);
   REQUIRE(cs.media()[cs.environment_medium()].reference == "AIR");
-  REQUIRE(cs.media()[0].index == std::vector<Complex>{Complex(1.0, 0.0)});
+  // AIR is Ciddor air at 20 degC and 1 atm since #25 (was n = 1 in M1).
+  REQUIRE(cs.media()[0].index ==
+          std::vector<Complex>{Complex(rtt::material::ciddor_air_index(0.6328, 20.0, 1.0))});
 
   REQUIRE(cs.surfaces().size() == 4);
   REQUIRE(surface_index(cs, "BS") == 0);
@@ -238,7 +241,11 @@ TEST_CASE("singlet with CONST:1.5168 goes air -> glass -> air", "[compile]") {
   REQUIRE(cs.media().size() == 2);
   const auto glass = medium_index(cs, "CONST:1.5168");
   REQUIRE(cs.media()[glass].index == std::vector<Complex>(3, Complex(1.5168, 0.0)));
-  REQUIRE(cs.media()[cs.environment_medium()].index == std::vector<Complex>(3, Complex(1.0)));
+  // AIR is Ciddor air at 20 degC and 1 atm since #25 (was n = 1 in M1).
+  for (std::size_t i = 0; i < 3; ++i) {
+    REQUIRE(cs.media()[cs.environment_medium()].index[i] ==
+            Complex(rtt::material::ciddor_air_index(cs.wavelengths_um()[i], 20.0, 1.0)));
+  }
 
   // Vertices on the axis: stop at 0, lens at 5 with thickness 4, image at 106.363 mm.
   const std::vector<std::pair<std::string, double>> vertices{
@@ -931,11 +938,21 @@ TEST_CASE("achromat reference system with the SCHOTT test catalogue", "[compile]
   // Paraxial marginal ray at the reference wavelength (d line), Greivenkamp, OPTI-201/202
   // Sec. 9, p. 9-2 (docs/quellen.md): n'u' = nu - y phi with phi = (n' - n) C, transfer
   // y' = y + u' t'; p. 9-12: phi = -n'u'_k / y_1, f_E = 1/phi, BFD = -y_k / u'_k.
+  // Since #25 the indices are absolute and the surrounding AIR has n_air = 1.00027 (Ciddor), so
+  // the trace starts in n_air. The catalogue data are relative to air: n_glass = n_rel * n_air,
+  // hence every phi and nu is n_air times its value in a relative trace (air = 1) and
+  // f' = n_air / phi equals the relative design focal length; BFD is a physical distance and
+  // stays as well. Evaluating the catalogue at the air wavelength 0.5876 / n_air (0.16 nm
+  // shorter) raises n_rel by 6.7e-6 (N-BK7) and 1.4e-5 (F2); for the achromat this changes f'
+  // and BFD by only about 1e-6 relative. The design values are rounded to 1 um (relative trace
+  // at 0.5876 um: f' = 101.01333 mm); the tolerance 1e-4 is unchanged.
   const std::size_t wl = cs.reference_wavelength();
   const auto& events = cs.path(*cs.find_path("main")).events;
+  const double n_air = cs.media()[cs.environment_medium()].index[wl].real();
+  REQUIRE(n_air == rtt::material::ciddor_air_index(cs.wavelengths_um()[wl], 20.0, 1.0));
   double y = 1.0;
   double nu = 0.0;
-  double n = 1.0;
+  double n = n_air;
   double z = 0.0;
   bool first = true;
   for (const auto& event : events) {
@@ -952,9 +969,12 @@ TEST_CASE("achromat reference system with the SCHOTT test catalogue", "[compile]
     nu -= y * (n_after - n) * conic->curvature();
     n = n_after;
   }
-  const double efl = -1.0 / nu;  // y_1 = 1, n' = 1 in air
-  const double bfd = -y / nu;
-  // Design values: EFL 101.013 mm; F' at the detector, z = 110.614 mm (L1.S3 at z = 14 mm).
-  REQUIRE_THAT(efl, Catch::Matchers::WithinRel(101.013, 1e-4));
+  REQUIRE(n == n_air);
+  const double phi = -nu;                    // y_1 = 1
+  const double rear_focal_length = n / phi;  // f' = n' / phi
+  const double bfd = -y * n / nu;            // -y_k / u'_k with u'_k = nu / n'
+  // Design values (relative to air): EFL 101.013 mm; F' at the detector, z = 110.614 mm (L1.S3
+  // at z = 14 mm).
+  REQUIRE_THAT(rear_focal_length, Catch::Matchers::WithinRel(101.013, 1e-4));
   REQUIRE_THAT(z + bfd, Catch::Matchers::WithinRel(110.614, 1e-4));
 }

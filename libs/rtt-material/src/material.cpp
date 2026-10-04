@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "rtt/material/agf.hpp"
+#include "rtt/material/air.hpp"
 
 namespace rtt::material {
 namespace {
@@ -66,8 +67,8 @@ math::Complex parse_constant(std::string_view reference, std::string_view args) 
 
 std::shared_ptr<const Material> make_material(std::string_view reference) {
   if (reference == "VACUUM") return std::make_shared<const ConstantMaterial>(1.0);
-  // M1 placeholder: air as n = 1. Ciddor air and glass data relative to air follow in M2.
-  if (reference == "AIR") return std::make_shared<const ConstantMaterial>(1.0);
+  // Dry air after Ciddor at the temperature and pressure of the medium (#25).
+  if (reference == "AIR") return std::make_shared<const AirMaterial>();
   if (reference.starts_with(kConstPrefix)) {
     return std::make_shared<const ConstantMaterial>(
         parse_constant(reference, reference.substr(kConstPrefix.size())));

@@ -17,8 +17,7 @@ DispersionMaterial::DispersionMaterial(DispersionFormula formula, WavelengthRang
 math::Complex DispersionMaterial::index(double wavelength_um,
                                         double /*temperature_c*/,
                                         double /*pressure_atm*/) const {
-  // Temperature and pressure enter with dn/dT and air (#25); the formula value is absolute
-  // until then (convention of #23).
+  // User-defined formula: absolute index, no temperature or pressure dependence (#23, #25 P5).
   return {refractive_index(formula_, wavelength_um), 0.0};
 }
 

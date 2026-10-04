@@ -9,6 +9,7 @@
 #include <type_traits>
 #include <vector>
 
+#include "rtt/material/air.hpp"
 #include "rtt/material/material.hpp"
 
 using rtt::material::Material;
@@ -36,11 +37,18 @@ TEST_CASE("UnknownMaterial is a std::runtime_error", "[material]") {
   STATIC_REQUIRE(std::is_base_of_v<std::runtime_error, UnknownMaterial>);
 }
 
-TEST_CASE("VACUUM and AIR have index exactly 1 in M1", "[material]") {
+TEST_CASE("VACUUM has index exactly 1, AIR is Ciddor air", "[material]") {
   const MaterialLibrary lib;
   require_constant_index(*lib.resolve("VACUUM"), Complex(1.0, 0.0));
-  // Ciddor air follows in M2; until then AIR is defined as n = 1 (issue #2).
-  require_constant_index(*lib.resolve("AIR"), Complex(1.0, 0.0));
+  // Since #25 AIR is dry air after Ciddor at the temperature and pressure of the medium
+  // (reference values against NIST in test_air.cpp); M1 defined it as n = 1 (issue #2).
+  const auto air = lib.resolve("AIR");
+  for (const double wl : kWavelengthsUm) {
+    for (const double t : kTemperaturesC) {
+      INFO(wl << " um, " << t << " degC");
+      REQUIRE(air->index(wl, t, 1.0) == Complex(rtt::material::ciddor_air_index(wl, t, 1.0), 0.0));
+    }
+  }
 }
 
 TEST_CASE("CONST:<n> gives a constant real index", "[material]") {

@@ -59,7 +59,10 @@ TEST_CASE("plano-convex lens at small NA: tangential aberration scales with py^3
   // Third-order transverse spherical aberration is proportional to the cube of the pupil
   // coordinate, provided the image surface lies in the paraxial focus (otherwise a defocus term
   // proportional to py dominates). Issue #28: fit exponent 3 +- 0.05.
+  // The independent reference value below assumes a surrounding index of 1, so the file's AIR
+  // (Ciddor since #25) is replaced by VACUUM.
   System s = load("m1/singlet_const.rtt.json");
+  s.environment.medium = "VACUUM";
   const MaterialLibrary lib;
   const CompiledSystem first = compile(s, lib);
   const double z_focus = *rtt::paraxial::first_order(first, PathId{0}, 1).rear_focal_z;

@@ -9,7 +9,7 @@ if(RTT_BUILD_TESTS)
   find_package(Threads REQUIRED)
   rtt_add_test(rtt_material_tests
     SOURCES tests/test_material.cpp tests/test_dispersion.cpp tests/test_tabulated.cpp
-            tests/test_agf.cpp
+            tests/test_agf.cpp tests/test_air.cpp
     LIBS rtt::material Threads::Threads)
   # Test catalogues (tests/catalogs) next to the reference systems.
   target_compile_definitions(rtt_material_tests PRIVATE
