@@ -6,7 +6,9 @@
 /// Conventions (decided for #28):
 /// - Image surface: the surface of the last event of the path. Spot and fan coordinates x, y
 ///   are in mm in the local coordinate system of that surface, with its axes as given by its
-///   pose (for a tilted or curved image surface: the local x, y of the hit point).
+///   pose (for a tilted or curved image surface: the local x, y of the hit point). A tilted or
+///   decentred image surface currently makes the path non rotationally symmetric, so the ray
+///   aiming of #8 (rtt::paraxial::first_order) throws rtt::paraxial::ParaxialError.
 /// - Reference ray ("chief ray"): the ray at normalised pupil coordinates (0, 0), aimed with the
 ///   chosen Aiming at the reference wavelength of the system. It is the reference for every
 ///   spot (monochromatic and polychromatic) and every fan, so lateral colour stays visible.
@@ -77,7 +79,7 @@ struct SpotDiagram {
   std::uint32_t image_surface = 0;          ///< index into CompiledSystem::surfaces()
   std::vector<SpotPoint> points;            ///< arrived rays, in trace order
   Point2 chief;                             ///< reference ray on the image surface, mm
-  SpotStatistics stats;
+  SpotStatistics stats;             ///< statistics of `points` about their centroid and `chief`
   std::size_t rays_launched = 0;    ///< rays started, over all wavelengths of the spot
   std::size_t rays_arrived = 0;     ///< rays that reached the image surface (= points.size())
   double vignetted_fraction = 0.0;  ///< (launched - arrived) / launched, unweighted
@@ -88,8 +90,10 @@ struct SpotDiagram {
 /// of the number of threads.
 /// @param wavelength index of one system wavelength, or std::nullopt for all wavelengths with
 ///                   the model's wavelength weights
-/// @throws std::invalid_argument for an invalid path, field or wavelength, or wavelength
-///         weights that do not sum to a positive value (and as rtt::trace::make_rays)
+/// @throws std::invalid_argument for an invalid path, field or wavelength, a wavelength weight
+///         that is negative or not finite, or weights that do not sum to a positive value (and
+///         as rtt::trace::make_rays)
+/// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric (aiming)
 /// @throws AnalysisError if the chief ray does not reach the image surface, or no ray with a
 ///         positive weight arrives (e.g. all rays of the weighted wavelengths are vignetted)
 [[nodiscard]] SpotDiagram spot(const compile::CompiledSystem& system,
@@ -116,16 +120,18 @@ struct FanPoint {
 
 /// Tangential (px = 0, py in [-1, 1]) and sagittal (py = 0, px in [-1, 1]) ray fans.
 struct RayFan {
-  std::uint16_t field = 0;       ///< index into CompiledSystem::fields().points
-  std::uint16_t wavelength = 0;  ///< index into CompiledSystem::wavelengths_um()
-  std::uint32_t image_surface = 0;
+  std::uint16_t field = 0;           ///< index into CompiledSystem::fields().points
+  std::uint16_t wavelength = 0;      ///< index into CompiledSystem::wavelengths_um()
+  std::uint32_t image_surface = 0;   ///< index into CompiledSystem::surfaces()
   Point2 chief;                      ///< reference ray on the image surface, mm
   std::vector<FanPoint> tangential;  ///< epsilon_y(py) is the tangential aberration
   std::vector<FanPoint> sagittal;    ///< epsilon_x(px) is the sagittal aberration
 };
 
 /// Ray fans of `field` at `wavelength`, relative to the chief ray (see file comment).
-/// @throws std::invalid_argument for an invalid path, field, wavelength or points < 1
+/// @throws std::invalid_argument for an invalid path, field, wavelength or points < 1 (and as
+///         rtt::trace::make_rays)
+/// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric (aiming)
 /// @throws AnalysisError if the chief ray does not reach the image surface
 [[nodiscard]] RayFan ray_fan(const compile::CompiledSystem& system,
                              compile::PathId path,

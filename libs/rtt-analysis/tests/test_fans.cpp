@@ -85,9 +85,9 @@ TEST_CASE("plano-convex lens at small NA: tangential aberration scales with py^3
   // Sign and size: the plano-convex lens is undercorrected, the marginal-zone rays cross the
   // axis before the paraxial focus, so epsilon_y < 0 for py > 0. Independent check (single-ray
   // trace through the sphere R = 51.68, n = 1.5168, plane at z = 9, image at the paraxial
-  // focus, review of #28): epsilon_y(0.16) = -4.463e-4 mm.
+  // focus, reviews of #28): epsilon_y(0.16) = -4.46348e-4 mm.
   REQUIRE(fan.tangential[116].ey < 0.0);
-  REQUIRE(std::abs(fan.tangential[116].ey + 4.463e-4) <= 1e-3 * 4.463e-4);
+  REQUIRE(std::abs(fan.tangential[116].ey + 4.46348e-4) <= 2e-5 * 4.46348e-4);
   double mx = 0.0, my = 0.0;
   for (std::size_t i = 0; i < lp.size(); ++i) {
     mx += lp[i];

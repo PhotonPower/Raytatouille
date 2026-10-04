@@ -130,6 +130,14 @@ SpotDiagram spot(const compile::CompiledSystem& system,
     weights = {1.0};
   } else {
     const auto& w = system.wavelength_weights();
+    // compile() already rejects such weights (model::validate); checked again here because the
+    // analysis must never produce negative point weights or NaN.
+    for (std::size_t i = 0; i < w.size(); ++i) {
+      if (!std::isfinite(w[i]) || w[i] < 0.0) {
+        throw std::invalid_argument("analysis: wavelength weight " + std::to_string(i) +
+                                    " is negative or not finite");
+      }
+    }
     const double total = std::accumulate(w.begin(), w.end(), 0.0);
     if (!(total > 0.0)) {
       throw std::invalid_argument(

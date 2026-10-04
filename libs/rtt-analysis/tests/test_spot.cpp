@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -174,4 +175,11 @@ TEST_CASE("invalid spot input throws std::invalid_argument", "[spot]") {
   s.wavelengths = {{0.4861, 0.0, false}, {0.5876, 0.0, true}};
   const CompiledSystem zero = compile(s, lib);
   REQUIRE_THROWS_AS(rtt::analysis::spot(zero, PathId{0}, 0, std::nullopt), std::invalid_argument);
+  // Negative or non-finite weights never reach the analysis: compile() rejects them
+  // (model::validate), so a CompiledSystem always has weights >= 0; spot() checks again.
+  for (const double bad :
+       {-1.0, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity()}) {
+    s.wavelengths = {{0.4861, bad, false}, {0.5876, 1.0, true}};
+    REQUIRE_THROWS_AS(compile(s, lib), rtt::compile::CompileError);
+  }
 }
