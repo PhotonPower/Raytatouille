@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "bindings.hpp"
+#include "rtt/analysis/spot.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/io/json_io.hpp"
 #include "rtt/material/agf.hpp"
@@ -45,6 +46,8 @@ void register_errors(nb::module_& /*m*/) {
       raise("UnknownMaterial", e.what());
     } catch (const material::AgfError& e) {
       raise("AgfError", e.what(), e.file(), e.line());
+    } catch (const analysis::AnalysisError& e) {
+      raise("AnalysisError", e.what());
     }
   });
 }

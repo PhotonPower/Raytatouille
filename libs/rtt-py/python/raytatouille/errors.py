@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "AgfError",
+    "AnalysisError",
     "CompileError",
     "ParaxialError",
     "ParseError",
@@ -56,6 +57,11 @@ class UnknownMaterial(RaytatouilleError, KeyError):
     def __str__(self) -> str:
         # KeyError would show the repr of the message.
         return str(self.args[0]) if self.args else ""
+
+
+class AnalysisError(RaytatouilleError):
+    """An analysis has no defined result, e.g. the chief ray does not reach the image surface
+    or no ray arrives."""
 
 
 class AgfError(RaytatouilleError, ValueError):

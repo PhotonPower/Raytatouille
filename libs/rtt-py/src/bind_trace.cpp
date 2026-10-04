@@ -66,12 +66,7 @@ trace::TraceStats run_trace(const compile::CompiledSystem& system,
                             std::optional<int> threads) {
   const compile::PathId id = path_id(system, path);
   const trace::SequentialTracer tracer;
-  if (!threads) return tracer.trace(system, id, rays);
-  if (*threads < 1) throw std::invalid_argument("threads must be at least 1");
-  // Limits the threads like the C++ tests (test_sequential.cpp); the result does not depend on
-  // it (ADR 0004, rule 7).
-  oneapi::tbb::task_arena arena(*threads);
-  return arena.execute([&] { return tracer.trace(system, id, rays); });
+  return with_threads(threads, [&] { return tracer.trace(system, id, rays); });
 }
 
 }  // namespace

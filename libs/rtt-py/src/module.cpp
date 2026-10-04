@@ -12,4 +12,5 @@ NB_MODULE(_core, m) {
   rtt::py::bind_compile(m);
   rtt::py::bind_paraxial(m);
   rtt::py::bind_trace(m);
+  rtt::py::bind_analysis(m);
 }
