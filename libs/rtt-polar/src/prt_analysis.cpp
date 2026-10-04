@@ -1,3 +1,12 @@
+// GCC (13 in CI, 16 locally) reports a false -Wnull-dereference inside Eigen's SSE code
+// (emmintrin.h, BinaryFunctors.h) for the fixed-size SVD and eigen solvers at -O2/-O3 in Release.
+// The warning is attributed to the Eigen headers, so the suppression has to cover the includes;
+// it is limited to this translation unit and to GCC (cf. the GCC 13 workaround in agf.cpp, #24).
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnull-dereference"
+#endif
+
 #include "rtt/polar/prt_analysis.hpp"
 
 #include <Eigen/Eigenvalues>
@@ -55,3 +64,7 @@ Retardance physical_retardance(const math::CMat3& p,
 }
 
 }  // namespace rtt::polar
+
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
