@@ -102,8 +102,10 @@ SpotStatistics spot_statistics(std::span<const SpotPoint> points, Point2 chief) 
     const double dhy = p.y - chief.y;
     sum_c += p.weight * (dcx * dcx + dcy * dcy);
     sum_chief += p.weight * (dhx * dhx + dhy * dhy);
-    s.geo_centroid = std::max(s.geo_centroid, std::hypot(dcx, dcy));
-    s.geo_chief = std::max(s.geo_chief, std::hypot(dhx, dhy));
+    if (p.weight > 0.0) {  // points without weight do not belong to the spot
+      s.geo_centroid = std::max(s.geo_centroid, std::hypot(dcx, dcy));
+      s.geo_chief = std::max(s.geo_chief, std::hypot(dhx, dhy));
+    }
   }
   s.rms_centroid = std::sqrt(sum_c / sum_w);
   s.rms_chief = std::sqrt(sum_chief / sum_w);

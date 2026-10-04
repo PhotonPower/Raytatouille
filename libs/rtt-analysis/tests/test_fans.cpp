@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <stdexcept>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "rtt/analysis/spot.hpp"
@@ -81,6 +82,12 @@ TEST_CASE("plano-convex lens at small NA: tangential aberration scales with py^3
     le.push_back(std::log(std::abs(p.ey)));
   }
   REQUIRE(std::abs(fan.tangential[102].p - 0.02) <= 1e-15);
+  // Sign and size: the plano-convex lens is undercorrected, the marginal-zone rays cross the
+  // axis before the paraxial focus, so epsilon_y < 0 for py > 0. Independent check (single-ray
+  // trace through the sphere R = 51.68, n = 1.5168, plane at z = 9, image at the paraxial
+  // focus, review of #28): epsilon_y(0.16) = -4.463e-4 mm.
+  REQUIRE(fan.tangential[116].ey < 0.0);
+  REQUIRE(std::abs(fan.tangential[116].ey + 4.463e-4) <= 1e-3 * 4.463e-4);
   double mx = 0.0, my = 0.0;
   for (std::size_t i = 0; i < lp.size(); ++i) {
     mx += lp[i];
@@ -131,4 +138,5 @@ TEST_CASE("invalid fan input throws std::invalid_argument", "[fans]") {
   none.points = 0;
   REQUIRE_THROWS_AS(rtt::analysis::ray_fan(cs, PathId{0}, 0, 1, none), std::invalid_argument);
   REQUIRE_THROWS_AS(rtt::analysis::ray_fan(cs, PathId{0}, 0, 5), std::invalid_argument);
+  REQUIRE_THROWS_AS(rtt::analysis::ray_fan(cs, PathId{0}, 9, 1), std::invalid_argument);
 }

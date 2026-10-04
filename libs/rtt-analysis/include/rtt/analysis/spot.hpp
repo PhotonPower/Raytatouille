@@ -56,8 +56,8 @@ struct SpotStatistics {
   Point2 centroid;            ///< c = sum w r / sum w, mm
   double rms_centroid = 0.0;  ///< sqrt(sum w |r - c|^2 / sum w), mm
   double rms_chief = 0.0;     ///< sqrt(sum w |r - chief|^2 / sum w), mm
-  double geo_centroid = 0.0;  ///< max |r - c| over the points, mm
-  double geo_chief = 0.0;     ///< max |r - chief| over the points, mm
+  double geo_centroid = 0.0;  ///< max |r - c| over the points with weight > 0, mm
+  double geo_chief = 0.0;     ///< max |r - chief| over the points with weight > 0, mm
 };
 
 /// Weighted statistics of `points` about their centroid and about `chief`.
@@ -67,19 +67,19 @@ struct SpotStatistics {
 /// Options of a spot diagram.
 struct SpotOptions {
   trace::PupilSampling sampling = trace::HexapolarPupil{6};  ///< pupil sampling per wavelength
-  trace::Aiming aiming = trace::Aiming::Real;
+  trace::Aiming aiming = trace::Aiming::Real;  ///< aiming of all rays, chief ray included
 };
 
 /// Spot diagram of one field at one wavelength or polychromatic.
 struct SpotDiagram {
-  std::uint16_t field = 0;
+  std::uint16_t field = 0;                  ///< index into CompiledSystem::fields().points
   std::optional<std::uint16_t> wavelength;  ///< none: polychromatic over all system wavelengths
   std::uint32_t image_surface = 0;          ///< index into CompiledSystem::surfaces()
   std::vector<SpotPoint> points;            ///< arrived rays, in trace order
   Point2 chief;                             ///< reference ray on the image surface, mm
   SpotStatistics stats;
-  std::size_t rays_launched = 0;
-  std::size_t rays_arrived = 0;
+  std::size_t rays_launched = 0;    ///< rays started, over all wavelengths of the spot
+  std::size_t rays_arrived = 0;     ///< rays that reached the image surface (= points.size())
   double vignetted_fraction = 0.0;  ///< (launched - arrived) / launched, unweighted
 };
 
@@ -90,7 +90,8 @@ struct SpotDiagram {
 ///                   the model's wavelength weights
 /// @throws std::invalid_argument for an invalid path, field or wavelength, or wavelength
 ///         weights that do not sum to a positive value (and as rtt::trace::make_rays)
-/// @throws AnalysisError if the chief ray does not reach the image surface
+/// @throws AnalysisError if the chief ray does not reach the image surface, or no ray with a
+///         positive weight arrives (e.g. all rays of the weighted wavelengths are vignetted)
 [[nodiscard]] SpotDiagram spot(const compile::CompiledSystem& system,
                                compile::PathId path,
                                std::uint16_t field,
@@ -99,8 +100,8 @@ struct SpotDiagram {
 
 /// Options of ray fans.
 struct FanOptions {
-  int points = 21;  ///< points per fan, evenly spaced on [-1, 1]
-  trace::Aiming aiming = trace::Aiming::Real;
+  int points = 21;                             ///< points per fan, evenly spaced on [-1, 1]
+  trace::Aiming aiming = trace::Aiming::Real;  ///< aiming of all rays, chief ray included
 };
 
 /// One point of a ray fan: transverse aberration relative to the chief ray.
@@ -115,8 +116,8 @@ struct FanPoint {
 
 /// Tangential (px = 0, py in [-1, 1]) and sagittal (py = 0, px in [-1, 1]) ray fans.
 struct RayFan {
-  std::uint16_t field = 0;
-  std::uint16_t wavelength = 0;
+  std::uint16_t field = 0;       ///< index into CompiledSystem::fields().points
+  std::uint16_t wavelength = 0;  ///< index into CompiledSystem::wavelengths_um()
   std::uint32_t image_surface = 0;
   Point2 chief;                      ///< reference ray on the image surface, mm
   std::vector<FanPoint> tangential;  ///< epsilon_y(py) is the tangential aberration

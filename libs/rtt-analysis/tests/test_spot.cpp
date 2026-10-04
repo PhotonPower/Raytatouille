@@ -6,6 +6,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "rtt/analysis/spot.hpp"
@@ -22,7 +23,6 @@ using rtt::compile::CompiledSystem;
 using rtt::compile::PathId;
 using rtt::material::MaterialLibrary;
 using rtt::model::Element;
-using rtt::model::FieldType;
 using rtt::model::Param;
 using rtt::model::System;
 
@@ -60,6 +60,12 @@ TEST_CASE("spot statistics: weighted centroid, RMS and GEO by hand", "[spot]") {
   const auto t = rtt::analysis::spot_statistics(scaled, Point2{0.0, 0.0});
   REQUIRE(std::abs(t.rms_centroid - s.rms_centroid) <= 1e-15);
   REQUIRE_THROWS_AS(rtt::analysis::spot_statistics({}, Point2{}), AnalysisError);
+  // A point with weight 0 does not count for GEO either.
+  const std::vector<SpotPoint> with_zero{
+      {1.0, 0.0, 0, 1.0}, {-1.0, 2.0, 1, 3.0}, {50.0, 50.0, 2, 0.0}};
+  const auto u = rtt::analysis::spot_statistics(with_zero, Point2{0.0, 0.0});
+  REQUIRE(u.geo_chief == s.geo_chief);
+  REQUIRE(u.rms_chief == s.rms_chief);
   const std::vector<SpotPoint> zero{{1.0, 0.0, 0, 0.0}};
   REQUIRE_THROWS_AS(rtt::analysis::spot_statistics(zero, Point2{}), AnalysisError);
 }
