@@ -938,11 +938,19 @@ TEST_CASE("achromat reference system with the SCHOTT test catalogue", "[compile]
   // Paraxial marginal ray at the reference wavelength (d line), Greivenkamp, OPTI-201/202
   // Sec. 9, p. 9-2 (docs/quellen.md): n'u' = nu - y phi with phi = (n' - n) C, transfer
   // y' = y + u' t'; p. 9-12: phi = -n'u'_k / y_1, f_E = 1/phi, BFD = -y_k / u'_k.
+  // Since #25 the indices are absolute and the surrounding AIR has n_air = 1.00027 (Ciddor), so
+  // the trace starts in n_air. The catalogue data are relative to air: n_glass = n_rel * n_air,
+  // hence every phi and nu is n_air times its value in a relative trace (air = 1) and
+  // f' = n_air / phi equals the relative design focal length; BFD is a physical distance and
+  // stays as well. The remaining difference comes from evaluating the catalogue at the air
+  // wavelength 0.5876 / n_air (0.16 nm shorter, n_rel + 5e-6), about 1e-5, below the tolerance.
   const std::size_t wl = cs.reference_wavelength();
   const auto& events = cs.path(*cs.find_path("main")).events;
+  const double n_air = cs.media()[cs.environment_medium()].index[wl].real();
+  REQUIRE(n_air == rtt::material::ciddor_air_index(cs.wavelengths_um()[wl], 20.0, 1.0));
   double y = 1.0;
   double nu = 0.0;
-  double n = 1.0;
+  double n = n_air;
   double z = 0.0;
   bool first = true;
   for (const auto& event : events) {
@@ -959,9 +967,12 @@ TEST_CASE("achromat reference system with the SCHOTT test catalogue", "[compile]
     nu -= y * (n_after - n) * conic->curvature();
     n = n_after;
   }
-  const double efl = -1.0 / nu;  // y_1 = 1, n' = 1 in air
-  const double bfd = -y / nu;
-  // Design values: EFL 101.013 mm; F' at the detector, z = 110.614 mm (L1.S3 at z = 14 mm).
-  REQUIRE_THAT(efl, Catch::Matchers::WithinRel(101.013, 1e-4));
+  REQUIRE(n == n_air);
+  const double phi = -nu;                    // y_1 = 1
+  const double rear_focal_length = n / phi;  // f' = n' / phi
+  const double bfd = -y * n / nu;            // -y_k / u'_k with u'_k = nu / n'
+  // Design values (relative to air): EFL 101.013 mm; F' at the detector, z = 110.614 mm (L1.S3
+  // at z = 14 mm).
+  REQUIRE_THAT(rear_focal_length, Catch::Matchers::WithinRel(101.013, 1e-4));
   REQUIRE_THAT(z + bfd, Catch::Matchers::WithinRel(110.614, 1e-4));
 }
