@@ -11,6 +11,10 @@
 ///   positive height = +y.
 /// - Paraxial image height (x', y') in mm: converted into a field angle (object at infinity) or
 ///   an object height (finite object) with the paraxial chief ray (rtt-paraxial), then aimed.
+/// - Field values are converted into a direction or an object point at the reference wavelength
+///   (paraxial data of the reference wavelength, e.g. the entrance pupil for an angle with a
+///   finite object), so a field point is the same physical point for every wavelength. Pupil,
+///   stop target and start plane belong to the wavelength of each ray (#31, fix of #8).
 /// - Normalised pupil coordinates (px, py): the unit circle is the rim of the paraxial entrance
 ///   pupil, +y is the meridional direction.
 /// - Positions in mm and unit directions in global coordinates (right-handed, optical axis +z).
@@ -144,7 +148,8 @@ struct AimedRay {
 /// to field point k the result is identical to aim_ray(system, path, k, ...).
 /// @param field field value: angle in degree, object height in mm or paraxial image height in
 ///              mm, as given by the system's field type (Field::weight is ignored)
-/// @throws as the overload with a field index (except the field-index check)
+/// @throws as the overload with a field index (except the field-index check), and
+///         std::invalid_argument if a field value is not finite
 [[nodiscard]] AimedRay aim_ray(const compile::CompiledSystem& system,
                                compile::PathId path,
                                const model::Field& field,

@@ -32,6 +32,14 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
 - `rtt-material`: Ciddor-Luft `ciddor_air_index` und `AirMaterial` (`rtt/material/air.hpp`),
   Schott-Temperaturmodell `schott_delta_n_abs` (`rtt/material/thermal.hpp`), beide als
   Templates über `Real`; Quellen NIST (Gl. A21–A41) und SCHOTT TIE-19 in `docs/quellen.md` (#25).
+- `rtt-trace`: `aim_ray` für Feldwerte außerhalb der Feldliste des Modells (für Feldverläufe,
+  #31).
+
+### Behoben
+- `rtt-trace`: Feldwerte werden bei der Referenzwellenlänge in Richtung bzw. Objektpunkt
+  umgerechnet. Bisher geschah das je Strahl-Wellenlänge, sodass bei paraxialer Bildhöhe und bei
+  Winkelfeldern mit endlichem Objekt jede Farbe einen anderen Feldpunkt bekam (Farbquerfehler,
+  polychromatischer Spot). Fehler aus #8, gefunden in #31.
 
 ### Geändert
 - `cmake`: `rtt_add_test` setzt unter MinGW den `PATH` für Testerkennung und Testläufe auf das

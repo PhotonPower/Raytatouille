@@ -8,6 +8,7 @@
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "rtt/compile/compiled_system.hpp"
@@ -683,4 +684,75 @@ TEST_CASE("aim_ray with a field value equals the field index and accepts other v
   REQUIRE_THROWS_AS(
       rtt::trace::aim_ray(cs, PathId{0}, rtt::model::Field{0.0, 95.0, 1.0}, 0, 0.0, 0.0),
       std::invalid_argument);
+}
+
+TEST_CASE("field values are converted at the reference wavelength", "[sources]") {
+  // A field point is wavelength-independent: angle, object height and paraxial image height
+  // describing the same point must give the same start (direction for an object at infinity,
+  // object point otherwise) for every wavelength (fix of #8, found in #31). Dispersive N-BK7
+  // lenses with the stop between them make entrance pupil and image heights depend on lambda.
+  rtt::material::MaterialLibrary lib;
+  lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/schott.agf");
+  const auto dispersive = [](System s) {
+    s.wavelengths = {{0.4861, 1.0, false}, {0.5876, 1.0, true}, {0.6563, 1.0, false}};
+    for (auto& child : s.root.children) {
+      if (auto* e = std::get_if<Element>(&child.value); e && e->kind == ElementKind::Lens) {
+        e->material = "SCHOTT:N-BK7";
+      }
+    }
+    return s;
+  };
+  constexpr double kTheta = 4.0;  // degree
+  SECTION("object at infinity: angle and paraxial image height") {
+    System angle = dispersive(two_lenses(StopPlace::Between));
+    const CompiledSystem ca = compile(angle, lib);
+    const auto fo = rtt::paraxial::first_order(ca, PathId{0}, ca.reference_wavelength());
+    REQUIRE(fo.efl);
+    // Paraxial image height of a distant object at the reference wavelength: EFL tan(theta).
+    System image = angle;
+    image.fields = {FieldType::ParaxialImageHeight,
+                    {{0.0, 0.0, 1.0}, {0.0, *fo.efl * std::tan(kTheta * kDeg), 1.0}}};
+    const CompiledSystem ci = compile(image, lib);
+    const Vec3 expected = Vec3(0.0, std::tan(kTheta * kDeg), 1.0).normalized();
+    for (std::uint16_t wl = 0; wl < 3; ++wl) {
+      INFO("wavelength " << wl);
+      const auto a =
+          rtt::trace::aim_ray(ca, PathId{0}, rtt::model::Field{0.0, kTheta, 1.0}, wl, 0.0, 0.0);
+      const auto i = rtt::trace::aim_ray(ci, PathId{0}, 1, wl, 0.0, 0.0);
+      REQUIRE((a.ray.dir - expected).cwiseAbs().maxCoeff() <= 1e-15);
+      REQUIRE((i.ray.dir - expected).cwiseAbs().maxCoeff() <= 1e-12);
+    }
+  }
+  SECTION("finite object: angle, object height and paraxial image height") {
+    System height = dispersive(two_lenses(StopPlace::Between, true));
+    const CompiledSystem ch = compile(height, lib);
+    const std::uint16_t ref = ch.reference_wavelength();
+    const auto fo = rtt::paraxial::first_order(ch, PathId{0}, ref);
+    REQUIRE(fo.lateral_magnification);
+    const double z_ep = *fo.entrance_pupil->z;
+    // Object point of the angle field: on the chief ray through the reference EP centre.
+    const double h = (-100.0 - z_ep) * std::tan(kTheta * kDeg);
+    height.fields = {FieldType::ObjectHeight, {{0.0, 0.0, 1.0}, {0.0, h, 1.0}}};
+    const CompiledSystem c_height = compile(height, lib);
+    System angle = height;
+    angle.fields = {FieldType::AngleDeg, {{0.0, 0.0, 1.0}, {0.0, kTheta, 1.0}}};
+    const CompiledSystem c_angle = compile(angle, lib);
+    System image = height;
+    image.fields = {FieldType::ParaxialImageHeight,
+                    {{0.0, 0.0, 1.0}, {0.0, *fo.lateral_magnification * h, 1.0}}};
+    const CompiledSystem c_image = compile(image, lib);
+    for (std::uint16_t wl = 0; wl < 3; ++wl) {
+      INFO("wavelength " << wl);
+      const Vec3 expected(0.0, h, -100.0);
+      REQUIRE((rtt::trace::aim_ray(c_height, PathId{0}, 1, wl, 0.0, 0.0).ray.pos - expected)
+                  .cwiseAbs()
+                  .maxCoeff() <= 1e-12);
+      REQUIRE((rtt::trace::aim_ray(c_angle, PathId{0}, 1, wl, 0.0, 0.0).ray.pos - expected)
+                  .cwiseAbs()
+                  .maxCoeff() <= 1e-12);
+      REQUIRE((rtt::trace::aim_ray(c_image, PathId{0}, 1, wl, 0.0, 0.0).ray.pos - expected)
+                  .cwiseAbs()
+                  .maxCoeff() <= 1e-12);
+    }
+  }
 }

@@ -13,4 +13,6 @@ if(RTT_BUILD_TESTS)
     SOURCES tests/test_ray_batch.cpp tests/test_apply_event.cpp tests/test_sequential.cpp
             tests/test_sources.cpp
     LIBS rtt::trace rtt::io TBB::tbb)
+  target_compile_definitions(rtt_trace_tests PRIVATE
+    RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs")
 endif()
