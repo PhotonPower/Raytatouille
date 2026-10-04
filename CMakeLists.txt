@@ -37,6 +37,7 @@ add_subdirectory(libs/rtt-geom)
 add_subdirectory(libs/rtt-material)
 add_subdirectory(libs/rtt-model)
 add_subdirectory(libs/rtt-compile)
+add_subdirectory(libs/rtt-paraxial)
 add_subdirectory(libs/rtt-trace)
 add_subdirectory(libs/rtt-io)
 
