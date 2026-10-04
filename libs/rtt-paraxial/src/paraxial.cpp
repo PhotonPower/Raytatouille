@@ -105,9 +105,11 @@ double object_index(const CompiledSystem& cs, PathId path, std::uint16_t wavelen
 /// Transfer: y' = y + (z' - z) u with u = nu / n (global slope, global z).
 /// Refraction: n'u' = nu - y phi, phi = c (n' - n). A reflection is a refraction with
 /// n' = -n. Source: J. E. Greivenkamp, OPTI-201/202 Geometrical and Instrumental Optics,
-/// lecture notes (2018), Sec. 9 "Paraxial Raytracing": p. 9-2 (YNU raytrace: refraction or
-/// reflection n'u' = nu - y phi with phi = (n' - n) C, transfer y' = y + u' t'), pp. 9-26/9-27
-/// (mirror system: n' = -n after each reflection, negative distances after a mirror).
+/// lecture notes (2018), Sec. 9 "Paraxial Raytracing", read in full text: p. 9-2 (YNU raytrace:
+/// omega = n u, phi = (n' - n) C, refraction or reflection n'u' = nu - y phi, transfer
+/// y' = y + u't'), pp. 9-26/9-27 (Cassegrain example: n = 1, -1, 1, t = -80 mm after the
+/// primary, C1 = -0.005 for R1 = -200 mm, u = dy/dz in the global frame). The notes have no
+/// equation numbers; see docs/quellen.md.
 /// With the signed index n * u is |n| times the direction cosine along the propagation
 /// direction, so both equations hold unchanged after mirrors with global z and c.
 void apply(State& st, const Step& step) {
@@ -198,9 +200,16 @@ FirstOrder first_order(const compile::CompiledSystem& system,
   fo.image_index = std::abs(n_img);
   fo.image_direction = n_img > 0.0 ? 1 : -1;
 
-  // Cardinal points, derived from the y-nu equations with the reduced matrix M = [[a, b],
-  // [c, d]] from the plane of V1 (object space, index n1 > 0) to the plane of Vk (image space,
-  // signed index n'):
+  // Cardinal points. Source: Greivenkamp, OPTI-201/202 lecture notes, Sec. 9, p. 9-12 (rear:
+  // phi = -n'u'_k / y_1, f_E = 1/phi, f'_R = n'/phi, BFD = -y_k/u'_k, d' = BFD - f'_R) and
+  // p. 9-14 (front: f_F = -n/phi, FFD = -y_1/u_1, d = FFD - f_F); BFD, FFD, d, d' are directed
+  // distances along z from the vertex. Mapping to our outputs (conventions agreed in #7):
+  // ffl = -FFD and front_focal_length = -f_F (Hecht: positive for converging);
+  // rear_focal_length = |n'|/phi and bfl = BFD * sign(n') (measured along the propagation
+  // direction, differs from f'_R and BFD only after an odd number of reflections);
+  // H = V1 + d, H' = Vk + d' exactly as in the source.
+  // In terms of the reduced matrix M = [[a, b], [c, d]] from the plane of V1 (object space,
+  // index n1 > 0) to the plane of Vk (image space, signed index n'):
   // - Ray from infinity (y, nu) = (1, 0) leaves with (y, nu) = (a, c), so the power (definition
   //   agreed in #7) is Phi = -n'u'/y_1 = -c.
   // - Rear focal point F': that ray meets the axis at z_Vk - y/u' = z_Vk - a n'/c
