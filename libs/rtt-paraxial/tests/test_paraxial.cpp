@@ -327,6 +327,45 @@ TEST_CASE("spherical mirror: |f| = |R| / 2", "[paraxial]") {
   }
 }
 
+TEST_CASE("even asphere is paraxially its base conic", "[paraxial]") {
+  // Paraxial refraction uses only the vertex curvature: phi = (n' - n) C (Greivenkamp,
+  // OPTI-201/202 lecture notes, Sec. 9, p. 9-2; docs/quellen.md). The even asphere is
+  // z = conic(r) + A4 r^4 + A6 r^6 + ... (model::EvenAsphere); the polynomial terms have zero
+  // curvature at the vertex (d^2/dr^2 of A_2k r^2k vanishes at r = 0 for k >= 2), and the conic
+  // constant does not enter the vertex curvature either. So an asphere must give exactly the
+  // first-order data of a sphere with the same radius: bit-identical, because both reach the
+  // y-nu trace with the same c = 1/R.
+  // Not tested: an asphere on a flat base (c = 0, only A4 != 0) would be paraxially a plane, but
+  // the model excludes it: model::validate requires a finite, non-zero radius for EvenAsphere
+  // just as for Conic, so such a surface never reaches rtt-paraxial.
+  const auto with_s1 = [](const rtt::model::BaseShape& base) {
+    System s = base_system();
+    Element l = lens("L", 10.0, 1.5168, std::nullopt, -80.0, 6.0);
+    l.surfaces[0].shape.base = base;
+    add(s, l);
+    Element m = mirror("M", 60.0, std::nullopt);
+    m.surfaces[0].shape.base = base;  // mirror with the same base shape, image space -z
+    add(s, m);
+    return first_order_of(s);
+  };
+  const FirstOrder sphere = with_s1(rtt::model::Conic{Param(51.68), Param(0.0)});
+  const FirstOrder conic = with_s1(rtt::model::Conic{Param(51.68), Param(-0.5)});
+  const FirstOrder asphere = with_s1(rtt::model::EvenAsphere{
+      Param(51.68), Param(-0.5), {Param(1e-6), Param(-2e-9), Param(3e-12)}});
+
+  REQUIRE(sphere.efl.has_value());  // focal system: all cardinal points below are set
+  for (const FirstOrder* fo : {&conic, &asphere}) {
+    REQUIRE(fo->efl.has_value());
+    REQUIRE(*fo->efl == *sphere.efl);
+    REQUIRE(*fo->bfl == *sphere.bfl);
+    REQUIRE(*fo->ffl == *sphere.ffl);
+    REQUIRE(*fo->front_principal_z == *sphere.front_principal_z);
+    REQUIRE(*fo->rear_principal_z == *sphere.rear_principal_z);
+    REQUIRE(fo->image_direction == sphere.image_direction);
+  }
+  REQUIRE(sphere.image_direction == -1);  // the mirror is part of the path
+}
+
 TEST_CASE("double pass: thin lens on a plane mirror refracts with negative index", "[paraxial]") {
   // Thin lens f = 100 mm and a plane mirror, both at z = 0; explicit path through the lens,
   // onto the mirror and back through the lens. The light passes the lens twice with zero
