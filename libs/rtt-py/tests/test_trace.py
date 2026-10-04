@@ -108,6 +108,8 @@ def test_make_rays_and_trace(reference_dir: Path) -> None:
     assert stats.count(RayStatus.ALIVE) == np.count_nonzero(rays.status == RayStatus.ALIVE)
     # Rim rays (|p| = 1) may be vignetted at the stop edge (real aiming converges to 1e-9 mm);
     # all others reach the image surface IMG at z = 106.363 mm.
+    # TODO(#32): require all rays ALIVE once rtt-trace checks apertures inclusively with a
+    # tolerance of 1e-9 mm (coordinator decision in #32, rtt-trace PR of raytatouille-f2).
     alive = rays.status == RayStatus.ALIVE
     rim = np.hypot(rays.pupil_x, rays.pupil_y) > 1.0 - 1e-12
     assert np.all(alive | rim)

@@ -56,7 +56,8 @@ def test_first_order_of_the_reference_singlet(reference_dir: Path) -> None:
     # Plano-convex lens, R1 = 51.68 mm, n = 1.5168, plane rear side, in VACUUM:
     # phi = (n - 1) / R1, EFL = R1 / (n - 1) = 100 mm (Greivenkamp, OPTI-201/202, Sec. 9,
     # p. 9-2; the plane surface has no power). BFL = EFL - d / n with d = 4 mm (lens from
-    # z = 5 to z = 9), since H' lies at the curved vertex shifted by -d/n (p. 9-12).
+    # z = 5 to z = 9): H' lies d/n before the plane rear vertex (p. 9-12, BFD = -y_k / u'_k
+    # with y_k = 1 - (n - 1) d / (n R1) and u'_k = -1 / EFL).
     cs = singlet(reference_dir)
     fo = rt.paraxial.first_order(cs, path="main")
     assert fo.efl is not None and fo.bfl is not None

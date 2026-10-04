@@ -33,7 +33,7 @@ strict = true
 incremental = false
 
 [[tool.mypy.overrides]]
-# nanobind's stub for std::filesystem::path arguments is `str | os.PathLike` without a type
-# argument.
+# Generated stub: nanobind writes std::filesystem::path arguments as `str | os.PathLike` without a
+# type argument, and the unhashable System and Environment as `__hash__: None = None`.
 module = "raytatouille._core"
-disable_error_code = ["type-arg"]
+disable_error_code = ["type-arg", "assignment"]

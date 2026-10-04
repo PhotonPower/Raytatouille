@@ -61,7 +61,8 @@ void bind_model(nb::module_& m) {
       .def_rw("pressure_atm", &model::Environment::pressure_atm, "Air pressure in atm.")
       .def_rw("medium", &model::Environment::medium,
               "Material reference of the surrounding medium, e.g. \"AIR\" or \"VACUUM\".")
-      .def("__eq__", &equal<model::Environment>, "other"_a);
+      .def("__eq__", &equal<model::Environment>, "other"_a)
+      .attr("__hash__") = nb::none();  // mutable with value equality: not hashable
 
   nb::class_<model::Wavelength>(m, "Wavelength", "One system wavelength (read-only copy).")
       .def_ro("um", &model::Wavelength::um, "Vacuum wavelength in um.")
@@ -95,7 +96,8 @@ void bind_model(nb::module_& m) {
             });
           },
           "file"_a, "Writes the canonical JSON text to `file`.\n\nRaises OSError on failure.")
-      .def("__eq__", &equal<model::System>, "other"_a);
+      .def("__eq__", &equal<model::System>, "other"_a)
+      .attr("__hash__") = nb::none();  // mutable with value equality: not hashable
 
   m.def(
       "load",

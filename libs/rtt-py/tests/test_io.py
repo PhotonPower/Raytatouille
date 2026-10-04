@@ -65,6 +65,18 @@ def test_wavelengths_are_read_only_copies(reference_dir: Path) -> None:
     assert system.schema_version == "0.2.0"
 
 
+def test_value_equality_and_no_hash(reference_dir: Path) -> None:
+    file = reference_dir / "m1" / "singlet_const.rtt.json"
+    system = rt.load(file)
+    assert system == rt.load(file)
+    assert system != "not a system"
+    assert system.environment == rt.load(file).environment
+    with pytest.raises(TypeError):
+        hash(system)
+    with pytest.raises(TypeError):
+        hash(system.environment)
+
+
 def test_validate_reports_errors_without_raising() -> None:
     system = rt.System()
     diagnostics = rt.validate(system)

@@ -15,6 +15,7 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "bindings.hpp"
@@ -31,6 +32,10 @@ namespace {
 
 using trace::RayBatch;
 using trace::RayStatus;
+
+// RayBatch.status is exposed as uint8 through an unsigned char pointer (bind_trace below).
+static_assert(std::is_same_v<std::underlying_type_t<RayStatus>, std::uint8_t> &&
+              std::is_same_v<std::uint8_t, unsigned char>);
 
 template <typename T>
 using Column = nb::ndarray<nb::numpy, T, nb::ndim<1>, nb::c_contig>;
@@ -144,8 +149,9 @@ void bind_trace(nb::module_& m) {
       "coordinates (right-handed, optical axis +z), OPL in mm, weight as power (source = 1). "
       "Every column (pos_x, ..., last_surface, status, prt(row, col)) is a writable NumPy "
       "view on the batch without a copy and keeps the batch alive; the size is fixed from "
-      "Python. Do not change a column from another Python thread while trace() runs on the "
-      "batch (the GIL is released during the trace).");
+      "Python. While trace() or make_rays() runs on the batch (the GIL is released), do not "
+      "read or change its columns from another Python thread and do not start a second "
+      "trace() on it.");
   batch
       .def(nb::init<std::size_t>(), "size"_a,
            "Batch of `size` rays at the origin along +z, wavelength 0, OPL 0, weight 1, "
@@ -255,7 +261,8 @@ void bind_trace(nb::module_& m) {
         "Traces `rays` in place along `path` (index or name) with the sequential tracer and "
         "returns the counts per status. `threads` limits the worker threads (None: all); the "
         "result is bitwise the same for every number of threads. The GIL is released; do not "
-        "change the columns of `rays` from another thread meanwhile.\n\nRaises ValueError for "
+        "read or change the columns of `rays` from another thread meanwhile.\n\nRaises ValueError "
+        "for "
         "an unknown path name, a wavelength index that is not a system wavelength or an invalid "
         "status, IndexError for an unknown path index.");
 }

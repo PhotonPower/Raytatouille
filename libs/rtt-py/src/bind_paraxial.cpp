@@ -33,7 +33,8 @@ void bind_paraxial(nb::module_& m) {
       .def_ro("image_direction", &FirstOrder::image_direction,
               "+1 if light leaves the system towards +z, -1 towards -z.")
       .def_ro("power", &FirstOrder::power, "Power in 1/mm; 0 for afocal systems.")
-      .def_ro("efl", &FirstOrder::efl, "Effective focal length 1/power in mm.")
+      .def_ro("efl", &FirstOrder::efl,
+              "Effective focal length 1/power in mm, positive for converging systems.")
       .def_ro("front_focal_length", &FirstOrder::front_focal_length,
               "|n| / power in object space (H -> F), mm.")
       .def_ro("rear_focal_length", &FirstOrder::rear_focal_length,
