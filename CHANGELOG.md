@@ -4,12 +4,6 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
 
 ## [Unreleased]
 
-### Geändert
-- `rtt-material`: `Material::index(wavelength_um, temperature_c, pressure_atm)` mit Luftdruck
-  (ADR 0014, Punkt 3) und `wavelength_range_um()`; `rtt-compile` übergibt
-  `environment.pressure_atm` und meldet Systemwellenlängen außerhalb des gültigen Bereichs eines
-  benutzten Mediums als `CompileError` mit JSON-Pointer (#23).
-
 ### Hinzugefügt
 - `rtt-material`: Dispersionsformeln Schott, Sellmeier 1–5, Herzberger, Conrady und Cauchy als
   Funktions-Templates über `Real` mit `DispersionMaterial`; `TabulatedMaterial` (n und κ linear in
@@ -27,6 +21,31 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   `tests/reference/m2/paraboloid_stop.rtt.json` (#28).
 - `rtt-compile`: `CompiledSystem::wavelength_weights()` mit den Wellenlängengewichten des
   Modells (#28).
+
+### Geändert
+- `rtt-material`: `Material::index(wavelength_um, temperature_c, pressure_atm)` mit Luftdruck
+  (ADR 0014, Punkt 3) und `wavelength_range_um()`; `rtt-compile` übergibt
+  `environment.pressure_atm` und meldet Systemwellenlängen außerhalb des gültigen Bereichs eines
+  benutzten Mediums als `CompileError` mit JSON-Pointer (#23).
+- Dateiformat Schema 0.2.0: `Lens` und `Plate` mit N Flächen tragen ein Material je Segment
+  (Segment i zwischen Fläche i und i + 1); `"material"` ist ein String (Kurzform für alle
+  Segmente) oder ein Array mit N − 1 Einträgen. `rtt-model`: `Element::segment_materials`,
+  `Element::segment_material(i)` und Validierung der Listenlänge mit JSON-Pointer; `rtt-io` liest
+  und schreibt beide Formen bitgleich und migriert Dateien mit Schema 0.1; JSON-Schema angepasst;
+  Referenzdateien mit `rtt format` neu geschrieben; ADR 0017; neues Beispiel
+  `tests/reference/m2/achromat.rtt.json` (#26).
+- `rtt-compile`: Kittglieder auf automatischen und expliziten Pfaden. Kurzform und Materialliste
+  werden ausgewertet, Fehlerorte zeigen auf den Listeneintrag (`.../material/<i>`). Die Regel für
+  brechende Events hängt nur vom Element ab: `Lens` (einheitlich oder gemischt) und `Plate` mit
+  verschiedenen Segmentmaterialien folgen der Segmentregel (`Refract` an Fläche i: aus Segment
+  i − 1 ins Segment i bzw. zurück, an der ersten und letzten Fläche ins Umgebungsmedium); eine
+  `Plate` mit einheitlichem Material behält die Umschaltregel innen ↔ Umgebung an jeder Fläche.
+  Der `CompileError` für eine `Lens` mit mehr als 2 Flächen auf dem automatischen Pfad entfällt;
+  neu ist ein `CompileError` für eine einheitliche `Plate` mit mehr als 2 Flächen auf dem
+  automatischen Pfad und, unter der Segmentregel, für eine innere Fläche zwischen verschiedenen
+  Materialien, die ein Pfad von außen erreicht. Festgelegt: Elemente schachteln nicht (Element B
+  betreten, während der Strahl in A ist, verlässt A) (#27).
+- `rtt-model`: Test, dass ein `ThinElement` keine Materialliste annimmt (#26).
 
 ## [0.2.0] – M1 Sequenzieller Kern
 

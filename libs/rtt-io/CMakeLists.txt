@@ -8,7 +8,7 @@ rtt_target_defaults(rtt_io LIBRARY)
 
 if(RTT_BUILD_TESTS)
   rtt_add_test(rtt_io_tests
-    SOURCES tests/test_roundtrip.cpp tests/test_parse_errors.cpp
+    SOURCES tests/test_roundtrip.cpp tests/test_parse_errors.cpp tests/test_segment_materials.cpp
     LIBS rtt::io)
 endif()
 

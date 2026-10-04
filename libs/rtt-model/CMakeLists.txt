@@ -7,6 +7,6 @@ rtt_target_defaults(rtt_model LIBRARY)
 
 if(RTT_BUILD_TESTS)
   rtt_add_test(rtt_model_tests
-    SOURCES tests/test_validate.cpp tests/test_pose.cpp
+    SOURCES tests/test_validate.cpp tests/test_pose.cpp tests/test_segment_materials.cpp
     LIBS rtt::model)
 endif()

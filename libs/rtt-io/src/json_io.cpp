@@ -7,6 +7,7 @@
 #include <initializer_list>
 #include <nlohmann/json.hpp>
 #include <sstream>
+#include <stdexcept>
 #include <utility>
 
 #include "json_format.hpp"
@@ -354,6 +355,23 @@ Surface read_surface(const Json& j, const Ctx& c) {
   return s;
 }
 
+/// Element material: a string (shorthand, one material for all segments) or a non-empty
+/// array of strings (one material per segment, ADR 0017).
+void read_material(const Json& j, const Ctx& c, Element& e) {
+  if (j.is_string()) {
+    e.material = j.get<std::string>();
+    return;
+  }
+  if (!j.is_array()) {
+    c.fail("expected a string or an array of strings, got " + std::string(type_name(j)));
+  }
+  if (j.empty()) c.fail("expected at least one material");
+  e.segment_materials.reserve(j.size());
+  for (std::size_t i = 0; i < j.size(); ++i) {
+    e.segment_materials.push_back(read_string(j[i], c.at(i)));
+  }
+}
+
 Node read_node(const Json& j, const Ctx& c);
 
 Assembly read_assembly_body(const Json& j, const Ctx& c) {
@@ -377,7 +395,7 @@ Node read_node(const Json& j, const Ctx& c) {
   e.kind = read_enum(require(j, "type", c), c.at("type"), kElementKinds);
   e.name = read_string(require(j, "name", c), c.at("name"));
   read_opt(j, "pose", c, e.pose, read_pose);
-  if (const Json* m = find(j, "material")) e.material = read_string(*m, c.at("material"));
+  if (const Json* m = find(j, "material")) read_material(*m, c.at("material"), e);
   const Json& surfaces = require_array(j, "surfaces", c);
   e.surfaces.reserve(surfaces.size());
   for (std::size_t i = 0; i < surfaces.size(); ++i) {
@@ -410,14 +428,42 @@ Path read_path(const Json& j, const Ctx& c) {
   return p;
 }
 
-void check_schema_version(const std::string& version, const Ctx& c) {
-  // Pre-1.0 rule: major and minor must match exactly, patch may differ.
-  const std::string ours(kSchemaVersion);
-  const auto major_minor = [](const std::string& v) { return v.substr(0, v.rfind('.')); };
-  const auto dots = std::count(version.begin(), version.end(), '.');
-  if (dots != 2 || major_minor(version) != major_minor(ours)) {
-    c.fail("incompatible schema_version '" + version + "', this build reads " + ours);
+// ================================================================== migration =====
+
+/// "major.minor" of a version string with exactly two dots, otherwise empty.
+std::string major_minor(const std::string& version) {
+  if (std::count(version.begin(), version.end(), '.') != 2) return {};
+  return version.substr(0, version.rfind('.'));
+}
+
+/// Migration 0.1 -> 0.2 (ADR 0017). 0.2 only adds the array form of "material"; every 0.1 file
+/// is a 0.2 file with the same meaning. An array material in a file that claims 0.1 is an error.
+void check_no_material_lists(const Json& node, const Ctx& c) {
+  if (!node.is_object()) return;  // structural errors are reported by the reader
+  if (const Json* m = find(node, "material"); m != nullptr && m->is_array()) {
+    c.at("material").fail("material lists need schema_version 0.2 or later");
   }
+  if (const Json* children = find(node, "children"); children != nullptr && children->is_array()) {
+    for (std::size_t i = 0; i < children->size(); ++i) {
+      check_no_material_lists((*children)[i], c.at("children").at(i));
+    }
+  }
+}
+
+/// Checks the schema version of `j` and migrates supported older versions to the current one.
+/// Pre-1.0 rule: major and minor must match a supported version, patch may differ. The reader
+/// then reads `j` as a current file and the writer writes kSchemaVersion.
+void migrate(const Json& j, const std::string& version, const Ctx& c) {
+  const std::string ours(kSchemaVersion);
+  const std::string mm = major_minor(version);
+  if (!mm.empty() && mm == major_minor(ours)) return;
+  if (mm == "0.1") {
+    // 0.1 -> 0.2: content unchanged, only lists are new.
+    if (const Json* root = find(j, "root")) check_no_material_lists(*root, Ctx().at("root"));
+    return;
+  }
+  c.fail("incompatible schema_version '" + version + "', this build reads " + ours +
+         " and migrates 0.1");
 }
 
 System read_system(const Json& j) {
@@ -427,7 +473,7 @@ System read_system(const Json& j) {
                  "aperture", "fields", "root", "paths"});
   System s;
   s.schema_version = read_string(require(j, "schema_version", c), c.at("schema_version"));
-  check_schema_version(s.schema_version, c.at("schema_version"));
+  migrate(j, s.schema_version, c.at("schema_version"));
   s.schema_version = std::string(kSchemaVersion);
   read_opt(j, "name", c, s.name, read_string);
 
@@ -692,7 +738,17 @@ OJson node(const Node& n) {
   o["type"] = std::string(enum_name(e.kind, kElementKinds));
   o["name"] = e.name;
   put_pose(o, e.pose);
-  if (e.material) o["material"] = *e.material;
+  if (e.material && !e.segment_materials.empty()) {
+    throw std::invalid_argument("element '" + e.name +
+                                "': material and segment_materials are both set");
+  }
+  if (e.material) {
+    o["material"] = *e.material;
+  } else if (!e.segment_materials.empty()) {
+    OJson a = OJson::array();
+    for (const std::string& m : e.segment_materials) a.push_back(m);
+    o["material"] = std::move(a);
+  }
   OJson surfaces = OJson::array();
   for (const Surface& s : e.surfaces) surfaces.push_back(surface(s));
   o["surfaces"] = std::move(surfaces);

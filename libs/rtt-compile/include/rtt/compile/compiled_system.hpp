@@ -99,22 +99,42 @@ class CompiledSystem;
 ///   reported by compile(); call model::validate directly to see them.
 /// - Flattens the tree: the global transform of each surface is root pose * assembly poses *
 ///   element pose * surface pose. Pickups are not evaluated before M5; their value is used.
-/// - Resolves every material (environment medium, element materials) with `materials` and
-///   evaluates it once per system wavelength at environment.temperature_c (ADR 0014).
+/// - Resolves every material (environment medium, element materials in both forms: shorthand
+///   and one material per segment, ADR 0017) with `materials` and evaluates it once per system
+///   wavelength at environment.temperature_c (ADR 0014). Equal references share one medium.
 /// - Builds every path. An automatic path visits all surfaces in tree order with Refract for
 ///   Lens and Plate, Reflect for Mirror and Transmit for Stop, Detector and ThinElement.
-/// - Media along a path: the ray starts in the environment medium. Refract, Ordinary and
-///   Extraordinary at a surface of an element with a material switch between the inside of
-///   that element and the environment; all other events, and events at elements without
-///   material, keep the medium. Entering element B while inside element A goes from A's
-///   medium to B's, and leaving B then goes to the environment; that case is not settled
-///   yet and is part of the question on cemented groups (#14).
+/// - Media along a path (docs/architecture.md, "Medien entlang eines Pfads"): the ray starts in
+///   the environment medium. Reflect, Transmit and Diffract keep the medium, and so does every
+///   event at an element without material. The rule for Refract, Ordinary and Extraordinary
+///   depends only on the element, never on the kind of path (decided for #27):
+///   | element                                  | automatic path         | explicit path |
+///   | Lens, one material or several            | segment rule           | segment rule  |
+///   | Plate, one material (shorthand or equal) | 2 surfaces: toggle,    | toggle        |
+///   |                                          | > 2: CompileError      |               |
+///   | Plate, different segment materials       | segment rule           | segment rule  |
+///   | Mirror with substrate                    | 1 surface: toggle,     | toggle        |
+///   |                                          | > 1: CompileError (#6) |               |
+///   Toggle: between the inside and the environment at every surface (prisms, cubes; the rule
+///   of #5). For 2 surfaces it equals the segment rule. Segment rule at surface i of an element
+///   with N surfaces (segment j between surfaces j and j + 1, zero-based): from segment i - 1
+///   into segment i, or into the environment if i = N - 1; from segment i into segment i - 1,
+///   or into the environment if i = 0; from another segment of the same element into the
+///   environment; from outside the element through the first surface into segment 0, through
+///   the last surface into segment N - 2, and through an inner surface i into the material of
+///   segments i - 1 and i if both are the same, otherwise CompileError (ambiguous side).
+///   Elements do not nest: entering element B while inside element A leaves A (A's medium
+///   before, B's medium after), and leaving B then
+///   goes to the environment. A cemented group is one element with one material per segment;
+///   two separate elements always meet through the environment.
 ///
-/// Not supported yet (CompileError): Zernike sag terms (M8), and Lens or Plate elements with
-/// more than 2 surfaces on an automatic path (cemented groups, see #14).
+/// Not supported yet (CompileError): Zernike sag terms (M8).
 /// Also a CompileError: a Mirror with substrate material and more than one surface on an
 /// automatic path (Mangin mirror; its front surface refracts, so it needs an explicit path
-/// Refract, Reflect, Refract).
+/// Refract, Reflect, Refract); a Plate of one material with more than 2 surfaces on an
+/// automatic path (prism or cube, needs an explicit path); and, under the segment rule, a
+/// Refract, Ordinary or Extraordinary event at an inner surface reached from outside the
+/// element when the segments on its two sides have different materials (ambiguous side).
 ///
 /// The result holds no references or pointers into `system` or `materials`.
 /// @throws CompileError as described above

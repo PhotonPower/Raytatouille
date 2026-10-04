@@ -44,6 +44,7 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 | 0014 | Laufzeit-Interface `Material` in `double`; Formelkerne als Templates |
 | 0015 | `rtt::math::Real` umfasst nur `double` (später Dual-Zahlen) |
 | 0016 | `CompiledSystem` in eigener Bibliothek `rtt-compile`; feste Reihenfolge in der Schicht Tracing |
+| 0017 | Kittglieder: Material je Segment (`Lens`, `Plate`), Schema 0.2 |
 
 **Konventionen (verbindlich für alle Bibliotheken)**
 
@@ -79,12 +80,13 @@ Das Modell ist reine Datenstruktur ohne Tracing-Logik. Header: `libs/rtt-model/i
 
 - **`System`:** Name, Umgebung (Temperatur, Druck, Umgebungsmedium), Objektraum (unendlich oder Abstand), Wellenlängen (genau eine Referenz), Systemapertur, Feldpunkte, Wurzel-Baugruppe, Pfade.
 - **`Assembly`:** Name, `Pose`, Kinder (`Node` = Assembly oder Element).
-- **`Element`:** physischer Körper mit `ElementKind`: `Lens` (≥ 2 Flächen, Material), `Mirror` (≥ 1 Fläche), `Plate` (≥ 2 plane Flächen, Material; Platten, Würfel, Prismen), `ThinElement` (1 Fläche ohne Dicke), `Stop` (1 Fläche mit Apertur, höchstens einer pro System), `Detector` (1 Fläche).
+- **`Element`:** physischer Körper mit `ElementKind`: `Lens` (≥ 2 Flächen, Material je Segment), `Mirror` (≥ 1 Fläche, optional ein Substratmaterial), `Plate` (≥ 2 plane Flächen, Material je Segment; Platten, Würfel, Prismen), `ThinElement` (1 Fläche ohne Dicke), `Stop` (1 Fläche mit Apertur, höchstens einer pro System), `Detector` (1 Fläche).
+- **Segmente (ADR 0017):** Ein Element mit N Flächen hat N − 1 Segmente; Segment i liegt zwischen Fläche i und i + 1 (nullbasiert). `Lens` und `Plate` geben entweder ein Material für alle Segmente an (`material`, Kurzform) oder eine Liste mit genau N − 1 Einträgen (`segment_materials`, Kittglieder); `Element::segment_material(i)` liefert das Material von Segment i in beiden Formen.
 - **`Surface`:** eindeutige `SurfaceId` (lesbarer String wie `"L1.S1"`), `Pose` im Element, Layer-Stack.
 
 **Layer-Stack einer Fläche**
 
-| Layer | Anzahl | Umgesetzt (Schema 0.1) | Geplant |
+| Layer | Anzahl | Umgesetzt (Schema 0.2) | Geplant |
 | --- | --- | --- | --- |
 | `shape.base` | genau 1 | `Plane`, `Conic`, `EvenAsphere` | Q-con, Q-bfs, Biconic, Toroid, Axicon, XY-Polynom, ungerade Asphäre |
 | `shape.terms` | 0..n, additiv | `ZernikeSag` (Noll) | Grid-Sag, Zernike Fringe |
@@ -93,20 +95,21 @@ Das Modell ist reine Datenstruktur ohne Tracing-Logik. Header: `libs/rtt-model/i
 | `interaction` | genau 1 | Fresnel (Default), ideal: Spiegel, AR, Strahlteiler, Polarisator, Retarder; Absorber; Coating-Referenz | Jones-/Mueller-Tabellen |
 | `scatter` | 0..1 | – | Lambert, Gauß, ABg (M9) |
 
-**Medien:** innerhalb eines Elements das Element-Material, außerhalb das Umgebungsmedium. Material ist ein Katalogverweis `"KATALOG:NAME"`.
+**Medien:** innerhalb eines Elements das Material des jeweiligen Segments (bei der Kurzform überall dasselbe), außerhalb das Umgebungsmedium. Material ist ein Katalogverweis `"KATALOG:NAME"`. Die Kittfläche i (0 < i < N − 1) ist genau ein Übergang von Segment i − 1 zu Segment i.
 
 **Pfade:** `Path` = Name + Liste von `Event { SurfaceId surface; EventKind kind; int order; }` oder `automatic` (alle Flächen in Baumreihenfolge). `EventKind`: `Refract`, `Reflect`, `Transmit`, `Ordinary`, `Extraordinary`, `Diffract` (mit `order`). Dieselbe Fläche darf mehrfach vorkommen (Doppeldurchgang, Interferometer). Ein `PathGenerator` (M4) erzeugt z. B. alle Zweifach-Reflexions-Ghosts.
 
 **Parameter:** Jeder optimierbare Wert ist ein `Param { double value; bool variable; std::optional<std::string> pickup; }`. Pickup-Ausdrücke werden ab M5 ausgewertet. Multi-Konfigurationen kommen mit M5.
 
-**Validierung:** `rtt::model::validate(system)` liefert `Diagnostic`s mit JSON-Pointer auf die betroffene Stelle (Wellenlängen, Apertur, Element-Regeln, eindeutige IDs und Namen, gültige Radien und Aperturen, Pfadverweise).
+**Validierung:** `rtt::model::validate(system)` liefert `Diagnostic`s mit JSON-Pointer auf die betroffene Stelle (Wellenlängen, Apertur, Element-Regeln inkl. Länge der Materialliste, eindeutige IDs und Namen, gültige Radien und Aperturen, Pfadverweise).
 
 ## Dateiformat (`rtt-io`, umgesetzt in M0)
 
 Ein System ist eine Datei `*.rtt.json`. Die vollständige Struktur steht in `schema/raytatouille.schema.json`; Referenz ist aber der C++-Parser.
 
 - **Strikt:** unbekannte Schlüssel, falsche Typen, andere Einheiten und inkompatible `schema_version` sind Fehler mit JSON-Pointer.
-- **Versionierung:** `schema_version` SemVer; vor 1.0 müssen Major und Minor exakt passen. Jede Formatänderung erhöht die Version und bringt eine getestete Migration mit.
+- **Versionierung:** `schema_version` SemVer; aktuell 0.2.0. Vor 1.0 müssen Major und Minor exakt passen oder zu einer älteren Version gehören, die `rtt-io` migriert (derzeit 0.1 → 0.2; geschrieben wird immer die aktuelle Version). Jede Formatänderung erhöht die Version und bringt eine getestete Migration mit. Das JSON-Schema beschreibt nur die aktuelle Version.
+- **Material:** `"material"` ist ein String (ein Material für alle Segmente) oder ein Array mit einem Eintrag je Segment, z. B. `"material": ["SCHOTT:N-BK7", "SCHOTT:F2"]` (ADR 0017). Die gelesene Form wird unverändert geschrieben.
 - **Kanonisch:** `rtt::io::to_json` schreibt immer dieselben Bytes: 2 Leerzeichen Einzug, LF, abschließender Zeilenumbruch, Standardwerte weggelassen, kleine Objekte aus Skalaren auf einer Zeile. Für jede kanonische Datei gilt `to_json(parse(text)) == text`. `rtt format` bringt Dateien in diese Form.
 - **Parameter:** als Zahl (`51.68`) oder als Objekt (`{"value": 30.0, "variable": true}`).
 - **Import v1:** AGF-Glaskataloge der Hersteller (M2, `rtt-material`); ZMX-Dateien (M8) als reines Austauschformat (sequenzieller Teil), nicht unterstützte Flächentypen ergeben eine klare Fehlermeldung. **Export v1:** CSV für Analysedaten. **Später:** STEP-Export der Flächen, ISO-10110-Zeichnung.
@@ -115,7 +118,7 @@ Beispiel (gekürzt aus `tests/reference/m0/singlet.rtt.json`):
 
 ```json
 {
-  "schema_version": "0.1.0",
+  "schema_version": "0.2.0",
   "name": "Plano-convex singlet f = 100 mm",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [
@@ -162,7 +165,7 @@ Beispiel (gekürzt aus `tests/reference/m0/singlet.rtt.json`):
 }
 ```
 
-Alle Modellelemente zeigt `tests/reference/m0/feature_tour.rtt.json`, Mehrfachpfade `michelson.rtt.json`.
+Alle Modellelemente zeigt `tests/reference/m0/feature_tour.rtt.json`, Mehrfachpfade `michelson.rtt.json`, ein Kittglied mit Material je Segment `tests/reference/m2/achromat.rtt.json`.
 
 ## Strahlen und Trace-Engines (ab M1)
 
@@ -176,7 +179,22 @@ Tracing läuft immer über ein unveränderliches `CompiledSystem`: Das Modell wi
 4. Flächentypen in `std::variant` auflösen, damit der Hot Path ohne virtuelle Aufrufe auskommt.
 5. Ergebnis ist unveränderlich, thread-sicher lesbar, hält keine Zeiger ins Modell und hat einen Hash für Caching.
 
-**Medien entlang eines Pfads** (festgelegt in #5): Der Strahl startet im Umgebungsmedium. `Refract`, `Ordinary` und `Extraordinary` an einer Fläche eines Elements mit Material wechseln zwischen dem Inneren dieses Elements und der Umgebung; `Reflect`, `Transmit`, `Diffract` und alle Events an Elementen ohne Material behalten das Medium. Der automatische Pfad besucht alle Flächen in Baumreihenfolge: `Lens`/`Plate` → `Refract`, `Mirror` → `Reflect`, `Stop`/`Detector`/`ThinElement` → `Transmit`. Kittglieder sind noch offen (#14); bis dahin ist eine `Lens`/`Plate` mit mehr als 2 Flächen auf einem automatischen Pfad ein Kompilierfehler. Ein `Mirror` mit Substratmaterial und mehr als einer Fläche (Mangin-Spiegel) braucht einen expliziten Pfad (`Refract`, `Reflect`, `Refract`); auf dem automatischen Pfad ist er ein Kompilierfehler (#6). Stand M1: Formen `Plane`, `Conic` und `EvenAsphere`; Pickups werden noch nicht ausgewertet; der Hash folgt, wenn Caching gebraucht wird.
+**Medien entlang eines Pfads** (festgelegt in #5, für Segmente erweitert in #27): Der Strahl startet im Umgebungsmedium. `Refract`, `Ordinary` und `Extraordinary` an einer Fläche eines Elements mit Material wechseln zwischen dem Inneren dieses Elements und der Umgebung (bei mehreren Segmenten siehe unten); `Reflect`, `Transmit`, `Diffract` und alle Events an Elementen ohne Material behalten das Medium. Der automatische Pfad besucht alle Flächen in Baumreihenfolge: `Lens`/`Plate` → `Refract`, `Mirror` → `Reflect`, `Stop`/`Detector`/`ThinElement` → `Transmit`. Kittglieder (ADR 0017, festgelegt in #27): Eine `Lens`/`Plate` mit N Flächen hat N − 1 Segmente; Segment i liegt zwischen Fläche i und i + 1, die Kurzform `material` gilt für alle Segmente. Ein `Mirror` mit Substratmaterial und mehr als einer Fläche (Mangin-Spiegel) braucht einen expliziten Pfad (`Refract`, `Reflect`, `Refract`); auf dem automatischen Pfad ist er ein Kompilierfehler (#6). Stand M1: Formen `Plane`, `Conic` und `EvenAsphere`; Pickups werden noch nicht ausgewertet; der Hash folgt, wenn Caching gebraucht wird.
+
+Für `Refract`, `Ordinary` und `Extraordinary` hängt die Regel nur von der Art des Elements und seinen Materialien ab, nie von der Art des Pfads; dieselben Events ergeben also auf automatischen und expliziten Pfaden dieselben Medien. „Einheitlich“ heißt Kurzform oder Liste mit lauter gleichen Einträgen.
+
+| Element | automatischer Pfad | expliziter Pfad |
+| --- | --- | --- |
+| `Lens`, einheitlich oder gemischt | Segmentregel | Segmentregel |
+| `Plate`, einheitlich (Prisma, Würfel) | 2 Flächen: Umschaltregel; mehr als 2: Kompilierfehler | Umschaltregel |
+| `Plate`, gemischt (z. B. gekitteter Würfel) | Segmentregel | Segmentregel |
+| `Mirror` mit Substrat | 1 Fläche: Umschaltregel; mehr: Kompilierfehler (#6) | Umschaltregel |
+
+*Umschaltregel* (Regel aus #5): An jeder Fläche wechselt der Strahl zwischen dem Inneren und der Umgebung; damit lässt sich ein Prisma durch jede Fläche betreten und verlassen. Bei 2 Flächen ist sie gleich der Segmentregel. Eine einheitliche `Plate` mit mehr als 2 Flächen braucht einen expliziten Pfad, weil die Baumreihenfolge ihrer Flächen keinen sinnvollen Strahlweg ergibt.
+
+*Segmentregel*: An Fläche i führt das Event aus Segment i − 1 ins Segment i (an der letzten Fläche ins Umgebungsmedium) und aus Segment i ins Segment i − 1 (an der ersten Fläche ins Umgebungsmedium); aus einem anderen Segment desselben Elements, das die Fläche nicht begrenzt, ins Umgebungsmedium. Von außen führt die erste Fläche ins Segment 0, die letzte ins Segment N − 2 und eine innere Fläche i in das Material der Segmente i − 1 und i, wenn beide gleich sind; sonst ist das Event ein Kompilierfehler (Seite mehrdeutig, z. B. die Kittfläche eines Achromaten von außen). Eine einheitliche `Lens` mit 3 Flächen ergibt damit Luft → Glas → Glas → Luft, ein Achromat Luft → Glas A → Glas B → Luft.
+
+*Mehrere Elemente:* Elemente schachteln nicht. Ein brechendes Event an Element B, während der Strahl in Element A ist, verlässt A und betritt B wie aus der Umgebung (Medium vor dem Event: das von A); das Verlassen von B führt ins Umgebungsmedium, nicht zurück nach A. Folgen Austrittsfläche von A und Eintrittsfläche von B direkt aufeinander, läuft der Strahl über das Umgebungsmedium, auch bei Nullabstand; Kittglieder werden ausschließlich als ein Element mit Segmenten beschrieben.
 
 **Strahl-Batch (Structure-of-Arrays)**
 
