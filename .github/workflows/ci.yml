@@ -106,9 +106,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-24.04, preset: ci-linux-python, python: "3.10", cache: ci-linux-gcc, smoke: false }
-          - { os: ubuntu-24.04, preset: ci-linux-python, python: "3.13", cache: ci-linux-gcc, smoke: true }
-          - { os: windows-2022, preset: ci-windows-python, python: "3.13", cache: msvc, smoke: true }
+          - { os: ubuntu-24.04, preset: ci-linux-python, python: "3.10", cache: ci-linux-gcc, triplet: x64-linux, smoke: false }
+          - { os: ubuntu-24.04, preset: ci-linux-python, python: "3.13", cache: ci-linux-gcc, triplet: x64-linux, smoke: true }
+          - { os: windows-2022, preset: ci-windows-python, python: "3.13", cache: msvc, triplet: x64-windows, smoke: true }
     env:
       VCPKG_ROOT: ${{ github.workspace }}/../vcpkg
       VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/../vcpkg-cache
@@ -149,7 +149,9 @@ jobs:
         if: matrix.smoke
         shell: bash
         env:
-          CMAKE_ARGS: -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/../vcpkg/scripts/buildsystems/vcpkg.cmake
+          # The triplet explicitly: without it vcpkg picks x86-windows under the Visual Studio
+          # generator of scikit-build-core.
+          CMAKE_ARGS: -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/../vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}
         run: |
           python -m pip install . -v
           cd "$RUNNER_TEMP"

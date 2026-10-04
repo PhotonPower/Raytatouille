@@ -21,7 +21,9 @@ find_package(nanobind CONFIG REQUIRED)
 set(RTT_PY_BUILD_DIR "${CMAKE_BINARY_DIR}/python")
 set(RTT_PY_PACKAGE_DIR "${RTT_PY_BUILD_DIR}/raytatouille")
 
-nanobind_add_module(_core NB_STATIC
+# NB_SUPPRESS_WARNINGS: nanobind and Python headers as system includes, so that the project
+# warnings (-Wold-style-cast, ...) apply to our code only.
+nanobind_add_module(_core NB_STATIC NB_SUPPRESS_WARNINGS
   src/module.cpp
   src/errors.cpp
   src/bind_model.cpp
