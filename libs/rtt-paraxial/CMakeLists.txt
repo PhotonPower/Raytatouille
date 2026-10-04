@@ -1,4 +1,4 @@
-add_library(rtt_paraxial src/paraxial.cpp)
+add_library(rtt_paraxial src/paraxial.cpp src/seidel.cpp)
 add_library(rtt::paraxial ALIAS rtt_paraxial)
 target_include_directories(rtt_paraxial PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
@@ -9,6 +9,6 @@ rtt_target_defaults(rtt_paraxial LIBRARY)
 if(RTT_BUILD_TESTS)
   # rtt::io only loads the reference systems in the tests; the library does not depend on it.
   rtt_add_test(rtt_paraxial_tests
-    SOURCES tests/test_paraxial.cpp
+    SOURCES tests/test_paraxial.cpp tests/test_seidel.cpp
     LIBS rtt::paraxial rtt::io)
 endif()
