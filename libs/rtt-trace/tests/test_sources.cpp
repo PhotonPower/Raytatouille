@@ -74,12 +74,12 @@ System two_lenses(StopPlace place, bool finite_object = false) {
              ElementKind::Lens,
              Pose::along_z(10.0),
              "CONST:1.5168",
-             {surface("L1.S1", 0.0, 60.0), surface("L1.S2", 5.0, -60.0)}};
+             {surface("L1.S1", 0.0, 120.0), surface("L1.S2", 6.0, -120.0)}};
   Element l2{"L2",
              ElementKind::Lens,
              Pose::along_z(25.0),
              "CONST:1.5168",
-             {surface("L2.S1", 0.0, 45.0), surface("L2.S2", 4.0)}};
+             {surface("L2.S1", 0.0, 100.0), surface("L2.S2", 5.0)}};
   Element stop_at = stop_element;
   switch (place) {
     case StopPlace::Before:
@@ -130,8 +130,10 @@ Vec3 hit_on_stop(const CompiledSystem& cs, RayState ray) {
   return cs.surfaces()[events[stop].surface].to_local.apply_point(ray.pos);
 }
 
-/// Paraxial stop radius that belongs to the entrance pupil: height of the paraxial marginal ray
-/// at the stop (object at infinity: y = EPD / 2 parallel to the axis).
+/// Signed paraxial stop radius that belongs to the entrance pupil: height of the paraxial
+/// marginal ray at the stop (object at infinity: y = EPD / 2 parallel to the axis; finite
+/// object: from the axial object point through the EP rim). Negative if the stop sees the EP
+/// inverted; pupil point (px, py) then aims at (px, py) * R_s.
 double paraxial_stop_radius(const CompiledSystem& cs) {
   const auto fo = rtt::paraxial::first_order(cs, PathId{0}, 0);
   REQUIRE(fo.entrance_pupil);
@@ -143,9 +145,10 @@ double paraxial_stop_radius(const CompiledSystem& cs) {
   } else {
     const double z_obj = -cs.object().distance.value;
     REQUIRE(fo.entrance_pupil->z);
-    ray = rtt::paraxial::trace_ray(cs, PathId{0}, 0, z_obj, 0.0, h / (*fo.entrance_pupil->z - z_obj));
+    ray =
+        rtt::paraxial::trace_ray(cs, PathId{0}, 0, z_obj, 0.0, h / (*fo.entrance_pupil->z - z_obj));
   }
-  return std::abs(ray[stop_event(cs)].y);
+  return ray[stop_event(cs)].y;
 }
 
 }  // namespace
@@ -171,7 +174,8 @@ TEST_CASE("pupil samplings follow the documented order", "[sources]") {
     REQUIRE((p[2].px == 0.0 && p[2].py == 0.0));
     REQUIRE((p[4].px == 0.0 && p[4].py == 1.0));
     REQUIRE(pupil_points(rtt::trace::GridPupil{1}).size() == 1);
-    // Step 0.2: lattice points (i, j), |i|, |j| <= 5, with i^2 + j^2 <= 25 (Gauss circle N(5) = 81).
+    // Step 0.2: lattice points (i, j), |i|, |j| <= 5, with i^2 + j^2 <= 25 (Gauss circle N(5) =
+    // 81).
     REQUIRE(pupil_points(rtt::trace::GridPupil{11}).size() == 81);
   }
   SECTION("fans") {
@@ -223,8 +227,17 @@ TEST_CASE("random pupil sampling is reproducible on every platform", "[sources]"
   REQUIRE(a[0].px == r * std::sin(phi));
   REQUIRE(a[0].py == r * std::cos(phi));
 
-  // Fixed values (recorded once, must not change across platforms or library versions).
-  // TODO(issue-8): record after the implementation and compare bit for bit.
+  // Fixed values, recorded once with GCC 16 (MinGW). They must not change across platforms or
+  // library versions. The draws and sqrt are exact; std::sin and std::cos are not correctly
+  // rounded and may differ by a few ulp between C libraries, hence 1e-15 instead of ==.
+  const auto fixed = [&](std::size_t i, double px, double py) {
+    INFO("ray " << i);
+    REQUIRE(std::abs(a[i].px - px) <= 1e-15);
+    REQUIRE(std::abs(a[i].py - py) <= 1e-15);
+  };
+  fixed(0, -0x1.5516de0aed9dp-1, -0x1.1db018d033d6fp-1);
+  fixed(1, 0x1.4f6a72e3e6742p-1, 0x1.22f9a869a799ep-1);
+  fixed(999, -0x1.843e6827c46b4p-1, -0x1.29c18995e5e9dp-2);
 }
 
 TEST_CASE("chief ray hits the stop centre for stop before, inside and after the group",
@@ -246,16 +259,16 @@ TEST_CASE("chief ray hits the stop centre for stop before, inside and after the 
 }
 
 TEST_CASE("pupil rays hit their target on the stop", "[sources][aiming]") {
-  // Target (px R_s, py R_s) with the paraxial stop radius R_s that belongs to the EP.
+  // Target (px R_s, py R_s) with the signed paraxial stop radius R_s that belongs to the EP.
   const MaterialLibrary lib;
   for (const StopPlace place : {StopPlace::Before, StopPlace::Between, StopPlace::After}) {
     for (const bool finite : {false, true}) {
       const CompiledSystem cs = compile(two_lenses(place, finite), lib);
       const double r_s = paraxial_stop_radius(cs);
-      for (const auto& [px, py] : {std::pair{0.0, 1.0}, std::pair{1.0, 0.0},
-                                   std::pair{-0.7, 0.7}, std::pair{0.2, -0.5}}) {
-        INFO("stop " << static_cast<int>(place) << ", finite " << finite << ", p = (" << px
-                     << ", " << py << ")");
+      for (const auto& [px, py] :
+           {std::pair{0.0, 1.0}, std::pair{1.0, 0.0}, std::pair{-0.7, 0.7}, std::pair{0.2, -0.5}}) {
+        INFO("stop " << static_cast<int>(place) << ", finite " << finite << ", p = (" << px << ", "
+                     << py << ")");
         const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, 2, 0, px, py);
         REQUIRE(aimed.ray.status == RayStatus::Alive);
         const Vec3 hit = hit_on_stop(cs, aimed.ray);
@@ -315,8 +328,11 @@ TEST_CASE("object at infinity: rays of a field start on one plane wave before th
           "[sources]") {
   // Large field: the tilted start plane must still lie before the first surface for the whole
   // bundle, and d . pos is the same for all rays of a field (plane wave, needed for OPD in M2).
+  // Stop between the lenses: with the stop behind the group, part of a 30 deg bundle cannot
+  // reach its stop target at all (the rays would have to pass outside the lens rim), which the
+  // NoConvergence test covers.
   const MaterialLibrary lib;
-  System s = two_lenses(StopPlace::After);
+  System s = two_lenses(StopPlace::Between);
   s.fields = {FieldType::AngleDeg, {{0.0, 0.0, 1.0}, {0.0, 30.0, 1.0}, {20.0, -20.0, 1.0}}};
   const CompiledSystem cs = compile(s, lib);
   const double z_ep = *rtt::paraxial::first_order(cs, PathId{0}, 0).entrance_pupil->z;
@@ -328,9 +344,10 @@ TEST_CASE("object at infinity: rays of a field start on one plane wave before th
   for (std::size_t f = 0; f < 3; ++f) {
     const std::size_t first = f * per_field;
     const Vec3 d0(rays.dir_x()[first], rays.dir_y()[first], rays.dir_z()[first]);
-    const double plane = d0.dot(Vec3(rays.pos_x()[first], rays.pos_y()[first],
-                                     rays.pos_z()[first]));
+    const double plane =
+        d0.dot(Vec3(rays.pos_x()[first], rays.pos_y()[first], rays.pos_z()[first]));
     for (std::size_t i = first; i < first + per_field; ++i) {
+      INFO("field " << f << ", pupil (" << rays.pupil_x()[i] << ", " << rays.pupil_y()[i] << ")");
       REQUIRE(rays.field()[i] == f);
       REQUIRE(rays.status()[i] == RayStatus::Alive);
       const Vec3 p(rays.pos_x()[i], rays.pos_y()[i], rays.pos_z()[i]);
