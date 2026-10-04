@@ -90,6 +90,7 @@ TEST_CASE("defocus of an ideal image: W = eps_z sin^2(U) / 2 with both signs", "
   // deviation O(U^2) ~ 0.3 % at p <= 0.3 (U < 5 deg) and O(eps_z / R) ~ 5e-5, hence 1e-2.
   for (const double dz : {0.01, -0.01}) {
     System s = load("m2/paraboloid_stop.rtt.json");
+    s.environment.medium = "VACUUM";  // the source formula assumes n' = 1
     element(s, 2).pose = Pose::along_z(-100.0 + dz);
     const MaterialLibrary lib;
     const CompiledSystem cs = compile(s, lib);
