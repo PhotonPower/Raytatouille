@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1.0",
+  "schema_version": "0.2.0",
   "name": "Two singlets, stop between, stop-size aperture",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [
