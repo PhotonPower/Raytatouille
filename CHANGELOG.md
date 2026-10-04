@@ -25,6 +25,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   Hauptstrahl (`seidel()`, `surface_seidel()`), mit Beiträgen von Konik und A4 und den chromatischen
   Termen C_L, C_T für ein wählbares Wellenlängenpaar; Quellen (Sasian, OPTI 517/518; arXiv:2203.02302,
   arXiv:2202.11378) in `docs/quellen.md` (#30).
+- `rtt-analysis`: OPD gegen die Referenzsphäre (Zentrum am Hauptstrahl der Referenzwellenlänge,
+  Radius bis zur paraxialen Austrittspupille) als Karte über die Pupille und als Fans, in Wellen
+  bei der Referenzwellenlänge, mit RMS (ohne Piston) und PV; Vorzeichen nach Wyant & Creath
+  (W > 0 voreilend) (#29).
 
 ### Geändert
 - `rtt-material`: `Material::index(wavelength_um, temperature_c, pressure_atm)` mit Luftdruck
