@@ -105,16 +105,12 @@ def test_make_rays_and_trace(reference_dir: Path) -> None:
     stats = rt.trace.trace(cs, rays, path="main")
     assert sum(stats.rays) == len(rays)
     assert list(stats.rays) == list(np.bincount(rays.status, minlength=7))
-    assert stats.count(RayStatus.ALIVE) == np.count_nonzero(rays.status == RayStatus.ALIVE)
-    # Rim rays (|p| = 1) may be vignetted at the stop edge (real aiming converges to 1e-9 mm);
-    # all others reach the image surface IMG at z = 106.363 mm.
-    # TODO(#32): require all rays ALIVE once rtt-trace checks apertures inclusively with a
-    # tolerance of 1e-9 mm (coordinator decision in #32, PR #50).
-    alive = rays.status == RayStatus.ALIVE
-    rim = np.hypot(rays.pupil_x, rays.pupil_y) > 1.0 - 1e-12
-    assert np.all(alive | rim)
-    assert np.all(rays.last_surface[alive] == cs.surface_ids.index("IMG"))
-    assert np.allclose(rays.pos_z[alive], 106.363, rtol=0.0, atol=1e-9)
+    # Every ray reaches the image surface IMG at z = 106.363 mm, also the rim rays (|p| = 1)
+    # aimed at the stop edge: apertures pass within kApertureTolerance = kAimTolerance (#50).
+    assert stats.count(RayStatus.ALIVE) == len(rays)
+    assert np.all(rays.status == RayStatus.ALIVE)
+    assert np.all(rays.last_surface == cs.surface_ids.index("IMG"))
+    assert np.allclose(rays.pos_z, 106.363, rtol=0.0, atol=1e-9)
     norm = np.hypot(np.hypot(rays.dir_x, rays.dir_y), rays.dir_z)
     assert np.allclose(norm, 1.0, rtol=0.0, atol=1e-14)
 
