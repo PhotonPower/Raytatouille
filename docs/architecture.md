@@ -247,6 +247,8 @@ class Shape {
 
 Analysen liefern Datenobjekte, niemals Plots. Optimierung und Toleranzierung arbeiten nur über Parameter-Pfade und Analyse-Operanden.
 
+**Spot und Ray Fans (`rtt-analysis`, festgelegt in #28):** Bildfläche ist die Fläche des letzten Events im Pfad; Koordinaten x, y in mm im lokalen KS dieser Fläche (Achsen nach ihrer Pose). Bezug ist der Hauptstrahl (Pupillenmitte) bei der Referenzwellenlänge, für alle Spots und Fans, damit der Farbquerfehler sichtbar bleibt. Polychromatisch zählen die Wellenlängengewichte des Modells, normiert auf Summe 1, mal dem Leistungsgewicht des Strahls; Feldgewichte spielen erst bei feldübergreifenden Größen (Merit-Funktion) eine Rolle. Kennzahlen: Schwerpunkt, RMS und GEO jeweils um Schwerpunkt und Hauptstrahl, GEO nur über Punkte mit Gewicht > 0; Anteil vignettierter Strahlen ungewichtet (alles, was nicht mit Status `Alive` auf der Bildfläche ankommt). Ray Fans: tangential ε(p_y) bei p_x = 0, sagittal ε(p_x) bei p_y = 0, je Punkt ε_x, ε_y und Status; nicht angekommene Punkte haben ε = 0 und ihren Status. Kein angekommener Hauptstrahl → `AnalysisError`.
+
 | Gruppe | v1 | v2 |
 | --- | --- | --- |
 | Erste Ordnung | Systemdaten, Pupillen, Vergrößerung, Seidel pro Fläche | parabasal |

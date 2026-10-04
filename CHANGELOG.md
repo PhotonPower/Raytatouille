@@ -20,6 +20,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   UTF-16LE mit BOM und ANSI/UTF-8, Fehler mit Datei und Zeile; Datensätze NM, CD, LD, TD, ED;
   Formelnummern 1 (Schott) und 2 (Sellmeier 1), andere mit klarem Fehler (#42). Testkatalog
   `tests/catalogs/schott.agf` mit N-BK7 und F2 aus dem freien SCHOTT-Katalog (#24).
+- `rtt-analysis` (neue Bibliothek, Schicht Auswertung): Spot-Diagramm je Feld und Wellenlänge
+  oder polychromatisch mit den Wellenlängengewichten des Modells (Schwerpunkt, RMS und GEO um
+  Schwerpunkt und Hauptstrahl, Anteil vignettierter Strahlen) und Ray Fans tangential/sagittal
+  relativ zum Hauptstrahl der Referenzwellenlänge; Datenobjekte, keine Plots. Referenzsystem
+  `tests/reference/m2/paraboloid_stop.rtt.json` (#28).
+- `rtt-compile`: `CompiledSystem::wavelength_weights()` mit den Wellenlängengewichten des
+  Modells (#28).
 
 ## [0.2.0] – M1 Sequenzieller Kern
 
