@@ -127,6 +127,10 @@ double aperture_extent(const model::Aperture& aperture) {
 /// to that radius, capped by its aperture and by the domain of its shape; since a surface that
 /// curves back upstream meets the bundle where it is wider, the radius is re-evaluated at the
 /// lowest z found until it no longer drops (decided for #8, start plane).
+/// Valid for the rotationally symmetric paths that rtt::paraxial::first_order accepts (the
+/// sampled disk is centred on the vertex). If the bound keeps dropping (an unbounded surface
+/// that curves back against a steep field, e.g. a concave paraboloid without aperture), there is
+/// no safe start plane: std::invalid_argument, raised before any ray is traced.
 double lowest_z(const compile::CompiledSurface& surface,
                 double z_ep,
                 double r_bundle,
@@ -134,6 +138,7 @@ double lowest_z(const compile::CompiledSurface& surface,
   constexpr int kRadialSamples = 64;
   constexpr int kAzimuthSamples = 8;
   constexpr int kMaxRounds = 50;
+  constexpr double kDivergentRadius = 1e6;  // mm
   double cap = std::numeric_limits<double>::infinity();
   if (surface.aperture) cap = aperture_extent(*surface.aperture);
   const std::optional<double> domain =
@@ -145,6 +150,8 @@ double lowest_z(const compile::CompiledSurface& surface,
   double z = surface.to_global.translation().z();
   for (int round = 0; round < kMaxRounds; ++round) {
     const double rho = std::min(cap, r_bundle + std::abs(z - z_ep) * tan_field);
+    // A bundle radius beyond any optical size means the bound diverges (overflow guard).
+    if (!(rho < kDivergentRadius)) break;
     double low = surface.to_global.translation().z();
     for (int i = 1; i <= kRadialSamples; ++i) {
       const double r = rho * i / kRadialSamples;
@@ -152,6 +159,7 @@ double lowest_z(const compile::CompiledSurface& surface,
         const double phi = kTwoPi * j / kAzimuthSamples;
         const double x = r * std::sin(phi);
         const double y = r * std::cos(phi);
+        // NaN only at the rim of the domain (rounding); skipped.
         const double h = sag(x, y);
         if (!std::isfinite(h)) continue;
         low = std::min(low, surface.to_global.apply_point(Vec3(x, y, h)).z());
@@ -160,7 +168,9 @@ double lowest_z(const compile::CompiledSurface& surface,
     if (low >= z - 1e-9) return std::min(z, low);
     z = low;
   }
-  return z;
+  throw std::invalid_argument("sources: no start plane before surface '" + surface.id.str() +
+                              "' for this field (the surface curves back without bound); give "
+                              "it an aperture");
 }
 
 /// Paraxial image height (at the paraxial image plane) of the chief ray with unit field value:

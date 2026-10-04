@@ -123,7 +123,9 @@ struct AimedRay {
 /// ignored while aiming; vignetting is left to the tracer.
 /// @throws std::invalid_argument if the path, field or wavelength does not exist; px or py is
 ///         not finite; the field type does not fit the object (object height at infinity); a
-///         field angle is not in (-90, 90) degree; a paraxial image height is requested without
+///         field angle is not in (-90, 90) degree; no start plane exists before a surface
+///         without aperture that curves back against a steep field (object at infinity); a
+///         paraxial image height is requested without
 ///         a finite paraxial image; the path has no stop; or the entrance pupil is not defined
 ///         (rtt::paraxial::first_order: pupil at infinity, no diameter for this aperture type)
 /// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric or the stop

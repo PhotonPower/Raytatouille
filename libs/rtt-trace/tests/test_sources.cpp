@@ -178,8 +178,7 @@ TEST_CASE("pupil samplings follow the documented order", "[sources]") {
     REQUIRE((p[2].px == 0.0 && p[2].py == 0.0));
     REQUIRE((p[4].px == 0.0 && p[4].py == 1.0));
     REQUIRE(pupil_points(rtt::trace::GridPupil{1}).size() == 1);
-    // Step 0.2: lattice points (i, j), |i|, |j| <= 5, with i^2 + j^2 <= 25 (Gauss circle N(5) =
-    // 81).
+    // Step 0.2: lattice points (i, j) with i^2 + j^2 <= 25, Gauss circle N(5) = 81.
     REQUIRE(pupil_points(rtt::trace::GridPupil{11}).size() == 81);
   }
   SECTION("fans") {
@@ -609,5 +608,32 @@ TEST_CASE("residual and pupil coordinates at the API boundary", "[sources]") {
   const CompiledSystem steep = compile(s, lib);
   const auto aimed = rtt::trace::aim_ray(steep, PathId{0}, 1, 0, 0.0, 1.0);
   REQUIRE(aimed.ray.status == RayStatus::NoConvergence);
-  REQUIRE(aimed.residual > 0.0);
+  REQUIRE(std::isinf(aimed.residual));
+}
+
+TEST_CASE("no safe start plane before an unbounded surface curving back: error at the API",
+          "[sources]") {
+  // Concave paraboloid (k = -1) without aperture and a steep field: its sag grows with r^2
+  // while the bundle bound grows linearly with the distance from the EP, so the bound keeps
+  // dropping and no start plane exists (review of #8).
+  const MaterialLibrary lib;
+  System s;
+  s.name = "concave paraboloid";
+  s.wavelengths = {{0.5876, 1.0, true}};
+  s.aperture = {rtt::model::SystemApertureType::EntrancePupilDiameter, Param(3.0)};
+  s.fields = {FieldType::AngleDeg, {{0.0, 0.0, 1.0}, {0.0, 80.0, 1.0}}};
+  s.root.name = "root";
+  Surface front = surface("L.S1");
+  front.shape.base = rtt::model::Conic{Param(-40.0), Param(-1.0)};
+  s.root.children.push_back({Element{
+      "L", ElementKind::Lens, Pose::along_z(10.0), "CONST:1.5168", {front, surface("L.S2", 5.0)}}});
+  Surface stop = surface("STO");
+  stop.aperture = rtt::model::CircularAperture{1.0, 0.0};
+  s.root.children.push_back(
+      {Element{"S", ElementKind::Stop, Pose::along_z(30.0), std::nullopt, {stop}}});
+  s.paths = {{"main", true, {}}};
+  const CompiledSystem cs = compile(s, lib);
+  REQUIRE_THROWS_AS(rtt::trace::aim_ray(cs, PathId{0}, 1, 0, 0.0, 0.0), std::invalid_argument);
+  // The on-axis field is fine.
+  REQUIRE(rtt::trace::aim_ray(cs, PathId{0}, 0, 0, 0.0, 0.0).ray.status == RayStatus::Alive);
 }
