@@ -32,6 +32,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
 - `rtt-material`: Ciddor-Luft `ciddor_air_index` und `AirMaterial` (`rtt/material/air.hpp`),
   Schott-Temperaturmodell `schott_delta_n_abs` (`rtt/material/thermal.hpp`), beide als
   Templates über `Real`; Quellen NIST (Gl. A21–A41) und SCHOTT TIE-19 in `docs/quellen.md` (#25).
+- `rtt-trace`: `aim_ray` für Feldwerte außerhalb der Feldliste des Modells (für Feldverläufe,
+  #31).
 
 ### Geändert
 - `cmake`: `rtt_add_test` setzt unter MinGW den `PATH` für Testerkennung und Testläufe auf das
@@ -67,6 +69,15 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   in M1 (`docs/architecture.md`, Engine 1). Tests, deren Sollwerte für n_außen = 1 gelten, laufen
   in `VACUUM`; der Achromat-Test aus #41 bleibt in `AIR` und vergleicht f′ = n_Luft/Φ mit den
   Designwerten (#25).
+
+### Behoben
+- `rtt-trace`: Feldwerte werden bei der Referenzwellenlänge in Richtung bzw. Objektpunkt
+  umgerechnet. Bisher geschah das je Strahl-Wellenlänge, sodass bei paraxialer Bildhöhe und bei
+  Winkelfeldern mit endlichem Objekt jede Farbe einen anderen Feldpunkt bekam (Farbquerfehler,
+  polychromatischer Spot). Fehler aus #8, gefunden in #31.
+- `rtt-trace`: Aperturränder sind inklusiv mit `kApertureTolerance` = 1e−9 mm (= Aiming-Toleranz),
+  außen wie innen. Randstrahlen mit |p| = 1, die exakt auf den Blendenrand gezielt werden, wurden
+  bisher durch Rundung teils als vignettiert markiert (am Referenz-Singlet 7 von 36 je Feld).
 
 ## [0.2.0] – M1 Sequenzieller Kern
 

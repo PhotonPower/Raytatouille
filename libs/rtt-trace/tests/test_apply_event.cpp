@@ -238,6 +238,38 @@ TEST_CASE("apertures vignette in local coordinates", "[apply_event]") {
   REQUIRE(status_at(ellipse, 3.0, 1.5) == RayStatus::Vignetted);  // (3/4)^2 + (1.5/2)^2 > 1
 }
 
+TEST_CASE("aperture rims include the aiming tolerance", "[apply_event]") {
+  // Decided for #50: a ray passes if it lies at most kApertureTolerance (= kAimTolerance,
+  // 1e-9 mm) outside a rim, so rays aimed exactly at a stop rim are not vignetted by rounding.
+  const auto status_at = [](const rtt::model::Aperture& aperture, double x, double y) {
+    CompiledSurface s = plane_surface();
+    s.aperture = aperture;
+    RayState in;
+    in.pos = Vec3(x, y, -1.0);
+    return rtt::trace::sequential_step(in, s, 0, EventKind::Transmit, 1.0, 1.0).status;
+  };
+  const double inside = 0.5e-9;  // within the tolerance
+  const double outside = 1e-6;   // clearly beyond it
+  const rtt::model::CircularAperture ring{10.0, 2.0};
+  REQUIRE(status_at(ring, 0.0, 10.0 + inside) == RayStatus::Alive);
+  REQUIRE(status_at(ring, 0.0, 10.0 + outside) == RayStatus::Vignetted);
+  REQUIRE(status_at(ring, 0.0, 2.0 - inside) == RayStatus::Alive);  // inner rim
+  REQUIRE(status_at(ring, 0.0, 2.0 - outside) == RayStatus::Vignetted);
+  const rtt::model::RectangularAperture rect{4.0, 2.0};
+  REQUIRE(status_at(rect, 4.0 + inside, 0.0) == RayStatus::Alive);
+  REQUIRE(status_at(rect, 0.0, -2.0 - inside) == RayStatus::Alive);
+  REQUIRE(status_at(rect, 4.0 + outside, 0.0) == RayStatus::Vignetted);
+  REQUIRE(status_at(rect, 0.0, 2.0 + outside) == RayStatus::Vignetted);
+  const rtt::model::EllipticalAperture ellipse{4.0, 2.0};
+  REQUIRE(status_at(ellipse, 4.0 + inside, 0.0) == RayStatus::Alive);
+  REQUIRE(status_at(ellipse, 0.0, 2.0 + inside) == RayStatus::Alive);
+  REQUIRE(status_at(ellipse, 4.0 + outside, 0.0) == RayStatus::Vignetted);
+  REQUIRE(status_at(ellipse, 0.0, -2.0 - outside) == RayStatus::Vignetted);
+  // An inner radius below the tolerance has no inner rim: the axis point passes.
+  REQUIRE(status_at(rtt::model::CircularAperture{10.0, 0.5e-9}, 0.0, 0.0) == RayStatus::Alive);
+  REQUIRE(rtt::trace::kApertureTolerance == 1e-9);
+}
+
 TEST_CASE("events of later milestones are EventImpossible", "[apply_event]") {
   const CompiledSurface plane = plane_surface();
   for (const EventKind kind :

@@ -58,6 +58,12 @@ struct Context {
   /// Signed paraxial stop height of a ray through the EP point at unit height: the stop target
   /// of pupil point (px, py) is (px, py) * r_ep * stop_scale (negative for an inverted image).
   double stop_scale = 1.0;
+  /// First-order data for the field conversion, so a field point is the same physical direction
+  /// or object point for every wavelength (#31). Set at the reference wavelength only for the
+  /// field types that need it (paraxial image height, angle with a finite object); otherwise a
+  /// copy of the ray-wavelength data that make_field does not read.
+  paraxial::FirstOrder first_order_ref;
+  double z_ep_ref = 0.0;  ///< global z of the paraxial entrance pupil for the conversion, mm
 };
 
 /// Ray start for one field.
@@ -101,6 +107,24 @@ Context make_context(const CompiledSystem& system, PathId path, std::uint16_t wa
   // The EP plane and the stop plane are conjugate, so the stop height of a paraxial ray from
   // the EP plane does not depend on its slope: y_stop = stop_scale * y_ep.
   c.stop_scale = paraxial::trace_ray(system, path, wavelength, c.z_ep, 1.0, 0.0)[c.stop_event].y;
+  // Field conversion at the reference wavelength (decided for #31, fix of #8). Only paraxial
+  // image heights and angles with a finite object need paraxial data for the conversion; other
+  // field types skip the extra first-order computation.
+  const bool needs_ref =
+      system.fields().type == model::FieldType::ParaxialImageHeight ||
+      (system.fields().type == model::FieldType::AngleDeg && !system.object().at_infinity);
+  if (wavelength == system.reference_wavelength() || !needs_ref) {
+    c.first_order_ref = c.first_order;
+    c.z_ep_ref = c.z_ep;
+  } else {
+    c.first_order_ref = paraxial::first_order(system, path, system.reference_wavelength());
+    const auto& ep_ref = c.first_order_ref.entrance_pupil;
+    if (!ep_ref || !ep_ref->z) {
+      throw std::invalid_argument(
+          "sources: the entrance pupil at the reference wavelength is at infinity");
+    }
+    c.z_ep_ref = *ep_ref->z;
+  }
   return c;
 }
 
@@ -174,19 +198,24 @@ double lowest_z(const compile::CompiledSurface& surface,
 }
 
 /// Paraxial image height (at the paraxial image plane) of the chief ray with unit field value:
-/// unit slope through the EP centre (object at infinity) or unit object height (finite object).
+/// unit slope through the EP centre (object at infinity) or unit object height (finite object),
+/// at the reference wavelength (#31).
 double unit_image_height(const Context& c) {
-  const auto& fo = c.first_order;
+  const auto& fo = c.first_order_ref;
   if (!fo.image_z) {
     throw std::invalid_argument("sources: paraxial image height needs a finite paraxial image");
   }
   const CompiledSystem& system = *c.system;
+  const std::uint16_t ref = system.reference_wavelength();
   std::vector<paraxial::RayAtEvent> ray;
   if (system.object().at_infinity) {
-    ray = paraxial::trace_ray(system, c.path, c.wavelength, c.z_ep, 0.0, 1.0);
+    ray = paraxial::trace_ray(system, c.path, ref, c.z_ep_ref, 0.0, 1.0);
   } else {
     const double z_obj = -system.object().distance.value;
-    ray = paraxial::trace_ray(system, c.path, c.wavelength, z_obj, 1.0, -1.0 / (c.z_ep - z_obj));
+    if (c.z_ep_ref == z_obj) {
+      throw std::invalid_argument("sources: entrance pupil in the object (reference wavelength)");
+    }
+    ray = paraxial::trace_ray(system, c.path, ref, z_obj, 1.0, -1.0 / (c.z_ep_ref - z_obj));
   }
   const auto& last = ray.back();
   const double y = last.y + (*fo.image_z - last.z) * last.u;
@@ -194,14 +223,19 @@ double unit_image_height(const Context& c) {
   return y;
 }
 
-FieldStart make_field(const Context& c, std::uint16_t field) {
-  const CompiledSystem& system = *c.system;
-  const auto& points = system.fields().points;
+/// Field point `field` of the system.
+const model::Field& field_point(const Context& c, std::uint16_t field) {
+  const auto& points = c.system->fields().points;
   if (field >= points.size()) {
     throw std::invalid_argument("sources: field index " + std::to_string(field) +
                                 " does not exist");
   }
-  const model::Field& f = points[field];
+  return points[field];
+}
+
+/// Ray start for the field value `f`, interpreted with the system's field type.
+FieldStart make_field(const Context& c, const model::Field& f) {
+  const CompiledSystem& system = *c.system;
   const bool infinite = system.object().at_infinity;
   const double z_obj = infinite ? 0.0 : -system.object().distance.value;
 
@@ -217,9 +251,13 @@ FieldStart make_field(const Context& c, std::uint16_t field) {
       }
       tx = std::tan(f.x * std::numbers::pi / 180.0);
       ty = std::tan(f.y * std::numbers::pi / 180.0);
-      // Finite object: the object point on the chief ray through the EP centre.
-      hx = (z_obj - c.z_ep) * tx;
-      hy = (z_obj - c.z_ep) * ty;
+      // Finite object: the object point on the chief ray through the EP centre at the
+      // reference wavelength (#31).
+      if (!infinite && c.z_ep_ref == z_obj) {
+        throw std::invalid_argument("sources: entrance pupil in the object (reference wavelength)");
+      }
+      hx = (z_obj - c.z_ep_ref) * tx;
+      hy = (z_obj - c.z_ep_ref) * ty;
       break;
     }
     case model::FieldType::ObjectHeight:
@@ -426,6 +464,23 @@ AimedRay aim_ray(const compile::CompiledSystem& system,
     throw std::invalid_argument("sources: pupil coordinates must be finite");
   }
   const Context c = make_context(system, path, wavelength);
+  return aim(c, make_field(c, field_point(c, field)), px, py, aiming);
+}
+
+AimedRay aim_ray(const compile::CompiledSystem& system,
+                 compile::PathId path,
+                 const model::Field& field,
+                 std::uint16_t wavelength,
+                 double px,
+                 double py,
+                 Aiming aiming) {
+  if (!std::isfinite(px) || !std::isfinite(py)) {
+    throw std::invalid_argument("sources: pupil coordinates must be finite");
+  }
+  if (!std::isfinite(field.x) || !std::isfinite(field.y)) {
+    throw std::invalid_argument("sources: field values must be finite");
+  }
+  const Context c = make_context(system, path, wavelength);
   return aim(c, make_field(c, field), px, py, aiming);
 }
 
@@ -444,7 +499,7 @@ RayBatch make_rays(const compile::CompiledSystem& system,
   }
   std::vector<FieldStart> starts;
   starts.reserve(fields.size());
-  for (const std::uint16_t f : fields) starts.push_back(make_field(c, f));
+  for (const std::uint16_t f : fields) starts.push_back(make_field(c, field_point(c, f)));
 
   RayBatch rays(fields.size() * points.size());
   std::size_t i = 0;

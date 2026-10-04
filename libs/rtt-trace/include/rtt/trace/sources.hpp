@@ -11,6 +11,10 @@
 ///   positive height = +y.
 /// - Paraxial image height (x', y') in mm: converted into a field angle (object at infinity) or
 ///   an object height (finite object) with the paraxial chief ray (rtt-paraxial), then aimed.
+/// - Field values are converted into a direction or an object point at the reference wavelength
+///   (paraxial data of the reference wavelength, e.g. the entrance pupil for an angle with a
+///   finite object), so a field point is the same physical point for every wavelength. Pupil,
+///   stop target and start plane belong to the wavelength of each ray (#31, fix of #8).
 /// - Normalised pupil coordinates (px, py): the unit circle is the rim of the paraxial entrance
 ///   pupil, +y is the meridional direction.
 /// - Positions in mm and unit directions in global coordinates (right-handed, optical axis +z).
@@ -39,6 +43,8 @@ enum class Aiming : std::uint8_t {
 /// Convergence limit of real aiming: distance between the hit and the target point on the stop
 /// surface, in local stop coordinates, mm (issue #8).
 inline constexpr double kAimTolerance = 1e-9;
+static_assert(kAimTolerance == kApertureTolerance,
+              "rays aimed at a stop rim must pass the aperture check (#50)");
 
 /// Maximum number of Newton steps of real aiming before the ray gets NoConvergence.
 inline constexpr int kMaxAimIterations = 20;
@@ -116,7 +122,8 @@ struct AimedRay {
 /// perpendicular to it, placed per field so that the bundle (up to 3 EP radii around the chief
 /// ray) starts at least 1 mm before the entrance pupil and before every surface of the path,
 /// sampled within its aperture and shape domain (OPL starts on this plane wave). A field angle
-/// with a finite object places the object point on the chief ray through the EP centre.
+/// with a finite object places the object point on the chief ray through the EP centre at the
+/// reference wavelength.
 /// Finite object: the ray starts in the object point (OPL 0).
 /// The target is (px R_s, py R_s) in the local coordinates of the stop surface (first Stop event
 /// of the path), R_s = paraxial stop radius belonging to the entrance pupil. Apertures are
@@ -125,14 +132,32 @@ struct AimedRay {
 ///         not finite; the field type does not fit the object (object height at infinity); a
 ///         field angle is not in (-90, 90) degree; no start plane exists before a surface
 ///         without aperture that curves back against a steep field (object at infinity); a
-///         paraxial image height is requested without
-///         a finite paraxial image; the path has no stop; or the entrance pupil is not defined
-///         (rtt::paraxial::first_order: pupil at infinity, no diameter for this aperture type)
+///         paraxial image height is requested without a finite paraxial image; the path has no
+///         stop; or the entrance pupil is not defined at the ray's wavelength (pupil at
+///         infinity, no diameter for this aperture type, pupil in the object plane) or, for
+///         paraxial image heights and angles with a finite object, at the reference wavelength
+///         (pupil at infinity or in the object plane)
 /// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric or the stop
 ///         aperture is not circular
 [[nodiscard]] AimedRay aim_ray(const compile::CompiledSystem& system,
                                compile::PathId path,
                                std::uint16_t field,
+                               std::uint16_t wavelength,
+                               double px,
+                               double py,
+                               Aiming aiming = Aiming::Real);
+
+/// Aims one ray of an arbitrary field value, e.g. for field sweeps between the model's field
+/// points (#31). `field` is interpreted with the field type of the system
+/// (CompiledSystem::fields().type) exactly like a field point of the model; with a value equal
+/// to field point k the result is identical to aim_ray(system, path, k, ...).
+/// @param field field value: angle in degree, object height in mm or paraxial image height in
+///              mm, as given by the system's field type (Field::weight is ignored)
+/// @throws as the overload with a field index (except the field-index check), and
+///         std::invalid_argument if a field value is not finite
+[[nodiscard]] AimedRay aim_ray(const compile::CompiledSystem& system,
+                               compile::PathId path,
+                               const model::Field& field,
                                std::uint16_t wavelength,
                                double px,
                                double py,
