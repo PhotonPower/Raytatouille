@@ -167,3 +167,32 @@ TEST_CASE("system wavelengths outside a material's range are a CompileError", "[
     REQUIRE_NOTHROW(rtt::compile::compile(s, lib));
   }
 }
+
+TEST_CASE("wavelength range errors of segment materials point at the list entry",
+          "[compile][media][cemented]") {
+  // #27 with #23: segment materials are checked like any medium; the error points at the
+  // material of the segment (.../material/<i>) or at the shorthand (.../material).
+  MaterialLibrary lib;
+  lib.add("TEST:NARROW", std::make_shared<const RangedMaterial>(WavelengthRange{0.55, 0.6}));
+  System s = singlet("CONST:1.5");
+  Element& lens = rtt::model::test::element(s, 1);
+  rtt::model::Surface s3 = lens.surfaces[1];
+  s3.id = rtt::model::SurfaceId("L1.S3");
+  s3.pose = rtt::model::Pose::along_z(6.0);
+  lens.surfaces.push_back(s3);
+
+  SECTION("list entry") {
+    lens.material.reset();
+    lens.segment_materials = {"CONST:1.5", "TEST:NARROW"};
+    const CompileError e = compile_error(s, lib);
+    REQUIRE(e.diagnostics().size() == 1);
+    REQUIRE(rtt::model::test::has_error_at(e.diagnostics(), "/root/children/1/material/1"));
+    REQUIRE_THAT(e.what(), ContainsSubstring("TEST:NARROW"));
+  }
+  SECTION("shorthand for all segments") {
+    lens.material = "TEST:NARROW";
+    const CompileError e = compile_error(s, lib);
+    REQUIRE(e.diagnostics().size() == 1);
+    REQUIRE(rtt::model::test::has_error_at(e.diagnostics(), "/root/children/1/material"));
+  }
+}
