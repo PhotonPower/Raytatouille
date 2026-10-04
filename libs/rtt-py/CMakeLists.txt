@@ -68,11 +68,27 @@ if(WIN32)
             "$<TARGET_FILE:TBB::tbb>" "${RTT_PY_PACKAGE_DIR}")
 endif()
 
+# The stubs depend on _core only: stubgen imports raytatouille._core from a staging package
+# that holds nothing but _core (and the TBB DLL) and an empty __init__.py, so the package's
+# own __init__ with its runtime imports (numpy, ...) is not loaded. The build environment of
+# pip install . has no numpy (a runtime dependency only).
+set(RTT_PY_STUBGEN_DIR "${CMAKE_BINARY_DIR}/stubgen")
+add_custom_command(TARGET _core POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${RTT_PY_STUBGEN_DIR}/raytatouille"
+  COMMAND ${CMAKE_COMMAND} -E touch "${RTT_PY_STUBGEN_DIR}/raytatouille/__init__.py"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "$<TARGET_FILE:_core>" "${RTT_PY_STUBGEN_DIR}/raytatouille")
+if(WIN32)
+  add_custom_command(TARGET _core POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:TBB::tbb>" "${RTT_PY_STUBGEN_DIR}/raytatouille")
+endif()
+
 nanobind_add_stub(rtt_py_stub
   MODULE raytatouille._core
   OUTPUT "${RTT_PY_PACKAGE_DIR}/_core.pyi"
-  PYTHON_PATH "${RTT_PY_BUILD_DIR}"
-  DEPENDS _core rtt_py_package)
+  PYTHON_PATH "${RTT_PY_STUBGEN_DIR}"
+  DEPENDS _core)
 
 # Installation into the wheel (scikit-build-core): the pure Python modules come from
 # wheel.packages in pyproject.toml.
