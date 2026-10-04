@@ -95,11 +95,12 @@ TEST_CASE("PRT basis: right-handed s, p, k and the normal-incidence axis rule", 
     REQUIRE((b.s.cross(b.p) - k).norm() <= 1e-15);
   }
   const auto z = rtt::polar::prt_basis(Vec3(0.0, 0.0, 1.0), Vec3(0.0, 0.0, -1.0));
-  REQUIRE(z.s == Vec3(0.0, 1.0, 0.0));  // e = x (tie x, y): z x x = y
-  REQUIRE(z.p == Vec3(-1.0, 0.0, 0.0));
+  // Tolerance 1e-15 (unit vectors from cross products of coordinate axes).
+  REQUIRE((z.s - Vec3(0.0, 1.0, 0.0)).norm() <= 1e-15);  // e = x (tie x, y): z x x = y
+  REQUIRE((z.p - Vec3(-1.0, 0.0, 0.0)).norm() <= 1e-15);
   const auto x = rtt::polar::prt_basis(Vec3(1.0, 0.0, 0.0), Vec3(1.0, 0.0, 0.0));
-  REQUIRE(x.s == Vec3(0.0, 0.0, 1.0));  // e = y (tie y, z): x x y = z
-  REQUIRE(x.p == Vec3(0.0, -1.0, 0.0));
+  REQUIRE((x.s - Vec3(0.0, 0.0, 1.0)).norm() <= 1e-15);  // e = y (tie y, z): x x y = z
+  REQUIRE((x.p - Vec3(0.0, -1.0, 0.0)).norm() <= 1e-15);
 }
 
 TEST_CASE("P maps k_in to k_out and transverse fields to transverse fields", "[prt]") {
