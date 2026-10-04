@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <numbers>
 #include <optional>
 #include <random>
@@ -598,8 +599,9 @@ TEST_CASE("residual and pupil coordinates at the API boundary", "[sources]") {
   const CompiledSystem cs = compile(two_lenses(StopPlace::Between), lib);
   REQUIRE_THROWS_AS(rtt::trace::aim_ray(cs, PathId{0}, 0, 0, std::nan(""), 0.0),
                     std::invalid_argument);
-  REQUIRE_THROWS_AS(rtt::trace::make_rays(cs, PathId{0}, std::vector<std::uint16_t>{0}, 0,
-                                          rtt::trace::SinglePupilPoint{0.0, INFINITY}),
+  REQUIRE_THROWS_AS(rtt::trace::make_rays(
+                        cs, PathId{0}, std::vector<std::uint16_t>{0}, 0,
+                        rtt::trace::SinglePupilPoint{0.0, std::numeric_limits<double>::infinity()}),
                     std::invalid_argument);
   // A ray that never reaches the stop reports an infinite residual.
   System s = two_lenses(StopPlace::After);
