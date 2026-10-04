@@ -363,7 +363,8 @@ TEST_CASE("catalogue glass: dn/dT matches the SCHOTT data sheet", "[agf][air]") 
 }
 
 TEST_CASE("catalogue glass without TD record has no temperature dependence", "[agf][air]") {
-  // Without the six coefficients there is no thermal model (#25, P4): T_ref = 20 degC.
+  // Without a TD record (six coefficients plus T_ref) there is no thermal model (#25, P4):
+  // T_ref = 20 degC.
   AgfGlass glass = load_agf(kSchottFile).glasses[0];
   glass.thermal.reset();
   const CatalogMaterial m(glass, "SCHOTT");
