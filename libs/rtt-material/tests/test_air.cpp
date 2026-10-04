@@ -39,7 +39,7 @@ TEST_CASE("Ciddor air index matches the NIST calculator", "[air]") {
   for (const NistCase& c : kNist) {
     INFO(c.wavelength_nm << " nm, " << c.temperature_c << " degC, " << c.pressure_kpa << " kPa");
     REQUIRE_THAT(
-        ciddor_air_index(c.wavelength_nm / 1000.0, c.temperature_c, c.pressure_kpa * 1000.0),
+        ciddor_air_index(c.wavelength_nm / 1000.0, c.temperature_c, c.pressure_kpa / 101.325),
         WithinAbs(c.index, 1e-9));
   }
 }

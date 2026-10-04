@@ -3,11 +3,13 @@
 /// @file dispersion.hpp
 /// Dispersion formulas n(lambda) and a Material that evaluates one of them.
 ///
-/// All formulas take the vacuum wavelength lambda in micrometre (um); their coefficients carry
-/// the matching powers of um. They return the real index n. Temperature and pressure are not
-/// part of these formulas (dn/dT and air follow with #25). The formula kernels are free function
-/// templates over rtt::math::Real (ADR 0006, 0014, 0015); DispersionMaterial calls them with
-/// double.
+/// All formulas take a wavelength lambda in micrometre (um); their coefficients carry the
+/// matching powers of um. They return the real index n. DispersionMaterial passes the vacuum
+/// wavelength and returns the formula value as absolute index; CatalogMaterial (agf.hpp) passes
+/// the wavelength in air because catalogue data are relative to air (#25). Temperature and
+/// pressure are not part of these formulas (thermal.hpp, air.hpp). The formula kernels are free
+/// function templates over rtt::math::Real (ADR 0006, 0014, 0015); DispersionMaterial calls them
+/// with double.
 ///
 /// Sources (docs/quellen.md): Ansys Zemax OpticStudio User Guide, Release 2025 R1, "The Glass
 /// Dispersion Formulas" (one page per formula, each with a single unnumbered equation, lambda in
@@ -181,7 +183,7 @@ template <math::Real T>
 }
 
 /// Non-absorbing material given by a dispersion formula on a wavelength range.
-/// index() ignores temperature and pressure until dn/dT and air (#25) are implemented.
+/// index() is absolute and independent of temperature and pressure (user-defined data, #25 P5).
 class DispersionMaterial final : public Material {
  public:
   /// @param formula formula and coefficients (lambda in um)

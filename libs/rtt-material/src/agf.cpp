@@ -302,8 +302,8 @@ math::Complex CatalogMaterial::index(double wavelength_um,
                                      double temperature_c,
                                      double /*pressure_atm*/) const {
   // Conversion decided for #25 (class comment): relative wavelength and index at T_ref, 1 atm.
-  const double t_ref = thermal_ ? thermal_->reference_temperature_c : 20.0;
-  const double n_air = ciddor_air_index(wavelength_um, t_ref, kStandardAtmospherePa);
+  const double t_ref = thermal_ ? thermal_->reference_temperature_c : kSchottReferenceTemperatureC;
+  const double n_air = ciddor_air_index(wavelength_um, t_ref, 1.0);
   const double n_rel = refractive_index(formula_, wavelength_um / n_air);
   double n_abs = n_rel * n_air;  // TIE-19 Eq. (5) at T_ref and 1 atm
   if (thermal_) {

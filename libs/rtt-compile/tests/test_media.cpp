@@ -95,10 +95,13 @@ TEST_CASE("SCHOTT:N-BK7 in a system file resolves through an AGF test catalogue"
   REQUIRE(glass.index[cs.reference_wavelength()] == expected);
   // Since #25 the index is absolute; relative to the surrounding AIR (20 degC = T_ref, 1 atm) it
   // is the catalogue value n_d = 1.5168 (SCHOTT data sheet). The file wavelength 0.5876 um is a
-  // vacuum wavelength, 0.17 nm above the d line in air, hence the tolerance of 2e-5; the exact
-  // n_d check with the air wavelength is in rtt-material (test_agf.cpp).
+  // vacuum wavelength, i.e. 0.587440 um in air: 0.122 nm below the d line (587.56 nm in air),
+  // which raises n_rel by 5.1e-6. Tolerance: that shift plus half a unit of the data sheet's
+  // 5th decimal (5e-6), so 1.1e-5. The exact n_d check at the d line is in rtt-material
+  // (test_agf.cpp).
   const auto& air = cs.media()[cs.environment_medium()];
-  REQUIRE(std::abs(expected.real() / air.index[cs.reference_wavelength()].real() - 1.5168) < 2e-5);
+  REQUIRE(std::abs(expected.real() / air.index[cs.reference_wavelength()].real() - 1.5168) <
+          1.1e-5);
 }
 
 TEST_CASE("the AIR environment depends on temperature and pressure", "[compile][media][air]") {
@@ -118,8 +121,7 @@ TEST_CASE("the AIR environment depends on temperature and pressure", "[compile][
   for (std::size_t i = 0; i < at_20.size(); ++i) {
     const double wl = s.wavelengths[i].um;
     INFO(wl);
-    REQUIRE(at_20[i].real() ==
-            rtt::material::ciddor_air_index(wl, 20.0, rtt::material::kStandardAtmospherePa));
+    REQUIRE(at_20[i].real() == rtt::material::ciddor_air_index(wl, 20.0, 1.0));
     REQUIRE(at_40[i].real() < at_20[i].real());
     REQUIRE(at_low[i].real() < at_20[i].real());
   }

@@ -9,7 +9,7 @@
 /// - the complex refractive index is n_c = n + i*kappa with kappa >= 0 for absorption,
 ///   matching plane waves ~ exp(i(k.r - omega t)),
 /// - indices are absolute (against vacuum); catalogue data relative to air are converted with
-///   Ciddor air (follows with #25, until then formula values are used unchanged).
+///   Ciddor air (CatalogMaterial in agf.hpp, air.hpp; #25).
 
 #include <filesystem>
 #include <functional>

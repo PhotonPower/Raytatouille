@@ -12,15 +12,19 @@
 
 namespace rtt::material {
 
+/// Reference temperature T0 of the SCHOTT model in degC (TIE-19, Eq. (2)); also used for
+/// catalogue glasses without TD record (#25, P4).
+inline constexpr double kSchottReferenceTemperatureC = 20.0;
+
 /// Coefficients of the TD record of an AGF catalogue (in this order), see agf.hpp.
 struct SchottThermalCoefficients {
-  double d0 = 0.0;                      ///< 1/K
-  double d1 = 0.0;                      ///< 1/K^2
-  double d2 = 0.0;                      ///< 1/K^3
-  double e0 = 0.0;                      ///< um^2/K
-  double e1 = 0.0;                      ///< um^2/K^2
-  double lambda_tk = 0.0;               ///< um
-  double reference_temperature_c = 20;  ///< T_ref in degC
+  double d0 = 0.0;         ///< 1/K
+  double d1 = 0.0;         ///< 1/K^2
+  double d2 = 0.0;         ///< 1/K^3
+  double e0 = 0.0;         ///< um^2/K
+  double e1 = 0.0;         ///< um^2/K^2
+  double lambda_tk = 0.0;  ///< um
+  double reference_temperature_c = kSchottReferenceTemperatureC;  ///< T_ref in degC
   bool operator==(const SchottThermalCoefficients&) const = default;
 };
 
@@ -31,6 +35,8 @@ struct SchottThermalCoefficients {
 /// @param n_ref         index at the reference temperature (relative to air, see TIE-19)
 /// @param wavelength_um vacuum wavelength in um (TIE-19: "wavelength ... in a vacuum")
 /// @param delta_t       T - T_ref in K
+/// @param c             coefficients of the glass (reference_temperature_c is not used here)
+/// @return change of the absolute index, dimensionless
 template <math::Real T>
 [[nodiscard]] T schott_delta_n_abs(T n_ref,
                                    T wavelength_um,

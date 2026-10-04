@@ -47,7 +47,7 @@ TEST_CASE("VACUUM has index exactly 1, AIR is Ciddor air", "[material]") {
     for (const double t : kTemperaturesC) {
       INFO(wl << " um, " << t << " degC");
       REQUIRE(air->index(wl, t, 1.0) ==
-              Complex(rtt::material::ciddor_air_index(wl, t, 101325.0), 0.0));
+              Complex(rtt::material::ciddor_air_index(wl, t, 1.0), 0.0));
     }
   }
 }

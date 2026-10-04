@@ -8,6 +8,7 @@
 
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/io/json_io.hpp"
+#include "rtt/material/air.hpp"
 #include "rtt/paraxial/paraxial.hpp"
 
 using Catch::Matchers::WithinAbs;
@@ -392,6 +393,26 @@ TEST_CASE("double pass: thin lens on a plane mirror refracts with negative index
   require_rel(fo.bfl, 50.0);
   require_rel(fo.rear_focal_z, -50.0);
   REQUIRE(fo.image_direction == -1);
+}
+
+TEST_CASE("thin lens in AIR: absolute indices give EFL = 1/Phi and f' = n_air/Phi", "[paraxial]") {
+  // Since #25 AIR is Ciddor air with n_air > 1 (decision D2: EFL = 1/Phi in the absolute sense).
+  // Thin plano-convex lens, R = 50 mm, n = 1.5 (CONST, absolute) in AIR at 20 degC, 1 atm:
+  // phi = (n - n_air) / R (Greivenkamp, OPTI-201/202, Sec. 9, p. 9-2: phi = (n' - n) C; the plane
+  // second surface has no power), EFL = 1/phi, and with y = 1, u = 0 as in the test below:
+  // n_air u' = -phi, so f' = n_air / phi; f = n_air / phi by symmetry of the thin lens.
+  System s = base_system();
+  s.environment.medium = "AIR";
+  add(s, lens("L", 0.0, 1.5, 50.0, std::nullopt, 0.0));
+  const FirstOrder fo = first_order_of(s);
+  const double n_air = rtt::material::ciddor_air_index(0.5876, 20.0, 1.0);
+  const double phi = (1.5 - n_air) / 50.0;
+  REQUIRE(n_air > 1.0002);
+  require_rel(fo.efl, 1.0 / phi);
+  require_rel(fo.rear_focal_length, n_air / phi);
+  require_rel(fo.front_focal_length, n_air / phi);
+  REQUIRE_THAT(fo.object_index, WithinRel(n_air, kRel));
+  REQUIRE_THAT(fo.image_index, WithinRel(n_air, kRel));
 }
 
 TEST_CASE("image space in glass: f' = n' f", "[paraxial]") {

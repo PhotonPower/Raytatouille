@@ -54,7 +54,7 @@ struct AgfGlass {
   double vd = 0.0;                             ///< V(d) from NM, for reference only
   std::vector<double> coefficients;            ///< CD, as in the file
   std::optional<WavelengthRange> range;        ///< LD in um
-  std::optional<std::vector<double>> thermal;  ///< TD: D0 D1 D2 E0 E1 Ltk Temp (unused, #25)
+  std::optional<std::vector<double>> thermal;  ///< TD: D0 D1 D2 E0 E1 Ltk Temp (thermal.hpp)
   std::optional<std::vector<double>> extra;    ///< ED (unused)
   std::size_t line = 0;                        ///< line of the NM record
 };

@@ -7,7 +7,8 @@
 /// Documentation", Appendix A-III "Ciddor Calculation of the Index of Refraction",
 /// Eq. (A21)-(A41). Decided for #25: dry air (water vapour mole fraction x_v = 0) with a CO2
 /// content of 450 umol/mol. The vacuum wavelength is in um, the temperature in degC and the
-/// pressure in Pa. The result is the phase refractive index of air (absolute).
+/// pressure in atm (NIST computes in Pa). The result is the phase refractive index of air
+/// (absolute).
 
 #include "rtt/material/material.hpp"
 #include "rtt/math/real.hpp"
@@ -26,9 +27,12 @@ inline constexpr double kAirCo2Ppm = 450.0;
 /// 10 kPa to 140 kPa; outside the formula is extrapolated without warning (#25, P6).
 /// @param wavelength_um vacuum wavelength in um
 /// @param temperature_c air temperature in degC
-/// @param pressure_pa   air pressure in Pa
+/// @param pressure_atm  air pressure in atm (converted to Pa as NIST requires)
+/// @return phase refractive index of air, absolute (dimensionless)
 template <math::Real T>
-[[nodiscard]] T ciddor_air_index(T wavelength_um, T temperature_c, T pressure_pa) {
+[[nodiscard]] T ciddor_air_index(T wavelength_um, T temperature_c, T pressure_atm) {
+  // NIST works in Pa: 1 atm = p_R1 = 101325 Pa (A27).
+  const T pressure_pa = pressure_atm * T(kStandardAtmospherePa);
   // (A22) dispersion constants of standard air
   const T k0 = T(238.0185);
   const T k1 = T(5792105.0);
@@ -71,12 +75,11 @@ template <math::Real T>
 /// formula is extrapolated.
 class AirMaterial final : public Material {
  public:
-  /// Ciddor index n + 0i; see Material::index (pressure converted from atm to Pa).
+  /// Ciddor index n + 0i; see Material::index.
   [[nodiscard]] math::Complex index(double wavelength_um,
                                     double temperature_c,
                                     double pressure_atm) const override {
-    return {ciddor_air_index(wavelength_um, temperature_c, pressure_atm * kStandardAtmospherePa),
-            0.0};
+    return {ciddor_air_index(wavelength_um, temperature_c, pressure_atm), 0.0};
   }
 };
 

@@ -1,3 +1,4 @@
+#include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -308,7 +309,7 @@ TEST_CASE("catalogue glass: absolute index consistent with the relative catalogu
   const double t_ref = 20.0;  // TD record of N-BK7
   for (const double wl : {0.3, 0.4861, 0.5876, 0.6563, 1.064, 2.5}) {
     INFO(wl);
-    const double n_air = rtt::material::ciddor_air_index(wl, t_ref, 101325.0);
+    const double n_air = rtt::material::ciddor_air_index(wl, t_ref, 1.0);
     const double n_rel = rtt::material::refractive_index(kNbk7, wl / n_air);
     for (const double p : {0.0, 1.0, 2.0}) {
       const auto n = nbk7.index(wl, t_ref, p);
@@ -317,10 +318,11 @@ TEST_CASE("catalogue glass: absolute index consistent with the relative catalogu
     }
   }
   // n_d of the SCHOTT data sheet (1.51680 at the d line, 587.56 nm in air; SCHOTT TIE-29 p. 1):
-  // the vacuum wavelength is the air wavelength times n_air.
-  const double lambda_d = 0.58756 * rtt::material::ciddor_air_index(0.58756, t_ref, 101325.0);
+  // the vacuum wavelength is the air wavelength times n_air. n_air is evaluated at the air
+  // wavelength here, which changes lambda_d by about 1e-9 um, negligible.
+  const double lambda_d = 0.58756 * rtt::material::ciddor_air_index(0.58756, t_ref, 1.0);
   const double n_d = nbk7.index(lambda_d, t_ref, 1.0).real() /
-                     rtt::material::ciddor_air_index(lambda_d, t_ref, 101325.0);
+                     rtt::material::ciddor_air_index(lambda_d, t_ref, 1.0);
   REQUIRE(std::abs(n_d - 1.51680) <= 5e-6);
   REQUIRE(nbk7.wavelength_range_um() == WavelengthRange{0.3, 2.5});
   REQUIRE(nbk7.glass().name == "N-BK7");
@@ -336,16 +338,27 @@ TEST_CASE("catalogue glass: absolute index consistent with the relative catalogu
 
 TEST_CASE("catalogue glass: dn/dT matches the SCHOTT data sheet", "[agf][air]") {
   // SCHOTT N-BK7 data sheet (as of 01-Dec-2023, p. 13): "Temperature Coefficients of the
-  // Refractive Index", Delta n_abs / Delta T in 1e-6/K for +20/+40 degC: 1.1 at 1060.0 nm,
-  // 1.6 at the e line (546.1 nm), 2.1 at the g line (435.8 nm); rounded to 0.1e-6/K, so the
-  // tolerance is 0.05e-6/K. Model: TIE-19 Eq. (3)/(4) with the TD record of the catalogue.
+  // Refractive Index", Delta n_abs / Delta T in 1e-6/K at 1060.0 nm, the e line (546.1 nm) and
+  // the g line (435.8 nm): -40/-20 degC 0.3 / 0.8 / 1.2, +20/+40 degC 1.1 / 1.6 / 2.1,
+  // +60/+80 degC 1.5 / 2.1 / 2.7; rounded to 0.1e-6/K, so the tolerance is 0.05e-6/K. The three
+  // intervals also check negative Delta T and the D1, D2 terms. Model: TIE-19 Eq. (3)/(4) with
+  // the TD record of the catalogue.
   const AgfCatalog cat = load_agf(kSchottFile);
   const CatalogMaterial nbk7(cat.glasses[0], cat.name);
-  for (const auto& [wl, sheet] : {std::pair{1.0600, 1.1}, {0.5461, 1.6}, {0.4358, 2.1}}) {
-    INFO(wl);
-    const double slope =
-        (nbk7.index(wl, 40.0, 1.0).real() - nbk7.index(wl, 20.0, 1.0).real()) / 20.0;
-    REQUIRE(std::abs(slope * 1e6 - sheet) <= 0.05);
+  struct Row {
+    double t1, t2;
+    std::array<double, 3> sheet;  // 1060 nm, e, g
+  };
+  const std::array<double, 3> wavelengths{1.0600, 0.5461, 0.4358};
+  for (const Row& row : {Row{-40.0, -20.0, {0.3, 0.8, 1.2}}, Row{20.0, 40.0, {1.1, 1.6, 2.1}},
+                         Row{60.0, 80.0, {1.5, 2.1, 2.7}}}) {
+    for (std::size_t i = 0; i < wavelengths.size(); ++i) {
+      INFO(row.t1 << "/" << row.t2 << " degC, " << wavelengths[i] << " um");
+      const double slope = (nbk7.index(wavelengths[i], row.t2, 1.0).real() -
+                            nbk7.index(wavelengths[i], row.t1, 1.0).real()) /
+                           (row.t2 - row.t1);
+      REQUIRE(std::abs(slope * 1e6 - row.sheet[i]) <= 0.05);
+    }
   }
 }
 
@@ -355,7 +368,7 @@ TEST_CASE("catalogue glass without TD record has no temperature dependence", "[a
   glass.thermal.reset();
   const CatalogMaterial m(glass, "SCHOTT");
   REQUIRE(m.index(0.5876, -20.0, 1.0) == m.index(0.5876, 60.0, 1.0));
-  const double n_air = rtt::material::ciddor_air_index(0.5876, 20.0, 101325.0);
+  const double n_air = rtt::material::ciddor_air_index(0.5876, 20.0, 1.0);
   REQUIRE_THAT(
       m.index(0.5876, 60.0, 1.0).real() / n_air,
       Catch::Matchers::WithinRel(rtt::material::refractive_index(kNbk7, 0.5876 / n_air), 1e-14));
