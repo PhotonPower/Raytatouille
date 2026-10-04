@@ -67,12 +67,12 @@ Element stop_at(double z, double radius) {
   return Element{"stop", ElementKind::Stop, Pose::along_z(z), std::nullopt, {st}};
 }
 
-/// Biconvex lens R = +-50 mm, 4 mm thick, constant index, front vertex at z.
-Element biconvex(const std::string& name, double z) {
+/// Biconvex lens R = +-50 mm, 4 mm thick, front vertex at z (constant index by default).
+Element biconvex(const std::string& name, double z, const std::string& material = "CONST:1.5168") {
   return Element{name,
                  ElementKind::Lens,
                  Pose::along_z(z),
-                 "CONST:1.5168",
+                 material,
                  {surface(name + ".S1", 0.0, 50.0), surface(name + ".S2", 4.0, -50.0)}};
 }
 
@@ -151,6 +151,118 @@ TEST_CASE("symmetric 1:1 system: distortion zero", "[distortion]") {
     const auto p = rtt::analysis::distortion_at(cs, PathId{0}, cs.fields().points[f], 0);
     INFO("field " << f << ", D = " << p.percent << " %");
     REQUIRE(std::abs(p.paraxial_height + cs.fields().points[f].y) <= 1e-9);
+    REQUIRE(std::abs(p.percent) <= 1e-9);
+  }
+}
+
+TEST_CASE("paraxial image height field equals the angle field theta = atan(h' / EFL)",
+          "[distortion]") {
+  // Object at infinity in vacuum: a paraxial image height h' is the field angle with
+  // tan(theta) = h' / EFL at the reference wavelength (y' = EFL tan(theta) in the rear focal
+  // plane, n = 1 on both sides; docs/architecture.md, "Feldwinkel und Pupille", #50). Both field
+  // types therefore give the same real and paraxial chief ray for every wavelength. With the
+  // image surface in the rear focal plane of the reference wavelength, h_par = h' there.
+  // Dispersive N-BK7 makes the conversion wavelength matter.
+  MaterialLibrary lib;
+  lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/schott.agf");
+  System s = load("m0/singlet.rtt.json");
+  s.environment.medium = "VACUUM";
+  const CompiledSystem initial = compile(s, lib);
+  const std::uint16_t ref = initial.reference_wavelength();
+  const auto fo = rtt::paraxial::first_order(initial, PathId{0}, ref);
+  element(s, 2).pose = Pose::along_z(*fo.rear_focal_z);
+  constexpr double kImageHeight = 4.0;  // mm
+  System angle = s;
+  angle.fields = {FieldType::AngleDeg,
+                  {{0.0, 0.0, 1.0}, {0.0, std::atan(kImageHeight / *fo.efl) / kDeg, 1.0}}};
+  s.fields = {FieldType::ParaxialImageHeight, {{0.0, 0.0, 1.0}, {0.0, kImageHeight, 1.0}}};
+  const CompiledSystem ci = compile(s, lib);
+  const CompiledSystem ca = compile(angle, lib);
+  for (std::uint16_t wl = 0; wl < 3; ++wl) {
+    const auto pi = rtt::analysis::distortion_at(ci, PathId{0}, ci.fields().points[1], wl);
+    const auto pa = rtt::analysis::distortion_at(ca, PathId{0}, ca.fields().points[1], wl);
+    INFO("wavelength " << wl << ": h_par " << pi.paraxial_height << " / " << pa.paraxial_height
+                       << ", h_real " << pi.real_height << " / " << pa.real_height);
+    REQUIRE(std::abs(pi.paraxial_height - pa.paraxial_height) <= 1e-12);
+    REQUIRE(std::abs(pi.real_height - pa.real_height) <= 1e-9);
+    if (wl == ref) {
+      REQUIRE(std::abs(pi.paraxial_height - kImageHeight) <= 1e-12);
+      REQUIRE(std::abs(pa.paraxial_height - kImageHeight) <= 1e-12);
+    }
+  }
+}
+
+TEST_CASE("angle field with a finite object: object point on the chief ray", "[distortion]") {
+  // Symmetric 1:1 system as above with an angle field: the object point is
+  // h = (z_obj - z_EP) tan(theta) (chief ray through the centre of the entrance pupil, #8), and
+  // m = -1 gives h_par = -h. The real image of that object point is again -h by symmetry.
+  System half = base_system("front lens");
+  half.aperture = {rtt::model::SystemApertureType::EntrancePupilDiameter, Param(4.0)};
+  half.fields = {FieldType::AngleDeg, {{0.0, 0.0, 1.0}}};
+  half.root.children = {{biconvex("L1", -20.0)}, {stop_at(0.0, 5.0)}};
+  const MaterialLibrary lib;
+  const double z_front =
+      *rtt::paraxial::first_order(compile(half, lib), PathId{0}, 0).front_focal_z;
+
+  System s = base_system("symmetric 1:1, angle field");
+  s.object.at_infinity = false;
+  s.object.distance = Param(-z_front);
+  s.aperture = {rtt::model::SystemApertureType::StopSize, Param(0.0)};
+  s.fields = {FieldType::AngleDeg, {{0.0, 0.0, 1.0}, {0.0, 2.0, 1.0}}};
+  s.root.children = {
+      {biconvex("L1", -20.0)},
+      {stop_at(0.0, 2.0)},
+      {biconvex("L2", 16.0)},
+      {Element{
+          "D", ElementKind::Detector, Pose::along_z(-z_front), std::nullopt, {surface("IMG")}}}};
+  const CompiledSystem cs = compile(s, lib);
+  const auto fo = rtt::paraxial::first_order(cs, PathId{0}, 0);
+  const double z_ep = *fo.entrance_pupil->z;
+  const double h = (z_front - z_ep) * std::tan(2.0 * kDeg);
+  REQUIRE(h < 0.0);  // theta > 0 places the object point at -y
+  const auto p = rtt::analysis::distortion_at(cs, PathId{0}, cs.fields().points[1], 0);
+  INFO("h_par " << p.paraxial_height << ", expected " << -h << ", D = " << p.percent << " %");
+  REQUIRE(std::abs(p.paraxial_height + h) <= 1e-12);
+  REQUIRE(std::abs(p.percent) <= 1e-9);
+}
+
+TEST_CASE("distortion converts the field value at the reference wavelength", "[distortion]") {
+  // Symmetric 1:1 system as above with dispersive N-BK7 and an angle field. The field value is
+  // converted at the reference wavelength (#50): object point h = (z_obj - z_EP,ref) tan(theta)
+  // for every wavelength. Mirror symmetry about the stop holds for every wavelength, so at F the
+  // real and the paraxial chief ray from that object point both end at -h in the mirrored plane:
+  // h_par = -h and D = 0. Converting at F instead would start the paraxial chief ray elsewhere.
+  MaterialLibrary lib;
+  lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/schott.agf");
+  System half = base_system("front lens");
+  half.aperture = {rtt::model::SystemApertureType::EntrancePupilDiameter, Param(4.0)};
+  half.fields = {FieldType::AngleDeg, {{0.0, 0.0, 1.0}}};
+  half.root.children = {{biconvex("L1", -20.0, "SCHOTT:N-BK7")}, {stop_at(0.0, 5.0)}};
+  const double z_front =
+      *rtt::paraxial::first_order(compile(half, lib), PathId{0}, 0).front_focal_z;
+
+  System s = base_system("symmetric 1:1, N-BK7");
+  s.wavelengths = {{0.4861, 1.0, false}, {0.5876, 1.0, true}, {0.6563, 1.0, false}};
+  s.object.at_infinity = false;
+  s.object.distance = Param(-z_front);
+  s.aperture = {rtt::model::SystemApertureType::StopSize, Param(0.0)};
+  s.fields = {FieldType::AngleDeg, {{0.0, 0.0, 1.0}, {0.0, 2.0, 1.0}}};
+  s.root.children = {
+      {biconvex("L1", -20.0, "SCHOTT:N-BK7")},
+      {stop_at(0.0, 2.0)},
+      {biconvex("L2", 16.0, "SCHOTT:N-BK7")},
+      {Element{
+          "D", ElementKind::Detector, Pose::along_z(-z_front), std::nullopt, {surface("IMG")}}}};
+  const CompiledSystem cs = compile(s, lib);
+  const double z_ep_ref =
+      *rtt::paraxial::first_order(cs, PathId{0}, cs.reference_wavelength()).entrance_pupil->z;
+  REQUIRE(*rtt::paraxial::first_order(cs, PathId{0}, 0).entrance_pupil->z != z_ep_ref);
+  const double h = (z_front - z_ep_ref) * std::tan(2.0 * kDeg);
+  for (std::uint16_t wl = 0; wl < 3; ++wl) {
+    const auto p = rtt::analysis::distortion_at(cs, PathId{0}, cs.fields().points[1], wl);
+    INFO("wavelength " << wl << ": h_par " << p.paraxial_height << ", expected " << -h
+                       << ", D = " << p.percent << " %");
+    REQUIRE(std::abs(p.paraxial_height + h) <= 1e-12);
     REQUIRE(std::abs(p.percent) <= 1e-9);
   }
 }

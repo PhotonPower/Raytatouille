@@ -15,7 +15,9 @@
 /// - Distortion D = (h_real - h_par) / h_par * 100 %. h_real is the real chief ray (pupil centre)
 ///   on the image surface; h_par is the paraxial chief ray (rtt-paraxial) evaluated in the plane
 ///   of the image-surface vertex, NOT in the paraxial image plane (some programs use the
-///   latter). D = 0 on axis.
+///   latter). D = 0 on axis. Real and paraxial chief ray start at the same field point: the field
+///   value is converted into a direction or an object point at the reference wavelength (as in
+///   rtt-trace, #50), and both rays are traced at `wavelength`.
 /// - Field curvature, numerically with neighbour rays: for a field, two rays at normalised pupil
 ///   coordinates +-delta along the tangential direction (towards the field point; +y on axis)
 ///   and two along the sagittal direction are aimed and traced to the image surface. The focus

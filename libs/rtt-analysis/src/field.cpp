@@ -45,39 +45,63 @@ double fraction(const CompiledSystem& system, const model::Field& field) {
   return m > 0.0 ? std::hypot(field.x, field.y) / m : 0.0;
 }
 
+/// Global z of the paraxial entrance pupil at `wavelength`, mm.
+double entrance_pupil_z(const CompiledSystem& system, PathId path, std::uint16_t wavelength) {
+  const paraxial::FirstOrder fo = paraxial::first_order(system, path, wavelength);
+  if (!fo.entrance_pupil || !fo.entrance_pupil->z) {
+    throw std::invalid_argument("analysis: the entrance pupil is not defined");
+  }
+  return *fo.entrance_pupil->z;
+}
+
+/// Unit paraxial chief ray at `wavelength` through the entrance pupil centre z_ep: unit slope
+/// for an object at infinity, unit object height otherwise.
+std::vector<paraxial::RayAtEvent> unit_chief(const CompiledSystem& system,
+                                             PathId path,
+                                             std::uint16_t wavelength,
+                                             double z_ep) {
+  if (system.object().at_infinity) {
+    return paraxial::trace_ray(system, path, wavelength, z_ep, 0.0, 1.0);
+  }
+  const double z_obj = -system.object().distance.value;
+  if (z_ep == z_obj) {
+    throw std::invalid_argument("analysis: the entrance pupil lies in the object plane");
+  }
+  return paraxial::trace_ray(system, path, wavelength, z_obj, 1.0, -1.0 / (z_ep - z_obj));
+}
+
+/// Height of a paraxial ray (last segment) in the plane z, mm.
+double height_at(const std::vector<paraxial::RayAtEvent>& ray, double z) {
+  const auto& last = ray.back();
+  return last.y + (z - last.z) * last.u;
+}
+
 /// Paraxial chief ray of `field` in the plane z (global x, y offsets from the axis, mm).
-/// Linear in the field value: a unit ray is traced with rtt-paraxial and scaled, exactly as the
-/// field types are converted for ray aiming in rtt-trace (#8): unit slope through the entrance
-/// pupil centre for an object at infinity, unit object height otherwise.
+/// As in rtt-trace (#50), the field value is converted into a slope (object at infinity) or an
+/// object height (finite object) at the reference wavelength: a field angle with a finite object
+/// uses the entrance pupil of the reference wavelength, a paraxial image height the unit image
+/// height of the reference wavelength. The chief ray of that slope or object point is then traced
+/// at `wavelength` through the entrance pupil centre of `wavelength`; it is linear in the field
+/// value, so a unit ray is traced and scaled.
 Point2 paraxial_chief(const CompiledSystem& system,
                       PathId path,
                       std::uint16_t wavelength,
                       const model::Field& field,
                       double z) {
-  const paraxial::FirstOrder fo = paraxial::first_order(system, path, wavelength);
-  if (!fo.entrance_pupil || !fo.entrance_pupil->z) {
-    throw std::invalid_argument("analysis: the entrance pupil is not defined");
-  }
-  const double z_ep = *fo.entrance_pupil->z;
   const bool infinite = system.object().at_infinity;
-  const double z_obj = infinite ? 0.0 : -system.object().distance.value;
-  const std::vector<paraxial::RayAtEvent> unit =
-      infinite ? paraxial::trace_ray(system, path, wavelength, z_ep, 0.0, 1.0)
-               : paraxial::trace_ray(system, path, wavelength, z_obj, 1.0, -1.0 / (z_ep - z_obj));
-  const auto height = [&unit](double plane) {
-    const auto& last = unit.back();
-    return last.y + (plane - last.z) * last.u;
-  };
+  const std::uint16_t ref = system.reference_wavelength();
   double sx = 0.0;
   double sy = 0.0;
   switch (system.fields().type) {
     case model::FieldType::AngleDeg: {
       const double tx = std::tan(field.x * std::numbers::pi / 180.0);
       const double ty = std::tan(field.y * std::numbers::pi / 180.0);
-      // Object at infinity: unit slope; finite object: object point on the chief ray through
-      // the entrance pupil centre (as in rtt-trace).
-      sx = infinite ? tx : (z_obj - z_ep) * tx;
-      sy = infinite ? ty : (z_obj - z_ep) * ty;
+      // Object at infinity: slope tan(theta); finite object: object point on the chief ray
+      // through the entrance pupil centre of the reference wavelength.
+      const double scale =
+          infinite ? 1.0 : -system.object().distance.value - entrance_pupil_z(system, path, ref);
+      sx = scale * tx;
+      sy = scale * ty;
       break;
     }
     case model::FieldType::ObjectHeight:
@@ -85,16 +109,19 @@ Point2 paraxial_chief(const CompiledSystem& system,
       sy = field.y;
       break;
     case model::FieldType::ParaxialImageHeight: {
-      if (!fo.image_z) {
+      const paraxial::FirstOrder fo_ref = paraxial::first_order(system, path, ref);
+      if (!fo_ref.image_z) {
         throw std::invalid_argument("analysis: paraxial image height needs a finite image");
       }
-      const double unit_image = height(*fo.image_z);
+      const double unit_image = height_at(
+          unit_chief(system, path, ref, entrance_pupil_z(system, path, ref)), *fo_ref.image_z);
       sx = field.x / unit_image;
       sy = field.y / unit_image;
       break;
     }
   }
-  const double h = height(z);
+  const double h = height_at(
+      unit_chief(system, path, wavelength, entrance_pupil_z(system, path, wavelength)), z);
   return {sx * h, sy * h};
 }
 
