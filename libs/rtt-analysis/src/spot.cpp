@@ -5,7 +5,7 @@
 #include <numeric>
 #include <string>
 
-#include "rtt/trace/sequential.hpp"
+#include "common.hpp"
 
 namespace rtt::analysis {
 
@@ -13,53 +13,12 @@ namespace {
 
 using compile::CompiledSystem;
 using compile::PathId;
-
-void check_path(const CompiledSystem& system, PathId path) {
-  if (path.index >= system.paths().size() || system.path(path).events.empty()) {
-    throw std::invalid_argument("analysis: path index " + std::to_string(path.index) +
-                                " does not exist or has no events");
-  }
-}
-
-void check_wavelength(const CompiledSystem& system, std::uint16_t wavelength) {
-  if (wavelength >= system.wavelengths_um().size()) {
-    throw std::invalid_argument("analysis: wavelength index " + std::to_string(wavelength) +
-                                " does not exist");
-  }
-}
-
-/// Image surface: the surface of the last event of the path (decided for #28).
-std::uint32_t image_surface(const CompiledSystem& system, PathId path) {
-  return system.path(path).events.back().surface;
-}
-
-/// Traces rays of one field and wavelength through the whole path.
-trace::RayBatch trace_rays(const CompiledSystem& system,
-                           PathId path,
-                           std::uint16_t field,
-                           std::uint16_t wavelength,
-                           const trace::PupilSampling& sampling,
-                           trace::Aiming aiming) {
-  const std::uint16_t fields[] = {field};
-  trace::RayBatch rays = trace::make_rays(system, path, fields, wavelength, sampling, aiming);
-  [[maybe_unused]] const auto stats = trace::SequentialTracer().trace(system, path, rays);
-  return rays;
-}
-
-/// True if ray i ended Alive on the image surface.
-bool arrived(const trace::RayBatch& rays, std::size_t i, std::uint32_t image) {
-  return rays.status()[i] == trace::RayStatus::Alive && rays.last_surface()[i] == image;
-}
-
-/// Local x, y of ray i on the image surface, mm.
-Point2 local_point(const CompiledSystem& system,
-                   const trace::RayBatch& rays,
-                   std::size_t i,
-                   std::uint32_t image) {
-  const math::Vec3 p = system.surfaces()[image].to_local.apply_point(
-      math::Vec3(rays.pos_x()[i], rays.pos_y()[i], rays.pos_z()[i]));
-  return {p.x(), p.y()};
-}
+using detail::arrived;
+using detail::check_path;
+using detail::check_wavelength;
+using detail::image_surface;
+using detail::local_point;
+using detail::trace_rays;
 
 /// Chief ray (pupil centre, reference wavelength) on the image surface.
 Point2 chief_point(const CompiledSystem& system,
