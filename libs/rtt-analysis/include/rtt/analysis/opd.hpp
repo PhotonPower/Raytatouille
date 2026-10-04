@@ -44,8 +44,9 @@ struct OpdPoint {
   double px = 0.0;  ///< normalised pupil coordinate x
   double py = 0.0;  ///< normalised pupil coordinate y
   double w = 0.0;   ///< OPD in waves at the reference wavelength; 0 if the ray did not arrive
-  /// Alive if the ray arrived on the image surface, otherwise its status (Vignetted if it was
-  /// Alive but stopped elsewhere). Consumers must check it before using w.
+  /// Alive if the ray arrived on the image surface, otherwise its status; Vignetted also if it
+  /// was Alive but stopped elsewhere or its line misses the reference sphere. Consumers must
+  /// check it before using w.
   trace::RayStatus status = trace::RayStatus::Alive;
 };
 
@@ -65,9 +66,9 @@ struct OpdMap {
   /// Standard deviation of W over the arrived points (piston removed, tilt NOT removed,
   /// unweighted over the uniform grid), waves.
   double rms = 0.0;
-  double pv = 0.0;  ///< max W - min W over the arrived points, waves
-  std::size_t arrived = 0;
-  std::size_t vignetted = 0;
+  double pv = 0.0;            ///< max W - min W over the arrived points, waves
+  std::size_t arrived = 0;    ///< points with status Alive (they define rms and pv)
+  std::size_t vignetted = 0;  ///< points that did not arrive (arrived + vignetted = size)
 };
 
 /// Tangential (px = 0) and sagittal (py = 0) OPD fans.
@@ -82,8 +83,11 @@ struct OpdFan {
 /// OPD map of `field` at `wavelength`.
 /// @throws std::invalid_argument for an invalid path, field, wavelength, grid < 1 (and as
 ///         rtt::trace::make_rays)
-/// @throws AnalysisError if a chief ray does not reach the image surface, the exit pupil is at
-///         infinity (image-space telecentric, not supported yet) or no ray arrives
+/// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric or the stop
+///         aperture is not circular (aiming and exit pupil)
+/// @throws AnalysisError if a chief ray does not reach the image surface or misses the
+///         reference sphere, the path has no stop, the exit pupil is at infinity (image-space
+///         telecentric, not supported yet) or no ray arrives
 [[nodiscard]] OpdMap opd_map(const compile::CompiledSystem& system,
                              compile::PathId path,
                              std::uint16_t field,

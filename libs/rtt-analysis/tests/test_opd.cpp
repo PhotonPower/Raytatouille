@@ -87,7 +87,7 @@ TEST_CASE("defocus of an ideal image: W = eps_z sin^2(U) / 2 with both signs", "
   // towards -z, so the shift along the propagation direction is eps_z = -dz. The exit pupil lies
   // at z = +100: dz > 0 moves the detector towards the pupil (eps_z < 0, W < 0).
   // The source is first order in eps_z and uses sin^2 U instead of 2 (1 - cos U): relative
-  // deviation O(U^2) ~ 0.3 % at p <= 0.3 (U < 5 deg) and O(eps_z / R) ~ 5e-5, hence 1e-2.
+  // deviation tan^2(U/2) ~ 0.2 % at p <= 0.3 (U ~ 5.2 deg) and O(eps_z / R) ~ 5e-5, hence 1e-2.
   for (const double dz : {0.01, -0.01}) {
     System s = load("m2/paraboloid_stop.rtt.json");
     s.environment.medium = "VACUUM";  // the source formula assumes n' = 1
@@ -131,7 +131,7 @@ TEST_CASE("plano-convex lens at small NA: OPD scales with p^4, positive at the r
   const auto fan = rtt::analysis::opd_fan(cs, PathId{0}, 0, 1, options);
   std::vector<double> p;
   std::vector<double> w;
-  for (const std::size_t i : {42, 44, 48, 56}) {  // p = 0.05, 0.1, 0.2, 0.4
+  for (const std::size_t i : std::vector<std::size_t>{42, 44, 48, 56}) {  // p = 0.05, 0.1, 0.2, 0.4
     REQUIRE(fan.tangential[i].status == RayStatus::Alive);
     p.push_back(fan.tangential[i].py);
     w.push_back(fan.tangential[i].w);
@@ -149,7 +149,7 @@ TEST_CASE("plano-convex lens at small NA: OPD scales with p^4, positive at the r
 TEST_CASE("OPD map: chief ray zero, RMS as standard deviation, PV", "[opd]") {
   const MaterialLibrary lib;
   const CompiledSystem cs = compile(load("m1/singlet_const.rtt.json"), lib);
-  for (const std::uint16_t wl : {0, 1, 2}) {
+  for (const std::uint16_t wl : std::vector<std::uint16_t>{0, 1, 2}) {
     rtt::analysis::OpdOptions options;
     options.grid = 9;
     const auto map = rtt::analysis::opd_map(cs, PathId{0}, 2, wl, options);
@@ -158,8 +158,12 @@ TEST_CASE("OPD map: chief ray zero, RMS as standard deviation, PV", "[opd]") {
     double lo = 1e300;
     double hi = -1e300;
     std::size_t n = 0;
+    int centre = 0;
     for (const auto& q : map.points) {
-      if (q.px == 0.0 && q.py == 0.0) REQUIRE(q.w == 0.0);  // chief ray of the same wavelength
+      if (q.px == 0.0 && q.py == 0.0) {
+        REQUIRE(q.w == 0.0);  // chief ray of the same wavelength
+        ++centre;
+      }
       if (q.status != RayStatus::Alive) {
         REQUIRE(q.w == 0.0);
         continue;
@@ -175,7 +179,31 @@ TEST_CASE("OPD map: chief ray zero, RMS as standard deviation, PV", "[opd]") {
     const double mean = sum / static_cast<double>(n);
     REQUIRE(std::abs(map.rms - std::sqrt(sum2 / static_cast<double>(n) - mean * mean)) <= 1e-9);
     REQUIRE(map.pv == hi - lo);
+    REQUIRE(centre == 1);
   }
+}
+
+TEST_CASE("OPD of every wavelength is in waves at the reference wavelength", "[opd]") {
+  // Vacuum outside and a constant glass index: all wavelengths trace identical rays, so their
+  // OPD in mm is identical. Normalised to the reference wavelength (decided for #29) the waves
+  // must agree too; normalising to each ray's own wavelength would scale them by
+  // 0.5876 / 0.4861.
+  System s = load("m1/singlet_const.rtt.json");
+  s.environment.medium = "VACUUM";
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+  REQUIRE(cs.reference_wavelength() == 1);
+  rtt::analysis::OpdOptions options;
+  options.grid = 9;
+  const auto ref = rtt::analysis::opd_map(cs, PathId{0}, 2, 1, options);
+  const auto blue = rtt::analysis::opd_map(cs, PathId{0}, 2, 0, options);
+  REQUIRE(ref.points.size() == blue.points.size());
+  double largest = 0.0;
+  for (std::size_t k = 0; k < ref.points.size(); ++k) {
+    REQUIRE(blue.points[k].w == ref.points[k].w);
+    largest = std::max(largest, std::abs(ref.points[k].w));
+  }
+  REQUIRE(largest > 0.1);  // the field is aberrated enough to see a wrong normalisation
 }
 
 TEST_CASE("vignetted OPD points are marked and excluded", "[opd]") {

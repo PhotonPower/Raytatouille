@@ -48,7 +48,10 @@ Reference make_reference(const CompiledSystem& system,
                         " does not reach the image surface");
   }
   const paraxial::FirstOrder fo = paraxial::first_order(system, path, ref);
-  if (!fo.exit_pupil || !fo.exit_pupil->z) {
+  if (!fo.exit_pupil) {
+    throw AnalysisError("analysis: the path has no stop, so the exit pupil is not defined");
+  }
+  if (!fo.exit_pupil->z) {
     throw AnalysisError(
         "analysis: the exit pupil is at infinity (image-space telecentric); OPD against a "
         "reference sphere is not supported for it yet");
