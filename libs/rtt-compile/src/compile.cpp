@@ -9,9 +9,9 @@
 #include <utility>
 #include <vector>
 
-#include "rtt/trace/compiled_system.hpp"
+#include "rtt/compile/compiled_system.hpp"
 
-namespace rtt::trace {
+namespace rtt::compile {
 namespace {
 
 std::string idx(const std::string& base, std::size_t i) {
@@ -275,4 +275,4 @@ std::optional<PathId> CompiledSystem::find_path(std::string_view name) const {
   return std::nullopt;
 }
 
-}  // namespace rtt::trace
+}  // namespace rtt::compile

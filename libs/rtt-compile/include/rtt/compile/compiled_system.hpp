@@ -24,7 +24,7 @@
 #include "rtt/math/types.hpp"
 #include "rtt/model/model.hpp"
 
-namespace rtt::trace {
+namespace rtt::compile {
 
 /// Resolved base shape of a surface in its local coordinates. Supported in M1: plane and
 /// conic; further shapes are added to this variant as rtt-geom provides them.
@@ -166,4 +166,4 @@ class CompiledSystem {
   std::vector<CompiledPath> paths_;
 };
 
-}  // namespace rtt::trace
+}  // namespace rtt::compile

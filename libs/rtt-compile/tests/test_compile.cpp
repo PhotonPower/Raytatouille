@@ -11,12 +11,15 @@
 #include <variant>
 #include <vector>
 
+#include "rtt/compile/compiled_system.hpp"
 #include "rtt/io/json_io.hpp"
-#include "rtt/trace/compiled_system.hpp"
 #include "test_support.hpp"
 
 using Catch::Matchers::ContainsSubstring;
 using Catch::Matchers::WithinAbs;
+using rtt::compile::compile;
+using rtt::compile::CompiledSystem;
+using rtt::compile::CompileError;
 using rtt::material::MaterialLibrary;
 using rtt::math::Complex;
 using rtt::math::Vec3;
@@ -28,9 +31,6 @@ using rtt::model::Pose;
 using rtt::model::Surface;
 using rtt::model::SurfaceId;
 using rtt::model::System;
-using rtt::trace::compile;
-using rtt::trace::CompiledSystem;
-using rtt::trace::CompileError;
 
 namespace {
 
@@ -255,7 +255,7 @@ TEST_CASE("singlet with CONST:1.5168 goes air -> glass -> air", "[compile]") {
                   {"L1.S2", EventKind::Refract, "CONST:1.5168", "AIR"},
                   {"IMG", EventKind::Transmit, "AIR", "AIR"}});
 
-  REQUIRE(cs.find_path("main") == rtt::trace::PathId{0});
+  REQUIRE(cs.find_path("main") == rtt::compile::PathId{0});
   REQUIRE_FALSE(cs.find_path("missing").has_value());
   REQUIRE_FALSE(cs.find_surface(SurfaceId("missing")).has_value());
 }

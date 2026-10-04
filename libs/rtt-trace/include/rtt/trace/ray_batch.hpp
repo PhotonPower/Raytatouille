@@ -69,7 +69,7 @@ class RayBatch {
   [[nodiscard]] std::span<const double> dir_y() const noexcept { return dir_y_; }
   [[nodiscard]] std::span<const double> dir_z() const noexcept { return dir_z_; }
 
-  /// Index into CompiledSystem::wavelengths_um().
+  /// Index into rtt::compile::CompiledSystem::wavelengths_um().
   [[nodiscard]] std::span<std::uint16_t> wl() noexcept { return wl_; }
   [[nodiscard]] std::span<const std::uint16_t> wl() const noexcept { return wl_; }
 
@@ -108,7 +108,7 @@ class RayBatch {
   [[nodiscard]] std::span<const double> pupil_x() const noexcept { return pupil_x_; }
   [[nodiscard]] std::span<const double> pupil_y() const noexcept { return pupil_y_; }
 
-  /// Index into CompiledSystem::surfaces() of the last surface hit, or kNoSurface.
+  /// Index into rtt::compile::CompiledSystem::surfaces() of the last surface hit, or kNoSurface.
   [[nodiscard]] std::span<std::uint32_t> last_surface() noexcept { return last_surface_; }
   [[nodiscard]] std::span<const std::uint32_t> last_surface() const noexcept {
     return last_surface_;
