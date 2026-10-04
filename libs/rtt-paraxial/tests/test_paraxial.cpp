@@ -8,6 +8,7 @@
 
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/io/json_io.hpp"
+#include "rtt/material/air.hpp"
 #include "rtt/paraxial/paraxial.hpp"
 
 using Catch::Matchers::WithinAbs;
@@ -34,9 +35,12 @@ constexpr double kAbs = 1e-12;  // mm, for values that are zero
 
 // ------------------------------------------------------------------ builders -----
 
+/// The reference values below are formulas for a surrounding index of exactly 1, so the tests
+/// run in VACUUM; since #25 AIR is Ciddor air (n = 1.00027).
 System base_system() {
   System s;
   s.name = "paraxial test";
+  s.environment.medium = "VACUUM";
   s.wavelengths = {{0.5876, 1.0, true}};
   s.aperture = {rtt::model::SystemApertureType::EntrancePupilDiameter, Param(10.0)};
   s.fields = {rtt::model::FieldType::AngleDeg, {{0.0, 0.0, 1.0}}};
@@ -199,8 +203,11 @@ TEST_CASE("thick lens: EFL, BFL, FFL and principal planes from the lensmaker for
 TEST_CASE("reference singlet with CONST:1.5168", "[paraxial]") {
   // tests/reference/m1/singlet_const.rtt.json: plano-convex, R1 = 51.68 mm, d = 4 mm, vertex
   // at z = 5, stop (radius 10) at z = 0, EPD 20 mm. f = R1 / (n - 1) = 100 mm.
-  const CompiledSystem cs =
-      compile(rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m1/singlet_const.rtt.json"));
+  // Lensmaker reference for n_outside = 1: the file's AIR is replaced by VACUUM here (#25).
+  System singlet =
+      rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m1/singlet_const.rtt.json");
+  singlet.environment.medium = "VACUUM";
+  const CompiledSystem cs = compile(singlet);
   const ThickLens ref = hecht_thick_lens(1.5168, 1.0 / 51.68, 0.0, 4.0);
   REQUIRE_THAT(ref.f, WithinRel(100.0, 1e-12));
 
@@ -386,6 +393,28 @@ TEST_CASE("double pass: thin lens on a plane mirror refracts with negative index
   require_rel(fo.bfl, 50.0);
   require_rel(fo.rear_focal_z, -50.0);
   REQUIRE(fo.image_direction == -1);
+}
+
+TEST_CASE("thin lens in AIR: absolute indices give EFL = 1/Phi and f' = n_air/Phi", "[paraxial]") {
+  // Since #25 AIR is Ciddor air with n_air > 1 (decision D2: EFL = 1/Phi in the absolute sense).
+  // Thin plano-convex lens, R = 50 mm, n = 1.5 (CONST, absolute) in AIR at 20 degC, 1 atm:
+  // phi = (n - n_air) / R (Greivenkamp, OPTI-201/202, Sec. 9, p. 9-2: phi = (n' - n) C; the plane
+  // second surface has no power), EFL = 1/phi, and with y = 1, u = 0 as in the test below:
+  // n_air u' = -phi, so f' = n_air / phi (p. 9-12: f'_R = n'/phi) and BFL = f' for the thin lens
+  // at z = 0; p. 9-14: f_F = -n/phi, front_focal_length = -f_F = n_air / phi.
+  System s = base_system();
+  s.environment.medium = "AIR";
+  add(s, lens("L", 0.0, 1.5, 50.0, std::nullopt, 0.0));
+  const FirstOrder fo = first_order_of(s);
+  const double n_air = rtt::material::ciddor_air_index(0.5876, 20.0, 1.0);
+  const double phi = (1.5 - n_air) / 50.0;
+  REQUIRE(n_air > 1.0002);
+  require_rel(fo.efl, 1.0 / phi);
+  require_rel(fo.rear_focal_length, n_air / phi);
+  require_rel(fo.front_focal_length, n_air / phi);
+  require_rel(fo.bfl, n_air / phi);
+  REQUIRE_THAT(fo.object_index, WithinRel(n_air, kRel));
+  REQUIRE_THAT(fo.image_index, WithinRel(n_air, kRel));
 }
 
 TEST_CASE("image space in glass: f' = n' f", "[paraxial]") {

@@ -107,7 +107,7 @@ TEST_CASE("DispersionMaterial evaluates its formula and knows its range", "[disp
   const DispersionMaterial m(kSell1, WavelengthRange{0.3, 2.5});
   REQUIRE(m.wavelength_range_um() == WavelengthRange{0.3, 2.5});
   REQUIRE(m.formula() == rtt::material::DispersionFormula{kSell1});
-  // Real index, no absorption; temperature and pressure are ignored until #25.
+  // Real index, no absorption; user formulas ignore temperature and pressure (#25 P5).
   for (const double t : {-20.0, 20.0, 80.0}) {
     for (const double p : {0.0, 1.0, 2.0}) {
       const auto n = m.index(1.0, t, p);

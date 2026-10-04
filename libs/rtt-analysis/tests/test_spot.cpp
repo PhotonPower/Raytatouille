@@ -104,7 +104,10 @@ TEST_CASE("polychromatic spot uses the normalised wavelength weights", "[spot]")
   // Constant index: all wavelengths give the same spot, so the polychromatic statistics equal
   // the monochromatic ones, while every point carries w_lambda / sum(w) = 1/4 or 3/4. The
   // weighted centroid itself is checked by hand in "spot statistics".
+  // Constant index also for the surroundings: the file's AIR (Ciddor since #25) is dispersive,
+  // so VACUUM is used here.
   System s = load("m1/singlet_const.rtt.json");
+  s.environment.medium = "VACUUM";
   s.wavelengths = {{0.4861, 1.0, false}, {0.5876, 3.0, true}};
   const MaterialLibrary lib;
   const CompiledSystem cs = compile(s, lib);
