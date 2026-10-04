@@ -45,6 +45,7 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 | 0015 | `rtt::math::Real` umfasst nur `double` (später Dual-Zahlen) |
 | 0016 | `CompiledSystem` in eigener Bibliothek `rtt-compile`; feste Reihenfolge in der Schicht Tracing |
 | 0017 | Kittglieder: Material je Segment (`Lens`, `Plate`), Schema 0.2 |
+| 0018 | Python-Build- und Testwerkzeuge (nanobind, scikit-build-core, numpy, pytest, mypy) über `pyproject.toml` statt vcpkg |
 
 **Konventionen (verbindlich für alle Bibliotheken)**
 
@@ -59,11 +60,11 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 
 ## Systemübersicht
 
-15 CMake-Bibliotheken bzw. -Programme in sieben Schichten. Jede darf nur Bibliotheken aus tieferen Schichten verwenden. Einzige Ausnahme ist die Schicht Tracing mit der festen Reihenfolge `rtt-compile` < `rtt-paraxial` < `rtt-trace`: Dort darf eine Bibliothek zusätzlich die in dieser Reihenfolge vor ihr stehenden verwenden (ADR 0016).
+15 CMake-Bibliotheken bzw. -Programme in sieben Schichten. Jede darf nur Bibliotheken aus tieferen Schichten verwenden. Ausnahmen: die Schicht Tracing mit der festen Reihenfolge `rtt-compile` < `rtt-paraxial` < `rtt-trace`, dort darf eine Bibliothek zusätzlich die in dieser Reihenfolge vor ihr stehenden verwenden (ADR 0016); in der Schicht Schnittstellen dürfen `rtt-py` und `apps/rtt-cli` `rtt-io` verwenden (Dateien lesen und schreiben).
 
 | Schicht | Bibliotheken | Status |
 | --- | --- | --- |
-| Schnittstellen | `rtt-py` (Python-API), `apps/rtt-cli` (Kommandozeile), `rtt-io` (Dateien) | `rtt-cli`, `rtt-io`: M0 |
+| Schnittstellen | `rtt-py` (Python-API), `apps/rtt-cli` (Kommandozeile), `rtt-io` (Dateien) | `rtt-cli`, `rtt-io`: M0; `rtt-py`: M2 |
 | Workflows | `rtt-optim`, `rtt-tolerance` | M5, M7 |
 | Auswertung | `rtt-analysis` | M2, M6 |
 | Tracing | `rtt-compile` < `rtt-paraxial` < `rtt-trace` | M1 |
@@ -301,6 +302,8 @@ rt.optim.local(sys, mf, max_iter=200)
 sys.save("doublet_opt.rtt.json")
 ```
 
+**Stand M2 (#32):** Paket `raytatouille` unter `libs/rtt-py` (C++ in `src/`, Paket in `python/raytatouille/`, Tests in `tests/`), Erweiterung `raytatouille._core` mit nanobind, Build mit scikit-build-core (`pyproject.toml` im Wurzelverzeichnis, `pip install .`) oder in der CMake-Baumstruktur mit `RTT_BUILD_PYTHON=ON` (Presets `ci-linux-python`, `ci-windows-python`; Werkzeuge vorher mit `pip install -r libs/rtt-py/tests/requirements.txt`, ADR 0018). `pip install .` braucht die C++-Abhängigkeiten aus vcpkg über `CMAKE_ARGS="-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows"` (Linux: Triplet `x64-linux` oder Systempakete). Unter Windows nicht aus einer Visual-Studio-Entwicklerumgebung für x86 bauen: scikit-build-core übernimmt `Platform=x86` bzw. `VSCMD_ARG_TGT_ARCH=x86` und konfiguriert dann Win32, vcpkg baut alle Abhängigkeiten für x86 neu, und das Linken gegen die 64-Bit-Python scheitert; vorher `Platform` und `VSCMD_ARG_TGT_ARCH` auf `x64` setzen oder eine normale Shell nehmen. Vorhanden: `rt.load`, `rt.save`, `rt.validate`, `rt.System` (Name und Umgebung änderbar, volles Editieren folgt), `rt.MaterialLibrary` (`add_catalog`, `index`), `rt.compile`, `rt.paraxial.first_order`, `rt.trace.make_rays` und `rt.trace.trace` (Pfad als Name oder Index, Wellenlänge `None` = Referenz, `threads` ohne Einfluss auf das Ergebnis). `RayBatch`-Spalten sind beschreibbare NumPy-Views ohne Kopie; jede View hält den Batch am Leben, die Größe ist aus Python fest (kein `resize`), `prt_matrices()` ist eine dokumentierte Kopie; während `trace` ist das GIL freigegeben. C++-Fehler kommen als Klassen aus `raytatouille.errors` (`RaytatouilleError` als Basis; `ParseError` mit `pointer`, `CompileError` mit `diagnostics`, `ParaxialError`, `UnknownMaterial`, `AgfError` mit `file` und `line`) mit der C++-Meldung; Dateifehler als `OSError`, sonst ValueError/IndexError wie in nanobind. Die Typ-Stubs `_core.pyi` erzeugt `nanobind.stubgen` beim Build. Tests: Roundtrip Datei → Python → Datei bitgleich für alle Referenzdateien; Ergebnisse aus Python bitgleich zu C++ über das Testprogramm `rtt_py_reference` aus demselben CMake-Baum (1 und 4 Threads); mypy --strict auf die Tests.
+
 **CLI (`rtt`):** vorhanden: `rtt validate`, `rtt format [--check]`, `rtt --version`. Geplant: `rtt trace`, `rtt analyze`, `rtt optimize`, `rtt import <zmx> <rtt.json>`.
 
 ## Validierung und Tests
@@ -328,7 +331,7 @@ Ein Feature ist erst fertig, wenn es mindestens einen Referenztest gegen eine un
 
 **Teststufen:** Unit-Tests mit Catch2 v3 in jeder Bibliothek; Property-Tests (RapidCheck, ab M1) für Energieerhaltung, |dir| = 1, P·k_ein = k_aus, Umkehrbarkeit, Invarianz bei starrer Bewegung; Golden-Tests mit Standardsystemen aus der Literatur; NSC-Tests (M9) gegen analytische Fälle (Lambert-Strahler, Etendue, Integrationskugel, Leistungsbilanz); Benchmarks mit Google Benchmark (Ziel ≥ 5 Mio. Strahl-Flächen-Schnitte pro Sekunde und Kern bei Sphären inkl. Polarisation, Regression > 10 % blockiert); Schema-Tests mit pytest.
 
-**CI (`.github/workflows/ci.yml`):** clang-format, JSON-Schema, Linux GCC (Release), Linux Clang mit clang-tidy (Release), Linux Clang mit ASan/UBSan (Debug), Windows MSVC (Release); Warnungen sind Fehler.
+**CI (`.github/workflows/ci.yml`):** clang-format, JSON-Schema, Linux GCC (Release), Linux Clang mit clang-tidy (Release), Linux Clang mit ASan/UBSan (Debug), Windows MSVC (Release); Warnungen sind Fehler. Job Python (ADR 0018): Paket `raytatouille` in der CMake-Baumstruktur (Presets `ci-linux-python` mit Python 3.10 und 3.13, `ci-windows-python` mit 3.13), pytest einschließlich Bitvergleich mit C++ und mypy --strict über ctest; je OS ein Smoke-Test mit `pip install .`.
 
 ## Roadmap und Abnahmekriterien
 
