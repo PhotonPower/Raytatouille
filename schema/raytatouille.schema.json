@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/PhotonPower/Raytatouille/schema/raytatouille.schema.json",
-  "title": "Raytatouille system file (.rtt.json), schema 0.1",
-  "description": "Units: lengths mm, wavelengths um, angles in degree where the key ends in _deg. Parsing in rtt-io is the reference; this schema must accept exactly what rtt-io accepts structurally.",
+  "title": "Raytatouille system file (.rtt.json), schema 0.2",
+  "description": "Units: lengths mm, wavelengths um, angles in degree where the key ends in _deg. Parsing in rtt-io is the reference; this schema must accept exactly what rtt-io accepts structurally for the current schema version. rtt-io migrates older files (0.1); run rtt format before checking them against this schema.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "units", "wavelengths", "aperture", "fields", "root", "paths"],
   "properties": {
-    "schema_version": {"type": "string", "pattern": "^0\\.1\\.[0-9]+$"},
+    "schema_version": {"type": "string", "pattern": "^0\\.2\\.[0-9]+$"},
     "name": {"type": "string"},
     "units": {
       "type": "object",
@@ -127,9 +127,16 @@
         "type": {"enum": ["lens", "mirror", "plate", "thin_element", "stop", "detector"]},
         "name": {"type": "string"},
         "pose": {"$ref": "#/$defs/pose"},
-        "material": {"type": "string"},
+        "material": {"$ref": "#/$defs/material"},
         "surfaces": {"type": "array", "items": {"$ref": "#/$defs/surface"}}
       }
+    },
+    "material": {
+      "description": "Catalog reference CATALOG:NAME. A string is one material for all segments; an array has one entry per segment (segment i between surfaces i and i+1, N surfaces give N-1 entries, lens and plate only; counts are checked by rtt validate).",
+      "oneOf": [
+        {"type": "string"},
+        {"type": "array", "items": {"type": "string"}, "minItems": 1}
+      ]
     },
     "surface": {
       "type": "object",

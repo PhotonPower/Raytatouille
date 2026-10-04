@@ -57,3 +57,43 @@ def _broken(mutate):
 )
 def test_structural_errors_are_rejected(mutate):
     assert not VALIDATOR.is_valid(_broken(mutate))
+
+
+def _lens(doc):
+    return doc["root"]["children"][1]
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda d: _lens(d).update(material="SCHOTT:N-BK7"),
+        lambda d: _lens(d).update(material=["SCHOTT:N-BK7"]),
+        lambda d: _lens(d).update(material=["SCHOTT:N-BK7", "SCHOTT:F2"]),
+    ],
+    ids=["material-shorthand", "material-list-one", "material-list-two"],
+)
+def test_segment_materials_are_accepted(mutate):
+    VALIDATOR.validate(_broken(mutate))
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda d: _lens(d).update(material=[]),
+        lambda d: _lens(d).update(material=["SCHOTT:N-BK7", 2]),
+        lambda d: _lens(d).update(material=[["SCHOTT:N-BK7"]]),
+        lambda d: _lens(d).update(material={"name": "SCHOTT:N-BK7"}),
+        lambda d: _lens(d).update(material=True),
+        lambda d: d.update(schema_version="0.1.0"),
+    ],
+    ids=["material-list-empty", "material-list-number", "material-list-nested",
+         "material-object", "material-bool", "old-version"],
+)
+def test_segment_material_errors_are_rejected(mutate):
+    assert not VALIDATOR.is_valid(_broken(mutate))
+
+
+def test_achromat_reference_uses_a_material_list():
+    doc = load(ROOT / "tests" / "reference" / "m2" / "achromat.rtt.json")
+    assert _lens(doc)["material"] == ["SCHOTT:N-BK7", "SCHOTT:F2"]
+    VALIDATOR.validate(doc)

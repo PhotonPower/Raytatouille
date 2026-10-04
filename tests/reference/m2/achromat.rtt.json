@@ -1,6 +1,6 @@
 {
   "schema_version": "0.2.0",
-  "name": "Plano-convex singlet f = 100 mm, constant index 1.5168",
+  "name": "Cemented achromat N-BK7/F2, f about 100 mm",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [
     {"um": 0.4861},
@@ -33,18 +33,29 @@
         "type": "lens",
         "name": "L1",
         "pose": {"position": [0.0, 0.0, 5.0]},
-        "material": "CONST:1.5168",
+        "material": ["SCHOTT:N-BK7", "SCHOTT:F2"],
         "surfaces": [
           {
             "id": "L1.S1",
             "shape": {
-              "base": {"type": "conic", "radius": 51.68}
+              "base": {"type": "conic", "radius": 61.5}
             },
             "aperture": {"type": "circular", "radius": 12.7}
           },
           {
             "id": "L1.S2",
-            "pose": {"position": [0.0, 0.0, 4.0]},
+            "pose": {"position": [0.0, 0.0, 6.0]},
+            "shape": {
+              "base": {"type": "conic", "radius": -35.2}
+            },
+            "aperture": {"type": "circular", "radius": 12.7}
+          },
+          {
+            "id": "L1.S3",
+            "pose": {"position": [0.0, 0.0, 9.0]},
+            "shape": {
+              "base": {"type": "conic", "radius": -136.9}
+            },
             "aperture": {"type": "circular", "radius": 12.7}
           }
         ]
@@ -52,7 +63,7 @@
       {
         "type": "detector",
         "name": "image",
-        "pose": {"position": [0.0, 0.0, 106.363]},
+        "pose": {"position": [0.0, 0.0, 110.614]},
         "surfaces": [
           {"id": "IMG"}
         ]
