@@ -18,12 +18,12 @@ inline constexpr double kSchottReferenceTemperatureC = 20.0;
 
 /// Coefficients of the TD record of an AGF catalogue (in this order), see agf.hpp.
 struct SchottThermalCoefficients {
-  double d0 = 0.0;         ///< 1/K
-  double d1 = 0.0;         ///< 1/K^2
-  double d2 = 0.0;         ///< 1/K^3
-  double e0 = 0.0;         ///< um^2/K
-  double e1 = 0.0;         ///< um^2/K^2
-  double lambda_tk = 0.0;  ///< um
+  double d0 = 0.0;                                                ///< 1/K
+  double d1 = 0.0;                                                ///< 1/K^2
+  double d2 = 0.0;                                                ///< 1/K^3
+  double e0 = 0.0;                                                ///< um^2/K
+  double e1 = 0.0;                                                ///< um^2/K^2
+  double lambda_tk = 0.0;                                         ///< um
   double reference_temperature_c = kSchottReferenceTemperatureC;  ///< T_ref in degC
   bool operator==(const SchottThermalCoefficients&) const = default;
 };
