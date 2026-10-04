@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
+#include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -39,11 +41,13 @@ const fs::path kSchottUtf16 = kCatalogDir / "utf16" / "schott.agf";
 const Sellmeier1Coefficients kNbk7{{1.039612120, 2.317923440e-1, 1.010469450},
                                    {6.000698670e-3, 2.001791440e-2, 1.035606530e2}};
 
-/// Small catalogue with every record type of the format description.
+/// Small catalogue with every record type of the format description. GLASS-A is invented. B270
+/// is copied (NM and CD only) from the free SCHOTT catalogue "schott glasses preferred and
+/// special June-2025-B.AGF" (schott.com, downloaded 2026-10-04; docs/quellen.md, #24).
 constexpr std::string_view kText =
     "CC test catalogue\n"
     "! optional comment line\n"
-    "NM GLASS-A 2 517642.251 1.5168 64.17 0 1\n"
+    "NM GLASS-A 2 500600.000 1.5 60.0 0 1\n"
     "GC some comment with spaces\n"
     "ED 7.1 8.3 2.51 -0.0009 0\n"
     "CD 1.0 0.01 0.2 0.02 1.0 100.0 0 0\n"
@@ -55,14 +59,17 @@ constexpr std::string_view kText =
     "IT 0.31 0.25 25\n"
     "BD 0.5 3.0 -0.5 -3.5\n"
     "\n"
-    "NM GLASS-B 1 1 1.523080 58.571369 0 3 0\n"
-    "CD 2.286575 -0.008733458 0.011742884 0.00029041756 -1.2506695e-05 9.2646253e-07 0 0 0 0\n";
+    "NM B270 1 1 1.523080 58.571369 0 3 0\n"
+    "CD 2.286575000E+000 -8.733458200E-003 1.174288400E-002 2.904175600E-004 -1.250669500E-005 "
+    "9.264625300E-007 0.000000000E+000 0.000000000E+000 0.000000000E+000 0.000000000E+000\n";
 
 /// Writes a temporary catalogue file and removes it at the end of the scope.
 class TempCatalog {
  public:
   TempCatalog(const std::string& directory, const std::string& file, const std::string& text)
-      : dir_(fs::temp_directory_path() / directory) {
+      : dir_(fs::temp_directory_path() /
+             (directory + "_" +
+              std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()))) {
     fs::remove_all(dir_);
     fs::create_directories(dir_);
     std::ofstream(dir_ / file, std::ios::binary) << text;
@@ -137,8 +144,8 @@ TEST_CASE("AGF records NM, CD, LD, TD and ED are read; others are skipped", "[ag
     const AgfGlass& a = cat.glasses[0];
     REQUIRE(a.name == "GLASS-A");
     REQUIRE(a.formula == 2);
-    REQUIRE(a.nd == 1.5168);
-    REQUIRE(a.vd == 64.17);
+    REQUIRE(a.nd == 1.5);
+    REQUIRE(a.vd == 60.0);
     REQUIRE(a.line == 3);
     REQUIRE(a.coefficients == std::vector<double>{1.0, 0.01, 0.2, 0.02, 1.0, 100.0, 0.0, 0.0});
     REQUIRE(a.range == WavelengthRange{0.3, 2.5});
@@ -146,7 +153,7 @@ TEST_CASE("AGF records NM, CD, LD, TD and ED are read; others are skipped", "[ag
     REQUIRE(a.extra == std::vector<double>{7.1, 8.3, 2.51, -0.0009, 0.0});
 
     const AgfGlass& b = cat.glasses[1];
-    REQUIRE(b.name == "GLASS-B");
+    REQUIRE(b.name == "B270");
     REQUIRE(b.formula == 1);
     REQUIRE(b.line == 15);
     REQUIRE(b.coefficients.size() == 10);
@@ -172,7 +179,11 @@ TEST_CASE("malformed AGF lines are errors with file and line", "[agf]") {
       {"CC c\nNM A 2 1 1.5 60\nCD 1 2 3 4 5 6\nCD 1 2 3 4 5 6\n", 4},  // second CD
       {"CC c\nNM A 2 1 1.5 60\nLD 0.3 2.5\n", 2},                      // glass without CD
       {"CC c\nNM A 2 1 1.5 60\nCD 1 2 3 4 5 6\nNM A 2 1 1.5 60\nCD 1 2 3 4 5 6\n", 4},  // twice
-      {"CC c\nNM A 2 1 1.5 60\nCD 1 2 3 4 5 6\nNM\n", 4},  // NM without name
+      {"CC c\nNM A 2 1 1.5 60\nCD 1 2 3 4 5 6\nNM\n", 4},               // NM without name
+      {"CC c\nNM A 2 1 1.5 60\nCD\n", 3},                               // CD without coefficients
+      {"CC c\nNM A 2 1 1.5 60\nCD 1 2\nLD 0.3 2.5\nLD 0.4 2.0\n", 5},   // second LD
+      {"CC c\nNM A 2 1 1.5 60\nCD 1 2\nTD 1 2 3 4 5 6 20\nTD 1\n", 5},  // second TD
+      {"CC c\nNM A 2 1 1.5 60\nCD 1 2\nED 1 2 3 4 0\nED 1\n", 5},       // second ED
   };
   for (const auto& c : cases) {
     INFO(c.text);
@@ -200,6 +211,34 @@ TEST_CASE("AGF formula 1 is Schott a0..a5, formula 2 is Sellmeier 1 K1 L1 K2 L2 
   g.coefficients = {1, 2, 3, 4};
   REQUIRE(rtt::material::agf_formula(g, "w") ==
           rtt::material::DispersionFormula{Sellmeier1Coefficients{{1, 3, 0}, {2, 4, 0}}});
+}
+
+TEST_CASE("CD order of formulas 1 and 2 reproduces N(d) and V(d) of the NM record", "[agf]") {
+  // Reference for the coefficient order (docs/quellen.md, #24): with the order a0..a5
+  // (formula 1, B270) and K1 L1 K2 L2 K3 L3 (formula 2, N-BK7 and F2), the catalogue's own N(d)
+  // and V(d) come out. Abbe number V(d) = (n_d - 1) / (n_F - n_C) with n_d at 587.56 nm, n_F at
+  // 486.13 nm and n_C at 656.27 nm (SCHOTT TIE-29, April 2005, p. 1 and Eq. (2.1-1)).
+  // Tolerances: half a unit of the last digit in the NM record (n_d: 5e-6 covers 1.5168;
+  // V(d): 0.005). A wrong order is far off (B270 with a1/a2 swapped: V(d) = -96; N-BK7 with
+  // K1 K2 K3 L1 L2 L3: V(d) = 26.8).
+  constexpr double kD = 0.58756;
+  constexpr double kF = 0.48613;
+  constexpr double kC = 0.65627;
+  const auto check = [&](const AgfGlass& glass, const std::string& catalog) {
+    INFO(glass.name);
+    const CatalogMaterial m(glass, catalog);
+    const auto n = [&](double wl) { return m.index(wl, 20.0, 1.0).real(); };
+    REQUIRE(std::abs(n(kD) - glass.nd) <= 5e-6);
+    REQUIRE(std::abs((n(kD) - 1.0) / (n(kF) - n(kC)) - glass.vd) <= 0.005);
+  };
+  const AgfCatalog text = parse_agf(kText, "TEST", "test.agf");
+  REQUIRE(text.glasses[1].formula == 1);
+  check(text.glasses[1], "TEST");  // B270
+  const AgfCatalog schott = load_agf(kSchottFile);
+  for (const AgfGlass& glass : schott.glasses) {
+    REQUIRE(glass.formula == 2);
+    check(glass, schott.name);  // N-BK7, F2
+  }
 }
 
 TEST_CASE("unsupported AGF formula numbers are a clear error", "[agf]") {
@@ -263,6 +302,13 @@ TEST_CASE("catalogue glass gives bit-identical values to the direct formula", "[
   REQUIRE(nbk7.wavelength_range_um() == WavelengthRange{0.3, 2.5});
   REQUIRE(nbk7.glass().name == "N-BK7");
   REQUIRE(nbk7.glass().thermal.has_value());  // stored for #25
+
+  // The constructor checks the LD range of glasses built by hand.
+  AgfGlass bad = cat.glasses[0];
+  bad.range = WavelengthRange{2.5, 0.3};
+  REQUIRE_THROWS_AS(CatalogMaterial(bad, "SCHOTT"), std::invalid_argument);
+  bad.range = WavelengthRange{0.0, 2.5};
+  REQUIRE_THROWS_AS(CatalogMaterial(bad, "SCHOTT"), std::invalid_argument);
 }
 
 TEST_CASE("add_catalog: resolve KATALOG:NAME, same object, thread-safe", "[agf]") {

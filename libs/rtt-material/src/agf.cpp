@@ -1,5 +1,6 @@
 #include "rtt/material/agf.hpp"
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <cmath>
@@ -132,19 +133,25 @@ class Parser {
       AgfGlass& g = current(m, line_no);
       if (has_cd_) fail(line_no, "second CD record for glass " + g.name);
       g.coefficients = numbers(items, line_no);
+      if (g.coefficients.empty()) fail(line_no, "CD record without coefficients");
       if (g.coefficients.size() > 10) fail(line_no, "CD has more than 10 coefficients");
       has_cd_ = true;
     } else if (m == "LD") {
       AgfGlass& g = current(m, line_no);
+      if (g.range) fail(line_no, "second LD record for glass " + g.name);
       const std::vector<double> v = numbers(items, line_no);
       if (v.size() != 2 || !(v[0] > 0.0) || !(v[0] < v[1])) {
         fail(line_no, "LD needs <min lambda> < <max lambda> in um, both > 0");
       }
       g.range = WavelengthRange{v[0], v[1]};
     } else if (m == "TD") {
-      current(m, line_no).thermal = numbers(items, line_no);
+      AgfGlass& g = current(m, line_no);
+      if (g.thermal) fail(line_no, "second TD record for glass " + g.name);
+      g.thermal = numbers(items, line_no);
     } else if (m == "ED") {
-      current(m, line_no).extra = numbers(items, line_no);
+      AgfGlass& g = current(m, line_no);
+      if (g.extra) fail(line_no, "second ED record for glass " + g.name);
+      g.extra = numbers(items, line_no);
     } else if (m == "GC" || m == "MD" || m == "OD" || m == "IT" || m == "BD") {
       (void)current(m, line_no);  // described in the format, not used by Raytatouille
     } else {
@@ -265,7 +272,16 @@ DispersionFormula agf_formula(const AgfGlass& glass, const std::string& where) {
 CatalogMaterial::CatalogMaterial(AgfGlass glass, const std::string& catalog)
     : glass_(std::move(glass)),
       formula_(
-          agf_formula(glass_, "catalog " + catalog + ", line " + std::to_string(glass_.line))) {}
+          agf_formula(glass_, "catalog " + catalog + ", line " + std::to_string(glass_.line))) {
+  if (glass_.range) {
+    const WavelengthRange& r = *glass_.range;
+    if (!std::isfinite(r.min_um) || !std::isfinite(r.max_um) || !(r.min_um > 0.0) ||
+        !(r.min_um < r.max_um)) {
+      throw std::invalid_argument("CatalogMaterial: glass " + glass_.name + " of catalog " +
+                                  catalog + ": the LD range must be finite with 0 < min < max");
+    }
+  }
+}
 
 math::Complex CatalogMaterial::index(double wavelength_um,
                                      double /*temperature_c*/,

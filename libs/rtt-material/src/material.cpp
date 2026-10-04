@@ -74,8 +74,9 @@ std::shared_ptr<const Material> make_material(std::string_view reference) {
   }
   throw UnknownMaterial(
       "unknown material reference '" + std::string(reference) +
-      "': supported are VACUUM, AIR, CONST:<n>, CONST:<n>,<kappa> and "
-      "materials registered with MaterialLibrary::add; glass catalogs follow in M2");
+      "': supported are VACUUM, AIR, CONST:<n>, CONST:<n>,<kappa>, catalogue glasses as "
+      "KATALOG:NAME after MaterialLibrary::add_catalog and materials registered with "
+      "MaterialLibrary::add");
 }
 
 }  // namespace
@@ -162,7 +163,7 @@ void MaterialLibrary::add_catalog(const std::filesystem::path& path) {
         (void)agf_formula(glass, cat.file + ":" + std::to_string(glass.line));
         entry.material = std::make_shared<const CatalogMaterial>(glass, cat.name);
       } catch (const std::invalid_argument& e) {
-        entry.message = "unknown material reference '" + entry.reference + "': " + e.what();
+        entry.message = "unsupported material reference '" + entry.reference + "': " + e.what();
       }
       entries.push_back(std::move(entry));
     }

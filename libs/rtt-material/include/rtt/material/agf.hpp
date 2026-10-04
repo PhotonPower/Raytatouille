@@ -67,7 +67,9 @@ struct AgfCatalog {
 };
 
 /// Converts raw file bytes to UTF-8 text: UTF-16LE with byte order mark is converted, a UTF-8
-/// byte order mark is removed, anything else (ANSI, UTF-8) is passed on unchanged.
+/// byte order mark is removed, anything else (ANSI, UTF-8) is passed on unchanged. ANSI bytes
+/// above 0x7F (code page characters in comments) are therefore not valid UTF-8 afterwards; the
+/// parser only interprets ASCII (mnemonics, names, numbers), so this affects comments only.
 /// @param file file name for error messages
 /// @throws AgfError for UTF-16BE or malformed UTF-16
 [[nodiscard]] std::string decode_agf_text(std::string_view bytes, const std::string& file);
@@ -77,7 +79,8 @@ struct AgfCatalog {
 /// @param name catalogue name stored in the result
 /// @param file file name for error messages
 /// @throws AgfError with file and line for malformed or unknown records, records before the
-///         first NM, missing CD, duplicate glass names and invalid numbers
+///         first NM, missing or empty CD, duplicate CD/LD/TD/ED records of a glass, duplicate
+///         glass names and invalid numbers
 [[nodiscard]] AgfCatalog parse_agf(std::string_view text, std::string name, std::string file);
 
 /// Reads, decodes and parses an AGF file; the catalogue name is the file name without
@@ -90,8 +93,10 @@ struct AgfCatalog {
 /// are ignored until then. The AGF data (including TD and ED) stay available via glass().
 class CatalogMaterial final : public Material {
  public:
-  /// @throws std::invalid_argument if the formula number is not supported or the coefficients
-  ///         or the range are invalid
+  /// @param glass   glass data, e.g. from parse_agf
+  /// @param catalog catalogue name for messages
+  /// @throws std::invalid_argument if the formula number is not supported (see agf_formula) or
+  ///         the LD range is not finite with 0 < min < max
   CatalogMaterial(AgfGlass glass, const std::string& catalog);
 
   /// n(lambda) + 0i of the glass formula; see Material::index.
@@ -115,9 +120,10 @@ class CatalogMaterial final : public Material {
 };
 
 /// Builds the dispersion formula of a glass. Supported: formula 1 (Schott, CD = a0..a5) and
-/// formula 2 (Sellmeier 1, CD = K1 L1 K2 L2 K3 L3).
+/// formula 2 (Sellmeier 1, CD = K1 L1 K2 L2 K3 L3). Missing trailing coefficients count as 0
+/// (the format allows "up to 10").
 /// @param where text naming catalogue, file and line for messages
-/// @throws std::invalid_argument for other formula numbers (see #42) or too few coefficients
+/// @throws std::invalid_argument for other formula numbers (see #42)
 [[nodiscard]] DispersionFormula agf_formula(const AgfGlass& glass, const std::string& where);
 
 }  // namespace rtt::material

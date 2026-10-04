@@ -88,7 +88,9 @@ TEST_CASE("SCHOTT:N-BK7 in a system file resolves through an AGF test catalogue"
   const CompiledSystem cs = rtt::compile::compile(s, lib);
   const auto& glass = cs.media()[medium_index(cs, "SCHOTT:N-BK7")];
   // Same value as the catalogue material itself; n_d = 1.5168 in the SCHOTT data sheet.
-  const auto expected = lib.resolve("SCHOTT:N-BK7")->index(0.5876, 20.0, 1.0);
+  const auto expected = lib.resolve("SCHOTT:N-BK7")
+                            ->index(cs.wavelengths_um()[cs.reference_wavelength()],
+                                    s.environment.temperature_c, s.environment.pressure_atm);
   REQUIRE(glass.index[cs.reference_wavelength()] == expected);
   REQUIRE(std::abs(expected.real() - 1.5168) < 5e-6);
 }
