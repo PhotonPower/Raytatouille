@@ -17,9 +17,9 @@ using rtt::geom::Intersection;
 using Vec3 = rtt::math::Vec3T<double>;
 
 // General intersection (docs/architecture.md, Physik-Module, Geometrie): start at the analytic
-// hit of the base conic, then Newton on F(t) = z(t) - sag(x(t), y(t)) with tolerance 1e-12 mm and
-// at most 30 iterations, otherwise NoConvergence. Newton's method: e.g. Press et al.,
-// Numerical Recipes, 3rd ed., Sec. 9.4.
+// hit of the base conic, then Newton on F(t) = z(t) - sag(x(t), y(t)); converged at |F| <= 1e-12 mm
+// or at the rounding limit |dt| <= 8 eps (1 + |t| + |o|), at most 30 iterations, otherwise
+// NoConvergence. Newton's method: e.g. Press et al., Numerical Recipes, 3rd ed., Sec. 9.4.
 
 namespace {
 bool near(double a, double b, double tol) {

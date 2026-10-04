@@ -42,10 +42,12 @@ inline constexpr double kDefaultTMin = 1e-9;
 /// in mm (docs/architecture.md, Physik-Module, Geometrie), or when the last step reached the
 /// rounding limit |dt| <= kNewtonStepFactor * eps * (1 + |t| + |origin|) with eps the machine
 /// epsilon. The second criterion covers far ray origins (|origin| ~ 1e5 mm), for which the
-/// rounding error of origin + t * direction alone exceeds kNewtonTolerance.
+/// rounding error of origin + t * direction alone exceeds kNewtonTolerance. Stopping on the
+/// step size: Press et al., Numerical Recipes, 3rd ed., Sec. 9.4.
 inline constexpr double kNewtonTolerance = 1e-12;
 
-/// Factor of the rounding-limit step criterion, see kNewtonTolerance.
+/// Factor of the rounding-limit step criterion, see kNewtonTolerance. A safety factor over the
+/// rounding error of a few operations, not derived.
 inline constexpr double kNewtonStepFactor = 8.0;
 
 /// Maximum number of Newton steps before the status is NoConvergence (docs/architecture.md).
@@ -160,8 +162,8 @@ template <rtt::math::Real T>
 /// @param direction direction in local coordinates; must have length 1 so that t is in mm
 /// @param t_min     smallest accepted ray parameter in mm
 /// @return Hit (converged as described at kNewtonTolerance) with the number of Newton steps;
-///         Missed if no start
-///         point exists or the start lies outside the shape's domain; NoConvergence after
+///         Missed if no start point exists or the start lies outside the shape's domain;
+///         NoConvergence after
 ///         kMaxNewtonIterations steps, if an iterate leaves the domain, if F or the gradient is
 ///         not finite, if F'(t) = 0, or if Newton converges onto a crossing with t <= t_min.
 template <rtt::math::Real T>
