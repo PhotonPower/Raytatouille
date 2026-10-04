@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 #include "rtt/material/dispersion.hpp"
@@ -21,6 +22,9 @@ using rtt::material::Sellmeier5Coefficients;
 using rtt::material::WavelengthRange;
 
 namespace {
+
+constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
+constexpr double kInf = std::numeric_limits<double>::infinity();
 
 constexpr double kRel = 1e-12;  // issue #23
 
@@ -120,8 +124,8 @@ TEST_CASE("DispersionMaterial rejects invalid ranges", "[dispersion]") {
   REQUIRE_THROWS_AS(make(-0.5, 1.0), std::invalid_argument);
   REQUIRE_THROWS_AS(make(1.0, 1.0), std::invalid_argument);
   REQUIRE_THROWS_AS(make(2.0, 1.0), std::invalid_argument);
-  REQUIRE_THROWS_AS(make(0.3, INFINITY), std::invalid_argument);
-  REQUIRE_THROWS_AS(make(NAN, 1.0), std::invalid_argument);
+  REQUIRE_THROWS_AS(make(0.3, kInf), std::invalid_argument);
+  REQUIRE_THROWS_AS(make(kNaN, 1.0), std::invalid_argument);
   REQUIRE_NOTHROW(make(0.3, 2.5));
 }
 

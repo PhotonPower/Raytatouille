@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -14,6 +15,9 @@ using rtt::material::WavelengthRange;
 using rtt::math::Complex;
 
 namespace {
+
+constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
+constexpr double kInf = std::numeric_limits<double>::infinity();
 
 const std::vector<IndexSample> kSamples{{0.4, 1.6, 0.01}, {0.5, 1.55, 0.0}, {0.8, 1.5, 0.002}};
 
@@ -63,13 +67,13 @@ TEST_CASE("tabulated data are validated", "[tabulated]") {
     REQUIRE_THROWS_AS(TabulatedMaterial(std::move(s)), std::invalid_argument);
   };
   bad({});
-  bad({{0.5, 1.5, 0.0}});                        // fewer than 2 samples
-  bad({{0.5, 1.5, 0.0}, {0.5, 1.6, 0.0}});       // not strictly increasing
-  bad({{0.6, 1.5, 0.0}, {0.5, 1.6, 0.0}});       // decreasing
-  bad({{0.0, 1.5, 0.0}, {0.5, 1.6, 0.0}});       // wavelength <= 0
-  bad({{0.4, 0.0, 0.0}, {0.5, 1.6, 0.0}});       // n <= 0
-  bad({{0.4, 1.5, -0.1}, {0.5, 1.6, 0.0}});      // kappa < 0
-  bad({{0.4, NAN, 0.0}, {0.5, 1.6, 0.0}});       // not finite
-  bad({{0.4, 1.5, 0.0}, {INFINITY, 1.6, 0.0}});  // not finite
+  bad({{0.5, 1.5, 0.0}});                    // fewer than 2 samples
+  bad({{0.5, 1.5, 0.0}, {0.5, 1.6, 0.0}});   // not strictly increasing
+  bad({{0.6, 1.5, 0.0}, {0.5, 1.6, 0.0}});   // decreasing
+  bad({{0.0, 1.5, 0.0}, {0.5, 1.6, 0.0}});   // wavelength <= 0
+  bad({{0.4, 0.0, 0.0}, {0.5, 1.6, 0.0}});   // n <= 0
+  bad({{0.4, 1.5, -0.1}, {0.5, 1.6, 0.0}});  // kappa < 0
+  bad({{0.4, kNaN, 0.0}, {0.5, 1.6, 0.0}});  // not finite
+  bad({{0.4, 1.5, 0.0}, {kInf, 1.6, 0.0}});  // not finite
   REQUIRE_NOTHROW(TabulatedMaterial({{0.4, 1.5, 0.0}, {0.5, 1.6, 0.0}}));
 }
