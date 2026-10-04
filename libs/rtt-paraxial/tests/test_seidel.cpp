@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <cmath>
+#include <memory>
 #include <numbers>
 #include <optional>
 #include <string>
@@ -374,6 +375,59 @@ TEST_CASE("chromatic terms of a thin lens: C_L = y^2 phi / V, C_T = y y_bar phi 
     const SeidelTerms t = surface_seidel(m);
     REQUIRE(t.c_l == 0.0);
     REQUIRE(t.c_t == 0.0);
+  }
+}
+
+TEST_CASE("chromatic terms of a thin lens in a system with a dispersive test material",
+          "[seidel]") {
+  // Same hand formulas as above (C_L = y^2 phi / V, C_T = y y_bar phi / V), now through
+  // seidel() with the media of the compiled system. Test material with
+  // n(lambda) = 1.5 - 0.01 (lambda - 0.5876) / (0.6563 - 0.4861): n_d = 1.5,
+  // dn = n_F - n_C = 0.01, V = (n_d - 1) / dn = 50. Thin lens R1 = 50, R2 = -50 (two surfaces
+  // at z = 0): phi = (n_d - 1)(c1 - c2) = 0.02 / mm. EPD 10 (y = 5 at the lens), field 5 deg.
+  class LinearGlass final : public rtt::material::Material {
+   public:
+    [[nodiscard]] rtt::math::Complex index(double wavelength_um,
+                                           double /*temperature_c*/,
+                                           double /*pressure_atm*/) const override {
+      return {1.5 - 0.01 * (wavelength_um - 0.5876) / (0.6563 - 0.4861), 0.0};
+    }
+  };
+  const double y = 5.0;
+  const double phi = 0.5 * (1.0 / 50.0 + 1.0 / 50.0);
+  const double v = 50.0;
+  const double t = tan_deg(5.0);
+  const auto run = [&](double z_stop, ChromaticPair pair) {
+    System s = base_system();
+    s.wavelengths = {{0.4861, 1.0, false}, {0.5876, 1.0, true}, {0.6563, 1.0, false}};
+    s.aperture = {rtt::model::SystemApertureType::EntrancePupilDiameter, Param(2.0 * y)};
+    s.fields = {rtt::model::FieldType::AngleDeg, {{0.0, 0.0, 1.0}, {0.0, 5.0, 1.0}}};
+    add(s, stop(z_stop, y));
+    Surface s1 = plane_surface("L.S1", 0.0);
+    s1.shape.base = rtt::model::Conic{Param(50.0), Param(0.0)};
+    Surface s2 = plane_surface("L.S2", 0.0);
+    s2.shape.base = rtt::model::Conic{Param(-50.0), Param(0.0)};
+    add(s, Element{"L", ElementKind::Lens, Pose::along_z(0.0), "TEST:LINEAR", {s1, s2}});
+    MaterialLibrary lib;
+    lib.add("TEST:LINEAR", std::make_shared<const LinearGlass>());
+    const CompiledSystem cs = rtt::compile::compile(s, lib);
+    const Seidel res = seidel(cs, PathId{0}, 1, pair);
+    check_sum_and_lagrange(res);
+    return res;
+  };
+  SECTION("stop at the lens: no lateral colour") {
+    const Seidel res = run(0.0, ChromaticPair{0, 2});
+    REQUIRE_THAT(res.sum.c_l, WithinRel(y * y * phi / v, kRel));
+    REQUIRE_THAT(res.sum.c_t, WithinAbs(0.0, 1e-17));
+  }
+  SECTION("stop 20 mm in front: y_bar = 20 tan theta at the lens") {
+    const Seidel res = run(-20.0, ChromaticPair{0, 2});
+    REQUIRE_THAT(res.sum.c_l, WithinRel(y * y * phi / v, kRel));
+    REQUIRE_THAT(res.sum.c_t, WithinRel(y * 20.0 * t * phi / v, kRel));
+    // Reversed pair: dn = n_C - n_F changes the sign of both terms.
+    const Seidel rev = run(-20.0, ChromaticPair{2, 0});
+    REQUIRE_THAT(rev.sum.c_l, WithinRel(-y * y * phi / v, kRel));
+    REQUIRE_THAT(rev.sum.c_t, WithinRel(-y * 20.0 * t * phi / v, kRel));
   }
 }
 
