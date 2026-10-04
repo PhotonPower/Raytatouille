@@ -35,6 +35,7 @@ Beispielsysteme liegen unter `tests/reference/m0/`.
 - [Architekturentscheidungen](docs/adr/README.md)
 - [Regeln für Programmieragenten](AGENTS.md)
 - [Agenten einsetzen (Anleitung)](docs/agenten.md)
+- [Geprüfte Literaturquellen](docs/quellen.md)
 - [Dateiformat (JSON-Schema)](schema/raytatouille.schema.json)
 
 ## Lizenz
