@@ -4,6 +4,14 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
 
 ## [Unreleased]
 
+### Hinzugefügt
+- `rtt-polar` (neue Bibliothek, Schicht Physik, nur `rtt-math`): Fresnel-Amplituden r_s, r_p, t_s, t_p
+  mit Phase für komplexe Indizes ñ = n + iκ, inklusive Totalreflexion (`fresnel`, kanonische Eingabe
+  ξ = Re(ñ_i) sin θ_i; `fresnel_at_angle` für nicht absorbierende Einfallsmedien), Reflexions- und Transmissionsgrade (`fresnel_power`), Normalkomponente mit
+  festem Wurzelzweig, Diattenuation und Phasendifferenz Δ; geprüfte Varianten `fresnel_checked`
+  und `fresnel_power_checked`. Konvention (Convention A, p = k × s) mit Begründung über den
+  idealen Leiter in `docs/architecture.md`; Quelle Byrnes, arXiv:1603.02720 (#56).
+
 ## [0.3.0] – M2 Materialien, Analyse
 
 ### Hinzugefügt
