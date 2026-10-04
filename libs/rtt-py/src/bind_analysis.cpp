@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -66,6 +67,15 @@ void column(nb::class_<C>& cls, const char* name, Get get, const char* doc) {
   cls.def_prop_ro(
       name, [get](const C& c) { return read_only_array<T>(c.points, get); },
       nb::rv_policy::reference, doc);
+}
+
+/// Element i with Python indexing (negative from the end).
+/// @throws std::out_of_range (IndexError) outside -size <= i < size
+template <typename T>
+T at(const std::vector<T>& v, std::ptrdiff_t i) {
+  const auto size = static_cast<std::ptrdiff_t>(v.size());
+  if (i < -size || i >= size) throw std::out_of_range("index out of range");
+  return v[static_cast<std::size_t>(i < 0 ? i + size : i)];
 }
 
 std::uint8_t status_value(trace::RayStatus s) {
@@ -221,7 +231,7 @@ void bind_analysis(nb::module_& m) {
   nb::class_<LongitudinalColour>(
       m, "LongitudinalColour",
       "Longitudinal colour: focus(first) - focus(second) along the image-space propagation, mm.")
-      .def_ro("pair", &LongitudinalColour::pair)
+      .def_ro("pair", &LongitudinalColour::pair, nb::rv_policy::copy, "Pair used (a copy).")
       .def_prop_ro("foci", [](const LongitudinalColour& l) { return Foci{l.foci}; })
       .def_ro("paraxial", &LongitudinalColour::paraxial, "Paraxial difference, mm.")
       .def_ro("real", &LongitudinalColour::real, "Difference of the real zone rays, mm.");
@@ -235,7 +245,8 @@ void bind_analysis(nb::module_& m) {
 
   nb::class_<DistortionPoint>(m, "DistortionPoint", "Distortion at one field value.")
       .def_ro("fraction", &DistortionPoint::fraction, "Relative field.")
-      .def_ro("field", &DistortionPoint::field, "Field value in the system's field units.")
+      .def_ro("field", &DistortionPoint::field, nb::rv_policy::copy,
+              "Field value in the system's field units (a copy).")
       .def_ro("real_height", &DistortionPoint::real_height, "Signed real chief-ray height, mm.")
       .def_ro("paraxial_height", &DistortionPoint::paraxial_height,
               "Signed paraxial chief-ray height at the image-surface vertex plane, mm.")
@@ -244,7 +255,8 @@ void bind_analysis(nb::module_& m) {
       m, "DistortionSweep",
       "Distortion over the field sweep (relative field 0 ... 1 along +y of the largest field).");
   distortion_sweep.def(
-      "__getitem__", [](const DistortionSweep& d, std::size_t i) { return d.points.at(i); }, "i"_a);
+      "__getitem__", [](const DistortionSweep& d, std::ptrdiff_t i) { return at(d.points, i); },
+      "i"_a);
   column<double>(
       distortion_sweep, "fraction", [](const DistortionPoint& p) { return p.fraction; },
       "Relative field (copy).");
@@ -268,14 +280,15 @@ void bind_analysis(nb::module_& m) {
       "Tangential and sagittal focus at one field value, from the image-surface vertex along the "
       "image-space propagation, mm.")
       .def_ro("fraction", &FieldCurvaturePoint::fraction)
-      .def_ro("field", &FieldCurvaturePoint::field)
+      .def_ro("field", &FieldCurvaturePoint::field, nb::rv_policy::copy,
+              "Field value in the system's field units (a copy).")
       .def_ro("tangential", &FieldCurvaturePoint::tangential)
       .def_ro("sagittal", &FieldCurvaturePoint::sagittal)
       .def_ro("astigmatism", &FieldCurvaturePoint::astigmatism, "tangential - sagittal, mm.");
   auto field_curvature_sweep =
       columns<FieldCurvatureSweep>(m, "FieldCurvatureSweep", "Field curvature over the sweep.");
   field_curvature_sweep.def(
-      "__getitem__", [](const FieldCurvatureSweep& d, std::size_t i) { return d.points.at(i); },
+      "__getitem__", [](const FieldCurvatureSweep& d, std::ptrdiff_t i) { return at(d.points, i); },
       "i"_a);
   column<double>(
       field_curvature_sweep, "fraction", [](const FieldCurvaturePoint& p) { return p.fraction; },
@@ -368,7 +381,8 @@ void bind_analysis(nb::module_& m) {
       .def_ro("lagrange", &paraxial::Seidel::lagrange, "H = n (u_bar y - u y_bar), mm.")
       .def_ro("marginal", &paraxial::Seidel::marginal)
       .def_ro("chief", &paraxial::Seidel::chief)
-      .def_ro("chromatic", &paraxial::Seidel::chromatic, "Pair used for C_L, C_T, or None.");
+      .def_ro("chromatic", &paraxial::Seidel::chromatic, nb::rv_policy::copy,
+              "Pair used for C_L, C_T (a copy), or None.");
   m.def(
       "seidel",
       [](const compile::CompiledSystem& s, const PathArg& path,

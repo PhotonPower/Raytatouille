@@ -38,6 +38,12 @@ def test_sampling_shorthand() -> None:
     assert isinstance(random, RandomPupil) and (random.count, random.seed) == (500, 42)
     single = an.sampling("single:0.5,-0.25")
     assert isinstance(single, SinglePupilPoint) and (single.px, single.py) == (0.5, -0.25)
+    single = an.sampling("single:-1e-1,.5")
+    assert isinstance(single, SinglePupilPoint) and (single.px, single.py) == (-0.1, 0.5)
+    hexapolar = an.sampling("hexapolar:0")  # centre ray only
+    assert isinstance(hexapolar, HexapolarPupil) and hexapolar.rings == 0
+    random = an.sampling("random:0:18446744073709551615")
+    assert isinstance(random, RandomPupil) and random.seed == 2**64 - 1
     objects = GridPupil(n=3)
     assert an.sampling(objects) is objects
 
@@ -45,7 +51,12 @@ def test_sampling_shorthand() -> None:
 @pytest.mark.parametrize(
     "bad",
     ["hexapolar", "hexapolar:", "hexapolar:x", "hexapolar:1:2", "grid:1.5", "spiral:3",
-     "random:-1", "random:10:-2", "random:1:2:3", "single:1", "single:a,b", ""],
+     "random:-1", "random:10:-2", "random:1:2:3", "single:1", "single:a,b", "",
+     # Ranges and overflow (review of #33), lenient int()/float() forms, non-finite values.
+     "grid:0", "fan_x:0", "fan_y:0", "hexapolar:-1", "hexapolar:99999999999",
+     "random:99999999999999999999999", "random:1:18446744073709551616", "hexapolar:1_0",
+     "hexapolar: 3", "grid:+3", "single:nan,0", "single:0,inf", "single:1e999,0",
+     "single:1,2,3", "single:0x1,0"],
 )
 def test_malformed_shorthand_names_the_string(bad: str) -> None:
     with pytest.raises(ValueError) as info:
@@ -117,7 +128,14 @@ def test_physics_sanity(reference_dir: Path) -> None:
     # Distortion is 0 on axis by definition (field.hpp).
     d = an.distortion(singlet(reference_dir), samples=3)
     assert len(d) == 3 and d.fraction.tolist() == [0.0, 0.5, 1.0] and d.percent[0] == 0.0
-    assert d[2].percent == d.percent[2]
+    assert d[2].percent == d.percent[2] and d[-1].percent == d.percent[-1]
+    with pytest.raises(IndexError):
+        d[3]
+    with pytest.raises(IndexError):
+        d[-4]
+    point = an.distortion_at(singlet(reference_dir), (0.0, 4.0))
+    point.field.x = 99.0  # nested structs are copies: the result stays unchanged
+    assert point.field.x == 0.0
     curvature = an.field_curvature_at(singlet(reference_dir), (0.0, 0.0))
     assert curvature.astigmatism == curvature.tangential - curvature.sagittal
 

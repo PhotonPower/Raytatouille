@@ -19,6 +19,9 @@ Pupil samplings for spot() are objects of raytatouille.trace or a shorthand stri
 
 from __future__ import annotations
 
+import math
+import re
+
 from . import _core
 from ._core import (
     DistortionPoint,
@@ -90,31 +93,56 @@ _SHORTHAND = (
     "expected 'hexapolar:N', 'grid:N', 'fan_x:N', 'fan_y:N', 'random:N', 'random:N:SEED' or "
     "'single:PX,PY'"
 )
+_DIGITS = re.compile(r"[0-9]+")
+_NUMBER = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?")
+_INT32_MAX = 2**31 - 1
+_UINT64_MAX = 2**64 - 1
+
+
+def _integer(text: str, low: int, high: int) -> int:
+    """Decimal digits only, low <= value <= high; ValueError otherwise."""
+    if not _DIGITS.fullmatch(text):
+        raise ValueError(text)
+    value = int(text)
+    if not low <= value <= high:
+        raise ValueError(text)
+    return value
+
+
+def _number(text: str) -> float:
+    """Finite decimal number; ValueError otherwise."""
+    if not _NUMBER.fullmatch(text):
+        raise ValueError(text)
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError(text)
+    return value
 
 
 def sampling(rays: str | PupilSampling) -> PupilSampling:
     """Pupil sampling from a shorthand string (see module docstring); sampling objects are
-    returned unchanged. Raises ValueError with the shorthand for malformed strings."""
+    returned unchanged. Accepted values: rings >= 0, n >= 1, count and seed >= 0 (unsigned 64
+    bit), finite PX, PY. Raises ValueError naming the shorthand for anything else."""
     if not isinstance(rays, str):
         return rays
     kind, _, arguments = rays.partition(":")
     parts = arguments.split(":") if arguments else []
     try:
-        if kind in ("hexapolar", "grid", "fan_x", "fan_y") and len(parts) == 1:
-            n = int(parts[0])
-            if kind == "hexapolar":
-                return HexapolarPupil(rings=n)
+        if kind == "hexapolar" and len(parts) == 1:
+            return HexapolarPupil(rings=_integer(parts[0], 0, _INT32_MAX))
+        if kind in ("grid", "fan_x", "fan_y") and len(parts) == 1:
+            n = _integer(parts[0], 1, _INT32_MAX)
             if kind == "grid":
                 return GridPupil(n=n)
             return FanXPupil(n=n) if kind == "fan_x" else FanYPupil(n=n)
         if kind == "random" and len(parts) in (1, 2):
-            count = int(parts[0])
-            seed = int(parts[1]) if len(parts) == 2 else 0
-            if count >= 0 and seed >= 0:
-                return RandomPupil(count=count, seed=seed)
+            count = _integer(parts[0], 0, _UINT64_MAX)
+            seed = _integer(parts[1], 0, _UINT64_MAX) if len(parts) == 2 else 0
+            return RandomPupil(count=count, seed=seed)
         if kind == "single" and len(parts) == 1:
-            px, py = (float(v) for v in parts[0].split(","))
-            return SinglePupilPoint(px=px, py=py)
+            values = parts[0].split(",")
+            if len(values) == 2:
+                return SinglePupilPoint(px=_number(values[0]), py=_number(values[1]))
     except ValueError as error:
         raise ValueError(f"invalid ray sampling {rays!r}: {_SHORTHAND}") from error
     raise ValueError(f"invalid ray sampling {rays!r}: {_SHORTHAND}")
@@ -247,7 +275,8 @@ def distortion(
     threads: int | None = None,
 ) -> DistortionSweep:
     """Distortion D = (h_real - h_par) / h_par in percent over ``samples`` relative fields
-    0 ... 1 along +y of the largest field point; heights in the image-surface vertex plane."""
+    0 ... 1 along +y of the largest field point; real chief-ray height on the image surface,
+    paraxial height in its vertex plane (rtt/analysis/field.hpp)."""
     return _core.distortion(
         compiled(system, materials), path, wavelength, samples, aiming, threads
     )
