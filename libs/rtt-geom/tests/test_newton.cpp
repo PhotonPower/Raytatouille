@@ -256,3 +256,24 @@ TEST_CASE("Newton converging behind the ray reports NoConvergence", "[newton]") 
   REQUIRE(hit.iterations == 1);
   REQUIRE(all_finite(hit));
 }
+
+TEST_CASE("Newton converges at the rounding limit for far ray origins", "[newton]") {
+  // |F| < 1e-12 mm is unreachable when o + t d carries rounding errors of that size. The second
+  // criterion |dt| <= 8 eps (1 + |t| + |o|) accepts the hit at the rounding limit.
+  const Conic<double> sphere(0.02, 0.0);
+  const rtt::geom::Shape<double>& shape = sphere;
+  // Ray parallel to the axis: t = 1e5 + sag(r) exactly, rounding of the reference ~ ulp(1e5).
+  const auto axial = rtt::geom::intersect(shape, Vec3(0.0, 3.0, -1e5), Vec3(0.0, 0.0, 1.0));
+  REQUIRE(axial.status == HitStatus::Hit);
+  REQUIRE(near(axial.t, 1e5 + sphere.sag(0.0, 3.0), 1e-10));
+  REQUIRE(axial.iterations <= rtt::geom::kMaxNewtonIterations);
+  // Oblique ray against the analytic intersection. Its quadratic coefficient g ~ c o_z^2 ~ 2e8 is
+  // itself rounded, so the comparison is relative (1e-12, i.e. 1e-7 mm at t = 1e5 mm).
+  const Vec3 o(-2.0, 4.0, -1e5);
+  const Vec3 d = Vec3(1e-5, -2e-5, 1.0).normalized();
+  const auto expected = rtt::geom::intersect(sphere, o, d);
+  const auto hit = rtt::geom::intersect(shape, o, d);
+  REQUIRE(expected.status == HitStatus::Hit);
+  REQUIRE(hit.status == HitStatus::Hit);
+  REQUIRE(std::abs(hit.t - expected.t) <= 1e-12 * expected.t);
+}

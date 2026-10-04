@@ -6,6 +6,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <optional>
 
 #include "rtt/geom/conic.hpp"
@@ -37,11 +38,15 @@ struct Intersection {
 /// ignored so that a ray starting on a surface does not hit it again at t = 0.
 inline constexpr double kDefaultTMin = 1e-9;
 
-/// Newton iteration stops when |F(t)| = |z(t) - sag(x(t), y(t))| < kNewtonTolerance, in mm
-/// (docs/architecture.md, Physik-Module, Geometrie). The tolerance is absolute and meant for
-/// double: it is reachable only while the rounding error of origin + t * direction stays below
-/// it, i.e. for |origin| and t up to about 1e4 mm. Rays should start close to the surface.
+/// Newton iteration has converged when |F(t)| = |z(t) - sag(x(t), y(t))| <= kNewtonTolerance,
+/// in mm (docs/architecture.md, Physik-Module, Geometrie), or when the last step reached the
+/// rounding limit |dt| <= kNewtonStepFactor * eps * (1 + |t| + |origin|) with eps the machine
+/// epsilon. The second criterion covers far ray origins (|origin| ~ 1e5 mm), for which the
+/// rounding error of origin + t * direction alone exceeds kNewtonTolerance.
 inline constexpr double kNewtonTolerance = 1e-12;
+
+/// Factor of the rounding-limit step criterion, see kNewtonTolerance.
+inline constexpr double kNewtonStepFactor = 8.0;
 
 /// Maximum number of Newton steps before the status is NoConvergence (docs/architecture.md).
 inline constexpr int kMaxNewtonIterations = 30;
@@ -154,7 +159,8 @@ template <rtt::math::Real T>
 /// @param origin    ray origin in local coordinates, mm
 /// @param direction direction in local coordinates; must have length 1 so that t is in mm
 /// @param t_min     smallest accepted ray parameter in mm
-/// @return Hit with |F| < kNewtonTolerance and the number of Newton steps; Missed if no start
+/// @return Hit (converged as described at kNewtonTolerance) with the number of Newton steps;
+///         Missed if no start
 ///         point exists or the start lies outside the shape's domain; NoConvergence after
 ///         kMaxNewtonIterations steps, if an iterate leaves the domain, if F or the gradient is
 ///         not finite, if F'(t) = 0, or if Newton converges onto a crossing with t <= t_min.
@@ -191,6 +197,8 @@ template <rtt::math::Real T>
   }
   Intersection<T> failed;
   failed.status = HitStatus::NoConvergence;
+  const T origin_norm = origin.norm();
+  T last_step = std::numeric_limits<T>::infinity();
   // Newton's method on F(t) = z(t) - sag(x(t), y(t)) with
   // F'(t) = d_z - dz/dx d_x - dz/dy d_y (Press et al., Numerical Recipes, 3rd ed., Sec. 9.4).
   for (int iteration = 0;; ++iteration) {
@@ -200,7 +208,9 @@ template <rtt::math::Real T>
     if (!isfinite(f) || !isfinite(gx) || !isfinite(gy)) {
       return failed;
     }
-    if (abs(f) < T(kNewtonTolerance)) {
+    const T step_limit =
+        T(kNewtonStepFactor) * std::numeric_limits<T>::epsilon() * (T(1) + abs(t) + origin_norm);
+    if (abs(f) <= T(kNewtonTolerance) || abs(last_step) <= step_limit) {
       if (!(t > t_min)) {
         return failed;  // converged behind the ray; a crossing ahead is not ruled out
       }
@@ -220,7 +230,8 @@ template <rtt::math::Real T>
     if (!(df != T(0))) {
       return failed;  // ray tangent to the surface
     }
-    t -= f / df;
+    last_step = f / df;
+    t -= last_step;
     p = origin + t * direction;
     if (!in_domain(p)) {
       failed.iterations = iteration + 1;
