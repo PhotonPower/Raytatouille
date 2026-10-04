@@ -133,11 +133,11 @@ class Validator {
     switch (e.kind) {
       case ElementKind::Lens:
         if (n < 2) error(loc + "/surfaces", "a lens needs at least 2 surfaces");
-        if (!e.material) error(loc + "/material", "a lens needs a material");
+        check_segment_materials(e, loc, "a lens");
         break;
       case ElementKind::Plate:
         if (n < 2) error(loc + "/surfaces", "a plate needs at least 2 surfaces");
-        if (!e.material) error(loc + "/material", "a plate needs a material");
+        check_segment_materials(e, loc, "a plate");
         for (std::size_t i = 0; i < n; ++i) {
           if (!std::holds_alternative<Plane>(e.surfaces[i].shape.base)) {
             error(idx(loc + "/surfaces", i) + "/shape", "plate surfaces must be planes");
@@ -146,12 +146,17 @@ class Validator {
         break;
       case ElementKind::Mirror:
         if (n < 1) error(loc + "/surfaces", "a mirror needs at least 1 surface");
+        if (!e.segment_materials.empty()) {
+          error(loc + "/material", "a mirror takes a single substrate material, not a list");
+        }
         break;
       case ElementKind::ThinElement:
       case ElementKind::Stop:
       case ElementKind::Detector:
         if (n != 1) error(loc + "/surfaces", "this element kind needs exactly 1 surface");
-        if (e.material) error(loc + "/material", "this element kind has no material");
+        if (e.material || !e.segment_materials.empty()) {
+          error(loc + "/material", "this element kind has no material");
+        }
         break;
     }
     if (e.kind == ElementKind::Stop) {
@@ -162,6 +167,32 @@ class Validator {
     }
     if (e.material && e.material->empty()) error(loc + "/material", "material must not be empty");
     for (std::size_t i = 0; i < n; ++i) check_surface(e.surfaces[i], idx(loc + "/surfaces", i));
+  }
+
+  /// Lens and Plate: N surfaces have N - 1 segments, given either as one shorthand material
+  /// for all segments or as a list with one entry per segment (ADR 0017).
+  void check_segment_materials(const Element& e, const std::string& loc, std::string_view what) {
+    const std::string mloc = loc + "/material";
+    const std::size_t n = e.surfaces.size();
+    const auto& list = e.segment_materials;
+    if (e.material && !list.empty()) {
+      error(mloc, "use either one material for all segments or a list, not both");
+      return;
+    }
+    if (!e.material && list.empty()) {
+      error(mloc, std::string(what) + " needs a material");
+      return;
+    }
+    if (list.empty()) return;
+    const std::size_t segments = n < 2 ? 0 : n - 1;
+    if (list.size() != segments) {
+      error(mloc, std::string(what) + " with " + std::to_string(n) + " surfaces needs " +
+                      std::to_string(segments) + " segment materials, found " +
+                      std::to_string(list.size()));
+    }
+    for (std::size_t i = 0; i < list.size(); ++i) {
+      if (list[i].empty()) error(idx(mloc, i), "material must not be empty");
+    }
   }
 
   void check_surface(const Surface& s, const std::string& loc) {

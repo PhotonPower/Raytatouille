@@ -14,8 +14,9 @@
 
 namespace rtt::model {
 
-/// Version of the file format written by this library.
-inline constexpr std::string_view kSchemaVersion = "0.1.0";
+/// Version of the file format written by this library. rtt-io also reads 0.1 files and
+/// migrates them (0.2: per-segment materials of Lens and Plate, ADR 0017).
+inline constexpr std::string_view kSchemaVersion = "0.2.0";
 
 struct Wavelength {
   double um = 0.0;  ///< vacuum wavelength in micrometre
