@@ -64,7 +64,8 @@ Neue Bibliothek: Ordner wie oben, `CMakeLists.txt` nach dem Muster von `libs/rtt
    Exceptions an der API-Grenze. Kein undefiniertes Verhalten; Sanitizer-Läufe sauber.
 4. **Modernes C++20:** RAII, kein besitzendes `new`/`delete`, `const` wo möglich, kein
    veränderlicher globaler Zustand, keine C-Casts. Neue Abhängigkeiten nur über `vcpkg.json`
-   mit Lizenzprüfung (ADR 0010) und Begründung im PR.
+   mit Lizenzprüfung (ADR 0010) und Begründung im PR; Ausnahme für reine Python-Build- und
+   Testwerkzeuge siehe ADR 0018.
 5. **Konventionen sind Gesetz** (docs/architecture.md, Abschnitt Konventionen): mm, µm, rad
    intern, Suffix `_deg` für Grad, +z optische Achse, Radiusvorzeichen, Rotationsreihenfolge.
    Jede öffentliche Funktion dokumentiert Einheiten, Koordinatensystem und Vorzeichen im
