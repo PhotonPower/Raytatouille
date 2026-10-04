@@ -18,8 +18,9 @@ TEST_CASE("wavelength unit conversion", "[units]") {
   REQUIRE(rtt::math::mm_to_um(rtt::math::um_to_mm(1.55)) == Catch::Approx(1.55).epsilon(1e-15));
 }
 
-TEST_CASE("Real concept accepts floating point types only", "[units]") {
+TEST_CASE("Real concept accepts double only (ADR 0015)", "[units]") {
   STATIC_REQUIRE(rtt::math::Real<double>);
-  STATIC_REQUIRE(rtt::math::Real<float>);
+  STATIC_REQUIRE_FALSE(rtt::math::Real<float>);
+  STATIC_REQUIRE_FALSE(rtt::math::Real<long double>);
   STATIC_REQUIRE_FALSE(rtt::math::Real<int>);
 }

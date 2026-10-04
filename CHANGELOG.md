@@ -4,6 +4,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
 
 ## [Unreleased]
 
+### Geändert
+- `rtt::math::Real` umfasst nur noch `double` (ADR 0015); der `float`-Test in `rtt-geom` entfällt.
+
 ### Hinzugefügt
 - Anleitung `docs/agenten.md` und Review-Subagent `.claude/agents/physik-reviewer.md`.
 - `rtt-geom`: `Shape<T>`-Schnittstelle, `Plane<T>` und `Conic<T>` (Sag, Gradient, Definitionsbereich)

@@ -33,7 +33,7 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 | 0003 | Eigen (≥ 3.4) für 3-Vektoren und 3×3-Matrizen, `std::complex<double>`, durchgängig `double` |
 | 0004 | Parallelität mit oneTBB, `static_partitioner`, deterministisch |
 | 0005 | Strahlen als Structure-of-Arrays |
-| 0006 | Physik-Bibliotheken als Templates über den Skalartyp (`rtt::math::Real`) |
+| 0006 | Physik-Bibliotheken als Templates über den Skalartyp (`rtt::math::Real`; nur `double` und später Dual-Zahlen, ADR 0015) |
 | 0007 | Ableitungen in v1 per zentraler finiter Differenz |
 | 0008 | Dateiformat JSON (nlohmann/json); strenger C++-Parser ist Referenz, JSON-Schema für externe Werkzeuge |
 | 0009 | Exceptions nur an API-Grenzen, Strahlprobleme als Status-Flags |
