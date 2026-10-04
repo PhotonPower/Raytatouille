@@ -91,7 +91,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   zurück, an der ersten und letzten Fläche ins Umgebungsmedium); Kurzform und Materialliste
   werden ausgewertet, Fehlerorte zeigen auf den Listeneintrag (`.../material/<i>`). Der
   `CompileError` für `Lens`/`Plate` mit mehr als 2 Flächen auf einem automatischen Pfad entfällt;
-  eine innere Fläche von außen ist ein `CompileError` am Event. Festgelegt: Elemente schachteln
+  eine innere Fläche von außen führt in das Material der angrenzenden Segmente, wenn beide gleich
+  sind (Prisma aus einem Glas), sonst ist sie ein `CompileError` am Event. Festgelegt: Elemente schachteln
   nicht (Element B betreten, während der Strahl in A ist, verlässt A) (#27).
 - `rtt-model`: Test, dass ein `ThinElement` keine Materialliste annimmt (#26).
 

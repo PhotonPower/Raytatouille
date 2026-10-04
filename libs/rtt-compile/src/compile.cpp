@@ -283,8 +283,9 @@ class Compiler {
   ///   from segment i - 1 into segment i (the environment if i = N - 1), from segment i into
   ///   segment i - 1 (the environment if i = 0), from any other segment of the same element into
   ///   the environment; from outside the element through the first surface into segment 0,
-  ///   through the last surface into segment N - 2, and through an inner surface it is an error
-  ///   (the side is ambiguous);
+  ///   through the last surface into segment N - 2, and through an inner surface into its two
+  ///   neighbouring segments if they have the same material, otherwise it is an error (the
+  ///   side is ambiguous);
   /// - at a Mirror with substrate: toggle between the substrate and the environment (#6).
   /// Outside an element means in the environment or in another element: elements do not nest,
   /// so entering B while in A leaves A, and leaving B goes to the environment.
@@ -318,12 +319,16 @@ class Compiler {
           leave = true;  // the surface does not bound the segment (prism on an explicit path)
         } else if (i == 0 || i == last) {
           segment = i == 0 ? 0 : last - 1;
+        } else if (info.media[i - 1] == info.media[i]) {
+          segment = i;  // both sides are the same material (e.g. a prism of one glass)
         } else {
-          error(idx(location, k), "inner surface " + surfaces_[event.surface].id.str() +
-                                      " of element '" + surfaces_[event.surface].element_name +
-                                      "' reached from outside the element: the segment is "
-                                      "ambiguous; a path enters a lens or plate through its "
-                                      "first or last surface (ADR 0017)");
+          error(idx(location, k),
+                "inner surface " + surfaces_[event.surface].id.str() + " of element '" +
+                    surfaces_[event.surface].element_name +
+                    "' reached from outside the element is ambiguous: the segments on its two "
+                    "sides have different materials ('" +
+                    media_[info.media[i - 1]].reference + "', '" + media_[info.media[i]].reference +
+                    "'); enter a cemented group through its first or last surface (ADR 0017)");
           leave = true;
         }
         if (leave) {

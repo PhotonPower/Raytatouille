@@ -110,8 +110,10 @@ class CompiledSystem;
 ///   a Lens or Plate with N surfaces (segment j between surfaces j and j + 1, zero-based): from
 ///   segment i - 1 into segment i, or into the environment if i = N - 1; from segment i into
 ///   segment i - 1, or into the environment if i = 0; from another segment of the same element
-///   into the environment; from outside the element through the first surface into segment 0
-///   and through the last surface into segment N - 2. At a Mirror with substrate they switch
+///   into the environment; from outside the element through the first surface into segment 0,
+///   through the last surface into segment N - 2, and through an inner surface i into the
+///   material of segments i - 1 and i if both have the same material reference (e.g. a prism
+///   of one glass). At a Mirror with substrate they switch
 ///   between the substrate and the environment. Elements do not nest: entering element B
 ///   while inside element A leaves A (A's medium before, B's medium after), and leaving B then
 ///   goes to the environment. A cemented group is one element with one material per segment;
@@ -121,7 +123,8 @@ class CompiledSystem;
 /// Also a CompileError: a Mirror with substrate material and more than one surface on an
 /// automatic path (Mangin mirror; its front surface refracts, so it needs an explicit path
 /// Refract, Reflect, Refract), and a Refract, Ordinary or Extraordinary event at an inner
-/// surface of a Lens or Plate reached from outside that element (the segment is ambiguous).
+/// surface of a Lens or Plate reached from outside that element when the segments on its two
+/// sides have different materials (the side is ambiguous).
 ///
 /// The result holds no references or pointers into `system` or `materials`.
 /// @throws CompileError as described above

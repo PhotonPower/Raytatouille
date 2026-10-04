@@ -767,7 +767,7 @@ TEST_CASE("Refract at a surface that does not bound the current segment", "[comp
                     {"L.S3", EventKind::Refract, "CONST:1.5", "AIR"},
                     {"L.S1", EventKind::Refract, "AIR", "CONST:1.5"}});
   }
-  SECTION("from outside through an inner surface: ambiguous, CompileError at the event") {
+  SECTION("from outside through an inner surface between different glasses: CompileError") {
     s.paths = {{"inner",
                 false,
                 {refract("L.S1"), refract("L.S1"), {SurfaceId("L.S3"), EventKind::Ordinary, 0}}}};
@@ -775,5 +775,58 @@ TEST_CASE("Refract at a surface that does not bound the current segment", "[comp
     REQUIRE(e.diagnostics().size() == 1);
     REQUIRE(has_error_at(e, "/paths/0/events/2"));
     REQUIRE_THAT(e.what(), ContainsSubstring("inner surface"));
+    REQUIRE_THAT(e.what(), ContainsSubstring("ambiguous"));
+  }
+}
+
+TEST_CASE("entering a cemented doublet through the cemented surface is ambiguous",
+          "[compile][cemented]") {
+  System s = bare_system();
+  s.root.children.push_back({segmented_lens(3, {"CONST:1.5", "CONST:1.7"})});
+  s.paths = {{"auto", true, {}}, {"cemented surface", false, {refract("L.S2")}}};
+  const CompileError e = compile_error(s);
+  REQUIRE(e.diagnostics().size() == 1);
+  REQUIRE(has_error_at(e, "/paths/1/events/0"));
+  REQUIRE_THAT(e.what(), ContainsSubstring("L.S2"));
+  REQUIRE_THAT(e.what(), ContainsSubstring("CONST:1.5"));
+  REQUIRE_THAT(e.what(), ContainsSubstring("CONST:1.7"));
+}
+
+TEST_CASE("a prism of one glass can be entered through an inner surface", "[compile][cemented]") {
+  // Decided for #27: if all segments next to the surface have the same material, entering
+  // through it from outside is unambiguous and goes into that material.
+  const MaterialLibrary lib;
+  SECTION("plate with the shorthand, 3 surfaces") {
+    System s = bare_system();
+    s.root.children.push_back(
+        {Element{"prism",
+                 ElementKind::Plate,
+                 Pose::along_z(10.0),
+                 "CONST:1.5",
+                 {plane_surface("P.S1"), plane_surface("P.S2", 1.0), plane_surface("P.S3", 2.0)}}});
+    s.paths = {{"side",
+                false,
+                {refract("P.S2"), {SurfaceId("P.S1"), EventKind::Reflect, 0}, refract("P.S3")}}};
+    const CompiledSystem cs = compile(s, lib);
+    require_events(cs, "side",
+                   {{"P.S2", EventKind::Refract, "AIR", "CONST:1.5"},
+                    {"P.S1", EventKind::Reflect, "CONST:1.5", "CONST:1.5"},
+                    {"P.S3", EventKind::Refract, "CONST:1.5", "AIR"}});
+  }
+  SECTION("plate with a list of equal entries, 4 surfaces") {
+    System s = bare_system();
+    Element prism{"prism",
+                  ElementKind::Plate,
+                  Pose::along_z(10.0),
+                  std::nullopt,
+                  {plane_surface("P.S1"), plane_surface("P.S2", 1.0), plane_surface("P.S3", 2.0),
+                   plane_surface("P.S4", 3.0)}};
+    prism.segment_materials = {"CONST:1.6", "CONST:1.6", "CONST:1.6"};
+    s.root.children.push_back({prism});
+    s.paths = {{"side", false, {{SurfaceId("P.S3"), EventKind::Ordinary, 0}, refract("P.S1")}}};
+    const CompiledSystem cs = compile(s, lib);
+    require_events(cs, "side",
+                   {{"P.S3", EventKind::Ordinary, "AIR", "CONST:1.6"},
+                    {"P.S1", EventKind::Refract, "CONST:1.6", "AIR"}});
   }
 }
