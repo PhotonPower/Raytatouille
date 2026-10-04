@@ -331,9 +331,10 @@ TEST_CASE("object at infinity: rays of a field start on one plane wave before th
           "[sources]") {
   // Large field: the tilted start plane must still lie before the first surface for the whole
   // bundle, and d . pos is the same for all rays of a field (plane wave, needed for OPD in M2).
-  // Stop between the lenses: with the stop behind the group, part of a 30 deg bundle cannot
-  // reach its stop target at all (the rays would have to pass outside the lens rim), which the
-  // NoConvergence test covers.
+  // Stop between the lenses: with the stop behind the group, no ray of a 30 deg bundle can reach
+  // its stop target (reachable stop heights 8.6 ... 18.4 mm, targets within +-2.88 mm; lower
+  // rays would hit L1 outside its rim, where its edge thickness drops to zero at r = 17.1 mm),
+  // which the NoConvergence tests cover.
   const MaterialLibrary lib;
   System s = two_lenses(StopPlace::Between);
   s.fields = {FieldType::AngleDeg, {{0.0, 0.0, 1.0}, {0.0, 30.0, 1.0}, {20.0, -20.0, 1.0}}};
@@ -636,4 +637,23 @@ TEST_CASE("no safe start plane before an unbounded surface curving back: error a
   REQUIRE_THROWS_AS(rtt::trace::aim_ray(cs, PathId{0}, 1, 0, 0.0, 0.0), std::invalid_argument);
   // The on-axis field is fine.
   REQUIRE(rtt::trace::aim_ray(cs, PathId{0}, 0, 0, 0.0, 0.0).ray.status == RayStatus::Alive);
+}
+
+TEST_CASE("target beyond the reachable stop heights: NoConvergence with a finite residual",
+          "[sources][aiming]") {
+  // Stop behind the group, 30 deg: every iterate reaches the stop, but only at heights of about
+  // 8.6 ... 18.4 mm, while the target of py = 1 is R_s = 2.88 mm. The damped Newton iteration
+  // cannot reduce the residual any further and stops (backtracking exhausted).
+  const MaterialLibrary lib;
+  System s = two_lenses(StopPlace::After);
+  s.fields = {FieldType::AngleDeg, {{0.0, 0.0, 1.0}, {0.0, 30.0, 1.0}}};
+  const CompiledSystem cs = compile(s, lib);
+  const double r_s = paraxial_stop_radius(cs);
+  const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, 1, 0, 0.0, 1.0);
+  INFO("residual " << aimed.residual << ", R_s " << r_s);
+  REQUIRE(aimed.ray.status == RayStatus::NoConvergence);
+  REQUIRE(std::isfinite(aimed.residual));
+  // The best reachable stop height lies above the target by more than 5 mm.
+  REQUIRE(aimed.residual > 5.0);
+  REQUIRE(aimed.ray.pos.allFinite());
 }
