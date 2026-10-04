@@ -3,6 +3,7 @@
 #include <cmath>
 #include <complex>
 #include <cstddef>
+#include <limits>
 #include <numbers>
 #include <stdexcept>
 #include <utility>
@@ -80,8 +81,12 @@ TEST_CASE("ideal coating under total internal reflection reflects like the bare 
   const double xi = 1.52 * std::sin(60.0 * kPi / 180.0);  // glass -> air beyond critical
   const Amplitudes<double> a = IdealCoating::anti_reflection().amplitudes(1.52, 1.0, xi);
   const Amplitudes<double> bare = rtt::coating::interface_amplitudes<double>(1.52, 1.0, xi);
-  REQUIRE(a.rs == bare.rs);
-  REQUIRE(a.rp == bare.rp);
+  // Same formula (interface_amplitudes), but compiled in two translation units: inlining and
+  // complex division may round differently in the last bits (seen with GCC -O2), so equality is
+  // checked to 4 epsilon of |r| = 1, not bitwise.
+  const double tol = 4.0 * std::numeric_limits<double>::epsilon();
+  require_close(a.rs, bare.rs, tol);
+  require_close(a.rp, bare.rp, tol);
   REQUIRE_THAT(std::abs(a.rs), WithinAbs(1.0, 1e-14));
 }
 

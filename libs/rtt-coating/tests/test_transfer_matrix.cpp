@@ -81,6 +81,9 @@ TEST_CASE("kernels are noexcept", "[coating]") {
 }
 
 TEST_CASE("branch of q = n cos(theta) (Byrnes App. D)", "[coating]") {
+  // Exact zeros below are intended: for a real index the argument of sqrt is real with an exact
+  // +0 imaginary part, and csqrt then returns an exact 0 component (IEEE 754 / C Annex G); the
+  // branch rule (Im q = 0 -> Re q >= 0) and T = 0 under TIR rely on it.
   // Real index, no TIR: q real and positive.
   const Complex q_glass = rtt::coating::normal_component<double>(1.5, 0.5);
   REQUIRE(q_glass.imag() == 0.0);
