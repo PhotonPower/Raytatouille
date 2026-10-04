@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <cstddef>
@@ -30,9 +31,15 @@ std::string join_errors(const std::vector<model::Diagnostic>& diagnostics) {
 /// What the path builder needs to know about an element.
 struct ElementInfo {
   model::ElementKind kind = model::ElementKind::Lens;
-  std::optional<std::uint32_t> medium;  ///< medium inside; none if the element has no material
-  std::string location;                 ///< JSON pointer of the element
-  std::uint32_t first_surface = 0;      ///< surfaces [first_surface, first_surface + count)
+  /// Lens and Plate: one medium per segment (segment i between surfaces i and i + 1, ADR 0017).
+  /// Mirror: the substrate, if any, as one body. Empty if the element has no material.
+  std::vector<std::uint32_t> media;
+  /// JSON pointer of the material of each entry of `media`: .../material for the shorthand,
+  /// .../material/<i> for a list entry.
+  std::vector<std::string> media_locations;
+  bool segmented = false;           ///< Lens or Plate: the media follow the segments
+  std::string location;             ///< JSON pointer of the element
+  std::uint32_t first_surface = 0;  ///< surfaces [first_surface, first_surface + count)
   std::uint32_t surface_count = 0;
 };
 
@@ -51,7 +58,9 @@ class Compiler {
     // The environment is always media_[0] (CompiledSystem::environment_medium()).
     environment_ = medium(system_.environment.medium, "/environment/medium").value_or(0);
     add_assembly(system_.root, model::to_isometry(system_.root.pose), "/root");
-    for (const model::Path& path : system_.paths) paths_.push_back(build_path(path));
+    for (std::size_t p = 0; p < system_.paths.size(); ++p) {
+      paths_.push_back(build_path(system_.paths[p], idx("/paths", p)));
+    }
     check_wavelength_ranges();
   }
 
@@ -107,8 +116,10 @@ class Compiler {
           if (where[m]) continue;
           if (m == environment_) {
             where[m] = "/environment/medium";
-          } else if (element.medium == m) {
-            where[m] = element.location + "/material";
+          } else if (const auto j = std::find(element.media.begin(), element.media.end(), m);
+                     j != element.media.end()) {
+            // The material of this element: shorthand or list entry (ADR 0017, #27).
+            where[m] = element.media_locations[static_cast<std::size_t>(j - element.media.begin())];
           } else {
             where[m] = media_checks_[m].location;  // medium of an element entered earlier
           }
@@ -160,7 +171,22 @@ class Compiler {
     info.location = location;
     info.first_surface = static_cast<std::uint32_t>(surfaces_.size());
     info.surface_count = static_cast<std::uint32_t>(element.surfaces.size());
-    if (element.material) info.medium = medium(*element.material, location + "/material");
+    // Unresolved materials are reported by medium(); index 0 is only a placeholder then.
+    info.segmented =
+        element.kind == model::ElementKind::Lens || element.kind == model::ElementKind::Plate;
+    if (info.segmented && !element.segment_materials.empty()) {
+      for (std::size_t i = 0; i < element.segment_materials.size(); ++i) {
+        info.media_locations.push_back(idx(location + "/material", i));
+        info.media.push_back(
+            medium(element.segment_materials[i], info.media_locations.back()).value_or(0));
+      }
+    } else if (element.material) {
+      // The shorthand holds for all segments; resolved once, reported once.
+      const std::uint32_t m = medium(*element.material, location + "/material").value_or(0);
+      const std::size_t count = info.segmented ? element.surfaces.size() - 1 : 1;
+      info.media.assign(count, m);
+      info.media_locations.assign(count, location + "/material");
+    }
     const auto element_index = static_cast<std::uint32_t>(elements_.size());
     elements_.push_back(info);
 
@@ -202,23 +228,14 @@ class Compiler {
     return geom::Plane<double>{};
   }
 
-  CompiledPath build_path(const model::Path& path) {
+  /// `location` is the JSON pointer of the path in the system file.
+  CompiledPath build_path(const model::Path& path, const std::string& location) {
     CompiledPath compiled{path.name, {}};
     if (path.automatic) {
       for (const ElementInfo& e : elements_) {
-        const bool lens_or_plate =
-            e.kind == model::ElementKind::Lens || e.kind == model::ElementKind::Plate;
-        if (lens_or_plate && e.surface_count > 2) {
-          if (cemented_reported_.emplace(e.location).second) {
-            error(e.location + "/surfaces",
-                  "cemented groups: not supported before M2, see #14 (automatic path through an "
-                  "element with more than 2 surfaces)");
-          }
-          continue;
-        }
         // A mirror on a substrate with several surfaces (Mangin mirror) refracts at its front
         // surface; reflecting at every surface would be wrong (#6).
-        if (e.kind == model::ElementKind::Mirror && e.medium && e.surface_count > 1) {
+        if (e.kind == model::ElementKind::Mirror && !e.media.empty() && e.surface_count > 1) {
           if (mangin_reported_.emplace(e.location).second) {
             error(e.location + "/surfaces",
                   "mirror with substrate material on the automatic path: use an explicit path "
@@ -238,7 +255,7 @@ class Compiler {
             {surface_index_.at(event.surface), event.kind, event.order, 0, 0});
       }
     }
-    assign_media(compiled.events);
+    assign_media(compiled.events, location + "/events");
     return compiled;
   }
 
@@ -258,27 +275,63 @@ class Compiler {
     return model::EventKind::Transmit;
   }
 
-  /// Media before and after each event, rule decided for #5: the ray starts in the environment;
-  /// Refract, Ordinary and Extraordinary at an element with a material switch between the
-  /// inside of that element and the environment; every other event, and every event at an
-  /// element without material, keeps the medium.
-  void assign_media(std::vector<CompiledEvent>& events) const {
+  /// Media before and after each event (rules decided for #5 and #27, docs/architecture.md,
+  /// "Medien entlang eines Pfads"). The ray starts in the environment. Reflect, Transmit and
+  /// Diffract keep the medium, and so does every event at an element without material.
+  /// Refract, Ordinary and Extraordinary
+  /// - at surface i of a Lens or Plate with N surfaces (segment j between surfaces j and j + 1):
+  ///   from segment i - 1 into segment i (the environment if i = N - 1), from segment i into
+  ///   segment i - 1 (the environment if i = 0), from any other segment of the same element into
+  ///   the environment; from outside the element through the first surface into segment 0,
+  ///   through the last surface into segment N - 2, and through an inner surface it is an error
+  ///   (the side is ambiguous);
+  /// - at a Mirror with substrate: toggle between the substrate and the environment (#6).
+  /// Outside an element means in the environment or in another element: elements do not nest,
+  /// so entering B while in A leaves A, and leaving B goes to the environment.
+  /// `location` is the JSON pointer of the events; errors add the event index.
+  void assign_media(std::vector<CompiledEvent>& events, const std::string& location) {
     std::optional<std::uint32_t> inside;  // element the ray is in, none = environment
+    std::uint32_t segment = 0;            // segment of `inside` the ray is in
     std::uint32_t current = environment_;
-    for (CompiledEvent& event : events) {
+    for (std::size_t k = 0; k < events.size(); ++k) {
+      CompiledEvent& event = events[k];
       event.medium_before = current;
       const bool crosses = event.kind == model::EventKind::Refract ||
                            event.kind == model::EventKind::Ordinary ||
                            event.kind == model::EventKind::Extraordinary;
       const std::uint32_t element = surface_element_[event.surface];
-      const auto& element_medium = elements_[element].medium;
-      if (crosses && element_medium) {
-        if (inside == element) {
+      const ElementInfo& info = elements_[element];
+      if (crosses && !info.media.empty()) {
+        const std::uint32_t i = event.surface - info.first_surface;  // surface in the element
+        const std::uint32_t last = info.surface_count - 1;
+        bool leave = false;
+        if (!info.segmented) {
+          leave = inside == element;
+          segment = 0;
+        } else if (inside == element && i == segment + 1) {  // forward through surface i
+          leave = i == last;
+          segment = i;
+        } else if (inside == element && i == segment) {  // backward through surface i
+          leave = i == 0;
+          if (!leave) segment = i - 1;
+        } else if (inside == element) {
+          leave = true;  // the surface does not bound the segment (prism on an explicit path)
+        } else if (i == 0 || i == last) {
+          segment = i == 0 ? 0 : last - 1;
+        } else {
+          error(idx(location, k), "inner surface " + surfaces_[event.surface].id.str() +
+                                      " of element '" + surfaces_[event.surface].element_name +
+                                      "' reached from outside the element: the segment is "
+                                      "ambiguous; a path enters a lens or plate through its "
+                                      "first or last surface (ADR 0017)");
+          leave = true;
+        }
+        if (leave) {
           inside.reset();
           current = environment_;
         } else {
           inside = element;
-          current = *element_medium;
+          current = info.media[segment];
         }
       }
       event.medium_after = current;
@@ -298,8 +351,7 @@ class Compiler {
     std::string location;
   };
   std::vector<MediumCheck> media_checks_;
-  std::set<std::string> cemented_reported_;  // elements already reported as cemented groups
-  std::set<std::string> mangin_reported_;    // mirrors already reported as Mangin mirrors
+  std::set<std::string> mangin_reported_;  // mirrors already reported as Mangin mirrors
 };
 
 }  // namespace

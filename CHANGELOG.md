@@ -33,18 +33,6 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
 ### Dokumentation
 - `docs/quellen.md`: geprüfte Quellen mit Gleichungsnummern; Regel 6 in `AGENTS.md`, Reviewer und PR-Vorlage verweisen darauf.
 
-### Geändert
-- `rtt::math::Real` umfasst nur noch `double` (ADR 0015); der `float`-Test in `rtt-geom` entfällt.
-
-### Geändert
-- Dateiformat Schema 0.2.0: `Lens` und `Plate` mit N Flächen tragen ein Material je Segment
-  (Segment i zwischen Fläche i und i + 1); `"material"` ist ein String (Kurzform für alle
-  Segmente) oder ein Array mit N − 1 Einträgen. `rtt-model`: `Element::segment_materials`,
-  `Element::segment_material(i)` und Validierung der Listenlänge mit JSON-Pointer; `rtt-io` liest
-  und schreibt beide Formen bitgleich und migriert Dateien mit Schema 0.1; JSON-Schema angepasst;
-  Referenzdateien mit `rtt format` neu geschrieben; ADR 0017; neues Beispiel
-  `tests/reference/m2/achromat.rtt.json` (#26).
-
 ### Hinzugefügt
 - Anleitung `docs/agenten.md` und Review-Subagent `.claude/agents/physik-reviewer.md`.
 - `rtt-geom`: `Shape<T>`-Schnittstelle, `Plane<T>` und `Conic<T>` (Sag, Gradient, Definitionsbereich)
@@ -88,6 +76,24 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   `tests/reference/m1/two_lenses_stop_between.rtt.json` (Aperturtyp `stop_size`) (#8).
 - Feldwinkel, Objekthöhe und normierte Pupillenkoordinaten als Konvention in
   `docs/architecture.md` (#8).
+
+### Geändert
+- `rtt::math::Real` umfasst nur noch `double` (ADR 0015); der `float`-Test in `rtt-geom` entfällt.
+- Dateiformat Schema 0.2.0: `Lens` und `Plate` mit N Flächen tragen ein Material je Segment
+  (Segment i zwischen Fläche i und i + 1); `"material"` ist ein String (Kurzform für alle
+  Segmente) oder ein Array mit N − 1 Einträgen. `rtt-model`: `Element::segment_materials`,
+  `Element::segment_material(i)` und Validierung der Listenlänge mit JSON-Pointer; `rtt-io` liest
+  und schreibt beide Formen bitgleich und migriert Dateien mit Schema 0.1; JSON-Schema angepasst;
+  Referenzdateien mit `rtt format` neu geschrieben; ADR 0017; neues Beispiel
+  `tests/reference/m2/achromat.rtt.json` (#26).
+- `rtt-compile`: Kittglieder auf automatischen und expliziten Pfaden. Die Medienfolge folgt den
+  Segmenten einer `Lens`/`Plate` (`Refract` an Fläche i: aus Segment i − 1 ins Segment i bzw.
+  zurück, an der ersten und letzten Fläche ins Umgebungsmedium); Kurzform und Materialliste
+  werden ausgewertet, Fehlerorte zeigen auf den Listeneintrag (`.../material/<i>`). Der
+  `CompileError` für `Lens`/`Plate` mit mehr als 2 Flächen auf einem automatischen Pfad entfällt;
+  eine innere Fläche von außen ist ein `CompileError` am Event. Festgelegt: Elemente schachteln
+  nicht (Element B betreten, während der Strahl in A ist, verlässt A) (#27).
+- `rtt-model`: Test, dass ein `ThinElement` keine Materialliste annimmt (#26).
 
 ### Abhängigkeiten
 - oneTBB (`tbb` in `vcpkg.json`, `libtbb-dev` für den apt-Weg), Apache-2.0, kompatibel mit MIT

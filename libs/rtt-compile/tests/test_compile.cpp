@@ -409,12 +409,6 @@ TEST_CASE("model features beyond M1 throw CompileError", "[compile]") {
     const CompileError e = compile_error(s);
     REQUIRE(has_error_at(e, "/root/children/1/surfaces/0/shape/terms/0"));
   }
-  SECTION("lens with more than 2 surfaces on an automatic path (cemented group, #14)") {
-    lens.surfaces.push_back(plane_surface("L1.S3", 6.0));
-    const CompileError e = compile_error(s);
-    REQUIRE(has_error_at(e, "/root/children/1/surfaces"));
-    REQUIRE_THAT(e.what(), ContainsSubstring("#14"));
-  }
 }
 
 TEST_CASE("even asphere compiles to geom::EvenAsphere with c = 1/R", "[compile]") {
@@ -512,4 +506,274 @@ TEST_CASE("pickups are not evaluated in M1: the value is used", "[compile]") {
   const MaterialLibrary lib;
   const CompiledSystem cs = compile(s, lib);
   REQUIRE_THAT(cs.surfaces()[1].to_global.translation().z(), WithinAbs(5.0, kTol));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Cemented groups (ADR 0017, #27): segment i lies between surface i and surface i + 1.
+// ---------------------------------------------------------------------------------------------
+
+namespace {
+
+/// Lens "L" at z = 10 with plane surfaces L.S1, L.S2, ... 2 mm apart and the given segment list.
+Element segmented_lens(std::size_t surface_count, std::vector<std::string> segment_materials) {
+  Element lens{"L", ElementKind::Lens, Pose::along_z(10.0), std::nullopt, {}};
+  for (std::size_t i = 0; i < surface_count; ++i) {
+    lens.surfaces.push_back(
+        plane_surface("L.S" + std::to_string(i + 1), 2.0 * static_cast<double>(i)));
+  }
+  lens.segment_materials = std::move(segment_materials);
+  return lens;
+}
+
+rtt::model::Event refract(const std::string& id) {
+  return {SurfaceId(id), EventKind::Refract, 0};
+}
+
+}  // namespace
+
+TEST_CASE("cemented doublet on the automatic path goes air -> glass A -> glass B -> air",
+          "[compile][cemented]") {
+  System s = bare_system();
+  s.wavelengths = {{0.4861, 1.0, false}, {0.5876, 1.0, true}};
+  s.root.children.push_back({segmented_lens(3, {"CONST:1.5168", "CONST:1.62"})});
+  s.root.children.push_back({Element{
+      "D", ElementKind::Detector, Pose::along_z(50.0), std::nullopt, {plane_surface("D.S")}}});
+  s.paths = {{"auto", true, {}}};
+
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+  REQUIRE(cs.media().size() == 3);
+  // Every segment material is evaluated once per system wavelength (ADR 0014).
+  REQUIRE(cs.media()[medium_index(cs, "CONST:1.5168")].index ==
+          std::vector<Complex>(2, Complex(1.5168, 0.0)));
+  REQUIRE(cs.media()[medium_index(cs, "CONST:1.62")].index ==
+          std::vector<Complex>(2, Complex(1.62, 0.0)));
+  require_events(cs, "auto",
+                 {{"L.S1", EventKind::Refract, "AIR", "CONST:1.5168"},
+                  {"L.S2", EventKind::Refract, "CONST:1.5168", "CONST:1.62"},
+                  {"L.S3", EventKind::Refract, "CONST:1.62", "AIR"},
+                  {"D.S", EventKind::Transmit, "AIR", "AIR"}});
+}
+
+TEST_CASE("cemented doublet in reverse and in double pass", "[compile][cemented]") {
+  System s = bare_system();
+  s.root.children.push_back({segmented_lens(3, {"CONST:1.5", "CONST:1.7"})});
+  s.root.children.push_back({Element{
+      "M", ElementKind::Mirror, Pose::along_z(30.0), std::nullopt, {plane_surface("M.S")}}});
+  s.paths = {{"reverse", false, {refract("L.S3"), refract("L.S2"), refract("L.S1")}},
+             {"double pass",
+              false,
+              {refract("L.S1"),
+               refract("L.S2"),
+               refract("L.S3"),
+               {SurfaceId("M.S"), EventKind::Reflect, 0},
+               refract("L.S3"),
+               refract("L.S2"),
+               refract("L.S1")}}};
+
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+  // Entering through the last surface goes into the last segment; Refract at surface i from
+  // segment i goes back into segment i - 1, at the first surface into the environment.
+  require_events(cs, "reverse",
+                 {{"L.S3", EventKind::Refract, "AIR", "CONST:1.7"},
+                  {"L.S2", EventKind::Refract, "CONST:1.7", "CONST:1.5"},
+                  {"L.S1", EventKind::Refract, "CONST:1.5", "AIR"}});
+  require_events(cs, "double pass",
+                 {{"L.S1", EventKind::Refract, "AIR", "CONST:1.5"},
+                  {"L.S2", EventKind::Refract, "CONST:1.5", "CONST:1.7"},
+                  {"L.S3", EventKind::Refract, "CONST:1.7", "AIR"},
+                  {"M.S", EventKind::Reflect, "AIR", "AIR"},
+                  {"L.S3", EventKind::Refract, "AIR", "CONST:1.7"},
+                  {"L.S2", EventKind::Refract, "CONST:1.7", "CONST:1.5"},
+                  {"L.S1", EventKind::Refract, "CONST:1.5", "AIR"}});
+}
+
+TEST_CASE("cemented group of two equal glasses has the media of a single lens",
+          "[compile][cemented]") {
+  const MaterialLibrary lib;
+  System single = bare_system();
+  single.root.children.push_back({Element{"L",
+                                          ElementKind::Lens,
+                                          Pose::along_z(10.0),
+                                          "CONST:1.5",
+                                          {plane_surface("L.S1"), plane_surface("L.S3", 4.0)}}});
+  single.paths = {{"auto", true, {}}};
+  const CompiledSystem one = compile(single, lib);
+
+  System list = bare_system();
+  list.root.children.push_back({segmented_lens(3, {"CONST:1.5", "CONST:1.5"})});
+  list.paths = {{"auto", true, {}}};
+  const CompiledSystem two = compile(list, lib);
+
+  System shorthand = bare_system();
+  Element lens = segmented_lens(3, {});
+  lens.material = "CONST:1.5";  // the shorthand holds for all segments
+  shorthand.root.children.push_back({lens});
+  shorthand.paths = {{"auto", true, {}}};
+  const CompiledSystem three = compile(shorthand, lib);
+
+  require_events(one, "auto",
+                 {{"L.S1", EventKind::Refract, "AIR", "CONST:1.5"},
+                  {"L.S3", EventKind::Refract, "CONST:1.5", "AIR"}});
+  REQUIRE(one.media().size() == 2);
+  for (const CompiledSystem* cs : {&two, &three}) {
+    REQUIRE(cs->media().size() == one.media().size());
+    for (std::size_t m = 0; m < one.media().size(); ++m) {
+      REQUIRE(cs->media()[m].reference == one.media()[m].reference);
+      REQUIRE(cs->media()[m].index == one.media()[m].index);
+    }
+    require_events(*cs, "auto",
+                   {{"L.S1", EventKind::Refract, "AIR", "CONST:1.5"},
+                    {"L.S2", EventKind::Refract, "CONST:1.5", "CONST:1.5"},
+                    {"L.S3", EventKind::Refract, "CONST:1.5", "AIR"}});
+  }
+}
+
+TEST_CASE("two-surface lens with a one-entry material list has that material",
+          "[compile][cemented]") {
+  // Closes the gap left by #26: rtt-compile used to read only the shorthand.
+  System s = bare_system();
+  s.root.children.push_back({segmented_lens(2, {"CONST:1.6"})});
+  s.paths = {{"auto", true, {}}};
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+  REQUIRE(cs.media().size() == 2);
+  require_events(cs, "auto",
+                 {{"L.S1", EventKind::Refract, "AIR", "CONST:1.6"},
+                  {"L.S2", EventKind::Refract, "CONST:1.6", "AIR"}});
+}
+
+TEST_CASE("plate with more than 2 surfaces on the automatic path follows its segments",
+          "[compile][cemented]") {
+  System s = bare_system();
+  s.environment.medium = "CONST:1.333";
+  Element plate{"P",
+                ElementKind::Plate,
+                Pose::along_z(5.0),
+                std::nullopt,
+                {plane_surface("P.S1"), plane_surface("P.S2", 1.0), plane_surface("P.S3", 2.0),
+                 plane_surface("P.S4", 3.0)}};
+  plate.segment_materials = {"CONST:1.5", "CONST:1.6", "CONST:1.5"};
+  s.root.children.push_back({plate});
+  s.root.children.push_back(
+      {Element{"cube",
+               ElementKind::Plate,
+               Pose::along_z(20.0),
+               "CONST:1.7",
+               {plane_surface("C.S1"), plane_surface("C.S2", 1.0), plane_surface("C.S3", 2.0)}}});
+  s.paths = {{"auto", true, {}}};
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+  REQUIRE(cs.media().size() == 4);
+  require_events(cs, "auto",
+                 {{"P.S1", EventKind::Refract, "CONST:1.333", "CONST:1.5"},
+                  {"P.S2", EventKind::Refract, "CONST:1.5", "CONST:1.6"},
+                  {"P.S3", EventKind::Refract, "CONST:1.6", "CONST:1.5"},
+                  {"P.S4", EventKind::Refract, "CONST:1.5", "CONST:1.333"},
+                  {"C.S1", EventKind::Refract, "CONST:1.333", "CONST:1.7"},
+                  {"C.S2", EventKind::Refract, "CONST:1.7", "CONST:1.7"},
+                  {"C.S3", EventKind::Refract, "CONST:1.7", "CONST:1.333"}});
+}
+
+TEST_CASE("achromat reference system goes air -> crown -> flint -> air", "[compile][cemented]") {
+  // Catalogs follow with #24; the file's SCHOTT glasses are replaced by constants.
+  System s = load("m2/achromat.rtt.json");
+  auto& lens = std::get<Element>(s.root.children[1].value);
+  REQUIRE(lens.segment_materials == std::vector<std::string>{"SCHOTT:N-BK7", "SCHOTT:F2"});
+  lens.segment_materials = {"CONST:1.5168", "CONST:1.62"};
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+  REQUIRE(cs.media().size() == 3);
+  require_events(cs, "main",
+                 {{"STO", EventKind::Transmit, "AIR", "AIR"},
+                  {"L1.S1", EventKind::Refract, "AIR", "CONST:1.5168"},
+                  {"L1.S2", EventKind::Refract, "CONST:1.5168", "CONST:1.62"},
+                  {"L1.S3", EventKind::Refract, "CONST:1.62", "AIR"},
+                  {"IMG", EventKind::Transmit, "AIR", "AIR"}});
+}
+
+TEST_CASE("unknown segment materials point at the list entry", "[compile][cemented]") {
+  SECTION("list: one error per unknown entry") {
+    System s = bare_system();
+    s.root.children.push_back({segmented_lens(4, {"CONST:1.5", "NOPE:A", "NOPE:B"})});
+    s.paths = {{"auto", true, {}}};
+    const CompileError e = compile_error(s);
+    REQUIRE(e.diagnostics().size() == 2);
+    REQUIRE(has_error_at(e, "/root/children/0/material/1"));
+    REQUIRE(has_error_at(e, "/root/children/0/material/2"));
+    REQUIRE_THAT(e.what(), ContainsSubstring("NOPE:A"));
+    REQUIRE_THAT(e.what(), ContainsSubstring("NOPE:B"));
+  }
+  SECTION("shorthand: one error at the material for all segments") {
+    System s = bare_system();
+    Element lens = segmented_lens(3, {});
+    lens.material = "NOPE:A";
+    s.root.children.push_back({lens});
+    s.paths = {{"auto", true, {}}};
+    const CompileError e = compile_error(s);
+    REQUIRE(e.diagnostics().size() == 1);
+    REQUIRE(has_error_at(e, "/root/children/0/material"));
+  }
+}
+
+TEST_CASE("entering element B while inside element A goes from the medium of A to that of B",
+          "[compile][cemented]") {
+  // Decided for #27: elements do not nest. A Refract at B while the ray is in A leaves A and
+  // enters B (medium of A before, of B after); leaving B goes to the environment, not back to
+  // A. Cemented groups are one element with one material per segment (ADR 0017).
+  System s = bare_system();
+  s.root.children.push_back({Element{"A",
+                                     ElementKind::Plate,
+                                     Pose::along_z(10.0),
+                                     "CONST:1.5",
+                                     {plane_surface("A.S1"), plane_surface("A.S2", 2.0)}}});
+  s.root.children.push_back({segmented_lens(3, {"CONST:1.6", "CONST:1.7"})});
+  s.paths = {
+      {"A then B", false, {refract("A.S1"), refract("L.S3"), refract("L.S2"), refract("L.S1")}},
+      // Exit of A and entry of B directly one after the other: through the environment.
+      {"touching", false, {refract("A.S1"), refract("A.S2"), refract("L.S1")}}};
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+  require_events(cs, "A then B",
+                 {{"A.S1", EventKind::Refract, "AIR", "CONST:1.5"},
+                  {"L.S3", EventKind::Refract, "CONST:1.5", "CONST:1.7"},
+                  {"L.S2", EventKind::Refract, "CONST:1.7", "CONST:1.6"},
+                  {"L.S1", EventKind::Refract, "CONST:1.6", "AIR"}});
+  require_events(cs, "touching",
+                 {{"A.S1", EventKind::Refract, "AIR", "CONST:1.5"},
+                  {"A.S2", EventKind::Refract, "CONST:1.5", "AIR"},
+                  {"L.S1", EventKind::Refract, "AIR", "CONST:1.6"}});
+}
+
+TEST_CASE("Refract at a surface that does not bound the current segment", "[compile][cemented]") {
+  System s = bare_system();
+  s.root.children.push_back({segmented_lens(4, {"CONST:1.5", "CONST:1.6", "CONST:1.7"})});
+
+  SECTION("from inside the element: the ray leaves it into the environment") {
+    // As for prisms in "plates with more than 2 surfaces are fine on explicit paths": through a
+    // surface, only the segments on its two sides are reached.
+    s.paths = {{"skip",
+                false,
+                {refract("L.S1"),
+                 {SurfaceId("L.S2"), EventKind::Reflect, 0},
+                 refract("L.S3"),
+                 refract("L.S1")}}};
+    const MaterialLibrary lib;
+    const CompiledSystem cs = compile(s, lib);
+    require_events(cs, "skip",
+                   {{"L.S1", EventKind::Refract, "AIR", "CONST:1.5"},
+                    {"L.S2", EventKind::Reflect, "CONST:1.5", "CONST:1.5"},
+                    {"L.S3", EventKind::Refract, "CONST:1.5", "AIR"},
+                    {"L.S1", EventKind::Refract, "AIR", "CONST:1.5"}});
+  }
+  SECTION("from outside through an inner surface: ambiguous, CompileError at the event") {
+    s.paths = {{"inner",
+                false,
+                {refract("L.S1"), refract("L.S1"), {SurfaceId("L.S3"), EventKind::Ordinary, 0}}}};
+    const CompileError e = compile_error(s);
+    REQUIRE(e.diagnostics().size() == 1);
+    REQUIRE(has_error_at(e, "/paths/0/events/2"));
+    REQUIRE_THAT(e.what(), ContainsSubstring("inner surface"));
+  }
 }
