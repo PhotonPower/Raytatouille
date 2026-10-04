@@ -21,7 +21,8 @@
 ///   "Feldwinkel und Pupille"): a field angle theta > 0 gives a chief ray rising towards +y
 ///   (slope tan theta), an object height h > 0 gives an object point at +y, a paraxial image
 ///   height h' > 0 an image point at +y. S_II and S_V change sign with the chief ray, S_I, S_III
-///   and S_IV do not.
+///   and S_IV do not. For a finite object with an angle field the object point lies at -y (#8);
+///   S_II and S_V then have the opposite sign of an equivalent object-height field.
 /// - Normalisation: the wavefront aberration at normalised pupil vector rho (|rho| = 1 at the
 ///   rim of the pupil) and normalised field vector eta (|eta| = 1 at the maximum field) is
 ///     W = 1/8 S_I (rho.rho)^2 + 1/2 S_II (eta.rho)(rho.rho) + 1/2 S_III (eta.rho)^2

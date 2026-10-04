@@ -52,6 +52,7 @@ constexpr double kRel = 1e-12;
 System base_system() {
   System s;
   s.name = "seidel test";
+  s.environment.medium = "VACUUM";  // n = 1 outside, independent of the air model (#25)
   s.wavelengths = {{0.5876, 1.0, true}};
   s.aperture = {rtt::model::SystemApertureType::EntrancePupilDiameter, Param(20.0)};
   s.fields = {rtt::model::FieldType::AngleDeg, {{0.0, 0.0, 1.0}}};
@@ -428,6 +429,40 @@ TEST_CASE("chromatic terms of a thin lens in a system with a dispersive test mat
     const Seidel rev = run(-20.0, ChromaticPair{2, 0});
     REQUIRE_THAT(rev.sum.c_l, WithinRel(-y * y * phi / v, kRel));
     REQUIRE_THAT(rev.sum.c_t, WithinRel(-y * 20.0 * t * phi / v, kRel));
+  }
+  SECTION("double pass through the lens via a plane mirror: C_L = 2 y^2 phi / V") {
+    // Lens and plane mirror at z = 0, explicit path S1, S2, mirror, S2, S1 (as the double-pass
+    // test of first_order). On the way back n and dn are both negative (signed index), so
+    // dn/n is unchanged; the surfaces come in the order c2, c1 with the signed glass index,
+    // and the thin-lens result y^2 dn_signed (c_first - c_second) = y^2 (-dn)(c2 - c1)
+    // = y^2 phi / V holds again: C_L = 2 y^2 phi / V. Independent check in Python (PR #44).
+    System s = base_system();
+    s.wavelengths = {{0.4861, 1.0, false}, {0.5876, 1.0, true}, {0.6563, 1.0, false}};
+    s.aperture = {rtt::model::SystemApertureType::EntrancePupilDiameter, Param(2.0 * y)};
+    s.fields = {rtt::model::FieldType::AngleDeg, {{0.0, 0.0, 1.0}, {0.0, 5.0, 1.0}}};
+    add(s, stop(0.0, y));
+    Surface s1 = plane_surface("L.S1", 0.0);
+    s1.shape.base = rtt::model::Conic{Param(50.0), Param(0.0)};
+    Surface s2 = plane_surface("L.S2", 0.0);
+    s2.shape.base = rtt::model::Conic{Param(-50.0), Param(0.0)};
+    add(s, Element{"L", ElementKind::Lens, Pose::along_z(0.0), "TEST:LINEAR", {s1, s2}});
+    add(s, mirror(0.0, rtt::model::Plane{}));
+    s.paths = {{"double pass",
+                false,
+                {{SurfaceId("STO"), rtt::model::EventKind::Transmit, 0},
+                 {SurfaceId("L.S1"), rtt::model::EventKind::Refract, 0},
+                 {SurfaceId("L.S2"), rtt::model::EventKind::Refract, 0},
+                 {SurfaceId("M.S"), rtt::model::EventKind::Reflect, 0},
+                 {SurfaceId("L.S2"), rtt::model::EventKind::Refract, 0},
+                 {SurfaceId("L.S1"), rtt::model::EventKind::Refract, 0}}}};
+    MaterialLibrary lib;
+    lib.add("TEST:LINEAR", std::make_shared<const LinearGlass>());
+    const Seidel res = seidel(rtt::compile::compile(s, lib), PathId{0}, 1, ChromaticPair{0, 2});
+    check_sum_and_lagrange(res);
+    REQUIRE(res.surfaces.size() == 6);
+    REQUIRE(res.surfaces[3].terms.c_l == 0.0);  // the mirror adds no colour
+    REQUIRE_THAT(res.sum.c_l, WithinRel(2.0 * y * y * phi / v, kRel));
+    REQUIRE_THAT(res.sum.c_t, WithinAbs(0.0, 1e-17));  // stop at the lens
   }
 }
 
