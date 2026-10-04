@@ -9,5 +9,5 @@ rtt_target_defaults(rtt_coating LIBRARY)
 if(RTT_BUILD_TESTS)
   rtt_add_test(rtt_coating_tests
     SOURCES tests/test_transfer_matrix.cpp tests/test_coatings.cpp
-    LIBS rtt::coating)
+    LIBS rtt::coating rtt::polar)  # rtt-polar only in the tests: zero layers = Fresnel (#56)
 endif()

@@ -9,6 +9,7 @@
 
 #include "rtt/coating/thickness.hpp"
 #include "rtt/coating/transfer_matrix.hpp"
+#include "rtt/polar/fresnel.hpp"
 
 using Catch::Matchers::WithinAbs;
 using Complex = std::complex<double>;
@@ -168,6 +169,35 @@ TEST_CASE("no layers: Fresnel amplitudes of Eq. (6)", "[coating]") {
   // Brewster angle arctan(n2 / n1): r_p = 0.
   const double brewster = std::atan(n2 / n1);
   REQUIRE(std::abs(stack(n1, {}, n2, n1 * std::sin(brewster), 0.55).rp) < 1e-14);
+}
+
+TEST_CASE("no layers: identical with the Fresnel amplitudes of rtt-polar (#56)", "[coating]") {
+  // Architecture reference case after the merge of #56. Same equations (Byrnes Eq. (6), (21),
+  // (22)), but rtt-polar writes the p terms multiplied by n_i n_t, so the results agree to a
+  // few ulp, not bitwise.
+  struct Case {
+    Complex n_in;
+    Complex n_out;
+  };
+  for (const Case c :
+       {Case{1.0, 1.5168}, Case{1.0, {0.2, 3.0}}, Case{1.52, 1.0}, Case{1.33, {1.7, 0.02}}}) {
+    for (const double theta : {0.0, 25.0, 50.0, 70.0, 85.0}) {
+      const double xi = c.n_in.real() * std::sin(deg(theta));
+      const Amplitudes<double> a = stack(c.n_in, {}, c.n_out, xi, 0.55);
+      const auto f = rtt::polar::fresnel<double>(c.n_in, c.n_out, xi);
+      INFO("n_in " << c.n_in << ", n_out " << c.n_out << ", theta " << theta);
+      require_close(a.rs, f.rs, 1e-14);
+      require_close(a.rp, f.rp, 1e-14);
+      require_close(a.ts, f.ts, 1e-14);
+      require_close(a.tp, f.tp, 1e-14);
+      const Powers<double> p = rtt::coating::stack_powers(a, c.n_in, c.n_out, xi);
+      const auto fp = rtt::polar::fresnel_power<double>(c.n_in, c.n_out, xi);
+      REQUIRE_THAT(p.reflectance_s, WithinAbs(fp.reflectance_s, 1e-14));
+      REQUIRE_THAT(p.reflectance_p, WithinAbs(fp.reflectance_p, 1e-14));
+      REQUIRE_THAT(p.transmittance_s, WithinAbs(fp.transmittance_s, 1e-14));
+      REQUIRE_THAT(p.transmittance_p, WithinAbs(fp.transmittance_p, 1e-14));
+    }
+  }
 }
 
 TEST_CASE("total internal reflection through a lossless stack", "[coating]") {
