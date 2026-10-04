@@ -13,7 +13,7 @@ Python-API; Linux und Windows.
 ```bash
 # Linux, Systempakete (Ubuntu 24.04):
 sudo apt-get install cmake ninja-build g++ clang clang-format clang-tidy \
-     libeigen3-dev nlohmann-json3-dev catch2
+     libeigen3-dev nlohmann-json3-dev catch2 libtbb-dev
 cmake --preset dev && cmake --build --preset dev && ctest --preset dev
 
 # Mit vcpkg (wie die CI; Windows: Preset ci-windows-msvc):

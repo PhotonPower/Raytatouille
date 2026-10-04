@@ -17,6 +17,7 @@
 #include <variant>
 #include <vector>
 
+#include "rtt/geom/asphere.hpp"
 #include "rtt/geom/conic.hpp"
 #include "rtt/geom/plane.hpp"
 #include "rtt/material/material.hpp"
@@ -26,9 +27,10 @@
 
 namespace rtt::compile {
 
-/// Resolved base shape of a surface in its local coordinates. Supported in M1: plane and
-/// conic; further shapes are added to this variant as rtt-geom provides them.
-using CompiledShape = std::variant<geom::Plane<double>, geom::Conic<double>>;
+/// Resolved base shape of a surface in its local coordinates. Supported in M1: plane, conic
+/// and even asphere; further shapes are added to this variant as rtt-geom provides them.
+using CompiledShape =
+    std::variant<geom::Plane<double>, geom::Conic<double>, geom::EvenAsphere<double>>;
 
 /// One surface with everything the tracer needs, independent of the model.
 struct CompiledSurface {
@@ -108,9 +110,11 @@ class CompiledSystem;
 ///   medium to B's, and leaving B then goes to the environment; that case is not settled
 ///   yet and is part of the question on cemented groups (#14).
 ///
-/// Not supported yet (CompileError): even aspheres (added to CompiledShape with the tracer, #6),
-/// Zernike sag terms (M8), and Lens or Plate
-/// elements with more than 2 surfaces on an automatic path (cemented groups, see #14).
+/// Not supported yet (CompileError): Zernike sag terms (M8), and Lens or Plate elements with
+/// more than 2 surfaces on an automatic path (cemented groups, see #14).
+/// Also a CompileError: a Mirror with substrate material and more than one surface on an
+/// automatic path (Mangin mirror; its front surface refracts, so it needs an explicit path
+/// Refract, Reflect, Refract).
 ///
 /// The result holds no references or pointers into `system` or `materials`.
 /// @throws CompileError as described above

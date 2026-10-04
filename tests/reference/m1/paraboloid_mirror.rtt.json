@@ -1,0 +1,45 @@
+{
+  "schema_version": "0.1.0",
+  "name": "Paraboloid mirror R = -200 mm, focus at R/2",
+  "units": {"length": "mm", "wavelength": "um"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 60.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "mirror",
+        "name": "M",
+        "surfaces": [
+          {
+            "id": "M",
+            "shape": {
+              "base": {"type": "conic", "radius": -200.0, "conic": -1.0}
+            },
+            "aperture": {"type": "circular", "radius": 31.0},
+            "interaction": {"type": "ideal_mirror"}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "focus",
+        "pose": {"position": [0.0, 0.0, -100.0]},
+        "surfaces": [
+          {"id": "F"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}

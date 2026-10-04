@@ -7,6 +7,7 @@
   "dependencies": [
     "eigen3",
     "nlohmann-json",
-    "catch2"
+    "catch2",
+    "tbb"
   ]
 }

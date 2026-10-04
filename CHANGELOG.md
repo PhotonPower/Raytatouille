@@ -30,6 +30,20 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
 - `rtt-trace`: `RayBatch` als Structure-of-Arrays (#5).
 - ADR 0016: `CompiledSystem` in eigener Bibliothek `rtt-compile`; feste Reihenfolge
   `rtt-compile` < `rtt-paraxial` < `rtt-trace` in der Schicht Tracing.
+- `rtt-trace`: sequenzieller Tracer `SequentialTracer` aus pfadunabhängigen Bausteinen
+  `intersect_surface()`, `inside_aperture()` und `apply_event(ray, hit, kind)` (Schnitt im lokalen
+  KS, Aperturen → `Vignetted` im sequenziellen Schritt, vektorielle Brechung und Reflexion, TIR → `Tir`,
+  `Absorber` → `Absorbed`, M4-Events → `EventImpossible`, OPL mit Re(n)), `TraceStats` je Status,
+  Parallelisierung mit oneTBB (`static_partitioner`, bitgleich zu einem Thread). Referenzsystem
+  `tests/reference/m1/paraboloid_mirror.rtt.json` (#6).
+- `rtt-compile`: `EvenAsphere` in `CompiledShape`; Mangin-Spiegel auf dem automatischen Pfad
+  ergibt einen `CompileError` (#6).
+- Quelle für Brechung und Reflexion in Vektorform: de Greve, „Reflections and Refractions in Ray
+  Tracing“ (2006), Gl. (13), (22)–(25), Abschnitt 6; Born & Wolf §3.2.2 als ergänzende Angabe (#19).
+
+### Abhängigkeiten
+- oneTBB (`tbb` in `vcpkg.json`, `libtbb-dev` für den apt-Weg), Apache-2.0, kompatibel mit MIT
+  (ADR 0004, ADR 0010).
 
 ## [0.1.0] – M0 Fundament
 
