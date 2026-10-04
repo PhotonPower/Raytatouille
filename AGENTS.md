@@ -64,8 +64,12 @@ Neue Bibliothek: Ordner wie oben, `CMakeLists.txt` nach dem Muster von `libs/rtt
    intern, Suffix `_deg` für Grad, +z optische Achse, Radiusvorzeichen, Rotationsreihenfolge.
    Jede öffentliche Funktion dokumentiert Einheiten, Koordinatensystem und Vorzeichen im
    Doxygen-Kommentar.
-6. **Physik mit Quelle:** jede Formel mit Literaturstelle (Buch, Kapitel, Gleichung) im
-   Kommentar.
+6. **Physik mit Quelle:** jede Formel mit Literaturstelle (Quelle, Abschnitt, Gleichungsnummer)
+   im Kommentar. Zuerst [docs/quellen.md](docs/quellen.md) verwenden. Fehlt die Formel dort:
+   frei zugängliche Quelle mit Gleichungsnummer suchen, im Volltext lesen, Symbol für Symbol mit
+   dem Code vergleichen (Vorzeichen, Normalenrichtung, Einheiten) und im selben PR in
+   docs/quellen.md eintragen. Gleichungsnummern nie aus dem Gedächtnis oder aus Zitaten
+   übernehmen. Ein Frage-Issue erst, wenn keine prüfbare Quelle auffindbar ist.
 7. **Determinismus:** Zufall nur mit explizitem Seed; Parallelisierung darf Ergebnisse nicht
    ändern.
 8. **Öffentliche Header** anderer Bibliotheken nicht ändern. Brauchst du eine Änderung,
@@ -86,6 +90,7 @@ Neue Bibliothek: Ordner wie oben, `CMakeLists.txt` nach dem Muster von `libs/rtt
 
 - [ ] CI grün (Linux GCC/Clang/Sanitizer, Windows MSVC, Format, Schema)
 - [ ] Referenztests für jedes neue physikalische Verhalten, mit Quelle
+- [ ] Neue Quellen in `docs/quellen.md` eingetragen
 - [ ] Öffentliche API mit Doxygen-Kommentaren inkl. Einheiten
 - [ ] `CHANGELOG.md` ergänzt
 - [ ] Bei Formatänderung: Schema-Version, JSON-Schema, Referenzdateien, Migration
