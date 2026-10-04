@@ -103,10 +103,10 @@ std::vector<double> first_order_values(const rtt::paraxial::FirstOrder& fo) {
 
 struct Case {
   std::string name;
-  std::string file;  // relative to the reference dir
-  bool catalog;      // load <catalog dir>/schott.agf
-  rtt::trace::PupilSampling sampling;
-  std::optional<std::uint16_t> wavelength;  // none: reference wavelength
+  std::string file;                                   // relative to the reference dir
+  bool catalog;                                       // load <catalog dir>/schott.agf
+  std::optional<rtt::trace::PupilSampling> sampling;  // none: hand_filled_rays()
+  std::optional<std::uint16_t> wavelength;            // none: reference wavelength
   rtt::trace::Aiming aiming;
 };
 
@@ -119,7 +119,35 @@ std::vector<Case> cases() {
        std::nullopt, rtt::trace::Aiming::Paraxial},
       {"achromat_grid", "m2/achromat.rtt.json", true, rtt::trace::GridPupil{15}, std::uint16_t{0},
        rtt::trace::Aiming::Real},
+      {"singlet_hand_filled", "m1/singlet_const.rtt.json", false, std::nullopt, std::nullopt,
+       rtt::trace::Aiming::Real},
   };
+}
+
+/// Rays set column by column, as hand_filled_rays() in test_bitwise.py: status and last_surface
+/// vary (ALIVE at IMG, VIGNETTED at the stop for heights above its radius of 10 mm, MISSED
+/// without any surface for rays travelling towards -z). All inputs are exact binary values or
+/// the same decimal literals on both sides.
+RayBatch hand_filled_rays() {
+  RayBatch rays(48);
+  for (std::size_t i = 0; i < rays.size(); ++i) {
+    const double k = static_cast<double>(i);
+    rays.pos_z()[i] = -10.0;
+    if (i < 40) {  // parallel to the axis at y = 0 ... 19.5 mm, all three wavelengths
+      rays.pos_y()[i] = 0.5 * k;
+      rays.wl()[i] = static_cast<std::uint16_t>(i % 3);
+    } else if (i < 44) {  // oblique in the x-z plane
+      rays.pos_y()[i] = 2.0 * (k - 40.0);
+      rays.dir_x()[i] = 0.6;
+      rays.dir_z()[i] = 0.8;
+      rays.wl()[i] = 1;
+    } else {  // away from the system
+      rays.pos_y()[i] = k - 44.0;
+      rays.dir_z()[i] = -1.0;
+      rays.wl()[i] = 1;
+    }
+  }
+  return rays;
 }
 
 void run(const Case& c,
@@ -140,7 +168,8 @@ void run(const Case& c,
   RayBatch rays;
   rtt::trace::TraceStats stats;
   arena.execute([&] {
-    rays = rtt::trace::make_rays(system, path, fields, wl, c.sampling, c.aiming);
+    rays = c.sampling ? rtt::trace::make_rays(system, path, fields, wl, *c.sampling, c.aiming)
+                      : hand_filled_rays();
     stats = rtt::trace::SequentialTracer{}.trace(system, path, rays);
   });
 

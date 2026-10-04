@@ -20,7 +20,7 @@ import numpy.typing as npt
 import pytest
 
 import raytatouille as rt
-from raytatouille.trace import Aiming, PupilSampling
+from raytatouille.trace import Aiming, PupilSampling, RayStatus
 
 EXE = os.environ.get("RTT_PY_REFERENCE_EXE")
 pytestmark = pytest.mark.skipif(
@@ -70,7 +70,7 @@ class Case:
     name: str
     file: str
     catalog: bool
-    sampling: PupilSampling
+    sampling: PupilSampling | None  # None: hand_filled_rays()
     wavelength: int | None
     aiming: Aiming
 
@@ -82,7 +82,30 @@ CASES = [
     Case("paraboloid_random", "m2/paraboloid_stop.rtt.json", False,
          rt.trace.RandomPupil(500, 42), None, Aiming.PARAXIAL),
     Case("achromat_grid", "m2/achromat.rtt.json", True, rt.trace.GridPupil(15), 0, Aiming.REAL),
+    Case("singlet_hand_filled", "m1/singlet_const.rtt.json", False, None, None, Aiming.REAL),
 ]
+
+
+def hand_filled_rays() -> rt.trace.RayBatch:
+    """Rays set through the NumPy views, as hand_filled_rays() in rtt_py_reference.cpp, so that
+    status and last_surface vary: ALIVE at IMG, VIGNETTED at the stop for heights above its
+    radius of 10 mm, MISSED without any surface for rays travelling towards -z."""
+    rays = rt.trace.RayBatch(48)
+    i = np.arange(48, dtype=np.float64)
+    rays.pos_z[:] = -10.0
+    # Parallel to the axis at y = 0 ... 19.5 mm, all three wavelengths.
+    rays.pos_y[:40] = 0.5 * i[:40]
+    rays.wl[:40] = np.arange(40) % 3
+    # Oblique in the x-z plane.
+    rays.pos_y[40:44] = 2.0 * (i[40:44] - 40.0)
+    rays.dir_x[40:44] = 0.6
+    rays.dir_z[40:44] = 0.8
+    rays.wl[40:44] = 1
+    # Away from the system.
+    rays.pos_y[44:] = i[44:] - 44.0
+    rays.dir_z[44:] = -1.0
+    rays.wl[44:] = 1
+    return rays
 
 
 def first_order_values(fo: rt.paraxial.FirstOrder) -> npt.NDArray[np.float64]:
@@ -102,8 +125,11 @@ def python_results(case: Case, reference_dir: Path, catalog_dir: Path,
     if case.catalog:
         lib.add_catalog(catalog_dir / "schott.agf")
     cs = rt.compile(rt.load(reference_dir / case.file), lib)
-    rays = rt.trace.make_rays(cs, case.sampling, path=0, wavelength=case.wavelength,
-                              aiming=case.aiming)
+    if case.sampling is None:
+        rays = hand_filled_rays()
+    else:
+        rays = rt.trace.make_rays(cs, case.sampling, path=0, wavelength=case.wavelength,
+                                  aiming=case.aiming)
     stats = rt.trace.trace(cs, rays, path=0, threads=threads)
     results: dict[str, npt.NDArray[np.generic]] = {
         name: np.array(getattr(rays, name)) for name in COLUMNS
@@ -134,6 +160,13 @@ def test_python_equals_cpp_bitwise(case: Case, threads: int, cpp_dir: Path,
                                    reference_dir: Path, catalog_dir: Path) -> None:
     results = python_results(case, reference_dir, catalog_dir, threads)
     assert len(results["pos_x"]) > 0
+    if case.sampling is None:
+        # The case must separate status and last_surface (review of #32); weight is constant
+        # before M3.
+        assert np.unique(results["status"]).size > 1
+        assert np.unique(results["last_surface"]).size > 1
+        assert set(np.unique(results["status"])) >= {
+            int(RayStatus.ALIVE), int(RayStatus.VIGNETTED), int(RayStatus.MISSED)}
     for name, actual in results.items():
         expected = np.load(cpp_dir / f"{case.name}.{name}.npy")
         assert actual.dtype == expected.dtype, name
