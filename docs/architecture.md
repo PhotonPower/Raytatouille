@@ -45,6 +45,7 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 | 0015 | `rtt::math::Real` umfasst nur `double` (später Dual-Zahlen) |
 | 0016 | `CompiledSystem` in eigener Bibliothek `rtt-compile`; feste Reihenfolge in der Schicht Tracing |
 | 0017 | Kittglieder: Material je Segment (`Lens`, `Plate`), Schema 0.2 |
+| 0018 | Python-Build- und Testwerkzeuge (nanobind, scikit-build-core, numpy, pytest, mypy) über `pyproject.toml` statt vcpkg |
 
 **Konventionen (verbindlich für alle Bibliotheken)**
 
@@ -300,6 +301,8 @@ mf.add("EFL", target=100.0, weight=1.0)
 rt.optim.local(sys, mf, max_iter=200)
 sys.save("doublet_opt.rtt.json")
 ```
+
+**Stand M2 (#32):** Paket `raytatouille` unter `libs/rtt-py` (C++ in `src/`, Paket in `python/raytatouille/`, Tests in `tests/`), Erweiterung `raytatouille._core` mit nanobind, Build mit scikit-build-core (`pyproject.toml` im Wurzelverzeichnis, `pip install .`) oder in der CMake-Baumstruktur mit `RTT_BUILD_PYTHON=ON` (Presets `ci-linux-python`, `ci-windows-python`; Werkzeuge vorher mit `pip install -r libs/rtt-py/tests/requirements.txt`, ADR 0018). Vorhanden: `rt.load`, `rt.save`, `rt.validate`, `rt.System` (Name und Umgebung änderbar, volles Editieren folgt), `rt.MaterialLibrary` (`add_catalog`, `index`), `rt.compile`, `rt.paraxial.first_order`, `rt.trace.make_rays` und `rt.trace.trace` (Pfad als Name oder Index, Wellenlänge `None` = Referenz, `threads` ohne Einfluss auf das Ergebnis). `RayBatch`-Spalten sind beschreibbare NumPy-Views ohne Kopie; jede View hält den Batch am Leben, die Größe ist aus Python fest (kein `resize`), `prt_matrices()` ist eine dokumentierte Kopie; während `trace` ist das GIL freigegeben. C++-Fehler kommen als Klassen aus `raytatouille.errors` (`RaytatouilleError` als Basis; `ParseError` mit `pointer`, `CompileError` mit `diagnostics`, `ParaxialError`, `UnknownMaterial`, `AgfError` mit `file` und `line`) mit der C++-Meldung; Dateifehler als `OSError`, sonst ValueError/IndexError wie in nanobind. Die Typ-Stubs `_core.pyi` erzeugt `nanobind.stubgen` beim Build. Tests: Roundtrip Datei → Python → Datei bitgleich für alle Referenzdateien; Ergebnisse aus Python bitgleich zu C++ über das Testprogramm `rtt_py_reference` aus demselben CMake-Baum (1 und 4 Threads); mypy --strict auf die Tests.
 
 **CLI (`rtt`):** vorhanden: `rtt validate`, `rtt format [--check]`, `rtt --version`. Geplant: `rtt trace`, `rtt analyze`, `rtt optimize`, `rtt import <zmx> <rtt.json>`.
 

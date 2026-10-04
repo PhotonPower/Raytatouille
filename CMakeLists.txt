@@ -15,6 +15,12 @@ option(RTT_BUILD_APPS "Build command line tools" ON)
 option(RTT_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 option(RTT_ENABLE_SANITIZERS "Build with AddressSanitizer and UBSan (GCC/Clang)" OFF)
 option(RTT_ENABLE_CLANG_TIDY "Run clang-tidy on library sources during the build" OFF)
+option(RTT_BUILD_PYTHON "Build the Python package raytatouille (libs/rtt-py, ADR 0002)" OFF)
+
+# The static libraries are linked into the Python extension module, a shared library.
+if(RTT_BUILD_PYTHON)
+  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(RttTargets)
@@ -41,6 +47,10 @@ add_subdirectory(libs/rtt-paraxial)
 add_subdirectory(libs/rtt-trace)
 add_subdirectory(libs/rtt-analysis)
 add_subdirectory(libs/rtt-io)
+
+if(RTT_BUILD_PYTHON)
+  add_subdirectory(libs/rtt-py)
+endif()
 
 if(RTT_BUILD_APPS)
   add_subdirectory(apps/rtt-cli)

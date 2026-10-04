@@ -38,6 +38,16 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   sagittale und tangentiale Bildfeldwölbung (Nachbarstrahlen, O(δ²)), Farblängsfehler paraxial
   und real für ein Wellenlängenpaar, Farbquerfehler als Hauptstrahl je Wellenlänge; Feldverläufe
   über das relative Feld (#31).
+- `rtt-py` (neue Bibliothek, Schicht Schnittstellen): Python-Paket `raytatouille` mit nanobind
+  (ADR 0002) und scikit-build-core: `load`, `save`, `validate`, `System` (Name und Umgebung
+  änderbar), `MaterialLibrary` (Kataloge, `index`), `compile`, `paraxial.first_order` und
+  `trace` (`make_rays` mit allen Pupillenverteilungen, `trace` mit `threads`); `RayBatch`-Spalten
+  als NumPy-Views ohne Kopie, die den Batch am Leben halten; C++-Fehler als Klassen aus
+  `raytatouille.errors`; generierte Typ-Stubs. pytest mit Roundtrip Datei → Python → Datei und
+  bitgleichem Vergleich mit C++ (`rtt_py_reference`, 1 und 4 Threads), mypy --strict; Presets
+  `ci-linux-python` und `ci-windows-python`, CI-Job „Python“ (#32).
+- ADR 0018: Python-Build- und Testwerkzeuge über `pyproject.toml` statt vcpkg; AGENTS.md
+  Regel 4 verweist darauf (#32).
 
 ### Geändert
 - `cmake`: `rtt_add_test` setzt unter MinGW den `PATH` für Testerkennung und Testläufe auf das

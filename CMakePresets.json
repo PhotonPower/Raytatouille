@@ -58,6 +58,18 @@
       "generator": "Visual Studio 17 2022",
       "architecture": "x64",
       "cacheVariables": { "RTT_WARNINGS_AS_ERRORS": "ON" }
+    },
+    {
+      "name": "ci-linux-python",
+      "displayName": "Python package with tests (GCC; Python from PATH or Python_ROOT_DIR)",
+      "inherits": "ci-linux-gcc",
+      "cacheVariables": { "RTT_BUILD_PYTHON": "ON", "RTT_BUILD_APPS": "OFF" }
+    },
+    {
+      "name": "ci-windows-python",
+      "displayName": "Python package with tests (MSVC; Python from PATH or Python_ROOT_DIR)",
+      "inherits": "ci-windows-msvc",
+      "cacheVariables": { "RTT_BUILD_PYTHON": "ON", "RTT_BUILD_APPS": "OFF" }
     }
   ],
   "buildPresets": [
@@ -65,13 +77,17 @@
     { "name": "ci-linux-gcc", "configurePreset": "ci-linux-gcc" },
     { "name": "ci-linux-clang", "configurePreset": "ci-linux-clang" },
     { "name": "ci-linux-sanitizers", "configurePreset": "ci-linux-sanitizers" },
-    { "name": "ci-windows-msvc", "configurePreset": "ci-windows-msvc", "configuration": "Release" }
+    { "name": "ci-windows-msvc", "configurePreset": "ci-windows-msvc", "configuration": "Release" },
+    { "name": "ci-linux-python", "configurePreset": "ci-linux-python" },
+    { "name": "ci-windows-python", "configurePreset": "ci-windows-python", "configuration": "Release" }
   ],
   "testPresets": [
     { "name": "dev", "configurePreset": "dev", "output": { "outputOnFailure": true } },
     { "name": "ci-linux-gcc", "configurePreset": "ci-linux-gcc", "output": { "outputOnFailure": true } },
     { "name": "ci-linux-clang", "configurePreset": "ci-linux-clang", "output": { "outputOnFailure": true } },
     { "name": "ci-linux-sanitizers", "configurePreset": "ci-linux-sanitizers", "output": { "outputOnFailure": true } },
-    { "name": "ci-windows-msvc", "configurePreset": "ci-windows-msvc", "configuration": "Release", "output": { "outputOnFailure": true } }
+    { "name": "ci-windows-msvc", "configurePreset": "ci-windows-msvc", "configuration": "Release", "output": { "outputOnFailure": true } },
+    { "name": "ci-linux-python", "configurePreset": "ci-linux-python", "output": { "outputOnFailure": true } },
+    { "name": "ci-windows-python", "configurePreset": "ci-windows-python", "configuration": "Release", "output": { "outputOnFailure": true } }
   ]
 }

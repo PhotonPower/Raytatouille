@@ -1,0 +1,7 @@
+# Python build and test tools for rtt-py (ADR 0018). Pinned; CI and local builds use this file.
+nanobind==2.13.0
+scikit-build-core==1.1.1
+numpy==2.2.6; python_version < "3.11"
+numpy==2.5.3; python_version >= "3.11"
+pytest==9.1.1
+mypy==2.4.0

@@ -1,0 +1,39 @@
+# Python package raytatouille (libs/rtt-py, ADR 0002). Build: pip install .
+# Build and test tools are pinned in libs/rtt-py/tests/requirements.txt (ADR 0018).
+
+[build-system]
+requires = ["scikit-build-core==1.1.1", "nanobind==2.13.0"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "raytatouille"
+version = "0.2.0"
+description = "Raytracing engine for optical design"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24"]
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+cmake.version = ">=3.25"
+cmake.build-type = "Release"
+build-dir = "build/skbuild/{wheel_tag}"
+wheel.packages = ["libs/rtt-py/python/raytatouille"]
+sdist.exclude = ["build", ".claude", ".github"]
+
+[tool.scikit-build.cmake.define]
+RTT_BUILD_PYTHON = "ON"
+RTT_BUILD_TESTS = "OFF"
+RTT_BUILD_APPS = "OFF"
+
+[tool.mypy]
+strict = true
+incremental = false
+
+[[tool.mypy.overrides]]
+# nanobind's stub for std::filesystem::path arguments is `str | os.PathLike` without a type
+# argument.
+module = "raytatouille._core"
+disable_error_code = ["type-arg"]

@@ -95,3 +95,63 @@ jobs:
         run: cmake --build --preset ci-windows-msvc
       - name: Test
         run: ctest --preset ci-windows-msvc
+
+  python:
+    # Python package raytatouille (libs/rtt-py, ADR 0002, ADR 0018): build in the CMake tree,
+    # pytest incl. the bitwise comparison with C++ and mypy --strict via ctest; one smoke test
+    # with pip install . per OS.
+    name: Python ${{ matrix.python }} ${{ matrix.preset }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, preset: ci-linux-python, python: "3.10", cache: ci-linux-gcc, smoke: false }
+          - { os: ubuntu-24.04, preset: ci-linux-python, python: "3.13", cache: ci-linux-gcc, smoke: true }
+          - { os: windows-2022, preset: ci-windows-python, python: "3.13", cache: msvc, smoke: true }
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}/../vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/../vcpkg-cache
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q ninja-build
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          # Same packages and compilers as the C++ jobs, so their cache is reused.
+          key: vcpkg-${{ runner.os }}-${{ matrix.cache }}-${{ hashFiles('vcpkg.json') }}
+      - name: Set up vcpkg
+        shell: bash
+        run: |
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          git clone -q https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          git -C "$VCPKG_ROOT" checkout -q "$VCPKG_COMMIT"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            "$VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
+          else
+            "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          fi
+      - name: Install Python build and test tools
+        run: python -m pip install -r libs/rtt-py/tests/requirements.txt
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }} --target _core rtt_py_stub rtt_py_reference
+      - name: Test (pytest, mypy)
+        run: ctest --preset ${{ matrix.preset }} -R rtt_py
+      - name: Smoke test pip install .
+        if: matrix.smoke
+        shell: bash
+        env:
+          CMAKE_ARGS: -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/../vcpkg/scripts/buildsystems/vcpkg.cmake
+        run: |
+          python -m pip install . -v
+          cd "$RUNNER_TEMP"
+          python -c "import raytatouille as rt; print(rt.__version__, rt.__file__)"
+          python -m pytest -q -p no:cacheprovider "$GITHUB_WORKSPACE/libs/rtt-py/tests"
