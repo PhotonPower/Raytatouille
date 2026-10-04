@@ -130,6 +130,11 @@ class CompiledSystem {
   }
   /// Index of the reference wavelength in wavelengths_um().
   [[nodiscard]] std::uint16_t reference_wavelength() const noexcept { return reference_wl_; }
+  /// Weights of the system wavelengths as in the model (model::Wavelength::weight, same order as
+  /// wavelengths_um(), not normalised; dimensionless).
+  [[nodiscard]] const std::vector<double>& wavelength_weights() const noexcept {
+    return wavelength_weights_;
+  }
 
   /// Environment temperature in degC at which the media were evaluated.
   [[nodiscard]] double temperature_c() const noexcept { return temperature_c_; }
@@ -161,6 +166,7 @@ class CompiledSystem {
   CompiledSystem() = default;
 
   std::vector<double> wavelengths_um_;
+  std::vector<double> wavelength_weights_;
   std::uint16_t reference_wl_ = 0;
   double temperature_c_ = 20.0;
   model::SystemAperture aperture_;

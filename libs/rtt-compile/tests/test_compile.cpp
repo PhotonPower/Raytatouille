@@ -216,6 +216,19 @@ TEST_CASE("Michelson reference system compiles with all media in air", "[compile
                   {"DET", EventKind::Transmit, "AIR", "AIR"}});
 }
 
+TEST_CASE("wavelength weights are copied unchanged from the model", "[compile]") {
+  // Needed for polychromatic analyses (#28); normalisation is left to the consumer.
+  System s = bare_system();
+  s.wavelengths = {{0.4861, 1.0, false}, {0.5876, 3.0, true}, {0.6563, 0.5, false}};
+  s.root.children.push_back(
+      {Element{"D", ElementKind::Detector, {}, std::nullopt, {plane_surface("D.S")}}});
+  s.paths = {{"main", true, {}}};
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+  REQUIRE(cs.wavelength_weights() == std::vector<double>{1.0, 3.0, 0.5});
+  REQUIRE(cs.wavelength_weights().size() == cs.wavelengths_um().size());
+}
+
 TEST_CASE("singlet with CONST:1.5168 goes air -> glass -> air", "[compile]") {
   const MaterialLibrary lib;
   const CompiledSystem cs = compile(load("m1/singlet_const.rtt.json"), lib);

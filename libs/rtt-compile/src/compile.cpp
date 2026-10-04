@@ -323,6 +323,7 @@ CompiledSystem compile(const model::System& system, const material::MaterialLibr
   cs.wavelengths_um_ = std::move(compiler.wavelengths_um_);
   for (std::size_t i = 0; i < system.wavelengths.size(); ++i) {
     if (system.wavelengths[i].reference) cs.reference_wl_ = static_cast<std::uint16_t>(i);
+    cs.wavelength_weights_.push_back(system.wavelengths[i].weight);
   }
   cs.temperature_c_ = system.environment.temperature_c;
   cs.aperture_ = system.aperture;
