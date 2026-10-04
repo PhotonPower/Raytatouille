@@ -194,14 +194,19 @@ double unit_image_height(const Context& c) {
   return y;
 }
 
-FieldStart make_field(const Context& c, std::uint16_t field) {
-  const CompiledSystem& system = *c.system;
-  const auto& points = system.fields().points;
+/// Field point `field` of the system.
+const model::Field& field_point(const Context& c, std::uint16_t field) {
+  const auto& points = c.system->fields().points;
   if (field >= points.size()) {
     throw std::invalid_argument("sources: field index " + std::to_string(field) +
                                 " does not exist");
   }
-  const model::Field& f = points[field];
+  return points[field];
+}
+
+/// Ray start for the field value `f`, interpreted with the system's field type.
+FieldStart make_field(const Context& c, const model::Field& f) {
+  const CompiledSystem& system = *c.system;
   const bool infinite = system.object().at_infinity;
   const double z_obj = infinite ? 0.0 : -system.object().distance.value;
 
@@ -426,6 +431,23 @@ AimedRay aim_ray(const compile::CompiledSystem& system,
     throw std::invalid_argument("sources: pupil coordinates must be finite");
   }
   const Context c = make_context(system, path, wavelength);
+  return aim(c, make_field(c, field_point(c, field)), px, py, aiming);
+}
+
+AimedRay aim_ray(const compile::CompiledSystem& system,
+                 compile::PathId path,
+                 const model::Field& field,
+                 std::uint16_t wavelength,
+                 double px,
+                 double py,
+                 Aiming aiming) {
+  if (!std::isfinite(px) || !std::isfinite(py)) {
+    throw std::invalid_argument("sources: pupil coordinates must be finite");
+  }
+  if (!std::isfinite(field.x) || !std::isfinite(field.y)) {
+    throw std::invalid_argument("sources: field values must be finite");
+  }
+  const Context c = make_context(system, path, wavelength);
   return aim(c, make_field(c, field), px, py, aiming);
 }
 
@@ -444,7 +466,7 @@ RayBatch make_rays(const compile::CompiledSystem& system,
   }
   std::vector<FieldStart> starts;
   starts.reserve(fields.size());
-  for (const std::uint16_t f : fields) starts.push_back(make_field(c, f));
+  for (const std::uint16_t f : fields) starts.push_back(make_field(c, field_point(c, f)));
 
   RayBatch rays(fields.size() * points.size());
   std::size_t i = 0;

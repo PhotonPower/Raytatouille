@@ -660,3 +660,27 @@ TEST_CASE("target beyond the reachable stop heights: NoConvergence with a finite
   REQUIRE(aimed.residual > 5.0);
   REQUIRE(aimed.ray.pos.allFinite());
 }
+
+TEST_CASE("aim_ray with a field value equals the field index and accepts other values",
+          "[sources]") {
+  // Overload for field values outside the model list (#31): same field type as the system.
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(two_lenses(StopPlace::Between), lib);
+  const rtt::model::Field& f2 = cs.fields().points[2];
+  for (const Aiming aiming : {Aiming::Real, Aiming::Paraxial}) {
+    const auto by_index = rtt::trace::aim_ray(cs, PathId{0}, 2, 0, 0.3, -0.4, aiming);
+    const auto by_value = rtt::trace::aim_ray(cs, PathId{0}, f2, 0, 0.3, -0.4, aiming);
+    REQUIRE(by_value.ray.pos == by_index.ray.pos);
+    REQUIRE(by_value.ray.dir == by_index.ray.dir);
+    REQUIRE(by_value.ray.status == by_index.ray.status);
+  }
+  // Half of field 1 (5 deg): d ~ (0, tan 2.5 deg, 1), not in the model list.
+  const auto half =
+      rtt::trace::aim_ray(cs, PathId{0}, rtt::model::Field{0.0, 2.5, 1.0}, 0, 0.0, 0.0);
+  REQUIRE(half.ray.status == RayStatus::Alive);
+  REQUIRE(std::abs(half.ray.dir.y() / half.ray.dir.z() - std::tan(2.5 * kDeg)) <= 1e-15);
+  REQUIRE(std::hypot(hit_on_stop(cs, half.ray).x(), hit_on_stop(cs, half.ray).y()) < 1e-9);
+  REQUIRE_THROWS_AS(
+      rtt::trace::aim_ray(cs, PathId{0}, rtt::model::Field{0.0, 95.0, 1.0}, 0, 0.0, 0.0),
+      std::invalid_argument);
+}

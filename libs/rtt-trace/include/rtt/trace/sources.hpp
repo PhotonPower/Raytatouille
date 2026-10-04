@@ -138,6 +138,21 @@ struct AimedRay {
                                double py,
                                Aiming aiming = Aiming::Real);
 
+/// Aims one ray of an arbitrary field value, e.g. for field sweeps between the model's field
+/// points (#31). `field` is interpreted with the field type of the system
+/// (CompiledSystem::fields().type) exactly like a field point of the model; with a value equal
+/// to field point k the result is identical to aim_ray(system, path, k, ...).
+/// @param field field value: angle in degree, object height in mm or paraxial image height in
+///              mm, as given by the system's field type (Field::weight is ignored)
+/// @throws as the overload with a field index (except the field-index check)
+[[nodiscard]] AimedRay aim_ray(const compile::CompiledSystem& system,
+                               compile::PathId path,
+                               const model::Field& field,
+                               std::uint16_t wavelength,
+                               double px,
+                               double py,
+                               Aiming aiming = Aiming::Real);
+
 /// Rays for the given fields and one wavelength: for every field (outer loop) every pupil point
 /// (inner loop) of `sampling`, aimed with `aiming`. Sets pos, dir, wl, field, pupil_x, pupil_y,
 /// status (Alive or NoConvergence); OPL 0, weight 1, P = identity, last_surface = kNoSurface.
