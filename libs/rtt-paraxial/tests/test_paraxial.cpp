@@ -400,7 +400,8 @@ TEST_CASE("thin lens in AIR: absolute indices give EFL = 1/Phi and f' = n_air/Ph
   // Thin plano-convex lens, R = 50 mm, n = 1.5 (CONST, absolute) in AIR at 20 degC, 1 atm:
   // phi = (n - n_air) / R (Greivenkamp, OPTI-201/202, Sec. 9, p. 9-2: phi = (n' - n) C; the plane
   // second surface has no power), EFL = 1/phi, and with y = 1, u = 0 as in the test below:
-  // n_air u' = -phi, so f' = n_air / phi; f = n_air / phi by symmetry of the thin lens.
+  // n_air u' = -phi, so f' = n_air / phi (p. 9-12: f'_R = n'/phi) and BFL = f' for the thin lens
+  // at z = 0; p. 9-14: f_F = -n/phi, front_focal_length = -f_F = n_air / phi.
   System s = base_system();
   s.environment.medium = "AIR";
   add(s, lens("L", 0.0, 1.5, 50.0, std::nullopt, 0.0));
@@ -411,6 +412,7 @@ TEST_CASE("thin lens in AIR: absolute indices give EFL = 1/Phi and f' = n_air/Ph
   require_rel(fo.efl, 1.0 / phi);
   require_rel(fo.rear_focal_length, n_air / phi);
   require_rel(fo.front_focal_length, n_air / phi);
+  require_rel(fo.bfl, n_air / phi);
   REQUIRE_THAT(fo.object_index, WithinRel(n_air, kRel));
   REQUIRE_THAT(fo.image_index, WithinRel(n_air, kRel));
 }

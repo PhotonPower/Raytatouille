@@ -942,8 +942,10 @@ TEST_CASE("achromat reference system with the SCHOTT test catalogue", "[compile]
   // the trace starts in n_air. The catalogue data are relative to air: n_glass = n_rel * n_air,
   // hence every phi and nu is n_air times its value in a relative trace (air = 1) and
   // f' = n_air / phi equals the relative design focal length; BFD is a physical distance and
-  // stays as well. The remaining difference comes from evaluating the catalogue at the air
-  // wavelength 0.5876 / n_air (0.16 nm shorter, n_rel + 5e-6), about 1e-5, below the tolerance.
+  // stays as well. Evaluating the catalogue at the air wavelength 0.5876 / n_air (0.16 nm
+  // shorter) raises n_rel by 6.7e-6 (N-BK7) and 1.4e-5 (F2); for the achromat this changes f'
+  // and BFD by only about 1e-6 relative. The design values are rounded to 1 um (relative trace
+  // at 0.5876 um: f' = 101.01333 mm); the tolerance 1e-4 is unchanged.
   const std::size_t wl = cs.reference_wavelength();
   const auto& events = cs.path(*cs.find_path("main")).events;
   const double n_air = cs.media()[cs.environment_medium()].index[wl].real();

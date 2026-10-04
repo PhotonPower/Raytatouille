@@ -59,8 +59,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
 - `rtt-model`: Test, dass ein `ThinElement` keine Materialliste annimmt (#26).
 - `rtt-material`: `AIR` ist trockene Luft nach Ciddor (0 % Feuchte, 450 ppm CO₂) bei Temperatur
   und Druck des Systems statt n = 1; Katalogglas liefert die absolute Brechzahl (Daten relativ zu
-  Luft bei T_ref und 1 atm, Wellenlänge in Luft) mit dn/dT nach SCHOTT TIE-19. Tests, deren
-  Sollwerte für n_außen = 1 gelten, laufen in `VACUUM` (#25).
+  Luft bei T_ref und 1 atm, Wellenlänge in Luft) mit dn/dT nach SCHOTT TIE-19. Für Systeme in
+  `AIR` sind EFL = 1/Φ und die EPD aus `image_fnumber` damit um den Faktor 1/n_Luft kleiner als
+  in M1 (`docs/architecture.md`, Engine 1). Tests, deren Sollwerte für n_außen = 1 gelten, laufen
+  in `VACUUM`; der Achromat-Test aus #41 bleibt in `AIR` und vergleicht f′ = n_Luft/Φ mit den
+  Designwerten (#25).
 
 ## [0.2.0] – M1 Sequenzieller Kern
 
