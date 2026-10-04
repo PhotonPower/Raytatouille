@@ -1,0 +1,141 @@
+#pragma once
+
+/// @file sources.hpp
+/// Rays from the system definition: field and aperture types, ray aiming and pupil sampling
+/// (docs/architecture.md, Engine 2; conventions in "Konventionen", Feldwinkel).
+///
+/// Conventions:
+/// - Field angle (theta_x, theta_y) in degree: chief-ray direction in object space
+///   d = (tan theta_x, tan theta_y, 1) normalised; theta_y > 0 means the ray rises towards +y.
+/// - Object height (x, y) in mm: object point (x, y, -object.distance) in global coordinates;
+///   positive height = +y.
+/// - Paraxial image height (x', y') in mm: converted into a field angle (object at infinity) or
+///   an object height (finite object) with the paraxial chief ray (rtt-paraxial), then aimed.
+/// - Normalised pupil coordinates (px, py): the unit circle is the rim of the paraxial entrance
+///   pupil, +y is the meridional direction.
+/// - Positions in mm and unit directions in global coordinates (right-handed, optical axis +z).
+
+#include <cstddef>
+#include <cstdint>
+#include <span>
+#include <variant>
+#include <vector>
+
+#include "rtt/compile/compiled_system.hpp"
+#include "rtt/trace/apply_event.hpp"
+#include "rtt/trace/ray_batch.hpp"
+
+namespace rtt::trace {
+
+/// How a ray is aimed into the stop.
+enum class Aiming : std::uint8_t {
+  /// Newton iteration on the real ray until it hits the target point on the stop surface
+  /// (|residual| < kAimTolerance), starting from the paraxial solution.
+  Real,
+  /// Straight line through the target point on the paraxial entrance pupil, no iteration.
+  Paraxial,
+};
+
+/// Convergence limit of real aiming: distance between the hit and the target point on the stop
+/// surface, in local stop coordinates, mm (issue #8).
+inline constexpr double kAimTolerance = 1e-9;
+
+/// Maximum number of Newton steps of real aiming before the ray gets NoConvergence.
+inline constexpr int kMaxAimIterations = 20;
+
+/// Step of the central difference for the aiming Jacobian, relative to the paraxial stop radius
+/// R_s that belongs to the entrance pupil (ADR 0007): h = kAimStepRelative * R_s.
+inline constexpr double kAimStepRelative = 1e-6;
+
+/// One ray at normalised pupil coordinates (px, py).
+struct SinglePupilPoint {
+  double px = 0.0;
+  double py = 0.0;
+};
+
+/// Centre ray plus rings k = 1..rings with 6k rays on radius k / rings, angles 2 pi j / (6k)
+/// starting at +y and turning towards +x.
+struct HexapolarPupil {
+  int rings = 6;
+};
+
+/// n x n points evenly spaced on [-1, 1]^2 (rows from py = -1 to 1, px fastest), only points with
+/// px^2 + py^2 <= 1 (rim included). n = 1 gives the centre.
+struct GridPupil {
+  int n = 11;
+};
+
+/// n points evenly spaced on px in [-1, 1] at py = 0. n = 1 gives the centre.
+struct FanXPupil {
+  int n = 11;
+};
+
+/// n points evenly spaced on py in [-1, 1] at px = 0. n = 1 gives the centre.
+struct FanYPupil {
+  int n = 11;
+};
+
+/// `count` points uniformly distributed in the unit disk. Generator std::mt19937_64 seeded with
+/// `seed`; per ray two draws u1, u2 in [0, 1) as (x >> 11) * 2^-53 (in this order), then
+/// r = sqrt(u1), phi = 2 pi u2, (px, py) = (r sin phi, r cos phi). Identical on all platforms.
+struct RandomPupil {
+  std::size_t count = 100;
+  std::uint64_t seed = 0;
+};
+
+/// Pupil sampling of one field.
+using PupilSampling =
+    std::variant<SinglePupilPoint, HexapolarPupil, GridPupil, FanXPupil, FanYPupil, RandomPupil>;
+
+/// Normalised pupil coordinates.
+struct PupilPoint {
+  double px = 0.0;
+  double py = 0.0;
+};
+
+/// Points of a pupil sampling in the documented order.
+/// @throws std::invalid_argument for rings < 0 or n < 1
+[[nodiscard]] std::vector<PupilPoint> pupil_points(const PupilSampling& sampling);
+
+/// Result of aiming one ray.
+struct AimedRay {
+  /// Start of the ray in global coordinates (OPL 0). Status Alive, or NoConvergence if real
+  /// aiming failed (the ray then holds the last iterate).
+  RayState ray;
+  int iterations = 0;     ///< Newton steps taken (0 for paraxial aiming)
+  double residual = 0.0;  ///< distance to the target on the stop surface, mm (real aiming)
+};
+
+/// Aims one ray of field `field` at normalised pupil coordinates (px, py).
+///
+/// Object at infinity: the direction is the field direction; the ray starts on a plane
+/// perpendicular to it, placed per field so that the whole bundle starts at least 1 mm before
+/// the entrance pupil and before every surface of the path (OPL starts on this plane wave).
+/// Finite object: the ray starts in the object point (OPL 0).
+/// The target is (px R_s, py R_s) in the local coordinates of the stop surface (first Stop event
+/// of the path), R_s = paraxial stop radius belonging to the entrance pupil. Apertures are
+/// ignored while aiming; vignetting is left to the tracer.
+/// @throws std::invalid_argument if the path, field or wavelength does not exist, the field type
+///         does not fit the object (object height at infinity), the path has no stop, or the
+///         entrance pupil is not defined (rtt::paraxial::first_order)
+/// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric
+[[nodiscard]] AimedRay aim_ray(const compile::CompiledSystem& system,
+                               compile::PathId path,
+                               std::uint16_t field,
+                               std::uint16_t wavelength,
+                               double px,
+                               double py,
+                               Aiming aiming = Aiming::Real);
+
+/// Rays for the given fields and one wavelength: for every field (outer loop) every pupil point
+/// (inner loop) of `sampling`, aimed with `aiming`. Sets pos, dir, wl, field, pupil_x, pupil_y,
+/// status (Alive or NoConvergence); OPL 0, weight 1, P = identity, last_surface = kNoSurface.
+/// @throws as aim_ray()
+[[nodiscard]] RayBatch make_rays(const compile::CompiledSystem& system,
+                                 compile::PathId path,
+                                 std::span<const std::uint16_t> fields,
+                                 std::uint16_t wavelength,
+                                 const PupilSampling& sampling,
+                                 Aiming aiming = Aiming::Real);
+
+}  // namespace rtt::trace
