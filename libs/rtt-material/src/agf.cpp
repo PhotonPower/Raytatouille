@@ -6,7 +6,6 @@
 #include <cmath>
 #include <cstdint>
 #include <fstream>
-#include <iterator>
 #include <set>
 #include <sstream>
 #include <system_error>
@@ -225,10 +224,16 @@ AgfCatalog parse_agf(std::string_view text, std::string name, std::string file) 
 
 AgfCatalog load_agf(const std::filesystem::path& file) {
   const std::string display = file.filename().string();
-  std::ifstream in(file, std::ios::binary);
+  std::ifstream in(file, std::ios::binary | std::ios::ate);
   if (!in) throw AgfError(display, 0, "cannot open " + file.string());
-  const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-  if (in.bad()) throw AgfError(display, 0, "cannot read " + file.string());
+  // Size, then one read (istreambuf_iterator trips GCC 13's -Wnull-dereference in Release).
+  const std::streamoff size = in.tellg();
+  if (size < 0) throw AgfError(display, 0, "cannot read " + file.string());
+  std::string bytes(static_cast<std::size_t>(size), '\0');
+  in.seekg(0);
+  if (!in.read(bytes.data(), static_cast<std::streamsize>(size))) {
+    throw AgfError(display, 0, "cannot read " + file.string());
+  }
   return parse_agf(decode_agf_text(bytes, display), upper(file.stem().string()), display);
 }
 
