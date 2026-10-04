@@ -155,9 +155,15 @@ DistortionPoint distortion_at(const compile::CompiledSystem& system,
   const double ey = r > 0.0 ? field.y / r : 1.0;
   p.real_height = (pos.x() - vertex.x()) * ex + (pos.y() - vertex.y()) * ey;
   p.paraxial_height = par.x * ex + par.y * ey;
-  p.percent = p.paraxial_height != 0.0
-                  ? (p.real_height - p.paraxial_height) / p.paraxial_height * 100.0
-                  : 0.0;
+  if (r == 0.0) {
+    p.percent = 0.0;  // on axis by definition
+  } else if (p.paraxial_height == 0.0) {
+    throw AnalysisError(
+        "analysis: the paraxial chief ray height is 0 at the image surface for an off-axis "
+        "field (image surface in the exit-pupil plane); distortion is not defined");
+  } else {
+    p.percent = (p.real_height - p.paraxial_height) / p.paraxial_height * 100.0;
+  }
   return p;
 }
 

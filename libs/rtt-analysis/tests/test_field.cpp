@@ -185,7 +185,7 @@ TEST_CASE("field curvature at small fields agrees with the Seidel sums", "[field
   // chief ray at Delta z = -eps / (rho u') = -2 W020 / (n' u'^2). n' u'^2 is positive here (no
   // mirror, light along +z), so Delta z > 0 means behind the paraxial image plane.
   // Real fields 0.5 and 1 deg (H = 0.1, 0.2): fifth-order terms are of relative size H^2 tan^2
-  // (5 deg) < 1e-4, the neighbour-ray error O(delta^2) is far below; tolerance relative 1e-2.
+  // (5 deg) <= 3.1e-4, the neighbour-ray error O(delta^2) is far below; tolerance relative 1e-2.
   System s = load("m1/singlet_const.rtt.json");
   const MaterialLibrary lib;
   const CompiledSystem first = compile(s, lib);

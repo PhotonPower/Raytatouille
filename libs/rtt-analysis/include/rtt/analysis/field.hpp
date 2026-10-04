@@ -20,7 +20,8 @@
 ///   coordinates +-delta along the tangential direction (towards the field point; +y on axis)
 ///   and two along the sagittal direction are aimed and traced to the image surface. The focus
 ///   is the midpoint of the shortest connection of the two lines in image space. The result is
-///   its distance from the image-surface vertex along the image-space propagation direction, mm.
+///   the z component of its offset from the image-surface vertex (parallel to the axis), with
+///   the sign of the image-space propagation (positive = further along the light), mm.
 ///   The symmetric pair cancels terms odd in delta (e.g. coma); the error is O(delta^2).
 
 #include <cstdint>
