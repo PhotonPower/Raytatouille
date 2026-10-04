@@ -35,6 +35,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   Coatings und Schichtmaterialien, Wellenlängenbereiche und mehrdeutige Substratseiten.
   Beispiel `tests/reference/m3/ar_singlet.rtt.json` (#59).
 
+### Geändert
+- `rtt-compile`: `compile(system, materials)` ohne Coating-Bibliothek meldet für `CoatingRef` jetzt
+  einen `CompileError` (bisher ignoriert); betrifft bis #61 auch `rt.compile` in Python (#59,
+  ADR 0019).
+
 ## [0.3.0] – M2 Materialien, Analyse
 
 ### Hinzugefügt

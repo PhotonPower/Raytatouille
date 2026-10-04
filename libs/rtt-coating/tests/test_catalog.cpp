@@ -244,6 +244,10 @@ TEST_CASE("catalogue errors name the file and the JSON pointer", "[coating][cata
       {catalog_text("D", R"({"name": "C", "layers": [{"material": "M", "thickness_um": 0.1,
                                                       "n": 1.5}]})"),
        "/coatings/0/layers/0/n", "unknown key"},
+      // RFC 6901: '/' and '~' in a key are escaped as ~1 and ~0 in the pointer.
+      {catalog_text("D", R"({"name": "C", "layers": [{"material": "M", "thickness_um": 0.1,
+                                                      "a/b~c": 1}]})"),
+       "/coatings/0/layers/0/a~1b~0c", "unknown key 'a/b~c'"},
       {catalog_text("D", R"({"name": "C:D", "layers": [{"material": "M", "thickness_um": 0.1}]})"),
        "/coatings/0/name", "contains ':'"},
   };
