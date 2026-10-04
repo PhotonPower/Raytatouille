@@ -387,8 +387,9 @@ TEST_CASE("M2: Cooke triplet, first-order data", "[m2]") {
   //   not depend on the stop. The entrance pupil depends on the paraxial chief ray, which
   //   ray-optics computes from an object at 1e10 mm (its model of an object at infinity): the
   //   chief ray starts at |y_bar| = 1e10 tan(20 deg) = 3.64e9 mm and loses digits up to the first
-  //   surface, about 4 ulp * 3.64e9 mm = 3.2e-6 mm in y_bar, i.e. 3.2e-6 / tan(20 deg) < 1e-5 mm
-  //   in z_EP (found in #34, see the Seidel test); tolerance 1e-5 mm against ray-optics.
+  //   surface, about 4 eps |y_bar| = 4 * 2.2e-16 * 3.64e9 mm = 3.2e-6 mm in y_bar, i.e. 3.2e-6 /
+  //   tan(20 deg) < 1e-5 mm in z_EP (found in #34, see the Seidel test); tolerance 1e-5 mm against
+  //   ray-optics.
   // - Independent y-nu trace of the stop centre through L2.S1 and L1 (Greivenkamp, OPTI-201/202
   //   Sec. 9, p. 9-2; Python script in the PR of #34, without rtt): z_EP = 11.679209268268448 mm
   //   with the stop 1e-8 mm behind the vertex of L2.S1 (11.679209257540240 mm without the
@@ -463,7 +464,7 @@ TEST_CASE("M2: Cooke triplet, Seidel sums against ray-optics and Sasian L20", "[
   //   invariant). The other sums change by kappa times products of the same size as the S of the
   //   surface, < 4 kappa max|S| < 3.1e-9 mm per surface.
   // - Chief ray: it starts at |y_bar| = 1e10 tan(20 deg) = 3.64e9 mm and loses digits up to the
-  //   first surface: about 4 ulp * 3.64e9 mm = 4 * 2.2e-16 * 3.64e9 mm = 3.2e-6 mm in y_bar.
+  //   first surface: about 4 eps |y_bar| = 4 * 2.2e-16 * 3.64e9 mm = 3.2e-6 mm in y_bar.
   //   Such an error acts like a stop shift with S = dy_bar / y <= 3.2e-6 / 6.25 = 5.1e-7
   //   (y = r_EP; Sasian, OPTI 518 L14 p. 22), which changes S_II, S_III, S_V by at most
   //   |dS| <= S (|S_IV| + 3 |S_III|) + O(S^2) <= 5.1e-7 * 0.65 mm = 3.3e-7 mm (L14 p. 23).
@@ -523,13 +524,14 @@ TEST_CASE("M2: Cooke triplet, Seidel sums against ray-optics and Sasian L20", "[
   // S <= 5.1e-7: dS_II = S S_I <= 5.6e-9 mm, dS_III <= 2 S |S_II| < 1e-9 mm,
   // dS_V <= S |S_IV + 3 S_III| < 2e-9 mm, i.e. <= 5.6e-9 mm / (2 lambda) = 4.8e-6 waves; finite
   // conjugate of the marginal ray < 6 * 3.1e-9 mm = 1.9e-8 mm over the six surfaces, i.e.
-  // < 1.6e-5 waves; offset STO in the sums |S_STO| |S_I| ~ 1e-11 mm. Tolerance 5e-7 + 2e-5
-  // waves; a missing factor n_air in the wave conversion (relative 2.7e-4, >= 2e-4 waves here)
+  // < 1.62e-5 waves; offset STO in the sums |S_STO| |S_I| ~ 1e-11 mm (~1e-8 waves). Sum for the
+  // worst case W131: 5e-7 + 4.8e-6 + 1.62e-5 + 1e-8 = 2.15e-5 waves. Tolerance 5e-7 + 2.5e-5
+  // waves; a missing factor n_air in the wave conversion (relative 2.7e-4, >= 2.1e-4 waves here)
   // would still fail.
   constexpr std::array<double, 5> kWaveDoc{2.334457, -0.776108, -9.218154, 10.834770, -3.911650};
   for (std::size_t j = 0; j < 5; ++j) {
     INFO("W sum " << j << ": " << w_sum[j]);
-    REQUIRE(std::abs(w_sum[j] - kWaveDoc[j]) <= 5e-7 + 2e-5);
+    REQUIRE(std::abs(w_sum[j] - kWaveDoc[j]) <= 5e-7 + 2.5e-5);
   }
 
   // (d) Sasian L20 p. 8: W040, W131, W222, W220 and W311 per surface and total, in waves. The
