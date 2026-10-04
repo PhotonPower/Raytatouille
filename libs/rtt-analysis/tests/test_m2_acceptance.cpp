@@ -453,19 +453,27 @@ TEST_CASE("M2: Cooke triplet, Seidel sums against ray-optics and Sasian L20", "[
   };
 
   // (a) ray-optics 0.9.10 run (script in the PR of #34), printed to 16 digits.
-  // S_I and S_IV (marginal ray and Lagrange invariant only): tolerance 1e-9 mm, a priori: the
-  // stop offset does not change them (L14 p. 23), the two double implementations differ by
-  // rounding (~1e-13 mm).
-  // S_II, S_III and S_V depend on the paraxial chief ray. ray-optics models the object at
-  // infinity at 1e10 mm, so its chief ray starts at |y_bar| = 1e10 tan(20 deg) = 3.64e9 mm and
-  // loses digits up to the first surface: the error in y_bar is about 4 ulp * 3.64e9 mm =
-  // 4 * 2.2e-16 * 3.64e9 mm = 3.2e-6 mm. Such an error acts like a stop shift with
-  // S = dy_bar / y <= 3.2e-6 / 6.25 = 5e-7 (y = r_EP; Sasian, OPTI 518 L14 p. 22), which changes
-  // a value by at most |dS| <= S (|S_IV| + 3 |S_III|) + O(S^2) <= 5e-7 * 0.65 mm = 3.3e-7 mm
-  // (L14 p. 23, as above). Tolerance 5e-7 mm. Found in #34: before this bound the comparison at
-  // 1e-9 mm failed by up to 1e-8 mm; an independent y-nu trace confirmed rtt (entrance pupil, see
-  // the first-order test), and the stop-shift formulas with the measured pupil offset of
-  // ray-optics (1.31e-6 mm) predict the differences of surface 1 (2.1e-9, 3.0e-9, 9.9e-9 mm).
+  // ray-optics models the object at infinity at 1e10 mm (rayoptics/parax/firstorder.py). This
+  // has two effects on its Seidel values:
+  // - Finite conjugate of the marginal ray: it starts at the axial object point with slope
+  //   r_EP / (1e10 + z_EP), i.e. marginal_ro = marginal_inf + kappa chief with kappa =
+  //   6.25e-10 / tan(20 deg) = 1.72e-9. To first order S_I changes by kappa [4 S_II + H A
+  //   (A Delta(1/n^2) - 2 y P)]; for this design at most 8.3e-10 mm per surface (L2.S1) and
+  //   5e-11 mm in the sum (physik-reviewer of #34, by hand). S_IV = -H^2 P does not change (H is
+  //   invariant). The other sums change by kappa times products of the same size as the S of the
+  //   surface, < 4 kappa max|S| < 3.1e-9 mm per surface.
+  // - Chief ray: it starts at |y_bar| = 1e10 tan(20 deg) = 3.64e9 mm and loses digits up to the
+  //   first surface: about 4 ulp * 3.64e9 mm = 4 * 2.2e-16 * 3.64e9 mm = 3.2e-6 mm in y_bar.
+  //   Such an error acts like a stop shift with S = dy_bar / y <= 3.2e-6 / 6.25 = 5.1e-7
+  //   (y = r_EP; Sasian, OPTI 518 L14 p. 22), which changes S_II, S_III, S_V by at most
+  //   |dS| <= S (|S_IV| + 3 |S_III|) + O(S^2) <= 5.1e-7 * 0.65 mm = 3.3e-7 mm (L14 p. 23).
+  // Tolerances: S_I and S_IV 1e-9 mm (finite conjugate <= 8.3e-10 mm, offset STO 0, rounding
+  // ~1e-13 mm); S_II, S_III, S_V 5e-7 mm (3.3e-7 + 3.1e-9 + offset STO < 1e-9 mm).
+  // Found in #34: the first comparison of S_II, S_III, S_V and z_EP at 1e-9 mm failed; an
+  // independent y-nu trace confirmed rtt (entrance pupil, see the first-order test), and the
+  // stop-shift formulas with the measured pupil offset of ray-optics (1.31e-6 mm, S = 7.6e-8)
+  // predict the differences (surface 1: 2.1e-9, 3.0e-9, 9.9e-9 mm; up to ~5e-8 mm for S_V at
+  // L2.S1).
   // (b) ray-optics documentation, same table printed with 6 decimals: tolerance 5e-7 mm (half
   // the last digit) + the bound of (a) (5e-7 mm for S_II, S_III, S_V; 1e-9 mm otherwise).
   constexpr std::array<std::array<double, 5>, 7> kRayOptics{{
@@ -510,15 +518,18 @@ TEST_CASE("M2: Cooke triplet, Seidel sums against ray-optics and Sasian L20", "[
   const std::array<double, 5> w_sum{
       sum[0] / 8.0 / kLambdaAirMm, sum[1] / 2.0 / kLambdaAirMm, sum[2] / 2.0 / kLambdaAirMm,
       (sum[3] + sum[2]) / 4.0 / kLambdaAirMm, sum[4] / 2.0 / kLambdaAirMm};
-  // (c) ray-optics documentation, wavefront coefficients printed with 6 decimals: tolerance
-  // 5e-7 waves (half the last digit) + the chief-ray error of ray-optics in the sums, with
-  // S <= 5e-7 from (a): dS_II = S S_I <= 5.5e-9 mm, dS_III <= 2 S |S_II| < 1e-9 mm,
-  // dS_V <= S |S_IV + 3 S_III| < 2e-9 mm (sums), i.e. <= 5.5e-9 mm / (2 lambda) < 5e-6 waves;
-  // the offset STO adds < 1e-9 mm. Tolerance 5e-7 + 5e-6 waves.
+  // (c) ray-optics documentation, wavefront coefficients printed with 6 decimals. Error budget of
+  // the sums (from (a)): half the last digit 5e-7 waves; chief ray of ray-optics with
+  // S <= 5.1e-7: dS_II = S S_I <= 5.6e-9 mm, dS_III <= 2 S |S_II| < 1e-9 mm,
+  // dS_V <= S |S_IV + 3 S_III| < 2e-9 mm, i.e. <= 5.6e-9 mm / (2 lambda) = 4.8e-6 waves; finite
+  // conjugate of the marginal ray < 6 * 3.1e-9 mm = 1.9e-8 mm over the six surfaces, i.e.
+  // < 1.6e-5 waves; offset STO in the sums |S_STO| |S_I| ~ 1e-11 mm. Tolerance 5e-7 + 2e-5
+  // waves; a missing factor n_air in the wave conversion (relative 2.7e-4, >= 2e-4 waves here)
+  // would still fail.
   constexpr std::array<double, 5> kWaveDoc{2.334457, -0.776108, -9.218154, 10.834770, -3.911650};
   for (std::size_t j = 0; j < 5; ++j) {
     INFO("W sum " << j << ": " << w_sum[j]);
-    REQUIRE(std::abs(w_sum[j] - kWaveDoc[j]) <= 5e-7 + 5e-6);
+    REQUIRE(std::abs(w_sum[j] - kWaveDoc[j]) <= 5e-7 + 2e-5);
   }
 
   // (d) Sasian L20 p. 8: W040, W131, W222, W220 and W311 per surface and total, in waves. The
