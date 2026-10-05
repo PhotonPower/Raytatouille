@@ -244,6 +244,8 @@ TEST_CASE("misplaced or overlong continuation lines are errors with file and lin
       {glass + "CD 1 2 3 4 5 6\n7 8 9 10 11\n", 4, "more than 10"},         // CD > 10 values
       {glass + "CD 1 2\nTD 1 2 3 4\n5 6 20 7\n", 5, "more than 7"},         // TD > 7 values
       {glass + "CD 1 2\n3 x\n", 4, "not a finite number"},                  // not a number
+      {glass + "CD 1 2\n+3\n", 4, "not a finite number"},                   // '+', as in CD itself
+      {glass + "CD 1 2\nTD 1 2 3 4\n\n5 6 20\n", 6, "continuation"},        // TD, empty line
   };
   for (const auto& c : cases) {
     INFO(c.text);
@@ -383,6 +385,19 @@ TEST_CASE("CD order of formulas 6, 12 and 13 reproduces N(d) and V(d) of the NM 
   REQUIRE(cat.glasses[4].name == "J-SFH1");
   REQUIRE(cat.glasses[4].coefficients[7] != 0.0);
   REQUIRE(cat.glasses[4].coefficients[8] != 0.0);
+
+  // Counter-checks: the wrong orders miss N(d) by far more than the tolerance.
+  const auto n_d = [&](const rtt::material::DispersionFormula& f) {
+    return rtt::material::refractive_index(f, kD);
+  };
+  const std::vector<double>& nicf = cat.glasses[0].coefficients;  // formula 6 as K1..K4 L1..L4
+  REQUIRE(std::abs(n_d(Sellmeier3Coefficients{{nicf[0], nicf[1], nicf[2], nicf[3]},
+                                              {nicf[4], nicf[5], nicf[6], nicf[7]}}) -
+                   cat.glasses[0].nd) > 1e-3);
+  const std::vector<double>& sfh1 = cat.glasses[4].coefficients;  // formula 13 as Extended 2
+  REQUIRE(std::abs(n_d(Extended2Coefficients{
+                       {sfh1[0], sfh1[1], sfh1[2], sfh1[3], sfh1[4], sfh1[5], sfh1[6], sfh1[7]}}) -
+                   cat.glasses[4].nd) > 1e-3);
 }
 
 TEST_CASE("unsupported AGF formula numbers are a clear error", "[agf]") {
@@ -581,6 +596,25 @@ TEST_CASE("glass with an unsupported formula fails on resolve with file and line
     REQUIRE_THAT(e.what(), ContainsSubstring("formula 3"));
     REQUIRE_THAT(e.what(), ContainsSubstring("IRG"));
     REQUIRE_THAT(e.what(), ContainsSubstring("ir.AGF:4"));
+    REQUIRE_THAT(e.what(), ContainsSubstring("#42"));
+  }
+}
+
+TEST_CASE("formula 12 with a7 != 0 fails on resolve with file and line (#42)", "[agf]") {
+  const TempCatalog tmp("rtt_agf_ext2_a7", "ext.agf",
+                        "CC c\nNM OK 12 1 1.5 60\nCD 2.2 -0.01 0.02 0 0 0 0.001 0\n"
+                        "NM A7 12 1 1.5 60\nCD 2.2 -0.01 0.02 0 0 0 0.001\n1e-9\n");
+  MaterialLibrary lib;
+  lib.add_catalog(tmp.dir());
+  REQUIRE(lib.resolve("EXT:OK") != nullptr);
+  try {
+    (void)lib.resolve("EXT:A7");
+    FAIL("no exception");
+  } catch (const UnknownMaterial& e) {
+    REQUIRE_THAT(e.what(), ContainsSubstring("formula 12"));
+    REQUIRE_THAT(e.what(), ContainsSubstring("a7"));
+    REQUIRE_THAT(e.what(), ContainsSubstring("A7"));
+    REQUIRE_THAT(e.what(), ContainsSubstring("ext.agf:4"));
     REQUIRE_THAT(e.what(), ContainsSubstring("#42"));
   }
 }

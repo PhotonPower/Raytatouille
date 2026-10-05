@@ -104,7 +104,7 @@ class Parser {
   /// Record that a continuation line may extend: the CD or TD record directly above it.
   enum class Continuable : std::uint8_t { kNone, kCd, kTd };
 
-  /// True if the first item of a line is a number (a continuation line, #42).
+  /// True if an item starts like a number (digit, '+', '-' or '.'): a continuation line (#42).
   static bool starts_with_number(std::string_view item) {
     return std::string_view("+-.0123456789").find(item.front()) != std::string_view::npos;
   }

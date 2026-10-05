@@ -13,7 +13,8 @@
 ///   TD <D0> <D1> <D2> <E0> <E1> <Ltk> <Temp>      (dn/dT model, reference temperature in degC)
 ///   ED <TCE -30..70> <TCE 100..300> <density> <dPgF> <ignore thermal expansion>
 ///   GC, MD, OD, IT, BD                            (read and ignored)
-/// A line whose first item is a number continues the CD or TD record directly above it (or
+/// A line whose first character is a digit, '+', '-' or '.' (a number) continues the CD or TD
+/// record directly above it (or
 /// above its previous continuation line); vendor files wrap long records this way (#42). The
 /// format description does not mention it; the evidence is NIKON-HIKARI_201911.AGF
 /// (docs/quellen.md).
@@ -148,7 +149,8 @@ class CatalogMaterial final : public Material {
 /// Supported, with the verified CD order (docs/quellen.md): formula 1 (Schott, CD = a0..a5),
 /// 2 (Sellmeier 1, K1 L1 K2 L2 K3 L3), 6 (Sellmeier 3, K1 L1 .. K4 L4), 12 (Extended 2,
 /// a0..a6; a7 must be 0) and 13 (Extended 3, a0..a8). Missing trailing coefficients count as 0
-/// (the format allows "up to 10").
+/// (the format allows "up to 10"); CD values beyond those of the formula are ignored, as for
+/// formulas 1 and 2 (they are 0 in all glasses of the verifying catalogues).
 /// @param where text naming catalogue, file and line for messages
 /// @throws std::invalid_argument for other formula numbers and for formula 12 with a7 != 0,
 ///         whose CD position is not verified (see #42)
