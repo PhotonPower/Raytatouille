@@ -40,6 +40,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   einen `CompileError` (bisher ignoriert); betrifft bis #61 auch `rt.compile` in Python (#59,
   ADR 0019).
 
+### Behoben
+- `rtt-trace`: Beim Cooke-Triplet warfen Feld 1 (und `spot()`) „no start plane before surface 'L2.S1'“.
+  Die Schranke für die Startebene konvergiert dort nur linear und war nach 50 Runden nicht fertig;
+  jetzt gilt dann das Minimum über die ganze Apertur bzw. das Formgebiet der Fläche. Ein Fehler
+  bleibt nur bei unbegrenzten Flächen ohne Apertur (#72).
+
 ## [0.3.0] – M2 Materialien, Analyse
 
 ### Hinzugefügt

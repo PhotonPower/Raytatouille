@@ -779,3 +779,58 @@ TEST_CASE("rim rays of the reference singlet pass the stop", "[sources]") {
   }
   REQUIRE(rim == 3 * 36);
 }
+
+TEST_CASE("Cooke triplet: every field has a start plane before the first surface (#72)",
+          "[sources]") {
+  // tests/reference/m2/cooke_triplet.rtt.json (#34): object at infinity, fields 0, 14 and 20
+  // degree, no apertures on the lens surfaces, stop 1e-8 mm behind the vertex of L2.S1. Before
+  // #72 field 1 threw "no start plane before surface 'L2.S1'" (found in #61).
+  MaterialLibrary lib;
+  lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/m2/schott.agf");
+  const CompiledSystem cs = compile(
+      rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m2/cooke_triplet.rtt.json"), lib);
+  const auto vertex_z = [&](const std::string& id) {
+    for (const auto& s : cs.surfaces()) {
+      if (s.id.str() == id) return s.to_global.translation().z();
+    }
+    FAIL("no surface " << id);
+    return 0.0;
+  };
+  // L1.S1 is convex towards -z, so its vertex is its lowest point.
+  const double z_first = vertex_z("L1.S1");
+  // Field 1: the bound for L2.S1 (sphere R = -24.456 mm, no aperture) converges only linearly
+  // (factor tan(14 deg) |dsag/dr| ~ 0.71), so after 50 rounds the whole cap disk bounds the
+  // bundle: its lowest point is the bottom of the hemisphere, vertex z - 24.456 mm.
+  const double z_hemisphere = vertex_z("L2.S1") - 24.456;
+  for (std::uint16_t field = 0; field < 3; ++field) {
+    for (std::uint16_t wl = 0; wl < cs.wavelengths_um().size(); ++wl) {
+      for (const auto& [px, py] :
+           {std::pair{0.0, 0.0}, std::pair{0.0, 1.0}, std::pair{0.0, -1.0}, std::pair{1.0, 0.0}}) {
+        INFO("field " << field << ", wavelength " << wl << ", pupil " << px << " " << py);
+        const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, field, wl, px, py);
+        REQUIRE(aimed.ray.status == RayStatus::Alive);
+        // At least 1 mm before L1.S1 (start plane rule, #8).
+        REQUIRE(aimed.ray.pos.z() <= z_first - 1.0);
+        if (field == 1) REQUIRE(aimed.ray.pos.z() <= z_hemisphere - 1.0 + 1e-9);
+      }
+    }
+  }
+  // The spot of fields 1 and 2 with real aiming (default sampling of spot()): every chief ray
+  // reaches the detector, and all rays start at least 1 mm before L1.S1.
+  const std::vector<std::uint16_t> fields{1, 2};
+  for (std::uint16_t wl = 0; wl < cs.wavelengths_um().size(); ++wl) {
+    INFO("wavelength " << wl);
+    rtt::trace::RayBatch rays = rtt::trace::make_rays(cs, PathId{0}, fields, wl,
+                                                      rtt::trace::HexapolarPupil{}, Aiming::Real);
+    for (std::size_t i = 0; i < rays.size(); ++i) REQUIRE(rays.pos_z()[i] <= z_first - 1.0);
+    [[maybe_unused]] const auto stats = rtt::trace::SequentialTracer().trace(cs, PathId{0}, rays);
+    std::size_t chief = 0;
+    for (std::size_t i = 0; i < rays.size(); ++i) {
+      if (rays.pupil_x()[i] == 0.0 && rays.pupil_y()[i] == 0.0) {
+        ++chief;
+        REQUIRE(rays.status()[i] == RayStatus::Alive);
+      }
+    }
+    REQUIRE(chief == 2);
+  }
+}
