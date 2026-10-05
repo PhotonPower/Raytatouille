@@ -643,6 +643,32 @@ TEST_CASE("no safe start plane before an unbounded surface curving back: error a
   REQUIRE(rtt::trace::aim_ray(cs, PathId{0}, 0, 0, 0.0, 0.0).ray.status == RayStatus::Alive);
 }
 
+TEST_CASE("a huge aperture does not make an unbounded surface a safe start bound (#72)",
+          "[sources]") {
+  // As above, but the paraboloid has a placeholder aperture of 1e7 mm: the bound reaches the
+  // divergence guard (1e6 mm), and the whole cap would put the start plane near -1e12 mm, where
+  // positions and OPL lose all precision. It stays an error (review of #72).
+  const MaterialLibrary lib;
+  System s;
+  s.name = "concave paraboloid with a huge aperture";
+  s.wavelengths = {{0.5876, 1.0, true}};
+  s.aperture = {rtt::model::SystemApertureType::EntrancePupilDiameter, Param(3.0)};
+  s.fields = {FieldType::AngleDeg, {{0.0, 0.0, 1.0}, {0.0, 80.0, 1.0}}};
+  s.root.name = "root";
+  Surface front = surface("L.S1");
+  front.shape.base = rtt::model::Conic{Param(-40.0), Param(-1.0)};
+  front.aperture = rtt::model::CircularAperture{1e7, 0.0};
+  s.root.children.push_back({Element{
+      "L", ElementKind::Lens, Pose::along_z(10.0), "CONST:1.5168", {front, surface("L.S2", 5.0)}}});
+  Surface stop = surface("STO");
+  stop.aperture = rtt::model::CircularAperture{1.0, 0.0};
+  s.root.children.push_back(
+      {Element{"S", ElementKind::Stop, Pose::along_z(30.0), std::nullopt, {stop}}});
+  s.paths = {{"main", true, {}}};
+  const CompiledSystem cs = compile(s, lib);
+  REQUIRE_THROWS_AS(rtt::trace::aim_ray(cs, PathId{0}, 1, 0, 0.0, 0.0), std::invalid_argument);
+}
+
 TEST_CASE("target beyond the reachable stop heights: NoConvergence with a finite residual",
           "[sources][aiming]") {
   // Stop behind the group, 30 deg: every iterate reaches the stop, but only at heights of about
@@ -778,4 +804,102 @@ TEST_CASE("rim rays of the reference singlet pass the stop", "[sources]") {
     if (std::hypot(rays.pupil_x()[i], rays.pupil_y()[i]) > 1.0 - 1e-12) ++rim;
   }
   REQUIRE(rim == 3 * 36);
+}
+
+TEST_CASE("Cooke triplet: every field has a start plane before the first surface (#72)",
+          "[sources]") {
+  // tests/reference/m2/cooke_triplet.rtt.json (#34): object at infinity, fields 0, 14 and 20
+  // degree, no apertures on the lens surfaces, stop 1e-8 mm behind the vertex of L2.S1. Before
+  // #72 field 1 threw "no start plane before surface 'L2.S1'" (found in #61).
+  MaterialLibrary lib;
+  lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/m2/schott.agf");
+  const CompiledSystem cs = compile(
+      rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m2/cooke_triplet.rtt.json"), lib);
+  const auto vertex_z = [&](const std::string& id) {
+    for (const auto& s : cs.surfaces()) {
+      if (s.id.str() == id) return s.to_global.translation().z();
+    }
+    FAIL("no surface " << id);
+    return 0.0;
+  };
+  // L1.S1 is convex towards -z, so its vertex is its lowest point.
+  const double z_first = vertex_z("L1.S1");
+  // Field 1: the bound for L2.S1 (sphere R = -24.456 mm, no aperture) converges only linearly
+  // (factor tan(14 deg) |dsag/dr| ~ 0.71), so after 50 rounds the whole cap disk bounds the
+  // bundle: its lowest point is the bottom of the hemisphere, vertex z - 24.456 mm.
+  const double z_hemisphere = vertex_z("L2.S1") - 24.456;
+  for (std::uint16_t field = 0; field < 3; ++field) {
+    for (std::uint16_t wl = 0; wl < cs.wavelengths_um().size(); ++wl) {
+      for (const auto& [px, py] :
+           {std::pair{0.0, 0.0}, std::pair{0.0, 1.0}, std::pair{0.0, -1.0}, std::pair{1.0, 0.0}}) {
+        INFO("field " << field << ", wavelength " << wl << ", pupil " << px << " " << py);
+        const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, field, wl, px, py);
+        REQUIRE(aimed.ray.status == RayStatus::Alive);
+        // At least 1 mm before L1.S1 (start plane rule, #8).
+        REQUIRE(aimed.ray.pos.z() <= z_first - 1.0);
+        // Field 1: deliberately pins the fallback of #72 (the physical requirement is only
+        // z <= z* - 1 with the fixed point z* ~ -5.65 ... -5.71 of the search, depending on the
+        // wavelength).
+        if (field == 1) REQUIRE(aimed.ray.pos.z() <= z_hemisphere - 1.0 + 1e-9);
+      }
+    }
+  }
+  // The spot of fields 1 and 2 with real aiming (default sampling of spot()): every chief ray
+  // reaches the detector, and all rays start at least 1 mm before L1.S1.
+  const std::vector<std::uint16_t> fields{1, 2};
+  for (std::uint16_t wl = 0; wl < cs.wavelengths_um().size(); ++wl) {
+    INFO("wavelength " << wl);
+    rtt::trace::RayBatch rays = rtt::trace::make_rays(cs, PathId{0}, fields, wl,
+                                                      rtt::trace::HexapolarPupil{}, Aiming::Real);
+    for (std::size_t i = 0; i < rays.size(); ++i) REQUIRE(rays.pos_z()[i] <= z_first - 1.0);
+    [[maybe_unused]] const auto stats = rtt::trace::SequentialTracer().trace(cs, PathId{0}, rays);
+    std::size_t chief = 0;
+    for (std::size_t i = 0; i < rays.size(); ++i) {
+      if (rays.pupil_x()[i] == 0.0 && rays.pupil_y()[i] == 0.0) {
+        ++chief;
+        REQUIRE(rays.status()[i] == RayStatus::Alive);
+      }
+    }
+    REQUIRE(chief == 2);
+  }
+}
+
+TEST_CASE("Cooke triplet: the fallback uses an aperture smaller than the shape domain (#72)",
+          "[sources]") {
+  // L2.S1 gets a circular aperture of 24 mm (< |R| = 24.456 mm, the domain of the sphere). The
+  // search still converges slowly towards rho* ~ 23.09 mm < 24 mm, so after 50 rounds the whole
+  // aperture disk bounds the bundle: its lowest point is at r = 24 mm,
+  // z = z_vertex + R (1 - sqrt(1 - (24/R)^2)) with R = -24.456 mm.
+  MaterialLibrary lib;
+  lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/m2/schott.agf");
+  System s = rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m2/cooke_triplet.rtt.json");
+  bool found = false;
+  for (auto& child : s.root.children) {
+    if (auto* e = std::get_if<Element>(&child.value); e && e->name == "L2") {
+      e->surfaces[0].aperture = rtt::model::CircularAperture{24.0, 0.0};
+      found = true;
+    }
+  }
+  REQUIRE(found);
+  const CompiledSystem cs = compile(s, lib);
+  constexpr double kR = -24.456;
+  const double z_rim = 10.691 + kR * (1.0 - std::sqrt(1.0 - (24.0 / kR) * (24.0 / kR)));
+  // The start plane exactly (#8, decision D): every ray of the field lies on d . p = z_ep d_z - L
+  // with L = (z_ep - z_min) / d_z + 3 r_ep |d_xy| (bundle of 3 EP radii) and z_min = z_rim - 1,
+  // the lowest reachable z of all surfaces (the rim of L2.S1) minus 1 mm. A fallback over the
+  // whole shape domain (hemisphere, about 5.7 mm lower) would give another plane.
+  const auto fo = rtt::paraxial::first_order(cs, PathId{0}, 0);
+  REQUIRE(fo.entrance_pupil);
+  const double z_ep = *fo.entrance_pupil->z;
+  const double r_ep = *fo.entrance_pupil->diameter / 2.0;
+  const Vec3 d = Vec3(0.0, std::tan(14.0 * kDeg), 1.0).normalized();
+  const double z_min = z_rim - 1.0;
+  const double offset = (z_ep - z_min) / d.z() + 3.0 * r_ep * std::abs(d.y());
+  for (const auto& [px, py] : {std::pair{0.0, 0.0}, std::pair{0.0, 1.0}, std::pair{0.0, -1.0}}) {
+    INFO("pupil " << px << " " << py);
+    const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, 1, 0, px, py);
+    REQUIRE(aimed.ray.status == RayStatus::Alive);
+    REQUIRE(aimed.ray.pos.z() <= z_min + 1e-9);  // z_rim - 1 = -10.064
+    REQUIRE(std::abs(d.dot(aimed.ray.pos) - (z_ep * d.z() - offset)) <= 1e-9);
+  }
 }
