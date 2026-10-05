@@ -1,8 +1,13 @@
 #include "rtt/trace/apply_event.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <type_traits>
 #include <variant>
+
+#include "rtt/polar/ideal.hpp"
+#include "rtt/polar/interface.hpp"
 
 namespace rtt::trace {
 
@@ -34,6 +39,105 @@ bool inside(const model::Aperture& aperture, double x, double y) noexcept {
         }
       },
       aperture);
+}
+
+constexpr double kMillimetresPerMicrometre = 1e-3;
+
+template <class>
+inline constexpr bool kUnhandledInteraction = false;
+
+/// ||P_T||_F^2 = ||P||_F^2 - 1 for an accumulated PRT matrix: every factor maps k onto k'
+/// (Lam, Eq. (3.2)) and, as O_out J_3D O_in^-1 with orthonormal O and J_3D = diag(a_s, a_p, 1)
+/// (Lam, Eq. (3.4); docs/quellen.md), the transverse plane of k onto that of k'. So
+/// P = P_T + k k_0^T with P_T k_0 = 0 and k^T P_T = 0, and the cross terms vanish.
+double transverse_norm2(const math::CMat3& p) noexcept {
+  return std::max(p.squaredNorm() - 1.0, 0.0);
+}
+
+/// PRT matrix with power-normalised amplitudes a_s, a_p given directly (ideal elements).
+math::CMat3 ideal_prt(const math::Vec3& k_in,
+                      const math::Vec3& k_out,
+                      const math::Vec3& normal,
+                      math::Complex a_s,
+                      math::Complex a_p) noexcept {
+  return polar::interface_prt(k_in, k_out, normal, a_s, a_p, polar::PowerFactors<double>{});
+}
+
+/// Transverse part of an ideal element's axis; none if it is (nearly) parallel to k.
+std::optional<math::Vec3> transverse(const std::optional<math::Vec3>& axis,
+                                     const math::Vec3& k) noexcept {
+  if (!axis || !(axis->norm() > 0.0)) return std::nullopt;
+  const math::Vec3 a = *axis - axis->dot(k) * k;
+  if (!(a.norm() >= polar::kAxisAlongK * axis->norm())) return std::nullopt;
+  return a;
+}
+
+/// Power-normalised PRT matrix of the surface interaction for `kind` (ADR 0021); identity if
+/// the event does not change the polarization state, none if the combination is impossible.
+/// Directions and normal are global unit vectors; k_out is the direction after the event.
+std::optional<math::CMat3> interaction_prt(const compile::CompiledSurface& surface,
+                                           model::EventKind kind,
+                                           const math::Vec3& k_in,
+                                           const math::Vec3& k_out,
+                                           const math::Vec3& normal,
+                                           const EventMedia& media) noexcept {
+  using model::EventKind;
+  const bool reflect = kind == EventKind::Reflect;
+  const bool refract = kind == EventKind::Refract;
+  const bool transmit = kind == EventKind::Transmit;
+  return std::visit(
+      [&](const auto& interaction) -> std::optional<math::CMat3> {
+        using I = std::decay_t<decltype(interaction)>;
+        if constexpr (std::is_same_v<I, model::Fresnel>) {
+          if (transmit) return math::CMat3::Identity();
+          if (refract)
+            return polar::fresnel_prt(k_in, k_out, normal, media.before, media.after, false);
+          // A mirror without material has no medium beyond the surface: ideal conductor
+          // (kappa -> infinity), r_s = -1, r_p = +1 (docs/architecture.md, Polarisation).
+          if (surface.element_kind == model::ElementKind::Mirror && media.beyond == media.before) {
+            return ideal_prt(k_in, k_out, normal, -1.0, 1.0);
+          }
+          return polar::fresnel_prt(k_in, k_out, normal, media.before, media.beyond, true);
+        } else if constexpr (std::is_same_v<I, model::IdealMirror>) {
+          if (!reflect) return std::nullopt;
+          return ideal_prt(k_in, k_out, normal, -1.0, 1.0);
+        } else if constexpr (std::is_same_v<I, model::IdealAntiReflection>) {
+          if (transmit) return math::CMat3::Identity();
+          if (!refract) return std::nullopt;
+          return ideal_prt(k_in, k_out, normal, 1.0, 1.0);
+        } else if constexpr (std::is_same_v<I, model::IdealBeamSplitter>) {
+          if (reflect) {
+            return ideal_prt(k_in, k_out, normal, -std::sqrt(interaction.reflectance_s),
+                             std::sqrt(interaction.reflectance_p));
+          }
+          return ideal_prt(k_in, k_out, normal, std::sqrt(1.0 - interaction.reflectance_s),
+                           std::sqrt(1.0 - interaction.reflectance_p));
+        } else if constexpr (std::is_same_v<I, model::CoatingRef>) {
+          if (transmit) return math::CMat3::Identity();
+          if (!surface.coating) return std::nullopt;
+          // Byrnes, Eqs. (6)-(15) via rtt-coating; the layers come in the ray's order (ADR 0019).
+          const double xi = polar::tangential_invariant(k_in, normal, media.before);
+          const math::Complex n_out = reflect ? media.beyond : media.after;
+          const auto a = coating::stack_amplitudes<double>(media.before, media.layers, n_out, xi,
+                                                           media.wavelength_um);
+          if (reflect) return ideal_prt(k_in, k_out, normal, a.rs, a.rp);
+          return polar::interface_prt(k_in, k_out, normal, a.ts, a.tp,
+                                      polar::transmission_power_factors(media.before, n_out, xi));
+        } else if constexpr (std::is_same_v<I, model::IdealPolarizer>) {
+          const auto axis = transverse(surface.ideal_axis, k_in);
+          if (!transmit || !axis) return std::nullopt;
+          return polar::ideal_polarizer(*axis, interaction.extinction_ratio, k_in);
+        } else if constexpr (std::is_same_v<I, model::IdealRetarder>) {
+          const auto axis = transverse(surface.ideal_axis, k_in);
+          if (!transmit || !axis) return std::nullopt;
+          return polar::linear_retarder(*axis, interaction.retardance_waves, k_in);
+        } else if constexpr (std::is_same_v<I, model::Absorber>) {
+          return std::nullopt;  // handled before the event
+        } else {
+          static_assert(kUnhandledInteraction<I>, "interaction not handled");
+        }
+      },
+      surface.interaction);
 }
 
 }  // namespace
@@ -86,13 +190,32 @@ RayState move_to_hit(const RayState& ray,
                      const compile::CompiledSurface& surface,
                      const SurfaceHit& hit,
                      std::uint32_t surface_index,
-                     double n_before) noexcept {
-  // t is the geometric path in mm because |dir| = 1; OPL = n * path (M1: real part of n).
+                     const EventMedia& media) noexcept {
+  // t is the geometric path in mm because |dir| = 1; OPL = Re(n) * path.
   RayState out = ray;
   out.pos = surface.to_global.apply_point(hit.point);
-  out.opl += n_before * hit.t;
+  out.opl += media.before.real() * hit.t;
   out.last_surface = surface_index;
+  // Byrnes, arXiv:1603.02720v5, Eqs. (1), (2): E ~ exp(i 2 pi n z / lambda_vac), so |E|^2, the
+  // power by Eqs. (17), (18), decays as exp(-4 pi kappa z / lambda_vac); lambda in mm like t.
+  const double kappa = media.before.imag();
+  if (kappa != 0.0) {
+    out.weight *= std::exp(-4.0 * std::numbers::pi * kappa * hit.t /
+                           (media.wavelength_um * kMillimetresPerMicrometre));
+  }
   return out;
+}
+
+RayState move_to_hit(const RayState& ray,
+                     const compile::CompiledSurface& surface,
+                     const SurfaceHit& hit,
+                     std::uint32_t surface_index,
+                     double n_before) noexcept {
+  EventMedia media;
+  media.before = n_before;
+  media.after = n_before;
+  media.beyond = n_before;
+  return move_to_hit(ray, surface, hit, surface_index, media);
 }
 
 RayState apply_event(const RayState& ray,
@@ -100,8 +223,9 @@ RayState apply_event(const RayState& ray,
                      const SurfaceHit& hit,
                      std::uint32_t surface_index,
                      model::EventKind kind,
-                     double n_before,
-                     double n_after) noexcept {
+                     const EventMedia& media) noexcept {
+  const double n_before = media.before.real();
+  const double n_after = media.after.real();
   if (ray.status != RayStatus::Alive) {
     return ray;
   }
@@ -116,9 +240,10 @@ RayState apply_event(const RayState& ray,
       out.status = RayStatus::NoConvergence;
       return out;
   }
-  out = move_to_hit(ray, surface, hit, surface_index, n_before);
+  out = move_to_hit(ray, surface, hit, surface_index, media);
   if (std::holds_alternative<model::Absorber>(surface.interaction)) {
     out.status = RayStatus::Absorbed;
+    out.weight = 0.0;
     return out;
   }
 
@@ -144,8 +269,53 @@ RayState apply_event(const RayState& ray,
       out.status = RayStatus::EventImpossible;  // M4
       return out;
   }
-  out.dir = surface.to_global.apply_vector(local_dir);
+  const math::Vec3 k_out = surface.to_global.apply_vector(local_dir);
+  const math::Vec3 normal = surface.to_global.apply_vector(hit.normal);
+  const std::optional<math::CMat3> p =
+      interaction_prt(surface, kind, ray.dir, k_out, normal, media);
+  if (!p) {
+    out.status = RayStatus::EventImpossible;
+    return out;
+  }
+  // weight = s ||P_T||^2 / 2 (ADR 0021): the event multiplies ||P_T||^2 by new / old, s stays.
+  const double before = transverse_norm2(ray.prt);
+  out.prt = *p * ray.prt;
+  if (before > 0.0) {
+    out.weight *= transverse_norm2(out.prt) / before;
+  }
+  out.dir = k_out;
   return out;
+}
+
+RayState apply_event(const RayState& ray,
+                     const compile::CompiledSurface& surface,
+                     const SurfaceHit& hit,
+                     std::uint32_t surface_index,
+                     model::EventKind kind,
+                     double n_before,
+                     double n_after) noexcept {
+  EventMedia media;
+  media.before = n_before;
+  media.after = n_after;
+  media.beyond = n_after;
+  return apply_event(ray, surface, hit, surface_index, kind, media);
+}
+
+RayState sequential_step(const RayState& ray,
+                         const compile::CompiledSurface& surface,
+                         std::uint32_t surface_index,
+                         model::EventKind kind,
+                         const EventMedia& media) noexcept {
+  if (ray.status != RayStatus::Alive) {
+    return ray;
+  }
+  const SurfaceHit hit = intersect_surface(ray, surface);
+  if (hit.status == geom::HitStatus::Hit && !inside_aperture(surface, hit)) {
+    RayState out = move_to_hit(ray, surface, hit, surface_index, media);
+    out.status = RayStatus::Vignetted;
+    return out;
+  }
+  return apply_event(ray, surface, hit, surface_index, kind, media);
 }
 
 RayState sequential_step(const RayState& ray,
@@ -154,16 +324,11 @@ RayState sequential_step(const RayState& ray,
                          model::EventKind kind,
                          double n_before,
                          double n_after) noexcept {
-  if (ray.status != RayStatus::Alive) {
-    return ray;
-  }
-  const SurfaceHit hit = intersect_surface(ray, surface);
-  if (hit.status == geom::HitStatus::Hit && !inside_aperture(surface, hit)) {
-    RayState out = move_to_hit(ray, surface, hit, surface_index, n_before);
-    out.status = RayStatus::Vignetted;
-    return out;
-  }
-  return apply_event(ray, surface, hit, surface_index, kind, n_before, n_after);
+  EventMedia media;
+  media.before = n_before;
+  media.after = n_after;
+  media.beyond = n_after;
+  return sequential_step(ray, surface, surface_index, kind, media);
 }
 
 }  // namespace rtt::trace

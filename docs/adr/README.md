@@ -24,6 +24,7 @@ Neue Entscheidungen bekommen die nächste Nummer. Bestehende ADRs werden nicht u
 | [0018](0018.md) | Python-Build-Abhängigkeiten über pyproject.toml statt vcpkg | angenommen |
 | [0019](0019.md) | Coating-Kataloge als eigene JSON-Dateien | angenommen |
 | [0020](0020.md) | Gemeinsamer strikter JSON-Parser in der Basisschicht | angenommen |
+| [0021](0021.md) | Interaktionen im Tracer, Semantik von prt und weight | angenommen |
 
 ## Vorlage
 

@@ -102,8 +102,9 @@ TEST_CASE("vignetted fraction counts the rays that do not reach the image", "[sp
 
 TEST_CASE("polychromatic spot uses the normalised wavelength weights", "[spot]") {
   // Constant index: all wavelengths give the same spot, so the polychromatic statistics equal
-  // the monochromatic ones, while every point carries w_lambda / sum(w) = 1/4 or 3/4. The
-  // weighted centroid itself is checked by hand in "spot statistics".
+  // the monochromatic ones, while every point carries w_lambda / sum(w) = 1/4 or 3/4 times the
+  // ray weight of the monochromatic point (Fresnel losses since #61, the same for both
+  // wavelengths). The weighted centroid itself is checked by hand in "spot statistics".
   // Constant index also for the surroundings: the file's AIR (Ciddor since #25) is dispersive,
   // so VACUUM is used here.
   System s = load("m1/singlet_const.rtt.json");
@@ -116,12 +117,20 @@ TEST_CASE("polychromatic spot uses the normalised wavelength weights", "[spot]")
   REQUIRE(!poly.wavelength.has_value());
   REQUIRE(poly.rays_launched == 2 * mono.rays_launched);
   REQUIRE(poly.points.size() == 2 * mono.points.size());
+  const std::size_t n = mono.points.size();
   double sum = 0.0;
-  for (const auto& p : poly.points) {
-    REQUIRE(p.weight == (p.wavelength == 0 ? 0.25 : 0.75));
-    sum += p.weight;
+  double sum_mono = 0.0;
+  for (std::size_t k = 0; k < 2; ++k) {
+    const double w = k == 0 ? 0.25 : 0.75;
+    for (std::size_t i = 0; i < n; ++i) {
+      const auto& p = poly.points[k * n + i];
+      REQUIRE(p.wavelength == k);
+      REQUIRE(std::abs(p.weight - w * mono.points[i].weight) <= 1e-15 * w * mono.points[i].weight);
+      sum += p.weight;
+    }
   }
-  REQUIRE(std::abs(sum - static_cast<double>(mono.points.size())) <= 1e-12);
+  for (const auto& p : mono.points) sum_mono += p.weight;
+  REQUIRE(std::abs(sum - sum_mono) <= 1e-12);
   REQUIRE(std::abs(poly.stats.centroid.y - mono.stats.centroid.y) <= 1e-12);
   REQUIRE(std::abs(poly.stats.rms_centroid - mono.stats.rms_centroid) <= 1e-12);
   REQUIRE(poly.chief.y == mono.chief.y);
