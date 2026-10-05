@@ -47,6 +47,7 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 | 0017 | Kittglieder: Material je Segment (`Lens`, `Plate`), Schema 0.2 |
 | 0018 | Python-Build- und Testwerkzeuge (nanobind, scikit-build-core, numpy, pytest, mypy) über `pyproject.toml` statt vcpkg |
 | 0019 | Coating-Kataloge als eigene JSON-Dateien (`CATALOG:NAME`), Auflösung in `compile()`, Substrat = Inneres des Elements |
+| 0020 | Gemeinsamer strikter JSON-Parser `rtt-json` (header-only, Schicht Basis): doppelte Schlüssel und Zahlen-Overflow sind Fehler mit Pointer |
 
 **Konventionen (verbindlich für alle Bibliotheken)**
 
@@ -71,7 +72,7 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 
 ## Systemübersicht
 
-15 CMake-Bibliotheken bzw. -Programme in sieben Schichten. Jede darf nur Bibliotheken aus tieferen Schichten verwenden. Ausnahmen: die Schicht Tracing mit der festen Reihenfolge `rtt-compile` < `rtt-paraxial` < `rtt-trace`, dort darf eine Bibliothek zusätzlich die in dieser Reihenfolge vor ihr stehenden verwenden (ADR 0016); in der Schicht Schnittstellen dürfen `rtt-py` und `apps/rtt-cli` `rtt-io` verwenden (Dateien lesen und schreiben).
+16 CMake-Bibliotheken bzw. -Programme in sieben Schichten. Jede darf nur Bibliotheken aus tieferen Schichten verwenden. Ausnahmen: die Schicht Tracing mit der festen Reihenfolge `rtt-compile` < `rtt-paraxial` < `rtt-trace`, dort darf eine Bibliothek zusätzlich die in dieser Reihenfolge vor ihr stehenden verwenden (ADR 0016); in der Schicht Schnittstellen dürfen `rtt-py` und `apps/rtt-cli` `rtt-io` verwenden (Dateien lesen und schreiben).
 
 | Schicht | Bibliotheken | Status |
 | --- | --- | --- |
@@ -81,7 +82,7 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 | Tracing | `rtt-compile` < `rtt-paraxial` < `rtt-trace` | M1 |
 | Modell | `rtt-model` | M0 |
 | Physik | `rtt-geom`, `rtt-material`, `rtt-coating`, `rtt-polar` | M1–M4 |
-| Basis | `rtt-math` | M0 |
+| Basis | `rtt-math`, `rtt-json` (strikter JSON-Parser für `rtt-io` und `rtt-coating`, ADR 0020) | `rtt-math`: M0; `rtt-json`: M3 |
 
 Die vier Physik-Bibliotheken kennen weder Modell noch Tracer und können daher parallel gebaut werden. `rtt-model` beschreibt nur, `rtt-compile` macht daraus ein unveränderliches `CompiledSystem`, `rtt-paraxial` und `rtt-trace` rechnen, `rtt-analysis` wertet aus. CMake-Targets heißen `rtt_<name>` mit Alias `rtt::<name>`.
 

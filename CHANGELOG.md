@@ -38,11 +38,17 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   linearer Polarisator mit Extinktionsverhältnis als Leistung, linearer und zirkularer Retarder mit
   symmetrischer Phase ±δ/2, Stokes-Parameter; Händigkeit und S3-Vorzeichen nach Lam (Tab. 2.1)
   in `docs/architecture.md`; geprüfte Varianten mit `std::invalid_argument` (#60).
+- `rtt-json` (neue header-only Bibliothek, Schicht Basis, nur nlohmann-json): `parse_strict` mit
+  `StrictParseError { pointer, message }` als gemeinsamer strikter JSON-Leser von `rtt-io` und
+  `rtt-coating` (ADR 0020, #68).
 
 ### Geändert
 - `rtt-compile`: `compile(system, materials)` ohne Coating-Bibliothek meldet für `CoatingRef` jetzt
   einen `CompileError` (bisher ignoriert); betrifft bis #61 auch `rt.compile` in Python (#59,
   ADR 0019).
+- `rtt-io`, `rtt-coating`: Doppelte JSON-Schlüssel auf jeder Ebene sind ein Fehler mit Pointer auf
+  das zweite Vorkommen (bisher galt still der letzte Wert); betrifft `rtt validate`,
+  `rt.System.from_json` und Coating-Kataloge (Nachtrag ADR 0008, #68).
 
 ### Behoben
 - `rtt-trace`: Beim Cooke-Triplet warfen Feld 1 (und `spot()`) „no start plane before surface 'L2.S1'“.
@@ -50,6 +56,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   jetzt gilt dann das Minimum über die Kreisscheibe mit dem Außenradius der Apertur bzw. dem
   Formgebiet der Fläche. Ein Fehler bleibt nur bei unbegrenzten Flächen ohne Apertur oder mit einer
   Apertur ab 1 km (#72).
+- `rtt-io`: Eine Zahl jenseits des `double`-Bereichs (z. B. `1e400`) ergibt einen `ParseError`
+  statt einer unübersetzten `nlohmann::json::out_of_range` (#68).
 
 ## [0.3.0] – M2 Materialien, Analyse
 

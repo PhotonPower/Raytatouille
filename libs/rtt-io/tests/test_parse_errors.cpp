@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <string>
 
 #include "rtt/io/json_io.hpp"
@@ -56,6 +57,34 @@ TEST_CASE("structural errors carry a JSON pointer", "[io][errors]") {
 
 TEST_CASE("invalid JSON is reported", "[io][errors]") {
   REQUIRE_THROWS_AS(rtt::io::parse_system("{ not json"), rtt::io::ParseError);
+}
+
+TEST_CASE("duplicate keys are errors at the second occurrence (#68)", "[io][errors]") {
+  // ADR 0008 addendum: nlohmann-json alone would keep the last value silently.
+  REQUIRE(error_pointer(R"({"schema_version": "9.9.9", )" + minimal().substr(1)) ==
+          "/schema_version");
+  REQUIRE(error_pointer(minimal(R"(, "units": {"length": "mm", "wavelength": "um"})")) == "/units");
+  REQUIRE(error_pointer(minimal("", R"("mm")", R"("0.1.0")", R"({"id": "IMG", "id": "X"})")) ==
+          "/root/children/0/surfaces/0/id");
+  REQUIRE(error_pointer(minimal("", R"("mm")", R"("0.1.0")",
+                                R"({"id": "IMG", "aperture": {"type": "circular",)"
+                                R"( "radius": 1.0, "radius": 2.0}})")) ==
+          "/root/children/0/surfaces/0/aperture/radius");
+  try {
+    (void)rtt::io::parse_system(minimal(R"(, "name": "a", "name": "b")"));
+    FAIL("no ParseError");
+  } catch (const rtt::io::ParseError& e) {
+    REQUIRE(e.pointer() == "/name");
+    REQUIRE(std::string(e.what()) == "/name: duplicate key 'name'");
+  }
+}
+
+TEST_CASE("a number that overflows double is a ParseError (#68)", "[io][errors]") {
+  // nlohmann-json reports it as out_of_range 406, which escaped parse_system before #68.
+  const std::string text =
+      minimal("", R"("mm")", R"("0.1.0")", R"({"id": "IMG", "pose": {"position": [0, 0, 1e400]}})");
+  REQUIRE(error_pointer(text).empty());
+  REQUIRE_THROWS_WITH(rtt::io::parse_system(text), Catch::Matchers::ContainsSubstring("1e400"));
 }
 
 TEST_CASE("parameters accept plain numbers and objects", "[io]") {

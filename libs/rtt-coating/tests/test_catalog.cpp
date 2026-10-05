@@ -211,6 +211,12 @@ TEST_CASE("catalogue errors name the file and the JSON pointer", "[coating][cata
       {catalog_text("D", R"({"name": "C", "layers": [{"material": "M", "qwot": 1e400}]})"), "",
        "invalid JSON"},
       {"[]", "", "expected an object"},
+      // Duplicate keys (#68): the pointer names the second occurrence.
+      {prefix + R"("catalog": "D", "catalog": "E", "coatings": []})", "/catalog",
+       "duplicate key 'catalog'"},
+      {catalog_text("D", R"({"name": "C", "layers": [{"material": "M", "thickness_um": -1,
+                                                      "thickness_um": 0.1}]})"),
+       "/coatings/0/layers/0/thickness_um", "duplicate key 'thickness_um'"},
       {prefix + R"("catalog": "D", "coatings": [], "extra": 1})", "/extra", "unknown key"},
       {R"({"format": "x", "schema_version": "0.1.0", "catalog": "D", "coatings": []})", "/format",
        "raytatouille-coatings"},

@@ -4,8 +4,8 @@ add_library(rtt::coating ALIAS rtt_coating)
 target_include_directories(rtt_coating PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 # Layer physics (docs/architecture.md): only rtt-math; indices are passed in, no rtt-material.
-# nlohmann-json reads the coating catalogues (ADR 0019).
-target_link_libraries(rtt_coating PUBLIC rtt::math PRIVATE nlohmann_json::nlohmann_json)
+# nlohmann-json via rtt-json reads the coating catalogues (ADR 0019, ADR 0020).
+target_link_libraries(rtt_coating PUBLIC rtt::math PRIVATE rtt::json nlohmann_json::nlohmann_json)
 rtt_target_defaults(rtt_coating LIBRARY)
 
 if(RTT_BUILD_TESTS)
