@@ -34,6 +34,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   Fläche fest (`CompiledSurface::coating`); Kompilierfehler mit Pointer für unbekannte
   Coatings und Schichtmaterialien, Wellenlängenbereiche und mehrdeutige Substratseiten.
   Beispiel `tests/reference/m3/ar_singlet.rtt.json` (#59).
+- `rtt-polar`: ideale Elemente (`ideal.hpp`): allgemeine Jones-Matrix in 3D eingebettet,
+  linearer Polarisator mit Extinktionsverhältnis als Leistung, linearer und zirkularer Retarder mit
+  symmetrischer Phase ±δ/2, Stokes-Parameter; Händigkeit und S3-Vorzeichen nach Lam (Tab. 2.1)
+  in `docs/architecture.md`; geprüfte Varianten mit `std::invalid_argument` (#60).
 
 ### Geändert
 - `rtt-compile`: `compile(system, materials)` ohne Coating-Bibliothek meldet für `CoatingRef` jetzt
