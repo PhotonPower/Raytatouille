@@ -838,7 +838,8 @@ TEST_CASE("Cooke triplet: every field has a start plane before the first surface
         // At least 1 mm before L1.S1 (start plane rule, #8).
         REQUIRE(aimed.ray.pos.z() <= z_first - 1.0);
         // Field 1: deliberately pins the fallback of #72 (the physical requirement is only
-        // z <= z* - 1 with the fixed point z* ~ -5.712 of the search).
+        // z <= z* - 1 with the fixed point z* ~ -5.65 ... -5.71 of the search, depending on the
+        // wavelength).
         if (field == 1) REQUIRE(aimed.ray.pos.z() <= z_hemisphere - 1.0 + 1e-9);
       }
     }
@@ -883,10 +884,22 @@ TEST_CASE("Cooke triplet: the fallback uses an aperture smaller than the shape d
   const CompiledSystem cs = compile(s, lib);
   constexpr double kR = -24.456;
   const double z_rim = 10.691 + kR * (1.0 - std::sqrt(1.0 - (24.0 / kR) * (24.0 / kR)));
+  // The start plane exactly (#8, decision D): every ray of the field lies on d . p = z_ep d_z - L
+  // with L = (z_ep - z_min) / d_z + 3 r_ep |d_xy| (bundle of 3 EP radii) and z_min = z_rim - 1,
+  // the lowest reachable z of all surfaces (the rim of L2.S1) minus 1 mm. A fallback over the
+  // whole shape domain (hemisphere, about 5.7 mm lower) would give another plane.
+  const auto fo = rtt::paraxial::first_order(cs, PathId{0}, 0);
+  REQUIRE(fo.entrance_pupil);
+  const double z_ep = *fo.entrance_pupil->z;
+  const double r_ep = *fo.entrance_pupil->diameter / 2.0;
+  const Vec3 d = Vec3(0.0, std::tan(14.0 * kDeg), 1.0).normalized();
+  const double z_min = z_rim - 1.0;
+  const double offset = (z_ep - z_min) / d.z() + 3.0 * r_ep * std::abs(d.y());
   for (const auto& [px, py] : {std::pair{0.0, 0.0}, std::pair{0.0, 1.0}, std::pair{0.0, -1.0}}) {
     INFO("pupil " << px << " " << py);
     const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, 1, 0, px, py);
     REQUIRE(aimed.ray.status == RayStatus::Alive);
-    REQUIRE(aimed.ray.pos.z() <= z_rim - 1.0 + 1e-9);  // z_rim - 1 = -10.064
+    REQUIRE(aimed.ray.pos.z() <= z_min + 1e-9);  // z_rim - 1 = -10.064
+    REQUIRE(std::abs(d.dot(aimed.ray.pos) - (z_ep * d.z() - offset)) <= 1e-9);
   }
 }
