@@ -104,7 +104,8 @@ std::optional<math::CMat3> interaction_prt(const compile::CompiledSurface& surfa
           return ideal_prt(k_in, k_out, normal, -1.0, 1.0);
         } else if constexpr (std::is_same_v<I, model::IdealAntiReflection>) {
           if (transmit) return math::CMat3::Identity();
-          if (!refract) return std::nullopt;
+          // Reflect: a vanishing, not an impossible reflection (R = 0, decided for #61).
+          if (reflect) return ideal_prt(k_in, k_out, normal, 0.0, 0.0);
           return ideal_prt(k_in, k_out, normal, 1.0, 1.0);
         } else if constexpr (std::is_same_v<I, model::IdealBeamSplitter>) {
           if (reflect) {

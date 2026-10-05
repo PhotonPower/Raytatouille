@@ -148,7 +148,8 @@ inline constexpr double kApertureTolerance = 1e-9;
 /// - Fresnel: Refract between before and after; Reflect against beyond. A Mirror without
 ///   material (beyond = before) reflects as an ideal conductor, r_s = -1, r_p = +1; any other
 ///   surface with beyond = before gives r = 0 (vanishing reflection, weight 0, status Alive).
-/// - IdealMirror: Reflect (-1, +1). IdealAntiReflection: Refract (1, 1).
+/// - IdealMirror: Reflect (-1, +1). IdealAntiReflection: Refract (1, 1), Reflect (0, 0)
+///   (vanishing reflection: weight 0, status Alive).
 ///   IdealBeamSplitter: Reflect (-sqrt(R_s), +sqrt(R_p)), Refract and Transmit (sqrt(1 - R_s),
 ///   sqrt(1 - R_p)). CoatingRef: Refract or Reflect with the stack of `media.layers`
 ///   (rtt-coating, Byrnes). IdealPolarizer and IdealRetarder: Transmit only, axis

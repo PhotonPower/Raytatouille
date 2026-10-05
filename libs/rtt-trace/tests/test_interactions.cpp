@@ -17,6 +17,7 @@
 #include "rtt/coating/catalog.hpp"
 #include "rtt/coating/transfer_matrix.hpp"
 #include "rtt/compile/compiled_system.hpp"
+#include "rtt/io/json_io.hpp"
 #include "rtt/material/material.hpp"
 #include "rtt/model/model.hpp"
 #include "rtt/polar/fresnel.hpp"
@@ -448,6 +449,49 @@ TEST_CASE("coating on refraction: AR_MGF2 on both sides of a plate", "[interacti
   const RayBatch in = trace_one(cs, Vec3(0.0, 0.0, -1.0), Vec3(0.0, 0.0, 1.0), PathId{1});
   REQUIRE(in.status()[0] == RayStatus::Alive);
   REQUIRE(std::abs(in.weight()[0] - (1.0 - big_r)) <= 1e-12);
+}
+
+TEST_CASE("reference example m3/absorbing_ar_plate: AR coating and volume absorption",
+          "[interactions]") {
+  // tests/reference/m3/absorbing_ar_plate.rtt.json: plate n = 1.52 + 1e-6 i, d = 10 mm,
+  // DEMO:AR_MGF2 on both sides, lambda = 0.55 um (design wavelength), vacuum, axial ray.
+  // Expected: weight = (1 - R)^2 exp(-4 pi kappa d / lambda) with R of the quarter-wave layer on
+  // the real substrate, r = (n_0 n_s - n_c^2)/(n_0 n_s + n_c^2) (Byrnes, Eqs. (6)-(15), derived
+  // in rtt-coating's test, #58), and the absorption of Byrnes, Eqs. (1), (2), (17), (18).
+  // kappa changes r, t and the power factors only in second order: at normal incidence they are
+  // real functions of n_s, a purely imaginary change i kappa changes them by i kappa f' (f'
+  // real), so |r|^2, |t|^2 and Re(n) change by O(kappa^2) = 1e-12. Tolerance 1e-10 relative
+  // (second-order terms with coefficients up to ~10, plus rounding).
+  rtt::coating::CoatingLibrary coatings;
+  coatings.add_catalog(std::string(RTT_CATALOG_DIR) + "/coatings/demo.json");
+  const MaterialLibrary lib;
+  const System s =
+      rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m3/absorbing_ar_plate.rtt.json");
+  const CompiledSystem cs = compile(s, lib, coatings);
+  const RayBatch rays = trace_one(cs, Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 1.0));
+  const double nc2 = 1.38 * 1.38;
+  const double big_r = std::pow((1.52 - nc2) / (1.52 + nc2), 2);
+  const double absorption = std::exp(-4.0 * kPi * 1e-6 * 10.0 / 0.55e-3);
+  const double expected = (1.0 - big_r) * (1.0 - big_r) * absorption;
+  REQUIRE(rays.status()[0] == RayStatus::Alive);
+  REQUIRE(rays.last_surface()[0] == 2);
+  REQUIRE(std::abs(rays.weight()[0] - expected) <= 1e-10 * expected);
+}
+
+TEST_CASE("reflection at an ideal anti-reflection surface vanishes", "[interactions]") {
+  // Decided for #61 (ADR 0021): like a Fresnel surface without a change of medium, Reflect at
+  // IdealAntiReflection is a vanishing, not an impossible reflection: amplitude 0, weight 0,
+  // status Alive (a ghost path over an ideal AR surface simply has weight 0).
+  System s = base_system();
+  Element p = plate("P", 0.0, 5.0, "CONST:1.5");
+  p.surfaces[0].interaction = rtt::model::IdealAntiReflection{};
+  s.root.children = {{p}};
+  s.paths = {{"ghost", false, {{SurfaceId("P.S1"), EventKind::Reflect, 0}}}};
+  const MaterialLibrary lib;
+  const RayBatch rays = trace_one(compile(s, lib), Vec3(0.0, 0.0, -1.0), Vec3(0.0, 0.0, 1.0));
+  REQUIRE(rays.status()[0] == RayStatus::Alive);
+  REQUIRE(rays.weight()[0] == 0.0);
+  REQUIRE(std::abs(rays.dir_z()[0] + 1.0) <= 1e-15);  // reflected
 }
 
 TEST_CASE("ideal retarder through the tracer: quarter-wave plate at 45 deg gives circular light",

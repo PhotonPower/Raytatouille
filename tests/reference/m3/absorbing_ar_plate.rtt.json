@@ -1,0 +1,49 @@
+{
+  "schema_version": "0.2.0",
+  "name": "Absorbing plate n = 1.52 + 1e-6 i, 10 mm, quarter-wave MgF2 anti-reflection on both sides",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [
+    {"um": 0.55, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 10.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "plate",
+        "name": "P",
+        "pose": {"position": [0.0, 0.0, 5.0]},
+        "material": "CONST:1.52,1e-6",
+        "surfaces": [
+          {
+            "id": "P.S1",
+            "interaction": {"type": "coating", "name": "DEMO:AR_MGF2"}
+          },
+          {
+            "id": "P.S2",
+            "pose": {"position": [0.0, 0.0, 10.0]},
+            "interaction": {"type": "coating", "name": "DEMO:AR_MGF2"}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 25.0]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}

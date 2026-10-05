@@ -52,7 +52,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   Indizes, ideale Elemente (Spiegel, AR, Strahlteiler, Polarisator, Retarder), Coatings aus dem
   Katalog (umgekehrter Stapel aus dem Substrat), Absorber und Volumenabsorption
   exp(−4πκt/λ). P ist leistungsnormiert (|P E|² = Leistungsanteil), `weight` ist die Leistung
-  für eine unpolarisierte Quelle. `apply_event` und `sequential_step` nehmen `EventMedia`
+  für eine unpolarisierte Quelle; Beispiel `tests/reference/m3/absorbing_ar_plate.rtt.json`. `apply_event` und `sequential_step` nehmen `EventMedia`
   (komplexe Indizes, Wellenlänge, Schichten); die Formen mit reellen Indizes bleiben (#61).
 - `rtt-polar`: leistungsnormierte Grenzflächen-PRT-Matrizen (`interface.hpp`:
   `fresnel_prt`, `interface_prt`, `transmission_power_factors`, `tangential_invariant`) (#61).
@@ -65,7 +65,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   Statistiken unvergüteter Systeme verschieben sich leicht (Cooke-Triplett relativ bis 2,8·10⁻³)
   (#61).
 - `rtt-compile`: `compile(system, materials)` ohne Coating-Bibliothek meldet für `CoatingRef` jetzt
-  einen `CompileError` (bisher ignoriert); betrifft bis #61 auch `rt.compile` in Python (#59,
+  einen `CompileError` (bisher ignoriert); betrifft bis #62 auch `rt.compile` in Python (#59,
   ADR 0019).
 - `rtt-io`, `rtt-coating`: Doppelte JSON-Schlüssel auf jeder Ebene sind ein Fehler mit Pointer auf
   das zweite Vorkommen (bisher galt still der letzte Wert); betrifft `rtt validate`,
