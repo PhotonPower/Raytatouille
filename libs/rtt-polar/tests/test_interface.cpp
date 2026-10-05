@@ -63,27 +63,36 @@ CVec3 random_transverse(Uniform& u, const Vec3& k) {
 }  // namespace
 
 TEST_CASE("tangential invariant and power factors", "[interface]") {
-  // xi = Re(n_i) sin(theta_i) with sin = |k x N|; the power factors are T / |t|^2 of Byrnes,
-  // Eqs. (21), (22) as implemented in fresnel_power (#56). Tolerance 1e-14 relative.
+  // xi = Re(n_i) sin(theta_i) with sin = |k x N|. Power factors from Byrnes, Eqs. (21), (22):
+  // c_s = Re(n_t cos_t) / Re(n_i cos_i), c_p = Re(n_t cos*_t) / Re(n_i cos*_i).
+  // - Real indices: both reduce to n_t cos_t / (n_i cos_i) with cos_t from Snell's law (Eq. (3)).
+  // - Normal incidence: cos = 1, so c_s = c_p = Re(n_t) / Re(n_i) also for absorbing n_t.
+  // - Total internal reflection: q_t is imaginary, c_s = c_p = 0.
+  // Analytic values; tolerance 1e-14 relative (a few roundings in sqrt and division).
   const Vec3 n(0.0, 0.0, 1.0);
   for (const double deg : {0.0, 20.0, 55.0, 80.0}) {
     const double t = deg * kPi / 180.0;
     const Vec3 k(0.0, std::sin(t), std::cos(t));
     REQUIRE(std::abs(rtt::polar::tangential_invariant(k, n, Cx(1.5, 0.01)) - 1.5 * std::sin(t)) <=
             1e-15);
-    for (const auto& [n_i, n_t] : {std::pair{Cx(1.0), Cx(1.5168)}, std::pair{Cx(1.0), Cx(1.5, 0.3)},
-                                   std::pair{Cx(1.3, 0.02), Cx(1.7, 0.1)}}) {
-      const double xi = n_i.real() * std::sin(t);
-      const auto a = rtt::polar::fresnel(n_i, n_t, xi);
-      const auto p = rtt::polar::fresnel_power(n_i, n_t, xi);
-      const auto c = rtt::polar::transmission_power_factors(n_i, n_t, xi);
+    for (const auto& [n_i, n_t] : {std::pair{1.0, 1.5168}, std::pair{1.5168, 1.7}}) {
+      const double xi = n_i * std::sin(t);
+      const double cos_t = std::sqrt(1.0 - (xi / n_t) * (xi / n_t));
+      const double expected = n_t * cos_t / (n_i * std::cos(t));
+      const auto c = rtt::polar::transmission_power_factors(Cx(n_i), Cx(n_t), xi);
       INFO("theta " << deg << ", n_i " << n_i << ", n_t " << n_t);
-      REQUIRE(std::abs(c.s * std::norm(a.ts) - p.transmittance_s) <= 1e-14 * p.transmittance_s);
-      REQUIRE(std::abs(c.p * std::norm(a.tp) - p.transmittance_p) <= 1e-14 * p.transmittance_p);
-      REQUIRE(c.s > 0.0);
-      REQUIRE(c.p > 0.0);
+      REQUIRE(std::abs(c.s - expected) <= 1e-14 * expected);
+      REQUIRE(std::abs(c.p - expected) <= 1e-14 * expected);
     }
   }
+  for (const Cx n_t : {Cx(1.5, 0.3), Cx(0.2, 3.5)}) {
+    const auto c = rtt::polar::transmission_power_factors(Cx(1.3), n_t, 0.0);
+    REQUIRE(std::abs(c.s - n_t.real() / 1.3) <= 1e-14 * n_t.real());
+    REQUIRE(std::abs(c.p - n_t.real() / 1.3) <= 1e-14 * n_t.real());
+  }
+  const auto tir = rtt::polar::transmission_power_factors(Cx(1.5168), Cx(1.0), 1.2);
+  REQUIRE(tir.s == 0.0);
+  REQUIRE(std::abs(tir.p) <= 1e-16);
 }
 
 TEST_CASE("power-normalised Fresnel PRT: |P_r E|^2 + |P_t E|^2 = |E|^2", "[interface]") {

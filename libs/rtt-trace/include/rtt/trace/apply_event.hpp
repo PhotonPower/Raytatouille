@@ -48,7 +48,9 @@ struct EventMedia {
   /// Complex index on the other side of the surface (Fresnel and coating partner for Reflect;
   /// equal to after for Refract).
   math::Complex beyond{1.0};
-  double wavelength_um = 0.5876;  ///< vacuum wavelength, um (absorption, coatings)
+  /// Vacuum wavelength, um; must be > 0 if `before` absorbs (Im > 0) or `layers` is not empty.
+  /// No default wavelength, so that a forgotten value cannot pass unnoticed.
+  double wavelength_um = 0.0;
   /// Coating layers at this wavelength in the order seen by the ray: from the incident medium to
   /// the other side (the caller reverses the stack for light from the substrate, ADR 0019).
   /// Empty if the surface has no coating.
@@ -154,8 +156,8 @@ inline constexpr double kApertureTolerance = 1e-9;
 /// - Transmit at a Fresnel, IdealAntiReflection or CoatingRef surface is a dummy passage: P and
 ///   weight are unchanged.
 /// - Any other combination of interaction and event kind, a CoatingRef surface without compiled
-///   coating (CompiledSurface::coating empty) and an ideal axis parallel to the ray give
-///   EventImpossible.
+///   coating (CompiledSurface::coating empty), an ideal axis parallel to the ray and non-finite
+///   amplitudes (grazing incidence, a coating layer exactly at q = 0) give EventImpossible.
 /// Phase layers are ignored before M4.
 ///
 /// Never throws; physical problems are status flags (ADR 0009).
@@ -173,7 +175,9 @@ inline constexpr double kApertureTolerance = 1e-9;
                                    const EventMedia& media) noexcept;
 
 /// apply_event() with real indices and no coating layers (M1 form): before = n_before,
-/// after = beyond = n_after.
+/// after = beyond = n_after, no absorption. For Reflect pass n_after = the index beyond the
+/// surface; with n_after = n_before a Fresnel reflection at a non-mirror surface has r = 0
+/// (weight 0). A CoatingRef surface acts as a bare interface here (no layers).
 [[nodiscard]] RayState apply_event(const RayState& ray,
                                    const compile::CompiledSurface& surface,
                                    const SurfaceHit& hit,

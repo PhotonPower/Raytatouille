@@ -45,8 +45,9 @@ TraceStats SequentialTracer::trace(const compile::CompiledSystem& system,
     m.beyond = system.media()[event.medium_beyond].index[wl];
     m.wavelength_um = system.wavelengths_um()[wl];
     if (const auto& c = system.surfaces()[event.surface].coating) {
-      const bool from_substrate = event.medium_before == c->substrate_medium;
-      m.layers = from_substrate
+      // From inside the element = from the substrate (ADR 0019); decided by element, not by
+      // medium, since another element of the same glass may lie in front of the surface.
+      m.layers = event.from_inside
                      ? std::span<const coating::Layer<double>>(reversed[c->coating][wl])
                      : std::span<const coating::Layer<double>>(coatings[c->coating].layers[wl]);
     }

@@ -20,6 +20,7 @@
 #include "rtt/material/material.hpp"
 #include "rtt/model/model.hpp"
 #include "rtt/polar/fresnel.hpp"
+#include "rtt/polar/ideal.hpp"
 #include "rtt/trace/ray_batch.hpp"
 #include "rtt/trace/sequential.hpp"
 
@@ -359,4 +360,112 @@ TEST_CASE("medium_beyond: the other side of a surface, also for Reflect", "[inte
   REQUIRE(events[1].medium_beyond == events[1].medium_after);
   REQUIRE(events[2].medium_before != env);
   REQUIRE(events[2].medium_beyond == env);
+  REQUIRE(!events[0].from_inside);
+  REQUIRE(!events[1].from_inside);
+  REQUIRE(events[2].from_inside);
+}
+
+TEST_CASE("Fresnel reflection against the medium beyond: entrance, ghost and TIR",
+          "[interactions]") {
+  // N-BK7 (n = 1.5168) at normal incidence, R = ((n - 1)/(n + 1))^2 for s and p (Byrnes,
+  // Eq. (6), #56); every polarization gives the same power.
+  // - Reflect at the entrance surface from outside: weight = R.
+  // - Ghost: Refract S1, Reflect S2 from inside (against the environment), Refract S1 back:
+  //   weight = (1 - R) R (1 - R).
+  // - Prism: S2 tilted by 45 deg about x; inside the glass the ray meets S2 at 45 deg, beyond
+  //   the critical angle asin(1/n) = 41.25 deg, so the Fresnel reflection against the
+  //   environment is total (|r_s| = |r_p| = 1): weight = 1 - R from the entrance only.
+  // Tolerance 1e-12.
+  const double r = (kGlass - 1.0) / (kGlass + 1.0);
+  const double big_r = r * r;
+  const MaterialLibrary lib;
+  {
+    System s = base_system();
+    s.root.children = {{plate("P", 0.0, 5.0, "CONST:1.5168")}};
+    s.paths = {{"entrance", false, {{SurfaceId("P.S1"), EventKind::Reflect, 0}}}};
+    const RayBatch rays = trace_one(compile(s, lib), Vec3(0.0, 0.0, -1.0), Vec3(0.0, 0.0, 1.0));
+    REQUIRE(rays.status()[0] == RayStatus::Alive);
+    REQUIRE(std::abs(rays.weight()[0] - big_r) <= 1e-12);
+    REQUIRE(std::abs(polarized_power(rays, Vec3(1.0, 0.0, 0.0)) - big_r) <= 1e-12);
+  }
+  {
+    System s = base_system();
+    s.root.children = {{plate("P", 0.0, 5.0, "CONST:1.5168")}, {detector(-2.0)}};
+    s.paths = {{"ghost",
+                false,
+                {{SurfaceId("P.S1"), EventKind::Refract, 0},
+                 {SurfaceId("P.S2"), EventKind::Reflect, 0},
+                 {SurfaceId("P.S1"), EventKind::Refract, 0},
+                 {SurfaceId("IMG"), EventKind::Transmit, 0}}}};
+    const RayBatch rays = trace_one(compile(s, lib), Vec3(0.0, 0.0, -1.0), Vec3(0.0, 0.0, 1.0));
+    const double expected = (1.0 - big_r) * big_r * (1.0 - big_r);
+    REQUIRE(rays.status()[0] == RayStatus::Alive);
+    REQUIRE(std::abs(rays.weight()[0] - expected) <= 1e-12);
+    REQUIRE(std::abs(polarized_power(rays, Vec3(0.0, 1.0, 0.0)) - expected) <= 1e-12);
+  }
+  {
+    System s = base_system();
+    Element prism = plate("P", 0.0, 5.0, "CONST:1.5168");
+    prism.surfaces[1].pose.rotation_deg[0] = Param(45.0);
+    s.root.children = {{prism}};
+    s.paths = {
+        {"tir",
+         false,
+         {{SurfaceId("P.S1"), EventKind::Refract, 0}, {SurfaceId("P.S2"), EventKind::Reflect, 0}}}};
+    const RayBatch rays = trace_one(compile(s, lib), Vec3(0.0, 0.0, -1.0), Vec3(0.0, 0.0, 1.0));
+    REQUIRE(rays.status()[0] == RayStatus::Alive);
+    REQUIRE(std::abs(rays.weight()[0] - (1.0 - big_r)) <= 1e-12);
+    REQUIRE(std::abs(polarized_power(rays, Vec3(1.0, 0.0, 0.0)) - (1.0 - big_r)) <= 1e-12);
+    REQUIRE(std::abs(polarized_power(rays, Vec3(0.0, 1.0, 0.0)) - (1.0 - big_r)) <= 1e-12);
+  }
+}
+
+TEST_CASE("coating on refraction: AR_MGF2 on both sides of a plate", "[interactions]") {
+  // Single quarter-wave layer n_c = 1.38 on n_s = 1.52 at its design wavelength 0.55 um, normal
+  // incidence, lossless: r = (n_0 n_s - n_c^2)/(n_0 n_s + n_c^2) from Byrnes, Eqs. (6), (8),
+  // (11), (13), (15) (derived in rtt-coating's test "quarter-wave MgF2 anti-reflection", #58;
+  // R = 1.26 % in the acceptance table of docs/architecture.md), T = 1 - R. The exit surface is
+  // crossed from the substrate (reversed stack, power factors from glass to vacuum); r is
+  // symmetric in n_0 and n_s, so the plate transmits (1 - R)^2. The power factors cancel over
+  // the plate (c = n_s/n_0 in, n_0/n_s out), so the path "in" ends inside the glass: weight =
+  // 1 - R there checks them for a single surface. Tolerance 1e-12.
+  rtt::coating::CoatingLibrary coatings;
+  coatings.add_catalog(std::string(RTT_CATALOG_DIR) + "/coatings/demo.json");
+  System s = base_system(0.55);
+  Element p = plate("P", 0.0, 5.0, "CONST:1.52");
+  for (auto& surf : p.surfaces) surf.interaction = rtt::model::CoatingRef{"DEMO:AR_MGF2"};
+  s.root.children = {{p}, {detector(10.0)}};
+  s.paths = {{"main", true, {}}, {"in", false, {{SurfaceId("P.S1"), EventKind::Refract, 0}}}};
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib, coatings);
+  const RayBatch rays = trace_one(cs, Vec3(0.0, 0.0, -1.0), Vec3(0.0, 0.0, 1.0));
+  const double nc2 = 1.38 * 1.38;
+  const double big_r = std::pow((1.52 - nc2) / (1.52 + nc2), 2);
+  REQUIRE(rays.status()[0] == RayStatus::Alive);
+  REQUIRE(std::abs(rays.weight()[0] - (1.0 - big_r) * (1.0 - big_r)) <= 1e-12);
+  REQUIRE(std::abs(polarized_power(rays, Vec3(1.0, 0.0, 0.0)) - (1.0 - big_r) * (1.0 - big_r)) <=
+          1e-12);
+  const RayBatch in = trace_one(cs, Vec3(0.0, 0.0, -1.0), Vec3(0.0, 0.0, 1.0), PathId{1});
+  REQUIRE(in.status()[0] == RayStatus::Alive);
+  REQUIRE(std::abs(in.weight()[0] - (1.0 - big_r)) <= 1e-12);
+}
+
+TEST_CASE("ideal retarder through the tracer: quarter-wave plate at 45 deg gives circular light",
+          "[interactions]") {
+  // x polarizer, then IdealRetarder with retardance 1/4 wave and fast axis (1, 0, 0) in element
+  // coordinates, element rotated by 45 deg about z (axis rotated by compile, ADR 0021). Linear
+  // light at 45 deg to the fast axis leaves circularly polarized: |S3| = S0 (docs/architecture.md,
+  // acceptance table), S0 = 1 for the incident x state; unpolarized weight 1/2. Tolerance 1e-12.
+  System s = base_system();
+  s.root.children = {{thin("POL", 0.0, rtt::model::IdealPolarizer{{1.0, 0.0, 0.0}, 0.0})},
+                     {thin("QWP", 5.0, rtt::model::IdealRetarder{{1.0, 0.0, 0.0}, 0.25}, 45.0)},
+                     {detector(10.0)}};
+  const MaterialLibrary lib;
+  const RayBatch rays = trace_one(compile(s, lib), Vec3(0.0, 0.0, -1.0), Vec3(0.0, 0.0, 1.0));
+  const Vec3 k(0.0, 0.0, 1.0);
+  const CVec3 e = rays.prt_matrix(0) * Vec3(1.0, 0.0, 0.0).cast<Cx>();
+  const auto st = rtt::polar::stokes<double>(e, Vec3(1.0, 0.0, 0.0), k);
+  REQUIRE(std::abs(st.s0 - 1.0) <= 1e-12);
+  REQUIRE(std::abs(std::abs(st.s3) - st.s0) <= 1e-12);
+  REQUIRE(std::abs(rays.weight()[0] - 0.5) <= 1e-12);
 }

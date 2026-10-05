@@ -29,12 +29,16 @@ namespace rtt::polar {
 /// (Byrnes, App. D.2). Reflection has c = 1.
 template <math::Real T>
 struct PowerFactors {
-  T s = T(1);
-  T p = T(1);
+  T s = T(1);  ///< c_s, dimensionless
+  T p = T(1);  ///< c_p, dimensionless
 };
 
 /// Power factors of a transmission at the tangential invariant xi.
-/// @pre preconditions of fresnel_power(), Re(q_t) > 0 (no total internal reflection)
+/// @param n_i complex index of the incident medium
+/// @param n_t complex index of the transmitting medium
+/// @param xi  tangential invariant Re(n_i) sin(theta_i), real, >= 0
+/// @pre preconditions of fresnel_power(), in particular Re(q_i) > 0 (not grazing); with total
+///      internal reflection the factors are 0 (no transmitted power)
 template <math::Real T>
 [[nodiscard]] PowerFactors<T> transmission_power_factors(std::complex<T> n_i,
                                                          std::complex<T> n_t,
@@ -66,7 +70,10 @@ template <math::Real T>
 
 /// Power-normalised PRT matrix of an interface: prt_matrix(k_in, k_out, N, a_s sqrt(c_s),
 /// a_p sqrt(c_p)).
-/// @param a_s, a_p amplitudes in Convention A (basis p = k x s)
+/// @param k_in     unit incident direction, global
+/// @param k_out    unit exiting direction, global
+/// @param normal   unit surface normal, global, either orientation
+/// @param a_s, a_p amplitudes in Convention A (basis p = k x s), dimensionless
 /// @param c        power factors (c = 1 for reflection)
 template <math::Real T>
 [[nodiscard]] CMat3T<T> interface_prt(const math::Vec3T<T>& k_in,

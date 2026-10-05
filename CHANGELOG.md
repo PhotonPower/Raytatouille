@@ -56,7 +56,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   (komplexe Indizes, Wellenlänge, Schichten); die Formen mit reellen Indizes bleiben (#61).
 - `rtt-polar`: leistungsnormierte Grenzflächen-PRT-Matrizen (`interface.hpp`:
   `fresnel_prt`, `interface_prt`, `transmission_power_factors`, `tangential_invariant`) (#61).
-- `rtt-compile`: `CompiledEvent::medium_beyond` (Medium hinter der Fläche, auch bei Reflect) und
+- `rtt-compile`: `CompiledEvent::medium_beyond` (Medium hinter der Fläche, auch bei Reflect),
+  `CompiledEvent::from_inside` (Strahl kommt aus dem Element, bei Coatings die Substratseite) und
   `CompiledSurface::ideal_axis` (Achse von Polarisator und Retarder global) (#61).
 
 ### Geändert

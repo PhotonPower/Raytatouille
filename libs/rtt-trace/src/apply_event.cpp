@@ -1,11 +1,11 @@
 #include "rtt/trace/apply_event.hpp"
 
-#include <algorithm>
 #include <cmath>
 #include <numbers>
 #include <type_traits>
 #include <variant>
 
+#include "rtt/math/units.hpp"
 #include "rtt/polar/ideal.hpp"
 #include "rtt/polar/interface.hpp"
 
@@ -41,17 +41,18 @@ bool inside(const model::Aperture& aperture, double x, double y) noexcept {
       aperture);
 }
 
-constexpr double kMillimetresPerMicrometre = 1e-3;
-
 template <class>
 inline constexpr bool kUnhandledInteraction = false;
 
-/// ||P_T||_F^2 = ||P||_F^2 - 1 for an accumulated PRT matrix: every factor maps k onto k'
-/// (Lam, Eq. (3.2)) and, as O_out J_3D O_in^-1 with orthonormal O and J_3D = diag(a_s, a_p, 1)
-/// (Lam, Eq. (3.4); docs/quellen.md), the transverse plane of k onto that of k'. So
-/// P = P_T + k k_0^T with P_T k_0 = 0 and k^T P_T = 0, and the cross terms vanish.
-double transverse_norm2(const math::CMat3& p) noexcept {
-  return std::max(p.squaredNorm() - 1.0, 0.0);
+/// ||P_T||_F^2 of an accumulated PRT matrix P with current direction k (unit). Every factor maps
+/// k onto k' (Lam, Eq. (3.2)) and, as O_out J_3D O_in^-1 with orthonormal O and
+/// J_3D = diag(a_s, a_p, 1) (Lam, Eq. (3.4); docs/quellen.md), the transverse plane of k onto that
+/// of k'; so does the product. Hence P = P_T + k k_0^T with P_T k_0 = 0 and k^T P_T = 0, which
+/// gives k_0 = P^T k and P_T = (I - k k^T) P. Computed this way, the error is relative to P_T
+/// (not absolute as for ||P||^2 - 1), so small weights (ghosts, crossed polarizers) stay accurate.
+double transverse_norm2(const math::CMat3& p, const math::Vec3& k) noexcept {
+  const math::Mat3 projector = math::Mat3::Identity() - k * k.transpose();
+  return (projector.cast<math::Complex>() * p).squaredNorm();
 }
 
 /// PRT matrix with power-normalised amplitudes a_s, a_p given directly (ideal elements).
@@ -200,8 +201,8 @@ RayState move_to_hit(const RayState& ray,
   // power by Eqs. (17), (18), decays as exp(-4 pi kappa z / lambda_vac); lambda in mm like t.
   const double kappa = media.before.imag();
   if (kappa != 0.0) {
-    out.weight *= std::exp(-4.0 * std::numbers::pi * kappa * hit.t /
-                           (media.wavelength_um * kMillimetresPerMicrometre));
+    out.weight *=
+        std::exp(-4.0 * std::numbers::pi * kappa * hit.t / math::um_to_mm(media.wavelength_um));
   }
   return out;
 }
@@ -273,15 +274,17 @@ RayState apply_event(const RayState& ray,
   const math::Vec3 normal = surface.to_global.apply_vector(hit.normal);
   const std::optional<math::CMat3> p =
       interaction_prt(surface, kind, ray.dir, k_out, normal, media);
-  if (!p) {
+  // Non-finite amplitudes (grazing incidence with q_i = 0, a coating layer with q = 0 exactly:
+  // preconditions of rtt-polar and rtt-coating) stop the ray instead of spreading NaN.
+  if (!p || !p->allFinite()) {
     out.status = RayStatus::EventImpossible;
     return out;
   }
   // weight = s ||P_T||^2 / 2 (ADR 0021): the event multiplies ||P_T||^2 by new / old, s stays.
-  const double before = transverse_norm2(ray.prt);
+  const double before = transverse_norm2(ray.prt, ray.dir);
   out.prt = *p * ray.prt;
   if (before > 0.0) {
-    out.weight *= transverse_norm2(out.prt) / before;
+    out.weight *= transverse_norm2(out.prt, k_out) / before;
   }
   out.dir = k_out;
   return out;

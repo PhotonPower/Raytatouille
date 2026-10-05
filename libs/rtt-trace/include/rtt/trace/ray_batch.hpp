@@ -79,7 +79,10 @@ class RayBatch {
 
   /// Element (row, col) of the accumulated 3x3 polarization ray-tracing matrix P
   /// (Yun, McClain, Chipman, "Three-dimensional polarization ray-tracing calculus I",
-  /// Applied Optics 50, 2011), global coordinates. E_out = P * E_in.
+  /// Applied Optics 50, 2011), global coordinates, POWER-NORMALISED (ADR 0021): for an incident
+  /// field E_in with |E_in| = 1 transverse to the initial direction, |P E_in|^2 is the transmitted
+  /// power fraction and the phases are those of the field PRT matrix; the field amplitude differs
+  /// by the factors sqrt(c) of the interfaces passed (Byrnes, Eqs. (21), (22)). P k_0 = k.
   /// @pre 0 <= row < 3 and 0 <= col < 3 (not checked)
   [[nodiscard]] std::span<math::Complex> prt(int row, int col) noexcept;
   [[nodiscard]] std::span<const math::Complex> prt(int row, int col) const noexcept;
@@ -90,7 +93,10 @@ class RayBatch {
   /// Sets P of ray `i`.
   void set_prt_matrix(std::size_t i, const math::CMat3& p);
 
-  /// Power weight, dimensionless (source normalised to 1).
+  /// Power for an unpolarized source, dimensionless (source normalised to 1): weight =
+  /// s ||P_T||_F^2 / 2 with P_T = P - k k_0^T and s the polarization-independent factors (volume
+  /// absorption, absorber). Power for a polarized state E: weight |P E|^2 / (||P_T||_F^2 / 2)
+  /// (ADR 0021).
   [[nodiscard]] std::span<double> weight() noexcept { return weight_; }
   [[nodiscard]] std::span<const double> weight() const noexcept { return weight_; }
 
