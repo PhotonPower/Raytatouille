@@ -70,6 +70,11 @@ struct CompiledSurface {
   model::Interaction interaction = model::Fresnel{};
   /// Set for a CoatingRef interaction: the resolved coating and its substrate side.
   std::optional<SurfaceCoating> coating;
+  /// Set for IdealPolarizer (transmission axis) and IdealRetarder (fast axis): the axis of the
+  /// model, given in element coordinates, rotated into global coordinates (assembly and element
+  /// poses, not the surface pose); not normalised. The tracer projects it perpendicular to the
+  /// ray (rtt/polar/ideal.hpp; ADR 0021).
+  std::optional<math::Vec3> ideal_axis;
 };
 
 /// A homogeneous medium evaluated at all system wavelengths.
@@ -87,6 +92,11 @@ struct CompiledEvent {
   int order = 0;                    ///< diffraction order (Diffract only)
   std::uint32_t medium_before = 0;  ///< index into CompiledSystem::media()
   std::uint32_t medium_after = 0;   ///< index into CompiledSystem::media()
+  /// Index into CompiledSystem::media() of the medium on the other side of the surface: the
+  /// medium a Refract at this surface would enter from medium_before (equal to medium_after for
+  /// Refract). Fresnel and coatings need it for Reflect (ADR 0021). For an element without
+  /// material, and for an inner surface whose side is ambiguous, it equals medium_before.
+  std::uint32_t medium_beyond = 0;
 };
 
 /// Named, ordered list of events.

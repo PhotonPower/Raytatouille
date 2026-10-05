@@ -363,6 +363,14 @@ class Compiler {
       c.aperture = s.aperture;
       c.phases = s.phases;
       c.interaction = s.interaction;
+      // Axes of ideal elements are given in element coordinates (ADR 0021).
+      if (const auto* polarizer = std::get_if<model::IdealPolarizer>(&s.interaction)) {
+        const auto& a = polarizer->transmission_axis;
+        c.ideal_axis = to_global.apply_vector(math::Vec3(a[0], a[1], a[2]));
+      } else if (const auto* retarder = std::get_if<model::IdealRetarder>(&s.interaction)) {
+        const auto& a = retarder->fast_axis;
+        c.ideal_axis = to_global.apply_vector(math::Vec3(a[0], a[1], a[2]));
+      }
       if (const auto* ref = std::get_if<model::CoatingRef>(&s.interaction)) {
         c.coating = surface_coating(*ref, info, j, surface_location + "/interaction");
       }
@@ -468,38 +476,67 @@ class Compiler {
   /// Outside an element means in the environment or in another element: elements do not nest,
   /// so entering B while in A leaves A, and leaving B goes to the environment.
   /// `location` is the JSON pointer of the events; errors add the event index.
+  /// Where a ray is along a path: element it is in (none = environment), segment of that
+  /// element, and the current medium.
+  struct MediumState {
+    std::optional<std::uint32_t> inside;
+    std::uint32_t segment = 0;
+    std::uint32_t current = 0;
+  };
+
+  /// State after crossing `surface` (Refract, Ordinary, Extraordinary) from `s` by the rules
+  /// above; none if the side is ambiguous (inner surface between different materials reached
+  /// from outside). An element without material does not change the state.
+  [[nodiscard]] std::optional<MediumState> cross(std::uint32_t surface,
+                                                 const MediumState& s) const {
+    const std::uint32_t element = surface_element_[surface];
+    const ElementInfo& info = elements_[element];
+    if (info.media.empty()) return s;
+    const std::uint32_t i = surface - info.first_surface;  // surface in the element
+    const std::uint32_t last = info.surface_count - 1;
+    std::uint32_t segment = s.segment;
+    bool leave = false;
+    if (!info.segmented) {
+      leave = s.inside == element;
+      segment = 0;
+    } else if (s.inside == element && i == segment + 1) {  // forward through surface i
+      leave = i == last;
+      segment = i;
+    } else if (s.inside == element && i == segment) {  // backward through surface i
+      leave = i == 0;
+      if (!leave) segment = i - 1;
+    } else if (s.inside == element) {
+      leave = true;  // the surface does not bound the segment
+    } else if (i == 0 || i == last) {
+      segment = i == 0 ? 0 : last - 1;
+    } else if (info.media[i - 1] == info.media[i]) {
+      segment = i;  // both sides are the same material
+    } else {
+      return std::nullopt;
+    }
+    if (leave) return MediumState{std::nullopt, segment, environment_};
+    return MediumState{element, segment, info.media[segment]};
+  }
+
   void assign_media(std::vector<CompiledEvent>& events, const std::string& location) {
-    std::optional<std::uint32_t> inside;  // element the ray is in, none = environment
-    std::uint32_t segment = 0;            // segment of `inside` the ray is in
-    std::uint32_t current = environment_;
+    MediumState state{std::nullopt, 0, environment_};
     for (std::size_t k = 0; k < events.size(); ++k) {
       CompiledEvent& event = events[k];
-      event.medium_before = current;
+      event.medium_before = state.current;
       const bool crosses = event.kind == model::EventKind::Refract ||
                            event.kind == model::EventKind::Ordinary ||
                            event.kind == model::EventKind::Extraordinary;
-      const std::uint32_t element = surface_element_[event.surface];
-      const ElementInfo& info = elements_[element];
-      if (crosses && !info.media.empty()) {
-        const std::uint32_t i = event.surface - info.first_surface;  // surface in the element
-        const std::uint32_t last = info.surface_count - 1;
-        bool leave = false;
-        if (!info.segmented) {
-          leave = inside == element;
-          segment = 0;
-        } else if (inside == element && i == segment + 1) {  // forward through surface i
-          leave = i == last;
-          segment = i;
-        } else if (inside == element && i == segment) {  // backward through surface i
-          leave = i == 0;
-          if (!leave) segment = i - 1;
-        } else if (inside == element) {
-          leave = true;  // the surface does not bound the segment
-        } else if (i == 0 || i == last) {
-          segment = i == 0 ? 0 : last - 1;
-        } else if (info.media[i - 1] == info.media[i]) {
-          segment = i;  // both sides are the same material
+      const std::optional<MediumState> crossed = cross(event.surface, state);
+      // The medium on the other side of the surface, also for events that do not cross it
+      // (Fresnel and coatings on Reflect need it, #61); an ambiguous side counts as none.
+      event.medium_beyond = crossed ? crossed->current : state.current;
+      if (crosses) {
+        if (crossed) {
+          state = *crossed;
         } else {
+          const std::uint32_t element = surface_element_[event.surface];
+          const ElementInfo& info = elements_[element];
+          const std::uint32_t i = event.surface - info.first_surface;
           error(idx(location, k),
                 "inner surface " + surfaces_[event.surface].id.str() + " of element '" +
                     surfaces_[event.surface].element_name +
@@ -507,17 +544,10 @@ class Compiler {
                     "sides have different materials ('" +
                     media_[info.media[i - 1]].reference + "', '" + media_[info.media[i]].reference +
                     "'); enter a cemented group through its first or last surface (ADR 0017)");
-          leave = true;
-        }
-        if (leave) {
-          inside.reset();
-          current = environment_;
-        } else {
-          inside = element;
-          current = info.media[segment];
+          state = MediumState{std::nullopt, state.segment, environment_};
         }
       }
-      event.medium_after = current;
+      event.medium_after = state.current;
     }
   }
 
