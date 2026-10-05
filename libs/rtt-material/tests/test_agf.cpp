@@ -6,6 +6,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -27,11 +28,14 @@ using rtt::material::AgfGlass;
 using rtt::material::CatalogMaterial;
 using rtt::material::decode_agf_text;
 using rtt::material::DispersionMaterial;
+using rtt::material::Extended2Coefficients;
+using rtt::material::Extended3Coefficients;
 using rtt::material::load_agf;
 using rtt::material::MaterialLibrary;
 using rtt::material::parse_agf;
 using rtt::material::SchottCoefficients;
 using rtt::material::Sellmeier1Coefficients;
+using rtt::material::Sellmeier3Coefficients;
 using rtt::material::UnknownMaterial;
 using rtt::material::WavelengthRange;
 
@@ -198,6 +202,59 @@ TEST_CASE("malformed AGF lines are errors with file and line", "[agf]") {
   }
 }
 
+TEST_CASE("continuation lines extend the CD and TD records (#42)", "[agf]") {
+  // NIKON-HIKARI_201911.AGF (nikon.com, docs/quellen.md) wraps CD and TD onto lines without a
+  // mnemonic; a line whose first item is a number continues the CD or TD record above it.
+  const std::string text =
+      "CC c\n"
+      "NM A 13 1 1.5 60\n"
+      "CD 1 2 3 4 \n"
+      "5 6 7 8 \n"
+      "9 0\n"
+      "TD 1 2 3 4 \n"
+      "5 6 20\n"
+      "LD 0.4 0.7\n"
+      "NM B 2 1 1.5 60\n"
+      "CD 1\n"
+      " \t-1.5e-3\t2E+000 .5\n";
+  const AgfCatalog cat = parse_agf(text, "TEST", "wrap.agf");
+  REQUIRE(cat.glasses.size() == 2);
+  REQUIRE(cat.glasses[0].coefficients == std::vector<double>{1, 2, 3, 4, 5, 6, 7, 8, 9, 0});
+  REQUIRE(cat.glasses[0].thermal == std::vector<double>{1, 2, 3, 4, 5, 6, 20});
+  REQUIRE(cat.glasses[0].range == WavelengthRange{0.4, 0.7});
+  REQUIRE(cat.glasses[1].coefficients == std::vector<double>{1, -1.5e-3, 2, 0.5});
+}
+
+TEST_CASE("misplaced or overlong continuation lines are errors with file and line (#42)", "[agf]") {
+  struct Case {
+    std::string text;
+    std::size_t line;
+    std::string message;
+  };
+  const std::string glass = "CC c\nNM A 2 1 1.5 60\n";
+  const std::vector<Case> cases{
+      {"CC c\n1 2 3\n", 2, "continuation"},                                 // before the first NM
+      {glass + "1 2\nCD 1 2\n", 3, "continuation"},                         // after NM
+      {glass + "CD 1 2\nLD 0.3 2.5\n3 4\n", 5, "continuation"},             // after LD
+      {glass + "CD 1 2\nED 1 2 3 4 0\n3 4\n", 5, "continuation"},           // after ED
+      {glass + "CD 1 2\nGC x\n3 4\n", 5, "continuation"},                   // after GC
+      {glass + "CD 1 2\n\n3 4\n", 5, "continuation"},                       // after an empty line
+      {glass + "CD 1 2\n! note\n3 4\n", 5, "continuation"},                 // after a comment
+      {glass + "CD 1 2\nNM B 2 1 1.5 60\n3 4\nCD 1\n", 5, "continuation"},  // after the next NM
+      {glass + "CD 1 2 3 4 5 6\n7 8 9 10 11\n", 4, "more than 10"},         // CD > 10 values
+      {glass + "CD 1 2\nTD 1 2 3 4\n5 6 20 7\n", 5, "more than 7"},         // TD > 7 values
+      {glass + "CD 1 2\n3 x\n", 4, "not a finite number"},                  // not a number
+  };
+  for (const auto& c : cases) {
+    INFO(c.text);
+    const AgfError e = agf_error([&] { (void)parse_agf(c.text, "TEST", "bad.agf"); });
+    REQUIRE(e.file() == "bad.agf");
+    REQUIRE(e.line() == c.line);
+    REQUIRE_THAT(e.what(), ContainsSubstring("bad.agf:" + std::to_string(c.line)));
+    REQUIRE_THAT(e.what(), ContainsSubstring(c.message));
+  }
+}
+
 // ------------------------------------------------------------ formula mapping -----
 
 TEST_CASE("AGF formula 1 is Schott a0..a5, formula 2 is Sellmeier 1 K1 L1 K2 L2 K3 L3", "[agf]") {
@@ -247,11 +304,93 @@ TEST_CASE("CD order of formulas 1 and 2 reproduces N(d) and V(d) of the NM recor
   }
 }
 
+TEST_CASE("AGF formula 6 is Sellmeier 3 K1 L1 .. K4 L4, 12 Extended 2 a0..a7, 13 Extended 3 a0..a8",
+          "[agf]") {
+  // Order verified against N(d) and V(d) of the free NIKON-HIKARI catalogue (docs/quellen.md, #42).
+  AgfGlass g;
+  g.name = "G";
+  g.coefficients = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+  g.formula = 6;
+  REQUIRE(rtt::material::agf_formula(g, "w") ==
+          rtt::material::DispersionFormula{Sellmeier3Coefficients{{1, 3, 5, 7}, {2, 4, 6, 8}}});
+  g.formula = 13;
+  REQUIRE(rtt::material::agf_formula(g, "w") ==
+          rtt::material::DispersionFormula{Extended3Coefficients{{1, 2, 3, 4, 5, 6, 7, 8, 9}}});
+  g.formula = 12;
+  g.coefficients = {1, 2, 3, 4, 5, 6, 7, 0, 0, 0};
+  REQUIRE(rtt::material::agf_formula(g, "w") ==
+          rtt::material::DispersionFormula{Extended2Coefficients{{1, 2, 3, 4, 5, 6, 7, 0}}});
+  g.coefficients = {1, 2, 3, 4, 5, 6, 7};  // a7 missing counts as 0
+  REQUIRE(rtt::material::agf_formula(g, "w") ==
+          rtt::material::DispersionFormula{Extended2Coefficients{{1, 2, 3, 4, 5, 6, 7, 0}}});
+}
+
+TEST_CASE("AGF formula 12 with a7 != 0 is an error: the position of a7 is not verified", "[agf]") {
+  // a7 (the l^6 term) is 0 in all 21 formula-12 glasses of the NIKON-HIKARI catalogue, so its
+  // CD position cannot be verified (docs/quellen.md, #42).
+  AgfGlass g;
+  g.name = "E-X";
+  g.formula = 12;
+  g.coefficients = {1, 2, 3, 4, 5, 6, 7, 1e-9};
+  try {
+    (void)rtt::material::agf_formula(g, "cat.agf:9");
+    FAIL("no exception");
+  } catch (const std::invalid_argument& e) {
+    REQUIRE_THAT(e.what(), ContainsSubstring("E-X"));
+    REQUIRE_THAT(e.what(), ContainsSubstring("cat.agf:9"));
+    REQUIRE_THAT(e.what(), ContainsSubstring("a7"));
+    REQUIRE_THAT(e.what(), ContainsSubstring("#42"));
+  }
+}
+
+TEST_CASE("CD order of formulas 6, 12 and 13 reproduces N(d) and V(d) of the NM record (#42)",
+          "[agf]") {
+  // Reference for the coefficient order (docs/quellen.md, #42): the glasses of
+  // tests/catalogs/nikon/nikon-hikari.agf are copied byte for byte (CRLF, wrapped CD and TD
+  // lines) from NIKON-HIKARI_201911.AGF (nikon.com). With K1 L1 .. K4 L4 (formula 6), a0..a7
+  // (formula 12) and a0..a8 (formula 13), the catalogue's own N(d) and V(d) come out to half a
+  // unit of their sixth decimal at the exact d, F and C lines (587.5618, 486.1327, 656.2725 nm;
+  // SCHOTT TIE-29, April 2005, p. 1). The excerpt has K4, L4 != 0 (NICF-V, NIFS-V), a6 != 0
+  // (E-LAKH1, E-KZFH1) and a7, a8 != 0 (J-SFH1); a wrong order is far off, e.g. formula 6 as
+  // K1..K4 L1..L4 or formula 13 with the powers of Extended 2 (both fail for every glass of the
+  // full catalogue).
+  constexpr double kD = 0.5875618;
+  constexpr double kF = 0.4861327;
+  constexpr double kC = 0.6562725;
+  constexpr double kTolerance = 5e-7 + 1e-12;  // half a unit of the sixth decimal
+  const AgfCatalog cat = load_agf(kCatalogDir / "nikon" / "nikon-hikari.agf");
+  REQUIRE(cat.name == "NIKON-HIKARI");
+  REQUIRE(cat.glasses.size() == 6);
+  std::map<int, int> per_formula;
+  for (const AgfGlass& glass : cat.glasses) {
+    INFO(glass.name);
+    ++per_formula[glass.formula];
+    REQUIRE(glass.coefficients.size() == 10);  // also across wrapped CD lines
+    REQUIRE(glass.thermal.has_value());
+    REQUIRE(glass.thermal->size() == 7);  // also across wrapped TD lines
+    const CatalogMaterial m(glass, cat.name);
+    const auto n = [&](double wl) { return rtt::material::refractive_index(m.formula(), wl); };
+    REQUIRE(std::abs(n(kD) - glass.nd) <= kTolerance);
+    REQUIRE(std::abs((n(kD) - 1.0) / (n(kF) - n(kC)) - glass.vd) <= kTolerance);
+  }
+  REQUIRE(per_formula == std::map<int, int>{{6, 2}, {12, 2}, {13, 2}});
+  // The coefficients that make the check meaningful are present.
+  REQUIRE(cat.glasses[0].name == "NICF-V");
+  REQUIRE(cat.glasses[0].coefficients[6] != 0.0);
+  REQUIRE(cat.glasses[0].coefficients[7] != 0.0);
+  REQUIRE(cat.glasses[2].name == "E-LAKH1");
+  REQUIRE(cat.glasses[2].coefficients[6] != 0.0);
+  REQUIRE(cat.glasses[4].name == "J-SFH1");
+  REQUIRE(cat.glasses[4].coefficients[7] != 0.0);
+  REQUIRE(cat.glasses[4].coefficients[8] != 0.0);
+}
+
 TEST_CASE("unsupported AGF formula numbers are a clear error", "[agf]") {
   AgfGlass g;
   g.name = "IRG";
   g.coefficients = {1, 2, 3, 4, 5, 6};
-  for (const int formula : {0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}) {
+  // 6, 12 and 13 are supported since #42; the order of the others is not verified (quellen.md).
+  for (const int formula : {0, 3, 4, 5, 7, 8, 9, 10, 11, 14}) {
     INFO(formula);
     g.formula = formula;
     try {
