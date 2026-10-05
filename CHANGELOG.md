@@ -59,17 +59,30 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
 - `rtt-compile`: `CompiledEvent::medium_beyond` (Medium hinter der Fläche, auch bei Reflect),
   `CompiledEvent::from_inside` (Strahl kommt aus dem Element, bei Coatings die Substratseite) und
   `CompiledSurface::ideal_axis` (Achse von Polarisator und Retarder global) (#61).
+- `rtt-py`: Coatings und Polarisation in Python.
+  - `rt.CoatingLibrary` (`add_catalog`, `in`), `rt.compile(system, materials=None,
+    coatings=None)` und `rt.CoatingCatalogError`.
+  - Neues Modul `rt.polar` mit `initial_directions`, `transverse_polarization`, `transmission`,
+    `diattenuation`, `retardance` und `stokes` für eine verfolgte `RayBatch`, dazu
+    Einzelmatrix-Funktionen (`prt_matrix`, `geometric_transform`, `diattenuation`, `retardance`,
+    `physical_retardance`, `stokes`).
+  - Docstrings von `prt` und `weight` nach ADR 0021.
+  - Bitgleich gegen C++ mit vier neuen Fällen.
+  - Referenz `tests/reference/m3/polarizer_qwp.rtt.json` und Beispiel
+    `examples/python/polarization.py` (#62).
 
 ### Geändert
 - `rtt-analysis`: Spot-Gewichte enthalten jetzt die Fresnel-Verluste der Strahlen; gewichtete
   Statistiken unvergüteter Systeme verschieben sich leicht (Cooke-Triplett relativ bis 2,8·10⁻³)
   (#61).
 - `rtt-compile`: `compile(system, materials)` ohne Coating-Bibliothek meldet für `CoatingRef` jetzt
-  einen `CompileError` (bisher ignoriert); betrifft bis #62 auch `rt.compile` in Python (#59,
-  ADR 0019).
+  einen `CompileError` (bisher ignoriert); `rt.compile` nimmt seit #62 eine `CoatingLibrary`
+  (#59, ADR 0019).
 - `rtt-io`, `rtt-coating`: Doppelte JSON-Schlüssel auf jeder Ebene sind ein Fehler mit Pointer auf
   das zweite Vorkommen (bisher galt still der letzte Wert); betrifft `rtt validate`,
   `rt.System.from_json` und Coating-Kataloge (Nachtrag ADR 0008, #68).
+- `rtt-polar`: Doku von `diattenuation()`: Für das leistungsnormierte P des Tracers ist sie die
+  Leistungs-Diattenuation (ADR 0021, #62).
 
 ### Behoben
 - `rtt-trace`: Beim Cooke-Triplet warfen Feld 1 (und `spot()`) „no start plane before surface 'L2.S1'“.

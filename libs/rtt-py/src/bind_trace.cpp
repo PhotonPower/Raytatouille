@@ -141,7 +141,9 @@ void bind_trace(nb::module_& m) {
   nb::class_<RayBatch> batch(
       m, "RayBatch",
       "Rays as columns (structure of arrays). Positions in mm and unit directions in global "
-      "coordinates (right-handed, optical axis +z), OPL in mm, weight as power (source = 1). "
+      "coordinates (right-handed, optical axis +z), OPL in mm. weight is the power for an "
+      "unpolarized source (source = 1); P (prt) is power-normalised, see raytatouille.polar and "
+      "ADR 0021. "
       "Every column (pos_x, ..., last_surface, status, prt(row, col)) is a writable NumPy "
       "view on the batch without a copy and keeps the batch alive; the size is fixed from "
       "Python. While trace() or make_rays() runs on the batch (the GIL is released), do not "
@@ -168,8 +170,12 @@ void bind_trace(nb::module_& m) {
                             "Wavelength index into CompiledSystem.wavelengths_um (uint16).");
   def_column<double>(batch, "opl", static_cast<Double>(&RayBatch::opl),
                      "Accumulated optical path length in mm.");
-  def_column<double>(batch, "weight", static_cast<Double>(&RayBatch::weight),
-                     "Power weight, dimensionless (source normalised to 1).");
+  def_column<double>(
+      batch, "weight", static_cast<Double>(&RayBatch::weight),
+      "Power for an unpolarized source, dimensionless (source = 1): weight = s ||P_T||^2 / 2 "
+      "with P_T = (I - k k^T) P and s the polarization-independent factors "
+      "(volume absorption, absorber); ADR 0021. For a polarized state use "
+      "raytatouille.polar.transmission.");
   def_column<std::uint16_t>(batch, "field", static_cast<U16>(&RayBatch::field),
                             "Index of the field point of the ray (uint16).");
   def_column<double>(batch, "pupil_x", static_cast<Double>(&RayBatch::pupil_x),
@@ -200,7 +206,11 @@ void bind_trace(nb::module_& m) {
       },
       "row"_a, "col"_a,
       "Element (row, col) of the 3x3 polarization ray-tracing matrix P (Yun, McClain, "
-      "Chipman 2011), global coordinates, complex128; view without a copy.");
+      "Chipman 2011), global coordinates, complex128; view without a copy. P is "
+      "power-normalised (ADR 0021): |P E|^2 is the power fraction for an incident state E "
+      "(|E| = 1, transverse to the initial direction k0) without the polarization-independent "
+      "factors in weight; the phases are those of the field PRT matrix, the field amplitude "
+      "differs by the factors sqrt(c) of the interfaces. P k0 = k.");
   batch.def(
       "prt_matrices",
       [](const RayBatch& rays) {

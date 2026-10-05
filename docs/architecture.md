@@ -320,6 +320,24 @@ sys.save("doublet_opt.rtt.json")
 
 **Stand M2 (#33):** `rt.analysis` mit `spot`, `ray_fan`, `opd_map`, `opd_fan`, `longitudinal_colour`, `lateral_colour`, `distortion`, `distortion_at`, `field_curvature`, `field_curvature_at` und `seidel` (dasselbe Objekt wie `rt.paraxial.seidel`). Erstes Argument ist ein `System` (bei jedem Aufruf mit `materials=` kompiliert) oder ein `CompiledSystem`; für mehrere Analysen einmal `rt.compile()` aufrufen. Wellenlänge `None` heißt Referenzwellenlänge, nur bei `spot` polychromatisch mit den Wellenlängengewichten des Modells (wie in C++). Pupillenverteilungen als Objekt oder Kurzform `"hexapolar:N"`, `"grid:N"`, `"fan_x:N"`, `"fan_y:N"`, `"random:N[:SEED]"`, `"single:PX,PY"` (ValueError mit der Kurzform bei Fehlern). Ergebnisse sind die gebundenen C++-Structs; Listen darin (Spotpunkte, Fans, OPD-Punkte, Fokuslagen, Feldverläufe, Seidel-Beiträge je Fläche) kommen als read-only NumPy-Kopien, je Größe ein Array. `AnalysisError` gehört zu `raytatouille.errors`. `raytatouille.plot` zeichnet die Ergebnisse mit matplotlib ohne eigene Auswertung; matplotlib ist optional (`raytatouille[plot]`, ADR 0018 Nachtrag). Jede Analyse ist gegen C++ bitgleich getestet (`rtt_py_reference`, 1 und 4 Threads, auch mit Vignettierung).
 
+**Stand M3 (#62):** Coatings und Polarisation in Python.
+- `rt.CoatingLibrary` mit `add_catalog` (Datei oder Verzeichnis) und `in`; `rt.compile(system, materials=None, coatings=None)`. Ohne `coatings` ist eine vergütete Fläche ein `CompileError` (ADR 0019). Fehlerhafte Kataloge ergeben `rt.CoatingCatalogError` mit `file` und `pointer`.
+- `RayBatch.prt`/`prt_matrices()`/`weight` sind nach ADR 0021 dokumentiert: P leistungsnormiert, `weight` = Leistung bei unpolarisierter Quelle. `prt_matrices()` bleibt eine Kopie, weil P als neun Spalten gespeichert ist.
+- `rt.polar` mit Batch-Funktionen auf einer verfolgten `RayBatch` (Schleifen in C++, `libs/rtt-py/src/polar_batch.cpp`, auch vom Referenzprogramm benutzt):
+  - `initial_directions` (k₀ = Re(Pᵀk), weil P = P_T + k k₀ᵀ mit kᵀP_T = 0)
+  - `transverse_polarization` (Zustand senkrecht zu k₀ projiziert und normiert)
+  - `transmission` (unpolarisiert = `weight`, polarisiert = weight·|P E|²/(½‖P_T‖²))
+  - `diattenuation` (bei leistungsnormiertem P die Leistungs-Diattenuation)
+  - `retardance` (nur für Strahlen mit k·k₀ ≥ 1 − 1e−12, sonst NaN)
+  - `stokes`
+- Einzelmatrix-Funktionen: `prt_matrix`, `geometric_transform`, `diattenuation(p, k_in, k_out)`, `retardance(m, k)`, `physical_retardance(p, q, k_in)`, `stokes(e, axis, k)`.
+- Eingaben werden an der API-Grenze geprüft: Form, endlich, Einheitsvektoren und Transversalität auf 1e−12; sonst `ValueError`.
+- Die physikalische Retardance eines ganzen Pfads braucht das akkumulierte Q und folgt mit der Jones-Pupille (M6).
+- Tests:
+  - Bitgleich gegen `rtt_py_reference` mit P und den `rt.polar`-Größen je Fall. Neue Fälle: `ar_singlet` mit Coatings, absorbierende AR-Platte unter verschiedenen Winkeln, beide Michelson-Arme, Polarisator mit λ/4 und Analysator.
+  - Analytische Prüfungen: Malus, (1 + ε)/4, |S3| = S0, π/2.
+  - Beispiel `examples/python/polarization.py`.
+
 **CLI (`rtt`):** vorhanden: `rtt validate`, `rtt format [--check]`, `rtt --version`. Geplant: `rtt trace`, `rtt analyze`, `rtt optimize`, `rtt import <zmx> <rtt.json>`.
 
 ## Validierung und Tests

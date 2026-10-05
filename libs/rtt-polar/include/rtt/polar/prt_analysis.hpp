@@ -36,7 +36,8 @@ struct Retardance {
 /// otherwise be confused with a transverse one. D is based on FIELD amplitudes: it equals the
 /// power diattenuation of rtt/polar/fresnel.hpp for every reflection (R = |r|^2) and for
 /// transmission between lossless media, and differs only for transmission with absorption
-/// (different power factors for s and p). Never throws.
+/// (different power factors for s and p). For the power-normalised P of the tracer (ADR 0021)
+/// it is the power diattenuation in every case. Never throws.
 /// @param p     PRT matrix with p k_in = k_out
 /// @param k_in  unit incident direction, global
 /// @param k_out unit exiting direction, global
