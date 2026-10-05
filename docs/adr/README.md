@@ -22,6 +22,7 @@ Neue Entscheidungen bekommen die nächste Nummer. Bestehende ADRs werden nicht u
 | [0016](0016.md) | CompiledSystem in eigener Bibliothek rtt-compile | angenommen |
 | [0017](0017.md) | Kittglieder: Material je Segment | angenommen |
 | [0018](0018.md) | Python-Build-Abhängigkeiten über pyproject.toml statt vcpkg | angenommen |
+| [0019](0019.md) | Coating-Kataloge als eigene JSON-Dateien | angenommen |
 
 ## Vorlage
 

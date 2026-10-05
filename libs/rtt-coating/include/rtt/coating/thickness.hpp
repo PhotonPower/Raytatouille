@@ -13,6 +13,7 @@ namespace rtt::coating {
 /// Physical thickness.
 struct PhysicalThickness {
   double um = 0.0;  ///< um, >= 0
+  bool operator==(const PhysicalThickness&) const = default;
 };
 
 /// Quarter-wave optical thickness: `count` quarter waves at the vacuum wavelength
@@ -20,6 +21,7 @@ struct PhysicalThickness {
 struct QuarterWaves {
   double count = 1.0;                 ///< number of quarter waves, >= 0 (1 = lambda/4)
   double design_wavelength_um = 0.0;  ///< design vacuum wavelength lambda0, um, > 0
+  bool operator==(const QuarterWaves&) const = default;
 };
 
 /// Thickness of a layer in a coating design.

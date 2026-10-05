@@ -1,0 +1,31 @@
+{
+  "format": "raytatouille-coatings",
+  "schema_version": "0.1.0",
+  "catalog": "DEMO",
+  "coatings": [
+    {
+      "name": "AR_MGF2",
+      "description": "Quarter-wave MgF2 (n = 1.38) anti-reflection coating for glass n = 1.52 at 550 nm",
+      "design_wavelength_um": 0.55,
+      "layers": [
+        {"material": "CONST:1.38", "qwot": 1.0}
+      ]
+    },
+    {
+      "name": "V_AR",
+      "description": "Two-layer test design: quarter-wave MgF2 on 65.5 nm of n = 2.1",
+      "design_wavelength_um": 0.55,
+      "layers": [
+        {"material": "CONST:1.38", "qwot": 1.0},
+        {"material": "CONST:2.1", "thickness_um": 0.0655}
+      ]
+    },
+    {
+      "name": "GLASS_SPACER",
+      "description": "Test design with a catalogue glass layer (SCHOTT test catalogue)",
+      "layers": [
+        {"material": "SCHOTT:N-BK7", "thickness_um": 0.2}
+      ]
+    }
+  ]
+}

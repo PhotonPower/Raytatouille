@@ -23,6 +23,22 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   Q (`geometric_transform`), Diattenuation aus den Singulärwerten des Transversalanteils und
   Retardance über die Polarzerlegung, gesamt und physikalisch (Q⁻¹P); Golden-Test nach Lam
   (drei Prismen); Quelle Lam, Dissertation Arizona (#57).
+- `rtt-coating`: Coating-Kataloge als eigene JSON-Dateien (ADR 0019, Format
+  `raytatouille-coatings` 0.1.0, `schema/raytatouille-coatings.schema.json` mit pytest):
+  `CoatingDesign` mit Schichten (Materialverweis, `thickness_um` oder `qwot`) und
+  Designwellenlänge, strenger Parser mit Datei und JSON-Pointer, `CoatingLibrary` mit
+  `add_catalog` (Datei oder Verzeichnis, alles oder nichts) und `resolve("CATALOG:NAME")`;
+  Demo-Katalog `tests/catalogs/coatings/demo.json` (#59).
+- `rtt-compile`: `compile(system, materials, coatings)` löst `CoatingRef` auf, wertet die
+  Schichten je Systemwellenlänge aus (`CompiledSystem::coatings()`) und legt das Substrat je
+  Fläche fest (`CompiledSurface::coating`); Kompilierfehler mit Pointer für unbekannte
+  Coatings und Schichtmaterialien, Wellenlängenbereiche und mehrdeutige Substratseiten.
+  Beispiel `tests/reference/m3/ar_singlet.rtt.json` (#59).
+
+### Geändert
+- `rtt-compile`: `compile(system, materials)` ohne Coating-Bibliothek meldet für `CoatingRef` jetzt
+  einen `CompileError` (bisher ignoriert); betrifft bis #61 auch `rt.compile` in Python (#59,
+  ADR 0019).
 
 ## [0.3.0] – M2 Materialien, Analyse
 
