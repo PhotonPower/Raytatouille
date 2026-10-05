@@ -253,6 +253,31 @@ TEST_CASE("ideal beam splitter: reflected and transmitted powers add up to 1", "
   REQUIRE(std::abs(t.weight()[0] - 0.55) <= 1e-12);
 }
 
+TEST_CASE("ideal beam splitter reflection has the sign of a mirror: no retardance",
+          "[interactions]") {
+  // ADR 0021: Reflect at IdealBeamSplitter uses (-sqrt(R_s), +sqrt(R_p)), Convention A like the
+  // ideal mirror (-1, +1). For R_s = R_p = R the reflected field is then sqrt(R) times the field
+  // of an ideal conductor, E_r = -sqrt(R) (I - 2 N N^T) E (as in the mirror test); with
+  // +sqrt(R_s) the s component would flip sign, a retardance of pi on every reflection.
+  // Tolerance 1e-14.
+  System s = base_system();
+  Surface bs = plane("BS");
+  bs.interaction = rtt::model::IdealBeamSplitter{0.36, 0.36};
+  Pose pose = Pose::along_z(5.0);
+  pose.rotation_deg[0] = Param(45.0);
+  s.root.children = {{Element{"BS", ElementKind::ThinElement, pose, std::nullopt, {bs}}}};
+  s.paths = {{"reflect", false, {{SurfaceId("BS"), EventKind::Reflect, 0}}}};
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+  const RayBatch rays = trace_one(cs, Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 1.0));
+  const Vec3 n = cs.surfaces()[0].to_global.apply_vector(Vec3(0.0, 0.0, 1.0));
+  const Mat3 conductor = -(Mat3::Identity() - 2.0 * n * n.transpose());
+  for (const Vec3 e : {Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0)}) {
+    const CVec3 out = rays.prt_matrix(0) * e.cast<Cx>();
+    REQUIRE((out - (0.6 * conductor * e).cast<Cx>()).norm() <= 1e-14);
+  }
+}
+
 TEST_CASE("coating: forward stack on the way in, reversed stack from the substrate",
           "[interactions]") {
   // ADR 0019: the substrate is the inside of the element; light from inside sees the reversed

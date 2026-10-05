@@ -81,7 +81,9 @@ class RayBatch {
   /// (Yun, McClain, Chipman, "Three-dimensional polarization ray-tracing calculus I",
   /// Applied Optics 50, 2011), global coordinates, POWER-NORMALISED (ADR 0021): for an incident
   /// field E_in with |E_in| = 1 transverse to the initial direction, |P E_in|^2 is the transmitted
-  /// power fraction and the phases are those of the field PRT matrix; the field amplitude differs
+  /// power fraction WITHOUT the polarization-independent factors s (volume absorption, absorber),
+  /// which only weight() carries, and the phases are those of the field PRT matrix; the field
+  /// amplitude differs
   /// by the factors sqrt(c) of the interfaces passed (Byrnes, Eqs. (21), (22)). P k_0 = k.
   /// @pre 0 <= row < 3 and 0 <= col < 3 (not checked)
   [[nodiscard]] std::span<math::Complex> prt(int row, int col) noexcept;
