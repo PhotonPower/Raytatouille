@@ -40,10 +40,11 @@ def main(file: Path = FILE) -> int:
         worst = max(worst, abs(t - math.cos(theta) ** 2))
         print(f"  theta {deg:2d} deg: transmission {t:.12f}, cos^2 {math.cos(theta) ** 2:.12f}")
 
-    # After the quarter-wave plate at 45 deg the x light is circular: |S3| = S0.
+    # After the quarter-wave plate at 45 deg the x light is right circular: S = (1, 0, 0, +1)
+    # (fast axis at 45 deg with phase e^{-i pi/4}; Lam's handedness, docs/architecture.md).
     s = rt.polar.stokes(rays, np.array([1.0, 0.0, 0.0]), np.array([1.0, 0.0, 0.0]))[0]
     print(f"Stokes after the quarter-wave plate: {np.array2string(s, precision=12)}")
-    worst = max(worst, abs(abs(s[3]) - s[0]))
+    worst = max(worst, float(np.max(np.abs(s - np.array([1.0, 0.0, 0.0, 1.0])))))
 
     # Unpolarized through polarizer, plate and analyzer: (1 + eps) / 4.
     main_rays = rt.trace.make_rays(compiled, rt.trace.SinglePupilPoint(0.0, 0.0), path="main",
@@ -53,7 +54,8 @@ def main(file: Path = FILE) -> int:
     d = rt.polar.diattenuation(main_rays)
     print(f"Unpolarized weight through all three: {weight:.12f} (expected {1.0001 / 4.0:.12f}), "
           f"diattenuation {d.value[0]:.12f}")
-    worst = max(worst, abs(weight - 1.0001 / 4.0))
+    # The perfect first polarizer leaves a rank-1 transverse part: diattenuation 1.
+    worst = max(worst, abs(weight - 1.0001 / 4.0), abs(float(d.value[0]) - 1.0))
     print(f"Largest deviation from the analytic values: {worst:.1e}")
     return 0 if worst <= 1e-12 else 1
 

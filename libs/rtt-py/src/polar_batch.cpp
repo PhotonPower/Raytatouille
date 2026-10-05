@@ -9,7 +9,7 @@
 #include "rtt/polar/ideal.hpp"
 #include "rtt/polar/prt_analysis.hpp"
 
-namespace rtt::py::polar {
+namespace rtt::py::polar_batch {
 namespace {
 
 using math::CMat3;
@@ -37,7 +37,7 @@ const CVec3& state(std::span<const CVec3> states, std::size_t i) {
 
 /// Checks states against the initial directions (API boundary, ADR 0009).
 void check_states(std::span<const CVec3> states, std::span<const Vec3> k0) {
-  if (states.size() != 1 && states.size() != k0.size()) {
+  if (states.empty() || (states.size() != 1 && states.size() != k0.size())) {
     throw std::invalid_argument("polarization must be one state (3,) or one per ray (N, 3) for " +
                                 std::to_string(k0.size()) + " rays, got " +
                                 std::to_string(states.size()) + " states");
@@ -80,7 +80,9 @@ std::vector<CVec3> transverse_polarization(const RayBatch& rays, const CVec3& e)
   const std::vector<Vec3> k0 = initial_directions(rays);
   std::vector<CVec3> states(rays.size());
   for (std::size_t i = 0; i < rays.size(); ++i) {
-    const CVec3 k = k0[i].cast<Complex>();
+    // Normalised first: |k0| = 1 only up to rounding, and for a projection just above the
+    // threshold the residual k0 . E would otherwise be (|k0|^2 - 1) |k0 . e| / |projection|.
+    const CVec3 k = k0[i].normalized().cast<Complex>();
     const CVec3 projected = e - k * k.dot(e);
     if (!(projected.norm() >= kStateTolerance * e.norm()) || e.norm() == 0.0) {
       throw std::invalid_argument("polarization is parallel to the initial direction of ray " +
@@ -91,9 +93,13 @@ std::vector<CVec3> transverse_polarization(const RayBatch& rays, const CVec3& e)
   return states;
 }
 
+std::vector<double> transmission(const RayBatch& rays) {
+  const auto weight = rays.weight();
+  return {weight.begin(), weight.end()};
+}
+
 std::vector<double> transmission(const RayBatch& rays, std::span<const CVec3> states) {
   const auto weight = rays.weight();
-  if (states.empty()) return {weight.begin(), weight.end()};
   const std::vector<Vec3> k0 = initial_directions(rays);
   check_states(states, k0);
   std::vector<double> power(rays.size());
@@ -152,7 +158,9 @@ std::vector<std::array<double, 4>> stokes(const RayBatch& rays,
   std::vector<std::array<double, 4>> s(rays.size());
   for (std::size_t i = 0; i < rays.size(); ++i) {
     const Vec3 k = direction(rays, i);
-    if (!(axis.cross(k).norm() >= rtt::polar::kAxisAlongK * axis.norm()) || axis.norm() == 0.0) {
+    // The precondition of rtt::polar::transverse_axis(), with the same expression.
+    const Vec3 projected = axis - axis.dot(k) * k;
+    if (!(projected.norm() >= rtt::polar::kAxisAlongK * axis.norm()) || axis.norm() == 0.0) {
       throw std::invalid_argument("axis is parallel to the direction of ray " + std::to_string(i));
     }
     const CVec3 e = rays.prt_matrix(i) * state(states, i);
@@ -162,4 +170,4 @@ std::vector<std::array<double, 4>> stokes(const RayBatch& rays,
   return s;
 }
 
-}  // namespace rtt::py::polar
+}  // namespace rtt::py::polar_batch

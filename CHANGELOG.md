@@ -67,7 +67,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
     Einzelmatrix-Funktionen (`prt_matrix`, `geometric_transform`, `diattenuation`, `retardance`,
     `physical_retardance`, `stokes`).
   - Docstrings von `prt` und `weight` nach ADR 0021.
-  - Bitgleich gegen C++ mit vier neuen Fällen.
+  - Bitgleich gegen C++ mit fünf neuen Fällen.
   - Referenz `tests/reference/m3/polarizer_qwp.rtt.json` und Beispiel
     `examples/python/polarization.py` (#62).
 

@@ -233,8 +233,8 @@ void bind_trace(nb::module_& m) {
         return nb::ndarray<nb::numpy, math::Complex, nb::shape<-1, 3, 3>, nb::c_contig>(
             values, 3, shape, owner);
       },
-      "P of all rays as an (N, 3, 3) complex128 array. This is a copy: P is stored as nine "
-      "separate columns.");
+      "P of all rays as an (N, 3, 3) complex128 array, global coordinates, power-normalised as "
+      "described at prt() (ADR 0021). This is a copy: P is stored as nine separate columns.");
 
   nb::class_<trace::TraceStats>(m, "TraceStats", "Number of rays per status after a trace.")
       .def_ro("rays", &trace::TraceStats::rays, "Counts indexed by RayStatus.")

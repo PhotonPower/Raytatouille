@@ -38,7 +38,7 @@ using math::CMat3;
 using math::Complex;
 using math::Mat3;
 using math::Vec3;
-using polar::CVec3;
+using polar_batch::CVec3;
 using trace::RayBatch;
 
 using RealIn = nb::ndarray<const double, nb::c_contig, nb::device::cpu>;
@@ -47,7 +47,7 @@ template <typename T>
 using Out = nb::ndarray<nb::numpy, T>;
 
 /// Tolerance of the unit-vector checks (as polar_batch.hpp).
-constexpr double kUnit = polar::kStateTolerance;
+constexpr double kUnit = polar_batch::kStateTolerance;
 
 /// NumPy array of the given shape that owns `data` (a copy of the results).
 template <typename T>
@@ -155,24 +155,25 @@ void bind_polar(nb::module_& m) {
   // Batch functions on a traced RayBatch (polar_batch.hpp).
   m.def(
       "polar_initial_directions",
-      [](const RayBatch& rays) { return vec3_rows(polar::initial_directions(rays)); }, "rays"_a);
+      [](const RayBatch& rays) { return vec3_rows(polar_batch::initial_directions(rays)); },
+      "rays"_a);
   m.def(
       "polar_transverse_polarization",
       [](const RayBatch& rays, const ComplexIn& e) {
-        return cvec3_rows(polar::transverse_polarization(rays, cvec3(e, "polarization")));
+        return cvec3_rows(polar_batch::transverse_polarization(rays, cvec3(e, "polarization")));
       },
       "rays"_a, "polarization"_a);
   m.def(
       "polar_transmission",
       [](const RayBatch& rays, const std::optional<ComplexIn>& polarization) {
-        const std::vector<CVec3> s = polarization ? states(*polarization) : std::vector<CVec3>{};
-        return owned(polar::transmission(rays, s), {rays.size()});
+        if (!polarization) return owned(polar_batch::transmission(rays), {rays.size()});
+        return owned(polar_batch::transmission(rays, states(*polarization)), {rays.size()});
       },
       "rays"_a, "polarization"_a.none());
   m.def(
       "polar_diattenuation",
       [](const RayBatch& rays) {
-        polar::Diattenuations d = polar::diattenuation(rays);
+        polar_batch::Diattenuations d = polar_batch::diattenuation(rays);
         const std::size_t n = rays.size();
         return std::make_tuple(owned(std::move(d.value), {n}), owned(std::move(d.maximum), {n}),
                                owned(std::move(d.minimum), {n}), cvec3_rows(d.axis));
@@ -181,7 +182,7 @@ void bind_polar(nb::module_& m) {
   m.def(
       "polar_retardance",
       [](const RayBatch& rays) {
-        polar::Retardances r = polar::retardance(rays);
+        polar_batch::Retardances r = polar_batch::retardance(rays);
         return std::make_tuple(owned(std::move(r.value), {rays.size()}), cvec3_rows(r.fast_axis));
       },
       "rays"_a);
@@ -189,7 +190,7 @@ void bind_polar(nb::module_& m) {
       "polar_stokes",
       [](const RayBatch& rays, const ComplexIn& polarization, const RealIn& axis) {
         const std::vector<std::array<double, 4>> s =
-            polar::stokes(rays, states(polarization), vec3(axis, "axis"));
+            polar_batch::stokes(rays, states(polarization), vec3(axis, "axis"));
         std::vector<double> data;
         data.reserve(4 * s.size());
         for (const auto& row : s) data.insert(data.end(), row.begin(), row.end());
@@ -266,7 +267,8 @@ void bind_polar(nb::module_& m) {
         if (!(std::abs(kv.cast<Complex>().dot(ev)) <= kUnit * std::max(ev.norm(), 1.0))) {
           throw std::invalid_argument("e is not transverse to k (within 1e-12)");
         }
-        if (!(av.cross(kv).norm() >= rtt::polar::kAxisAlongK * av.norm()) || av.norm() == 0.0) {
+        const Vec3 projected = av - av.dot(kv) * kv;  // as rtt::polar::transverse_axis()
+        if (!(projected.norm() >= rtt::polar::kAxisAlongK * av.norm()) || av.norm() == 0.0) {
           throw std::invalid_argument("axis is parallel to k");
         }
         const rtt::polar::Stokes<double> s = rtt::polar::stokes<double>(ev, av, kv);

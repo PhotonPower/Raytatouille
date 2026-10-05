@@ -195,12 +195,12 @@ void write_rows(const fs::path& file, std::string_view descr, const Rows& rows, 
 /// raytatouille.polar on the traced rays, as polar_results() in test_bitwise.py.
 template <typename File>
 void write_polar(const RayBatch& rays, const File& file) {
-  namespace polar = rtt::py::polar;
+  namespace polar = rtt::py::polar_batch;
   const std::vector<polar::CVec3> x =
       polar::transverse_polarization(rays, polar::CVec3(1.0, 0.0, 0.0));
   write_rows<double>(file("k0"), "<f8", polar::initial_directions(rays), 3);
   write_rows<rtt::math::Complex>(file("e_x"), "<c16", x, 3);
-  const std::vector<double> unpolarized = polar::transmission(rays, {});
+  const std::vector<double> unpolarized = polar::transmission(rays);
   write_column<double>(file("transmission"), "<f8", unpolarized);
   const std::vector<double> polarized = polar::transmission(rays, x);
   write_column<double>(file("transmission_x"), "<f8", polarized);

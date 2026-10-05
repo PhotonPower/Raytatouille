@@ -19,7 +19,7 @@
 #include "rtt/math/types.hpp"
 #include "rtt/trace/ray_batch.hpp"
 
-namespace rtt::py::polar {
+namespace rtt::py::polar_batch {
 
 using CVec3 = Eigen::Vector3cd;
 
@@ -35,18 +35,24 @@ inline constexpr double kSameDirection = 1e-12;
 [[nodiscard]] std::vector<math::Vec3> initial_directions(const trace::RayBatch& rays);
 
 /// The state `e` projected perpendicular to k0 of every ray and normalised:
-/// (e - k0 (k0 . e)) / |...|, a valid input of transmission() and stokes().
+/// (e - k (k . e)) / |...| with k = k0 / |k0|, a valid input of transmission() and stokes().
+/// The projection is a convention (the far field of a dipole along e); it is singular for e
+/// parallel to k0.
 /// @throws std::invalid_argument if e is not finite or (nearly) parallel to a k0
 ///         (|projection| < kStateTolerance |e|)
 [[nodiscard]] std::vector<CVec3> transverse_polarization(const trace::RayBatch& rays,
                                                          const CVec3& e);
 
-/// Power of every ray: weight for an unpolarized source if `states` is empty; otherwise for the
-/// incident state E (one for all rays or one per ray): weight |P E|^2 / (||P_T||_F^2 / 2) with
-/// P_T = (I - k k^T) P, and 0 where P_T = 0. Dimensionless (source normalised to 1).
-/// @throws std::invalid_argument if `states` has neither 1 nor rays.size() entries, or a state
-///         is not finite, not of unit length or not transverse to k0 (tolerance
-///         kStateTolerance)
+/// Power of every ray for an unpolarized source: the weight column (copy). Dimensionless
+/// (source normalised to 1).
+[[nodiscard]] std::vector<double> transmission(const trace::RayBatch& rays);
+
+/// Power of every ray for the incident state E (one for all rays or one per ray):
+/// weight |P E|^2 / (||P_T||_F^2 / 2) with P_T = (I - k k^T) P, and 0 where P_T = 0.
+/// Dimensionless (source normalised to 1).
+/// @throws std::invalid_argument if `states` has neither 1 nor rays.size() entries (an empty
+///         list is an error, not "unpolarized"), or a state is not finite, not of unit length or
+///         not transverse to k0 (tolerance kStateTolerance)
 [[nodiscard]] std::vector<double> transmission(const trace::RayBatch& rays,
                                                std::span<const CVec3> states);
 
@@ -62,9 +68,12 @@ struct Diattenuations {
 [[nodiscard]] Diattenuations diattenuation(const trace::RayBatch& rays);
 
 /// Retardance of every ray (rtt::polar::retardance of P about k) for rays that leave in their
-/// incident direction (k . k0 >= 1 - kSameDirection); NaN value and fast axis otherwise. The
-/// physical retardance of a whole path needs the accumulated Q, which the tracer does not keep
-/// (M6).
+/// incident direction (k . k0 >= 1 - kSameDirection); NaN value and fast axis otherwise. This is
+/// the retardance of P including the geometric transformation: it equals the physical
+/// retardance only if the transverse part of the path's Q is the identity (in-plane plates,
+/// ideal thin elements); skew rays or out-of-plane folds that return to k0 add a geometric
+/// rotation (e.g. delta = pi for a periscope with 90 deg image rotation). The physical
+/// retardance of a whole path needs the accumulated Q, which the tracer does not keep (M6).
 struct Retardances {
   std::vector<double> value;     ///< delta in [0, pi], rad
   std::vector<CVec3> fast_axis;  ///< eigenpolarization with the smaller phase
@@ -80,4 +89,4 @@ struct Retardances {
                                                         std::span<const CVec3> states,
                                                         const math::Vec3& axis);
 
-}  // namespace rtt::py::polar
+}  // namespace rtt::py::polar_batch

@@ -12,11 +12,13 @@ Semantics of a traced RayBatch (ADR 0021):
   weight = s ||P_T||_F^2 / 2 with P_T = (I - k k^T) P. For a polarized state the power is
   ``transmission(rays, E)`` = weight |P E|^2 / (||P_T||_F^2 / 2).
 
-The batch functions take a traced RayBatch and return NumPy arrays with one row per ray.
-Polarization states are complex (3,) (one for all rays) or (N, 3) arrays, of unit length and
-transverse to k0 (tolerance 1e-12); ``transverse_polarization`` projects a vector for every ray.
-The physical retardance of a whole path (Q^-1 P with the accumulated Q) is not available yet
-(M6); ``retardance`` is defined for rays that leave in their incident direction.
+The batch functions take a traced RayBatch and return NumPy arrays with one row per ray; every
+ray is evaluated whatever its status (a ray that stopped early has the P up to that point).
+Directions, states and axes are in global coordinates. Polarization states are complex (3,)
+(one for all rays) or (N, 3) arrays, of unit length and transverse to k0 (tolerance 1e-12);
+``transverse_polarization`` projects a vector for every ray. The physical retardance of a whole
+path (Q^-1 P with the accumulated Q) is not available yet (M6); ``retardance`` is defined for
+rays that leave in their incident direction and includes the geometric transformation.
 
 The single-matrix functions take NumPy arrays: unit vectors (3,) and matrices (3, 3).
 Conventions as in C++ (docs/architecture.md, Polarisation und Fresnel): fields
@@ -97,16 +99,18 @@ def _complex(a: npt.ArrayLike) -> ComplexArray:
 
 
 def initial_directions(rays: RayBatch) -> FloatArray:
-    """Initial unit direction k0 of every ray, (N, 3): k0 = Re(P^T k) with the direction k after
-    the trace (from P = P_T + k k0^T, k^T P_T = 0; ADR 0021)."""
+    """Initial unit direction k0 of every ray, (N, 3), global coordinates: k0 = Re(P^T k) with
+    the direction k after the trace (from P = P_T + k k0^T, k^T P_T = 0; ADR 0021). Unit length
+    up to rounding (a few 1e-16 per interface)."""
     result: FloatArray = _core.polar_initial_directions(rays)
     return result
 
 
 def transverse_polarization(rays: RayBatch, polarization: npt.ArrayLike) -> ComplexArray:
-    """``polarization`` (3,) projected perpendicular to k0 of every ray and normalised, (N, 3)
-    complex: a valid input of transmission() and stokes(). Raises ValueError if it is not finite
-    or parallel to a k0."""
+    """``polarization`` (3,), global coordinates, projected perpendicular to k0 of every ray
+    and normalised, (N, 3) complex: a valid input of transmission() and stokes(). The projection
+    (e - k0 (k0 . e)) / |...| is a convention (the far field of a dipole along e) and singular
+    for e parallel to k0: then ValueError, as for a non-finite e."""
     result: ComplexArray = _core.polar_transverse_polarization(rays, _complex(polarization))
     return result
 
@@ -114,7 +118,8 @@ def transverse_polarization(rays: RayBatch, polarization: npt.ArrayLike) -> Comp
 def transmission(rays: RayBatch, polarization: npt.ArrayLike | None = None) -> FloatArray:
     """Power of every ray, (N,), dimensionless (source = 1). Without ``polarization`` this is
     ``rays.weight`` (unpolarized source, copied); otherwise weight |P E|^2 / (||P_T||^2 / 2) for
-    the state E, (3,) or (N, 3), and 0 where P_T = 0."""
+    the state E, (3,) or (N, 3), and 0 where P_T = 0. This includes the polarization-independent
+    factors s (absorption), unlike |P E|^2 and stokes()."""
     states = None if polarization is None else _complex(polarization)
     result: FloatArray = _core.polar_transmission(rays, states)
     return result
@@ -155,9 +160,16 @@ def retardance(rays: npt.ArrayLike, k: npt.ArrayLike) -> Retardance: ...
 
 def retardance(rays: RayBatch | npt.ArrayLike,
                k: npt.ArrayLike | None = None) -> Retardances | Retardance:
-    """Retardance of every ray that leaves in its incident direction (k . k0 >= 1 - 1e-12),
-    NaN otherwise; or of one matrix ``m`` (3, 3) with m k = k: ``retardance(m, k)``. Ideal
-    polarizers make the decomposition ambiguous (rtt/polar/prt_analysis.hpp)."""
+    """Retardance delta in [0, pi] rad of every ray that leaves in its incident direction
+    (k . k0 >= 1 - 1e-12), NaN otherwise; or of one matrix ``m`` (3, 3) with m k = k:
+    ``retardance(m, k)``. Ideal polarizers make the decomposition ambiguous
+    (rtt/polar/prt_analysis.hpp).
+
+    For rays this is the retardance of P, including the geometric transformation. It equals the
+    physical retardance only if the transverse part of the path's Q is the identity (in-plane
+    plates, ideal thin elements); skew rays or out-of-plane folds that return to k0 add a
+    geometric rotation (a periscope with 90 deg image rotation gives pi). Use
+    physical_retardance() with Q where the geometry is known."""
     if isinstance(rays, RayBatch):
         if k is not None:
             raise TypeError("retardance(rays) takes no direction")
@@ -177,14 +189,24 @@ def physical_retardance(p: npt.ArrayLike, q: npt.ArrayLike, k_in: npt.ArrayLike)
     return Retardance(value, fast_axis)
 
 
-def stokes(rays: RayBatch | npt.ArrayLike, polarization: npt.ArrayLike,
-           axis: npt.ArrayLike) -> FloatArray:
-    """Stokes parameters (s0, s1, s2, s3) in units of |E|^2 in the basis e1 = ``axis`` projected
-    perpendicular to k, e2 = k x e1; s3 > 0 is right circular (docs/architecture.md, Händigkeit
-    und Stokes).
+@overload
+def stokes(rays: RayBatch, polarization: npt.ArrayLike, axis: npt.ArrayLike, /) -> FloatArray: ...
 
-    ``stokes(rays, polarization, axis)``: of P E for every ray, (N, 4), power fractions without
-    s. ``stokes(e, axis, k)``: of one field e (3,) transverse to the unit vector k, (4,)."""
+
+@overload
+def stokes(e: npt.ArrayLike, axis: npt.ArrayLike, k: npt.ArrayLike, /) -> FloatArray: ...
+
+
+def stokes(rays: RayBatch | npt.ArrayLike, polarization: npt.ArrayLike,
+           axis: npt.ArrayLike, /) -> FloatArray:
+    """Stokes parameters (s0, s1, s2, s3) in units of |E|^2 in the basis e1 = ``axis`` projected
+    perpendicular to k, e2 = k x e1 (global coordinates); s3 > 0 is right circular
+    (docs/architecture.md, Händigkeit und Stokes). Positional arguments only.
+
+    ``stokes(rays, polarization, axis)``: of P E for every ray, (N, 4). These are power fractions
+    WITHOUT the polarization-independent factors s, so s0 = |P E|^2 differs from transmission()
+    where the path absorbs. ``stokes(e, axis, k)``: of one field e (3,) transverse to the unit
+    vector k, (4,)."""
     if isinstance(rays, RayBatch):
         result: FloatArray = _core.polar_stokes(rays, _complex(polarization), _real(axis))
         return result
@@ -197,7 +219,8 @@ def prt_matrix(k_in: npt.ArrayLike, k_out: npt.ArrayLike, normal: npt.ArrayLike,
                a_p: complex) -> ComplexArray:
     """PRT matrix (3, 3) of one interface with amplitudes a_s, a_p (Lam, Eqs. (3.1)-(3.9)):
     P = a_s s s^T + a_p p_out p_in^T + k_out k_in^T, s = k_in x N normalised, p = k x s. Unit
-    vectors k_in, k_out and normal (either orientation)."""
+    vectors k_in, k_out and normal (either orientation), global coordinates. k_out must lie in
+    the plane of k_in and N (reflected or refracted direction); this is not checked."""
     result: ComplexArray = _core.polar_prt_matrix(_real(k_in), _real(k_out), _real(normal),
                                                    complex(a_s), complex(a_p))
     return result
@@ -206,7 +229,8 @@ def prt_matrix(k_in: npt.ArrayLike, k_out: npt.ArrayLike, normal: npt.ArrayLike,
 def geometric_transform(k_in: npt.ArrayLike, k_out: npt.ArrayLike, normal: npt.ArrayLike,
                         reflection: bool) -> FloatArray:
     """Geometric transformation Q (3, 3) of one interface: s s^T +/- p_out p_in^T +
-    k_out k_in^T (+ for refraction, - for reflection; #57)."""
+    k_out k_in^T (+ for refraction, - for reflection; #57). Same vectors and precondition as
+    prt_matrix()."""
     result: FloatArray = _core.polar_geometric_transform(_real(k_in), _real(k_out),
                                                           _real(normal), reflection)
     return result
