@@ -10,6 +10,7 @@
 /// (Eq. (4.3)) and retardance (Eq. (4.4), the eigenstate with the smaller phase is the fast
 /// axis); handedness after Lam, Table 2.1 (p. 69) and Fig. 1.1 (p. 48); the half-wave plate of
 /// Lam, p. 123 is reproduced up to a global phase; the embedding of a Jones matrix is Lam,
+/// Eq. (3.4) with the general J_3D of Eq. (3.6). Conventions:
 /// - Fields ~ exp(i(k.r - omega t)), so a larger phase is a delay; positive retardance delays the
 ///   slow axis.
 /// - Thin elements do not deflect the ray: P k = k. The transverse basis is e1 (an axis projected
@@ -133,6 +134,8 @@ template <math::Real T>
 }
 
 /// Stokes parameters of a field in the transverse basis (e1, e2), in units of |E|^2. Project
+/// definition (docs/architecture.md, "Händigkeit und Stokes"); Lam gives no equation. The sign
+/// of s3 is chosen so that Lam's right circular (i, 1, 0) of Table 2.1 gives s3 = +s0.
 template <math::Real T>
 struct Stokes {
   T s0 = T(0);  ///< |E1|^2 + |E2|^2
