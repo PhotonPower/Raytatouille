@@ -76,8 +76,14 @@ Wenn ein Meilenstein abgeschlossen ist, schlage die Issues für den nächsten vo
    wie freie Issues, zu Beginn zwei.
 3. Implementierer liefert PR mit grüner CI und Reviewer-Urteil.
 4. Koordinator prüft gegen die Abnahmekriterien; du mergst (Squash).
-5. `main` ist geschützt: Ein PR muss auf dem aktuellen `main` aufbauen. Ist er veraltet,
-   den Implementierer bitten: `git fetch origin && git rebase origin/main`, Tests, Push.
+5. `main` ist geschützt: Gemergt wird nur per Squash und nur mit grünen Pflicht-Checks
+   (C++ und Python). Ein PR muss nicht auf dem neuesten `main` aufbauen; die CI auf `main`
+   prüft nach jedem Merge. Geprüfte PRs bekommen Auto-Merge (`gh pr merge --auto --squash`)
+   und werden gemergt, sobald ihre CI grün ist. Bei einem Konflikt den Implementierer bitten:
+   `git fetch origin && git rebase origin/main`, Tests, Push. Gestapelte PRs (Basis ist ein
+   anderer PR-Branch) erst nach dem Umstellen der Basis auf `main` auf Auto-Merge setzen.
+   Der Workflow „Rerun infrastructure failures“ startet abgebrochene oder durch Runner-Ausfälle
+   gescheiterte CI-Jobs selbst neu (höchstens vier Versuche, echte Testfehler nie).
 6. Nach dem Merge den Worktree beenden; Claude Code bietet beim Beenden das Aufräumen an.
 
 ## Wenn etwas schiefgeht

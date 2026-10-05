@@ -1,0 +1,77 @@
+name: Rerun infrastructure failures
+
+# Re-runs CI jobs that were cancelled or failed for infrastructure reasons (no runner acquired,
+# runner lost, outage) without a failing step. Real test or build failures are never re-run.
+# A run is only retried while it is the newest CI run of its branch and has fewer than
+# MAX_ATTEMPTS attempts. Runs triggered by a completed CI run and, as a safety net, on a schedule.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: rerun-infra-failures
+  cancel-in-progress: false
+
+env:
+  MAX_ATTEMPTS: "4"
+
+jobs:
+  rerun:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Re-run infrastructure failures
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+
+          # Decide for one CI run whether to re-run its failed jobs.
+          consider() {
+            local run_id="$1"
+            local info status conclusion attempt branch workflow newest
+            info=$(gh api "repos/$REPO/actions/runs/$run_id" \
+              --jq '[.status, (.conclusion // ""), .run_attempt, .head_branch, .name] | @tsv')
+            IFS=$'\t' read -r status conclusion attempt branch workflow <<<"$info"
+            if [ "$workflow" != "CI" ] || [ "$status" != "completed" ]; then return; fi
+            if [ "$conclusion" != "cancelled" ] && [ "$conclusion" != "failure" ]; then return; fi
+            if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
+              echo "run $run_id ($branch): attempt $attempt, giving up"; return
+            fi
+            # Superseded runs (a newer push on the same branch) are cancelled on purpose.
+            newest=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?branch=$branch&per_page=1" \
+              --jq '.workflow_runs[0].id')
+            if [ "$newest" != "$run_id" ]; then
+              echo "run $run_id ($branch): superseded by $newest"; return
+            fi
+            # A job with a failing step is a real failure: then nothing is re-run.
+            local real
+            real=$(gh api "repos/$REPO/actions/runs/$run_id/attempts/$attempt/jobs?per_page=100" \
+              --jq '[.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled")
+                     | select([.steps[]? | .conclusion] | index("failure"))] | length')
+            if [ "$real" != "0" ]; then
+              echo "run $run_id ($branch): $real job(s) with a failing step, not re-running"; return
+            fi
+            echo "run $run_id ($branch): infrastructure failure, re-running (attempt $attempt)"
+            gh run rerun "$run_id" --repo "$REPO" --failed
+          }
+
+          if [ -n "${EVENT_RUN_ID:-}" ]; then
+            consider "$EVENT_RUN_ID"
+          else
+            for id in $(gh api "repos/$REPO/actions/workflows/ci.yml/runs?status=completed&per_page=30" \
+                          --jq '.workflow_runs[] | select(.conclusion == "cancelled" or .conclusion == "failure") | .id'); do
+              consider "$id"
+            done
+          fi
