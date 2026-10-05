@@ -153,13 +153,15 @@ double aperture_extent(const model::Aperture& aperture) {
 /// lowest z found until it no longer drops (decided for #8, start plane).
 /// Valid for the rotationally symmetric paths that rtt::paraxial::first_order accepts (the
 /// sampled disk is centred on the vertex). The bound drops monotonically. With a finite cap
-/// (aperture or shape domain) it is bounded below by the lowest z of the whole cap disk, but it
-/// may converge only linearly (factor tan_field |dsag/dr| close to 1); if it has not settled
-/// after kMaxRounds, the lowest z of the whole cap disk is returned, a safe lower bound since
-/// the bundle cannot meet the surface outside its cap (decided for #72). Without a finite cap
-/// the bound can drop without limit (an unbounded surface that curves back against a steep
-/// field, e.g. a concave paraboloid without aperture); then there is no safe start plane:
-/// std::invalid_argument, raised before any ray is traced.
+/// (outer radius of the aperture, or shape domain) it is bounded below by the lowest z of the
+/// whole cap disk (up to the sampling, hence the final std::min), but it may converge only
+/// linearly (factor tan_field |dsag/dr| close to 1); if it has not settled after kMaxRounds and
+/// the cap is below kDivergentRadius, the lowest z of the whole cap disk is returned, a safe
+/// lower bound since the bundle cannot meet the surface outside its cap (decided for #72).
+/// Without such a cap the bound can drop without limit (an unbounded surface without aperture,
+/// or with an aperture of 1 km or more, that curves back against a steep field, e.g. a concave
+/// paraboloid); then there is no safe start plane: std::invalid_argument, raised before any ray
+/// is traced.
 double lowest_z(const compile::CompiledSurface& surface,
                 double z_ep,
                 double r_bundle,
@@ -201,11 +203,14 @@ double lowest_z(const compile::CompiledSurface& surface,
     if (low >= z - 1e-9) return std::min(z, low);
     z = low;
   }
-  // Not settled: with a finite cap, the whole cap disk bounds the bundle's reach (#72).
-  if (std::isfinite(cap)) return std::min(z, lowest_on_disk(cap));
+  // Not settled: with a cap of optical size, the whole cap disk bounds the bundle's reach (#72).
+  // A cap beyond the divergence guard (e.g. a placeholder aperture) would place the start plane
+  // where positions and OPL lose their precision; that stays an error (review of #72).
+  if (cap < kDivergentRadius) return std::min(z, lowest_on_disk(cap));
   throw std::invalid_argument("sources: no start plane before surface '" + surface.id.str() +
-                              "' for this field (unbounded surface without aperture that curves "
-                              "back against the field); give it an aperture");
+                              "' for this field (unbounded surface without aperture, or with an "
+                              "aperture of 1 km or more, that curves back against the field); "
+                              "give it an aperture of optical size");
 }
 
 /// Paraxial image height (at the paraxial image plane) of the chief ray with unit field value:
