@@ -44,7 +44,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
 - `rtt-material`: AGF-Formeln 6 (Sellmeier 3, K₁ L₁ … K₄ L₄), 12 (Extended 2, a₀ … a₆; a₇ ≠ 0 bleibt
   ein Fehler) und 13 (Extended 3, a₀ … a₈); Reihenfolge belegt an N(d) und V(d) des freien
   NIKON-HIKARI-Katalogs. Neue Formeln `Extended2Coefficients` und `Extended3Coefficients`. CD- und
-  TD-Datensätze dürfen auf Folgezeilen umbrechen, die mit einer Zahl beginnen. Testkatalog
+  TD-Datensätze dürfen auf Folgezeilen umbrechen, die mit einer Zahl beginnen; CD-Werte jenseits
+  der von der Formel genutzten Positionen müssen 0 sein (Formeln 1, 2, 6, 12, 13). Testkatalog
   `tests/catalogs/nikon/nikon-hikari.agf`. Formeln 3, 4, 5, 7–11 bleiben unbelegt und ein klarer
   Fehler; die vollständige NIKON-HIKARI_201911.AGF lädt wegen doppelter Glasnamen noch nicht (#42).
 

@@ -287,12 +287,31 @@ DispersionFormula agf_formula(const AgfGlass& glass, const std::string& where) {
   const auto c = [&](std::size_t i) {
     return i < glass.coefficients.size() ? glass.coefficients[i] : 0.0;
   };
+  // CD values beyond those of the formula must be 0: they are 0 in all verifying catalogues, and
+  // a line without mnemonic after CD continues the CD record (#42), so a value there most likely
+  // is a lost record (e.g. "LD").
+  const auto require_unused_zero = [&](std::size_t used, const char* formula_name) {
+    for (std::size_t i = used; i < glass.coefficients.size(); ++i) {
+      if (glass.coefficients[i] != 0.0) {
+        std::ostringstream text;
+        text << "glass " << glass.name << " (" << where << "): CD value " << i + 1 << " = "
+             << glass.coefficients[i] << " is not used by AGF dispersion formula " << glass.formula
+             << " (" << formula_name << ", " << used
+             << " values) and must be 0; a line without mnemonic after CD continues the CD "
+                "record, see #42";
+        throw std::invalid_argument(text.str());
+      }
+    }
+  };
   switch (glass.formula) {
     case 1:  // Schott: CD = a0 a1 a2 a3 a4 a5 (order verified, docs/quellen.md, #24)
+      require_unused_zero(6, "Schott");
       return SchottCoefficients{{c(0), c(1), c(2), c(3), c(4), c(5)}};
     case 2:  // Sellmeier 1: CD = K1 L1 K2 L2 K3 L3 (order verified, docs/quellen.md, #24)
+      require_unused_zero(6, "Sellmeier 1");
       return Sellmeier1Coefficients{{c(0), c(2), c(4)}, {c(1), c(3), c(5)}};
     case 6:  // Sellmeier 3: CD = K1 L1 .. K4 L4 (order verified, docs/quellen.md, #42)
+      require_unused_zero(8, "Sellmeier 3");
       return Sellmeier3Coefficients{{c(0), c(2), c(4), c(6)}, {c(1), c(3), c(5), c(7)}};
     case 12:  // Extended 2: CD = a0..a6 verified (docs/quellen.md, #42); a7 is 0 in every
               // catalogue glass, so its position is not verified and a7 != 0 is rejected.
@@ -303,8 +322,10 @@ DispersionFormula agf_formula(const AgfGlass& glass, const std::string& where) {
              << " != 0 is not supported: the CD position of a7 is not verified, see #42";
         throw std::invalid_argument(text.str());
       }
+      require_unused_zero(8, "Extended 2");
       return Extended2Coefficients{{c(0), c(1), c(2), c(3), c(4), c(5), c(6), 0.0}};
     case 13:  // Extended 3: CD = a0..a8 (order verified, docs/quellen.md, #42)
+      require_unused_zero(9, "Extended 3");
       return Extended3Coefficients{{c(0), c(1), c(2), c(3), c(4), c(5), c(6), c(7), c(8)}};
     default:
       break;

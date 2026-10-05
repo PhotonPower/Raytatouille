@@ -311,10 +311,11 @@ TEST_CASE("AGF formula 6 is Sellmeier 3 K1 L1 .. K4 L4, 12 Extended 2 a0..a7, 13
   // Order verified against N(d) and V(d) of the free NIKON-HIKARI catalogue (docs/quellen.md, #42).
   AgfGlass g;
   g.name = "G";
-  g.coefficients = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+  g.coefficients = {1, 2, 3, 4, 5, 6, 7, 8, 0, 0};
   g.formula = 6;
   REQUIRE(rtt::material::agf_formula(g, "w") ==
           rtt::material::DispersionFormula{Sellmeier3Coefficients{{1, 3, 5, 7}, {2, 4, 6, 8}}});
+  g.coefficients = {1, 2, 3, 4, 5, 6, 7, 8, 9, 0};
   g.formula = 13;
   REQUIRE(rtt::material::agf_formula(g, "w") ==
           rtt::material::DispersionFormula{Extended3Coefficients{{1, 2, 3, 4, 5, 6, 7, 8, 9}}});
@@ -342,6 +343,55 @@ TEST_CASE("AGF formula 12 with a7 != 0 is an error: the position of a7 is not ve
     REQUIRE_THAT(e.what(), ContainsSubstring("cat.agf:9"));
     REQUIRE_THAT(e.what(), ContainsSubstring("a7"));
     REQUIRE_THAT(e.what(), ContainsSubstring("#42"));
+  }
+}
+
+TEST_CASE("CD values beyond those a formula uses must be 0 (#42)", "[agf]") {
+  // A line without mnemonic after a short CD continues the CD record (#42), so a lost mnemonic,
+  // e.g. "LD", would silently extend CD. Unused positions are 0 in all verifying catalogues
+  // (docs/quellen.md), so a value there is an error naming the position.
+  struct Case {
+    int formula;
+    std::size_t first_unused;
+  };
+  for (const Case c : {Case{1, 6}, Case{2, 6}, Case{6, 8}, Case{12, 8}, Case{13, 9}}) {
+    for (std::size_t pos = c.first_unused; pos < 10; ++pos) {
+      INFO("formula " << c.formula << ", position " << pos);
+      AgfGlass g;
+      g.name = "G";
+      g.formula = c.formula;
+      g.coefficients = {1, 0.01, 0.2, 0.02, 1, 100, 0, 0, 0, 0};
+      REQUIRE_NOTHROW((void)rtt::material::agf_formula(g, "w"));
+      g.coefficients[pos] = 0.5;
+      try {
+        (void)rtt::material::agf_formula(g, "cat.agf:3");
+        FAIL("no exception");
+      } catch (const std::invalid_argument& e) {
+        REQUIRE_THAT(e.what(), ContainsSubstring("G"));
+        REQUIRE_THAT(e.what(), ContainsSubstring("cat.agf:3"));
+        REQUIRE_THAT(e.what(), ContainsSubstring("CD value " + std::to_string(pos + 1)));
+        REQUIRE_THAT(e.what(), ContainsSubstring("#42"));
+      }
+    }
+  }
+}
+
+TEST_CASE("a lost mnemonic after a short CD is an error on resolve, not a silent CD value (#42)",
+          "[agf]") {
+  // "LD" lost: "0.3 2.5" continues the six-value CD record of a Sellmeier 1 glass.
+  const TempCatalog tmp("rtt_agf_lost_ld", "lost.agf",
+                        "CC c\nNM OK 2 1 1.5 60\nCD 1 0.01 0.2 0.02 1 100\nLD 0.3 2.5\n"
+                        "NM LOST 2 1 1.5 60\nCD 1 0.01 0.2 0.02 1 100\n0.3 2.5\n");
+  MaterialLibrary lib;
+  lib.add_catalog(tmp.dir());
+  REQUIRE(lib.resolve("LOST:OK") != nullptr);
+  try {
+    (void)lib.resolve("LOST:LOST");
+    FAIL("no exception");
+  } catch (const UnknownMaterial& e) {
+    REQUIRE_THAT(e.what(), ContainsSubstring("LOST"));
+    REQUIRE_THAT(e.what(), ContainsSubstring("lost.agf:5"));
+    REQUIRE_THAT(e.what(), ContainsSubstring("CD value 7"));
   }
 }
 

@@ -149,11 +149,13 @@ class CatalogMaterial final : public Material {
 /// Supported, with the verified CD order (docs/quellen.md): formula 1 (Schott, CD = a0..a5),
 /// 2 (Sellmeier 1, K1 L1 K2 L2 K3 L3), 6 (Sellmeier 3, K1 L1 .. K4 L4), 12 (Extended 2,
 /// a0..a6; a7 must be 0) and 13 (Extended 3, a0..a8). Missing trailing coefficients count as 0
-/// (the format allows "up to 10"); CD values beyond those of the formula are ignored, as for
-/// formulas 1 and 2 (they are 0 in all glasses of the verifying catalogues).
+/// (the format allows "up to 10"); CD values beyond those of the formula must be 0 (they are 0
+/// in all glasses of the verifying catalogues, and a value there most likely is a record whose
+/// mnemonic was lost and that continues CD, #42).
 /// @param where text naming catalogue, file and line for messages
-/// @throws std::invalid_argument for other formula numbers and for formula 12 with a7 != 0,
-///         whose CD position is not verified (see #42)
+/// @throws std::invalid_argument for other formula numbers, for formula 12 with a7 != 0,
+///         whose CD position is not verified, and for a CD value != 0 beyond those of the
+///         formula (see #42)
 [[nodiscard]] DispersionFormula agf_formula(const AgfGlass& glass, const std::string& where);
 
 }  // namespace rtt::material
