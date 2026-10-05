@@ -458,24 +458,6 @@ class Compiler {
     return model::EventKind::Transmit;
   }
 
-  /// Media before and after each event (rules decided for #5 and #27, docs/architecture.md,
-  /// "Medien entlang eines Pfads"). The ray starts in the environment. Reflect, Transmit and
-  /// Diffract keep the medium, and so does every event at an element without material.
-  /// Refract, Ordinary and Extraordinary
-  /// - at surface i of a Lens, or of a Plate with different segment materials, with N surfaces
-  ///   (segment j between surfaces j and j + 1):
-  ///   from segment i - 1 into segment i (the environment if i = N - 1), from segment i into
-  ///   segment i - 1 (the environment if i = 0), from any other segment of the same element into
-  ///   the environment; from outside the element through the first surface into segment 0,
-  ///   through the last surface into segment N - 2, and through an inner surface into its two
-  ///   neighbouring segments if they have the same material, otherwise it is an error (the
-  ///   side is ambiguous);
-  /// - at a Plate of one material (shorthand, or a list of equal entries; prisms, cubes) and
-  ///   at a Mirror with substrate (#6): toggle between the inside and the environment at every
-  ///   surface. For a Plate with 2 surfaces this equals the segment rule.
-  /// Outside an element means in the environment or in another element: elements do not nest,
-  /// so entering B while in A leaves A, and leaving B goes to the environment.
-  /// `location` is the JSON pointer of the events; errors add the event index.
   /// Where a ray is along a path: element it is in (none = environment), segment of that
   /// element, and the current medium.
   struct MediumState {
@@ -518,11 +500,32 @@ class Compiler {
     return MediumState{element, segment, info.media[segment]};
   }
 
+  /// Media before and after each event (rules decided for #5 and #27, docs/architecture.md,
+  /// "Medien entlang eines Pfads"). The ray starts in the environment. Reflect, Transmit and
+  /// Diffract keep the medium, and so does every event at an element without material.
+  /// Refract, Ordinary and Extraordinary
+  /// - at surface i of a Lens, or of a Plate with different segment materials, with N surfaces
+  ///   (segment j between surfaces j and j + 1):
+  ///   from segment i - 1 into segment i (the environment if i = N - 1), from segment i into
+  ///   segment i - 1 (the environment if i = 0), from any other segment of the same element into
+  ///   the environment; from outside the element through the first surface into segment 0,
+  ///   through the last surface into segment N - 2, and through an inner surface into its two
+  ///   neighbouring segments if they have the same material, otherwise it is an error (the
+  ///   side is ambiguous);
+  /// - at a Plate of one material (shorthand, or a list of equal entries; prisms, cubes) and
+  ///   at a Mirror with substrate (#6): toggle between the inside and the environment at every
+  ///   surface. For a Plate with 2 surfaces this equals the segment rule.
+  /// Outside an element means in the environment or in another element: elements do not nest,
+  /// so entering B while in A leaves A, and leaving B goes to the environment.
+  /// medium_beyond is the medium a crossing would reach, also for events that do not cross
+  /// (#61); from_inside tells whether the ray is inside the surface's element before the event.
+  /// `location` is the JSON pointer of the events; errors add the event index.
   void assign_media(std::vector<CompiledEvent>& events, const std::string& location) {
     MediumState state{std::nullopt, 0, environment_};
     for (std::size_t k = 0; k < events.size(); ++k) {
       CompiledEvent& event = events[k];
       event.medium_before = state.current;
+      event.from_inside = state.inside == surface_element_[event.surface];
       const bool crosses = event.kind == model::EventKind::Refract ||
                            event.kind == model::EventKind::Ordinary ||
                            event.kind == model::EventKind::Extraordinary;

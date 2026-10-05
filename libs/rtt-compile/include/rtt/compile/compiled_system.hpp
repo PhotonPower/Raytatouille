@@ -97,6 +97,10 @@ struct CompiledEvent {
   /// Refract). Fresnel and coatings need it for Reflect (ADR 0021). For an element without
   /// material, and for an inner surface whose side is ambiguous, it equals medium_before.
   std::uint32_t medium_beyond = 0;
+  /// True if the ray is inside the element of this surface before the event (in one of its
+  /// segments). For a coated surface this is the substrate side (ADR 0019): the tracer then uses
+  /// the reversed layer stack (ADR 0021).
+  bool from_inside = false;
 };
 
 /// Named, ordered list of events.
