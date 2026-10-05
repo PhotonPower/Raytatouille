@@ -70,6 +70,8 @@ TEST_CASE("duplicate keys are errors at the second occurrence (#68)", "[io][erro
                                 R"({"id": "IMG", "aperture": {"type": "circular",)"
                                 R"( "radius": 1.0, "radius": 2.0}})")) ==
           "/root/children/0/surfaces/0/aperture/radius");
+  // RFC 6901 escaping in the pointer: '/' -> ~1, '~' -> ~0.
+  REQUIRE(error_pointer(minimal(R"(, "a/b~c": 1, "a/b~c": 2)")) == "/a~1b~0c");
   try {
     (void)rtt::io::parse_system(minimal(R"(, "name": "a", "name": "b")"));
     FAIL("no ParseError");

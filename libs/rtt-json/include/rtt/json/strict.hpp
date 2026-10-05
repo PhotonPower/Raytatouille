@@ -30,7 +30,9 @@ class StrictParseError : public std::runtime_error {
         pointer_(std::move(pointer)),
         message_(std::move(message)) {}
 
+  /// JSON pointer (RFC 6901) to the offending key or value; empty for the whole text.
   [[nodiscard]] const std::string& pointer() const noexcept { return pointer_; }
+  /// Description without the pointer, e.g. "duplicate key 'a'" or "invalid JSON: ...".
   [[nodiscard]] const std::string& message() const noexcept { return message_; }
 
  private:

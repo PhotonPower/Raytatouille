@@ -68,7 +68,15 @@ TEST_CASE("syntax errors and number overflow have an empty pointer", "[json]") {
     const StrictParseError e = error_of(text);
     REQUIRE(e.pointer().empty());
     REQUIRE_THAT(e.message(), ContainsSubstring("invalid JSON"));
+    REQUIRE(std::string(e.what()).starts_with("/: invalid JSON: "));
   }
+}
+
+TEST_CASE("the message names the duplicate key", "[json]") {
+  const StrictParseError e = error_of(R"({"x": {"k~/": 1, "k~/": 2}})");
+  REQUIRE(e.pointer() == "/x/k~0~1");
+  REQUIRE(e.message() == "duplicate key 'k~/'");
+  REQUIRE(std::string(e.what()) == "/x/k~0~1: duplicate key 'k~/'");
 }
 
 TEST_CASE("pointer_token escapes per RFC 6901", "[json]") {

@@ -121,7 +121,7 @@ Das Modell ist reine Datenstruktur ohne Tracing-Logik. Header: `libs/rtt-model/i
 
 Ein System ist eine Datei `*.rtt.json`. Die vollständige Struktur steht in `schema/raytatouille.schema.json`; Referenz ist aber der C++-Parser.
 
-- **Strikt:** unbekannte Schlüssel, falsche Typen, andere Einheiten und inkompatible `schema_version` sind Fehler mit JSON-Pointer.
+- **Strikt:** unbekannte und doppelte Schlüssel, falsche Typen, Zahlen jenseits des `double`-Bereichs, andere Einheiten und inkompatible `schema_version` sind Fehler mit JSON-Pointer (doppelte Schlüssel und Overflow über `rtt-json`, ADR 0020).
 - **Versionierung:** `schema_version` SemVer; aktuell 0.2.0. Vor 1.0 müssen Major und Minor exakt passen oder zu einer älteren Version gehören, die `rtt-io` migriert (derzeit 0.1 → 0.2; geschrieben wird immer die aktuelle Version). Jede Formatänderung erhöht die Version und bringt eine getestete Migration mit. Das JSON-Schema beschreibt nur die aktuelle Version.
 - **Material:** `"material"` ist ein String (ein Material für alle Segmente) oder ein Array mit einem Eintrag je Segment, z. B. `"material": ["SCHOTT:N-BK7", "SCHOTT:F2"]` (ADR 0017). Die gelesene Form wird unverändert geschrieben.
 - **Kanonisch:** `rtt::io::to_json` schreibt immer dieselben Bytes: 2 Leerzeichen Einzug, LF, abschließender Zeilenumbruch, Standardwerte weggelassen, kleine Objekte aus Skalaren auf einer Zeile. Für jede kanonische Datei gilt `to_json(parse(text)) == text`. `rtt format` bringt Dateien in diese Form.

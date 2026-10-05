@@ -217,6 +217,8 @@ TEST_CASE("catalogue errors name the file and the JSON pointer", "[coating][cata
       {catalog_text("D", R"({"name": "C", "layers": [{"material": "M", "thickness_um": -1,
                                                       "thickness_um": 0.1}]})"),
        "/coatings/0/layers/0/thickness_um", "duplicate key 'thickness_um'"},
+      {catalog_text("D", R"({"name": "C", "a/b~c": 1, "a/b~c": 2, "layers": []})"),
+       "/coatings/0/a~1b~0c", "duplicate key 'a/b~c'"},
       {prefix + R"("catalog": "D", "coatings": [], "extra": 1})", "/extra", "unknown key"},
       {R"({"format": "x", "schema_version": "0.1.0", "catalog": "D", "coatings": []})", "/format",
        "raytatouille-coatings"},
