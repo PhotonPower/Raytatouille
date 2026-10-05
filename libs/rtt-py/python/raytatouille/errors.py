@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 __all__ = [
     "AgfError",
     "AnalysisError",
+    "CoatingCatalogError",
     "CompileError",
     "ParaxialError",
     "ParseError",
@@ -62,6 +63,16 @@ class UnknownMaterial(RaytatouilleError, KeyError):
 class AnalysisError(RaytatouilleError):
     """An analysis has no defined result, e.g. the chief ray does not reach the image surface
     or no ray arrives."""
+
+
+class CoatingCatalogError(RaytatouilleError, ValueError):
+    """Malformed coating catalogue (ADR 0019); ``file`` and ``pointer`` (JSON pointer to the
+    offending value, empty for the whole file)."""
+
+    def __init__(self, message: str, file: str, pointer: str) -> None:
+        super().__init__(message)
+        self.file = file
+        self.pointer = pointer
 
 
 class AgfError(RaytatouilleError, ValueError):
