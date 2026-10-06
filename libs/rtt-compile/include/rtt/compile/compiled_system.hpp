@@ -66,7 +66,10 @@ struct CompiledSurface {
   /// from the environment, would see (rules of ADR 0017: segments for lenses and segmented
   /// plates, inside/environment toggle otherwise; environment on both sides for an element
   /// without material). Independent of the paths: the media of a path are in its events, and a
-  /// reflection or a path running backwards may see the surface differently.
+  /// reflection or a path running backwards may see the surface differently. For plates and
+  /// prisms of one material with more than two surfaces this is only the convention of the
+  /// surface order (each refraction toggles inside/environment); which side is glass follows
+  /// from CompiledElement::media and CompiledElement::segmented.
   std::uint32_t medium_front = 0;
   std::uint32_t medium_back = 0;
   /// Local surface coordinates -> global coordinates (assembly -> element -> surface poses

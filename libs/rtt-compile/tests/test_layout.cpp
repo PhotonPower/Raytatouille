@@ -468,12 +468,13 @@ TEST_CASE("profiles of rectangular and elliptical apertures and at the shape dom
   // - Rectangle: in the y-z plane y = -8 ... 8 (direction +y); in the plane y = 0 with normal
   //   (0, 1, 0) the direction is t = z x n = -x, so x runs from 6 to -6.
   // - Ellipse: y = -+9 through the axis; in the plane x = 3, y = -+9 sqrt(1 - 9/25) = -+7.2.
-  // - Sphere: the profile ends 1e-12 R inside the domain (layout.hpp), at |y| = 40 (1 - 1e-12),
-  //   with the sag of the formula there and within 40 sqrt(2e-12) = 5.7e-5 mm of z = 40.
-  // Tolerance 1e-12. For the sag at the domain edge: dz/dr = r / sqrt(R^2 - r^2) = 7.1e5 there,
-  // and |y| from the global point carries about one ulp of 40 (7.1e-15), so z = sag(|y|) agrees
-  // to about 5e-9: tolerance 1e-8. (First set to 1e-9 without this product; the measured
-  // 1.6e-9 showed the missing factor.)
+  // - Sphere (vertex at z = 50, centre at z = 90): the profile ends 1e-12 R inside the domain
+  //   (layout.hpp), at |y| = 40 (1 - 1e-12) and within 40 sqrt(2e-12) = 5.7e-5 mm of z = 90.
+  //   There the sag itself is ill-conditioned: 1 - c^2 r^2 = 2e-12 cancels, half an ulp of 1 in
+  //   c^2 r^2 changes sqrt(1 - c^2 r^2) by about 3.9e-11 and the sag by R 3.9e-11 = 1.6e-9. So
+  //   the end point is checked well-conditioned instead: its distance from the centre is
+  //   R = 40, where an error dz of z enters only with |z - 90| / R = 1.4e-6 (relative 1e-12).
+  // Tolerance 1e-12 (relative for the distance).
   System s = base_system();
   Surface rect = surface("RE", 0.0, rtt::model::Plane{}, std::nullopt);
   rect.aperture = rtt::model::RectangularAperture{6.0, 8.0};
@@ -511,7 +512,7 @@ TEST_CASE("profiles of rectangular and elliptical apertures and at the shape dom
   for (const Vec3& end : {sphere[0].front(), sphere[0].back()}) {
     REQUIRE(end.allFinite());
     REQUIRE(std::abs(std::abs(end.y()) - edge) <= 1e-12 * 40.0);
-    REQUIRE(std::abs(end.z() - 50.0 - sag_formula(1.0 / 40.0, 0.0, {}, std::abs(end.y()))) <= 1e-8);
+    REQUIRE(std::abs(std::hypot(end.y(), end.z() - 90.0) - 40.0) <= 1e-12 * 40.0);
     REQUIRE(std::abs(end.z() - 90.0) <= 1e-4);
   }
 }

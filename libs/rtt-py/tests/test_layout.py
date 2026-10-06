@@ -129,6 +129,10 @@ def test_layout_errors(reference_dir: Path) -> None:
             rt.layout.outlines(cs, bad)
     with pytest.raises(ValueError, match="samples"):
         rt.layout.outlines(cs, 1, samples=-3)
+    with pytest.raises(TypeError, match="integer"):
+        rt.layout.profile(cs, 1, samples=2.5)  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="integer"):
+        rt.layout.outlines(cs, 1, samples=True)
 
 
 def test_plane_shorthands_run_along_plus_y_and_plus_x(reference_dir: Path) -> None:

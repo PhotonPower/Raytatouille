@@ -236,6 +236,7 @@ Der Eingangs-Jones-Vektor wird nicht gespeichert: P wirkt auf jeden Eingangszust
   - Platten aus einem Material, Prismen und Spiegel mit Substrat: Wechsel zwischen innen und Umgebung.
   - Elemente ohne Material: Umgebung auf beiden Seiten.
   - Die Werte sind unabhängig von den Pfaden. Die Medien eines Pfads stehen in seinen Events; Reflexionen und rückwärts laufende Pfade können eine Fläche anders sehen.
+  - Bei Platten und Prismen aus einem Material mit mehr als zwei Flächen ist das nur die Konvention der Flächenreihenfolge (jede Brechung wechselt innen ↔ Umgebung). Welche Seite Glas ist, ergibt sich aus `CompiledElement::media` und `segmented`.
 - **sag und Normale:** in lokalen Koordinaten, vektorisiert. Die Normale (−∂z/∂x, −∂z/∂y, 1)/|…| zeigt am Scheitel nach +z wie in `rtt-geom`; sie gibt es lokal oder global. Außerhalb des Formbereichs kommt NaN; die Apertur wird nicht angewendet.
 - **Profile:** nur in Schnittebenen, die zur lokalen z-Achse der Fläche parallel sind (|n·z_lokal| ≤ 1e−12). Das umfasst Meridionalschnitte, Kippungen in der Ebene, Faltspiegel und gegen die Achse versetzte Ebenen.
   - Dann ist der Schnitt exakt die Kurve z = sag entlang der Geraden „Ebene ∩ lokale x-y-Ebene“, ohne Nullstellensuche, in Richtung t = z_lokal × n.

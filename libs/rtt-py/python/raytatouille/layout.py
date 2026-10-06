@@ -58,7 +58,9 @@ class SurfaceLayout(NamedTuple):
     the surface in the surface order of its element, as a refraction through the element's
     surfaces in order from the environment would see them (ADR 0017), independent of the paths.
     The media of a path are in its events; a reflection or a path running backwards may see the
-    surface differently."""
+    surface differently. For plates and prisms of one material with more than two surfaces this
+    is only the convention of the surface order (each refraction toggles inside/environment);
+    which side is glass follows from CompiledElement.media and CompiledElement.segmented."""
 
     id: str
     element: int
@@ -114,6 +116,8 @@ def _surface_index(system: CompiledSystem, surface: int | str) -> int:
 
 
 def _samples(samples: int) -> int:
+    if isinstance(samples, bool) or not isinstance(samples, (int, np.integer)):
+        raise TypeError(f"samples must be an integer, got {type(samples).__name__}")
     if samples < 2:
         raise ValueError("a profile needs at least 2 samples")
     return int(samples)
