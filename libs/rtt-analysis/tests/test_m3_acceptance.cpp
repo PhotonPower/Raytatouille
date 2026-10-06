@@ -31,7 +31,6 @@
 #include <numbers>
 #include <optional>
 #include <string>
-#include <utility>
 #include <variant>
 #include <vector>
 
@@ -41,6 +40,7 @@
 #include "rtt/material/material.hpp"
 #include "rtt/model/model.hpp"
 #include "rtt/polar/ideal.hpp"
+#include "rtt/polar/prt.hpp"
 #include "rtt/polar/prt_analysis.hpp"
 #include "rtt/trace/ray_batch.hpp"
 #include "rtt/trace/sequential.hpp"
@@ -234,6 +234,11 @@ TEST_CASE("M3 total internal reflection: |r| = 1 and the s/p phase jump", "[m3]"
   REQUIRE(std::abs(st.s1) <= 1e-12);
   REQUIRE(std::abs(std::abs(st.s2) - st.s0 * std::abs(std::cos(delta))) <= 1e-12);
   REQUIRE(std::abs(std::abs(st.s3) - st.s0 * std::abs(std::sin(delta))) <= 1e-12);
+  // Convention check (Convention A and the Stokes definition of docs/architecture.md): with
+  // e1 = x = s and e2 = k_out x e1 = p_out = k_out x s, E1 ~ r_s and E2 ~ r_p with the same
+  // positive factor, so S2 = S0 cos(Delta) and S3 = -S0 sin(Delta).
+  REQUIRE(std::abs(st.s2 - st.s0 * std::cos(delta)) <= 1e-12);
+  REQUIRE(std::abs(st.s3 + st.s0 * std::sin(delta)) <= 1e-12);
 }
 
 TEST_CASE("M3 total internal reflection: the critical angle asin(1/n)", "[m3]") {
@@ -431,6 +436,13 @@ TEST_CASE("M3 metal mirror at 45 deg: ellipsometric ratio and diattenuation from
   REQUIRE(std::abs(power(m, 0, Vec3(0.0, 1.0, 0.0)) - big_rp) <= 1e-10);
   const auto d = rtt::polar::diattenuation(m.prt_matrix(0), k_in, k_out);
   REQUIRE(std::abs(d.value - std::abs(big_rs - big_rp) / (big_rs + big_rp)) <= 1e-10);
+  // With the documented convention (docs/architecture.md, "Retardance einzelner Reflexionen":
+  // the physical retardance of a single reflection, from Q^-1 P, is |arg(-r_p / r_s)|), also the
+  // retardance of this one reflection: the ellipsometric Delta, about 10.8 deg here.
+  const Vec3 normal(0.0, -std::sin(45.0 * kDeg), std::cos(45.0 * kDeg));  // R_x(45 deg) e_z
+  const auto q = rtt::polar::geometric_transform<double>(k_in, k_out, normal, true);
+  const auto phys = rtt::polar::physical_retardance(m.prt_matrix(0), q, k_in);
+  REQUIRE(std::abs(phys.value - std::abs(std::arg(-a.rp / a.rs))) <= 1e-10);
 }
 
 TEST_CASE("M3 metal periscope: two 45 deg reflections in total", "[m3]") {
@@ -479,14 +491,17 @@ TEST_CASE("M3 Fresnel rhomb: two total internal reflections act as a quarter-wav
   // explicit path: every face separates glass and vacuum), normal entrance and exit, two total
   // internal reflections on parallel faces at theta_R = 55.218468500096165 deg. theta_R solves
   // cos(2 arg(r_p / r_s)) = 0 with Byrnes, Eq. (6) and Appendix D for n = 1.5168 (offline
-  // bisection, script in the PR), i.e. 45 deg (mod 90 deg) per reflection. Total: quarter wave,
-  // so the input (x + y)/sqrt(2) leaves circular with S0 = (1 - R)^2 (two normal faces), and the
-  // path, which maps +z onto +z, has the retardance pi/2 (convention-free over two reflections).
-  // The expected values use theta_R from the file, not the ideal 45 deg. Tolerance 1e-12.
+  // bisection, script in the PR), i.e. 45 deg (mod 90 deg) per reflection; the first check
+  // below verifies theta_R itself (cos(delta_total) is linear in an error of theta_R). Total:
+  // quarter wave, so the input (x + y)/sqrt(2) leaves circular with S0 = (1 - R)^2 (two normal
+  // faces), and the path, which maps +z onto +z, has the retardance pi/2 (convention-free over
+  // two reflections). The expected Stokes values and the retardance are computed from theta_R of
+  // the file (S2 = S0 cos(delta_total), retardance |delta_total| reduced to [0, pi]), not from
+  // the ideal 45 deg. Tolerance 1e-12.
   const double theta_r = 55.218468500096165 * kDeg;
   const Amplitudes a = fresnel_reference(kGlass, 1.0, kGlass * std::sin(theta_r));
   const double delta_total = 2.0 * std::arg(a.rp / a.rs);
-  REQUIRE(std::abs(std::abs(std::sin(delta_total)) - 1.0) <= 1e-14);  // the reference itself
+  REQUIRE(std::abs(std::cos(delta_total)) <= 1e-14);  // theta_R gives a quarter wave
   const CompiledSystem cs = build(load("fresnel_rhomb.rtt.json"));
   const Vec3 k(0.0, 0.0, 1.0);
   const RayBatch rays = trace_one(cs, path_named(cs, "rhomb"), Vec3(0.0, 0.0, -1.0), k);
@@ -499,8 +514,11 @@ TEST_CASE("M3 Fresnel rhomb: two total internal reflections act as a quarter-wav
                                              Vec3(1.0, 0.0, 0.0), direction(rays, 0));
   REQUIRE(std::abs(st.s0 - through) <= 1e-12);
   REQUIRE(std::abs(st.s1) <= 1e-12);
-  REQUIRE(std::abs(st.s2) <= 1e-12);
+  REQUIRE(std::abs(st.s2 - st.s0 * std::cos(delta_total)) <= 1e-12);
   REQUIRE(std::abs(std::abs(st.s3) - st.s0) <= 1e-12);
+  // Convention check (as for the single total internal reflection): s = x at both faces and the
+  // output basis (x, y), so S3 = -S0 sin(delta_total) = +S0 here.
+  REQUIRE(std::abs(st.s3 + st.s0 * std::sin(delta_total)) <= 1e-12);
   const auto ret = rtt::polar::retardance(rays.prt_matrix(0), k);
-  REQUIRE(std::abs(ret.value - kPi / 2.0) <= 1e-12);
+  REQUIRE(std::abs(ret.value - std::abs(std::remainder(delta_total, 2.0 * kPi))) <= 1e-12);
 }

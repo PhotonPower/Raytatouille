@@ -30,7 +30,8 @@ rtt validate tests/reference/m0/singlet.rtt.json   # Struktur und Semantik prüf
 rtt format meine_optik.rtt.json                     # in kanonische Form bringen
 ```
 
-Beispielsysteme liegen unter `tests/reference/m0/`.
+Beispielsysteme liegen unter `tests/reference/`, mit einem Unterordner je Meilenstein (`m0/` bis
+`m3/`).
 
 ## Dokumentation
 
