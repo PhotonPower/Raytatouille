@@ -131,6 +131,22 @@ def flatten_seidel(s: rt.paraxial.Seidel) -> Arrays:
     }
 
 
+def flatten_prescription(p: rt.paraxial.Prescription) -> Arrays:
+    q = p.surfaces
+
+    def value(v: float | None) -> float:
+        return float("nan") if v is None else v
+
+    return {
+        "surface": u8(q.surface), "z": f8(q.z), "n": f8(q.n), "y": f8(q.y), "u": f8(q.u),
+        "i": f8(q.i), "y_bar": f8(q.y_bar), "u_bar": f8(q.u_bar), "i_bar": f8(q.i_bar),
+        "lagrange": f8(q.lagrange),
+        "scalars": f8([p.total_track, value(p.object_distance),
+                       value(p.paraxial_working_f_number), value(p.paraxial_image_na),
+                       value(p.lagrange_invariant)]),
+    }
+
+
 def systems() -> dict[str, rt.CompiledSystem]:
     """The systems of load_systems() in analysis_cases.cpp."""
     schott = rt.MaterialLibrary()
@@ -174,6 +190,7 @@ CASES: dict[str, Case] = {
     "field_curvature_at": lambda s, t: {"scalars": f8(field_curvature_values(
         an.field_curvature_at(s["achromat"], rt.Field(1.0, 3.0), delta=2e-3, threads=t)))},
     "seidel": lambda s, t: flatten_seidel(an.seidel(s["achromat"], pair=(0, 2))),
+    "prescription": lambda s, t: flatten_prescription(rt.paraxial.prescription(s["achromat"])),
 }
 
 

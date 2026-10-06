@@ -14,6 +14,7 @@ def test_singlet_example(capsys: pytest.CaptureFixture[str]) -> None:
     assert namespace["main"]() == 0
     out = capsys.readouterr().out
     assert "EFL" in out and "field 2" in out
+    assert "paraxial working F/#" in out and "L1.S1" in out
 
 
 def test_polarization_example(capsys: pytest.CaptureFixture[str]) -> None:
