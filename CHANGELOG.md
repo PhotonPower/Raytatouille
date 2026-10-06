@@ -48,10 +48,24 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   der von der Formel genutzten Positionen müssen 0 sein (Formeln 1, 2, 6, 12, 13). Testkatalog
   `tests/catalogs/nikon/nikon-hikari.agf`. Formeln 3, 4, 5, 7–11 bleiben unbelegt und ein klarer
   Fehler; die vollständige NIKON-HIKARI_201911.AGF lädt wegen doppelter Glasnamen noch nicht (#42).
+- `rtt-trace`: Interaktionen wirken auf `prt` und `weight` (ADR 0021): Fresnel mit komplexen
+  Indizes, ideale Elemente (Spiegel, AR, Strahlteiler, Polarisator, Retarder), Coatings aus dem
+  Katalog (umgekehrter Stapel aus dem Substrat), Absorber und Volumenabsorption
+  exp(−4πκt/λ). P ist leistungsnormiert (|P E|² = Leistungsanteil), `weight` ist die Leistung
+  für eine unpolarisierte Quelle; Beispiel `tests/reference/m3/absorbing_ar_plate.rtt.json`. `apply_event` und `sequential_step` nehmen `EventMedia`
+  (komplexe Indizes, Wellenlänge, Schichten); die Formen mit reellen Indizes bleiben (#61).
+- `rtt-polar`: leistungsnormierte Grenzflächen-PRT-Matrizen (`interface.hpp`:
+  `fresnel_prt`, `interface_prt`, `transmission_power_factors`, `tangential_invariant`) (#61).
+- `rtt-compile`: `CompiledEvent::medium_beyond` (Medium hinter der Fläche, auch bei Reflect),
+  `CompiledEvent::from_inside` (Strahl kommt aus dem Element, bei Coatings die Substratseite) und
+  `CompiledSurface::ideal_axis` (Achse von Polarisator und Retarder global) (#61).
 
 ### Geändert
+- `rtt-analysis`: Spot-Gewichte enthalten jetzt die Fresnel-Verluste der Strahlen; gewichtete
+  Statistiken unvergüteter Systeme verschieben sich leicht (Cooke-Triplett relativ bis 2,8·10⁻³)
+  (#61).
 - `rtt-compile`: `compile(system, materials)` ohne Coating-Bibliothek meldet für `CoatingRef` jetzt
-  einen `CompileError` (bisher ignoriert); betrifft bis #61 auch `rt.compile` in Python (#59,
+  einen `CompileError` (bisher ignoriert); betrifft bis #62 auch `rt.compile` in Python (#59,
   ADR 0019).
 - `rtt-io`, `rtt-coating`: Doppelte JSON-Schlüssel auf jeder Ebene sind ein Fehler mit Pointer auf
   das zweite Vorkommen (bisher galt still der letzte Wert); betrifft `rtt validate`,

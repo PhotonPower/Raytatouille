@@ -149,8 +149,8 @@ def test_python_equals_cpp_bitwise(case: Case, threads: int, cpp_dir: Path,
     results = python_results(case, reference_dir, catalog_dir, threads)
     assert len(results["pos_x"]) > 0
     if case.sampling is None:
-        # The case must separate status and last_surface (review of #32); weight is constant
-        # before M3.
+        # The case must separate status and last_surface (review of #32); weight carries the
+        # interaction losses since #61 and is compared bit for bit like every other column.
         assert np.unique(results["status"]).size > 1
         assert np.unique(results["last_surface"]).size > 1
         assert set(np.unique(results["status"])) >= {

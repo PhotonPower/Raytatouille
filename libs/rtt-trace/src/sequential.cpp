@@ -4,8 +4,10 @@
 #include <oneapi/tbb/parallel_for.h>
 #include <oneapi/tbb/partitioner.h>
 
+#include <span>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "rtt/trace/apply_event.hpp"
 
@@ -27,6 +29,31 @@ TraceStats SequentialTracer::trace(const compile::CompiledSystem& system,
     }
   }
 
+  // Coating stacks as seen from the substrate side (ADR 0019: light from inside sees the layers
+  // in reverse order), prepared once so that the tracing loop does not allocate.
+  const auto& coatings = system.coatings();
+  std::vector<std::vector<std::vector<coating::Layer<double>>>> reversed(coatings.size());
+  for (std::size_t c = 0; c < coatings.size(); ++c) {
+    for (const auto& layers : coatings[c].layers) {
+      reversed[c].emplace_back(layers.rbegin(), layers.rend());
+    }
+  }
+  const auto event_media = [&](const compile::CompiledEvent& event, std::uint16_t wl) {
+    EventMedia m;
+    m.before = system.media()[event.medium_before].index[wl];
+    m.after = system.media()[event.medium_after].index[wl];
+    m.beyond = system.media()[event.medium_beyond].index[wl];
+    m.wavelength_um = system.wavelengths_um()[wl];
+    if (const auto& c = system.surfaces()[event.surface].coating) {
+      // From inside the element = from the substrate (ADR 0019); decided by element, not by
+      // medium, since another element of the same glass may lie in front of the surface.
+      m.layers = event.from_inside
+                     ? std::span<const coating::Layer<double>>(reversed[c->coating][wl])
+                     : std::span<const coating::Layer<double>>(coatings[c->coating].layers[wl]);
+    }
+    return m;
+  };
+
   // Rays are independent; every ray is written by exactly one task, so the result does not
   // depend on the partitioning (ADR 0004).
   const auto trace_range = [&](const oneapi::tbb::blocked_range<std::size_t>& range) {
@@ -37,16 +64,15 @@ TraceStats SequentialTracer::trace(const compile::CompiledSystem& system,
       ray.opl = rays.opl()[i];
       ray.status = rays.status()[i];
       ray.last_surface = rays.last_surface()[i];
+      ray.prt = rays.prt_matrix(i);
+      ray.weight = rays.weight()[i];
       const std::uint16_t wl = rays.wl()[i];
       for (const compile::CompiledEvent& event : events.events) {
         if (ray.status != RayStatus::Alive) {
           break;
         }
-        // M1: real part of the complex index (absorption follows in M3).
-        const double n_before = system.media()[event.medium_before].index[wl].real();
-        const double n_after = system.media()[event.medium_after].index[wl].real();
         ray = sequential_step(ray, system.surfaces()[event.surface], event.surface, event.kind,
-                              n_before, n_after);
+                              event_media(event, wl));
       }
       rays.pos_x()[i] = ray.pos.x();
       rays.pos_y()[i] = ray.pos.y();
@@ -57,6 +83,8 @@ TraceStats SequentialTracer::trace(const compile::CompiledSystem& system,
       rays.opl()[i] = ray.opl;
       rays.status()[i] = ray.status;
       rays.last_surface()[i] = ray.last_surface;
+      rays.set_prt_matrix(i, ray.prt);
+      rays.weight()[i] = ray.weight;
     }
   };
   oneapi::tbb::parallel_for(oneapi::tbb::blocked_range<std::size_t>(0, rays.size()), trace_range,

@@ -13,7 +13,9 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 
+#include "rtt/coating/transfer_matrix.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/geom/intersect.hpp"
 #include "rtt/math/types.hpp"
@@ -22,14 +24,37 @@
 
 namespace rtt::trace {
 
-/// State of one ray in global coordinates (one row of a RayBatch, without the fields that
-/// M1 does not change).
+/// State of one ray in global coordinates (one row of a RayBatch without wavelength, field and
+/// pupil columns).
 struct RayState {
   math::Vec3 pos = math::Vec3::Zero();   ///< position, mm, global
   math::Vec3 dir = math::Vec3::UnitZ();  ///< unit direction, global (|dir| = 1 is required)
   double opl = 0.0;                      ///< accumulated optical path length, mm
   RayStatus status = RayStatus::Alive;
   std::uint32_t last_surface = kNoSurface;  ///< index of the last surface hit
+  /// Accumulated power-normalised PRT matrix (ADR 0021): |P E|^2 is the power fraction for an
+  /// incident state E with |E| = 1; P k_0 = k with k_0 the initial direction.
+  math::CMat3 prt = math::CMat3::Identity();
+  /// Power for an unpolarized source (source normalised to 1): weight = s ||P_T||^2 / 2 with
+  /// P_T = P - k k_0^T and s the polarization-independent factors (ADR 0021).
+  double weight = 1.0;
+};
+
+/// Physical inputs of one event, independent of the path (ADR 0021; the sequential tracer
+/// fills them from the compiled path, the non-sequential tracer (M9) from the geometry).
+struct EventMedia {
+  math::Complex before{1.0};  ///< complex index of the medium the ray is in before the event
+  math::Complex after{1.0};   ///< complex index after the event (equal to before unless crossing)
+  /// Complex index on the other side of the surface (Fresnel and coating partner for Reflect;
+  /// equal to after for Refract).
+  math::Complex beyond{1.0};
+  /// Vacuum wavelength, um; must be > 0 if `before` absorbs (Im > 0) or `layers` is not empty.
+  /// No default wavelength, so that a forgotten value cannot pass unnoticed.
+  double wavelength_um = 0.0;
+  /// Coating layers at this wavelength in the order seen by the ray: from the incident medium to
+  /// the other side (the caller reverses the stack for light from the substrate, ADR 0019).
+  /// Empty if the surface has no coating.
+  std::span<const coating::Layer<double>> layers;
 };
 
 /// Hit of a ray on a surface, in the local coordinates of the surface.
@@ -87,28 +112,54 @@ inline constexpr double kApertureTolerance = 1e-9;
 [[nodiscard]] bool inside_aperture(const compile::CompiledSurface& surface,
                                    const SurfaceHit& hit) noexcept;
 
-/// Moves the ray to the hit point: position (global), OPL += n_before * t, last_surface.
-/// Direction and status are unchanged.
+/// Moves the ray to the hit point: position (global), OPL += Re(n_before) t, last_surface, and
+/// volume absorption weight *= exp(-4 pi kappa t / lambda_vac) with kappa = Im(n_before), t the
+/// geometric path in mm and lambda_vac in mm (Byrnes, arXiv:1603.02720v5, Eqs. (1), (2):
+/// E ~ exp(i k.r) with |k| = 2 pi n / lambda_vac, and power ~ |E|^2 by Eqs. (17), (18); kappa is
+/// the dimensionless extinction coefficient, not the absorption coefficient alpha = 4 pi kappa /
+/// lambda). Direction, P and status are unchanged.
 /// @pre hit.status == Hit
+[[nodiscard]] RayState move_to_hit(const RayState& ray,
+                                   const compile::CompiledSurface& surface,
+                                   const SurfaceHit& hit,
+                                   std::uint32_t surface_index,
+                                   const EventMedia& media) noexcept;
+
+/// move_to_hit() for a non-absorbing medium of real index n_before (M1 form).
 [[nodiscard]] RayState move_to_hit(const RayState& ray,
                                    const compile::CompiledSurface& surface,
                                    const SurfaceHit& hit,
                                    std::uint32_t surface_index,
                                    double n_before) noexcept;
 
-/// Executes `kind` at the hit (docs/architecture.md: apply_event(ray, hit, kind)).
+/// Executes `kind` at the hit (docs/architecture.md: apply_event(ray, hit, kind)) and applies the
+/// interaction of the surface to P and weight (ADR 0021).
 ///
 /// A ray that is not Alive is returned unchanged; a hit with status Missed or NoConvergence
 /// gives that status and leaves the ray unchanged. Otherwise the ray moves to the hit point
-/// (move_to_hit) and then: Absorber interaction -> Absorbed; Diffract, Ordinary, Extraordinary
-/// -> EventImpossible (M4); Refract -> refracted direction or Tir beyond the critical angle;
-/// Reflect -> reflected direction; Transmit -> unchanged direction. A stopped ray stays at the
-/// hit point with last_surface = surface_index. The aperture is not checked here.
+/// (move_to_hit, with volume absorption) and then: Absorber interaction -> Absorbed with
+/// weight 0; Diffract, Ordinary, Extraordinary -> EventImpossible (M4); Refract -> refracted
+/// direction (Snell with Re(n)) or Tir beyond the critical angle; Reflect -> reflected direction;
+/// Transmit -> unchanged direction. A stopped ray stays at the hit point with last_surface =
+/// surface_index. The aperture is not checked here.
 ///
-/// M1 limits: refraction and OPL use Re(n); absorption (kappa) and Fresnel weights follow in M3.
-/// Interactions other than Absorber (Fresnel, coatings, polarizers, retarders, ideal mirror,
-/// AR, beam splitter) do not change the ray before M3; the event kind alone decides between
-/// refraction and reflection. Phase layers are ignored before M4.
+/// Interactions (ADR 0021), P_event power-normalised (rtt/polar/interface.hpp), P = P_event P,
+/// weight scaled by ||P_T,new||^2 / ||P_T,old||^2 with ||P_T||^2 = ||P||_F^2 - 1:
+/// - Fresnel: Refract between before and after; Reflect against beyond. A Mirror without
+///   material (beyond = before) reflects as an ideal conductor, r_s = -1, r_p = +1; any other
+///   surface with beyond = before gives r = 0 (vanishing reflection, weight 0, status Alive).
+/// - IdealMirror: Reflect (-1, +1). IdealAntiReflection: Refract (1, 1), Reflect (0, 0)
+///   (vanishing reflection: weight 0, status Alive).
+///   IdealBeamSplitter: Reflect (-sqrt(R_s), +sqrt(R_p)), Refract and Transmit (sqrt(1 - R_s),
+///   sqrt(1 - R_p)). CoatingRef: Refract or Reflect with the stack of `media.layers`
+///   (rtt-coating, Byrnes). IdealPolarizer and IdealRetarder: Transmit only, axis
+///   CompiledSurface::ideal_axis projected perpendicular to the ray (rtt/polar/ideal.hpp).
+/// - Transmit at a Fresnel, IdealAntiReflection or CoatingRef surface is a dummy passage: P and
+///   weight are unchanged.
+/// - Any other combination of interaction and event kind, a CoatingRef surface without compiled
+///   coating (CompiledSurface::coating empty), an ideal axis parallel to the ray and non-finite
+///   amplitudes (grazing incidence, a coating layer exactly at q = 0) give EventImpossible.
+/// Phase layers are ignored before M4.
 ///
 /// Never throws; physical problems are status flags (ADR 0009).
 /// @param ray           incoming ray in global coordinates, |dir| = 1
@@ -116,8 +167,18 @@ inline constexpr double kApertureTolerance = 1e-9;
 /// @param hit           result of intersect_surface(ray, surface)
 /// @param surface_index index of `surface` in CompiledSystem::surfaces(), stored in last_surface
 /// @param kind          event at this surface
-/// @param n_before      refractive index (real part) of the medium before the surface
-/// @param n_after       refractive index (real part) of the medium after the surface
+/// @param media         complex indices, wavelength and coating layers of this event
+[[nodiscard]] RayState apply_event(const RayState& ray,
+                                   const compile::CompiledSurface& surface,
+                                   const SurfaceHit& hit,
+                                   std::uint32_t surface_index,
+                                   model::EventKind kind,
+                                   const EventMedia& media) noexcept;
+
+/// apply_event() with real indices and no coating layers (M1 form): before = n_before,
+/// after = beyond = n_after, no absorption. For Reflect pass n_after = the index beyond the
+/// surface; with n_after = n_before a Fresnel reflection at a non-mirror surface has r = 0
+/// (weight 0). A CoatingRef surface acts as a bare interface here (no layers).
 [[nodiscard]] RayState apply_event(const RayState& ray,
                                    const compile::CompiledSurface& surface,
                                    const SurfaceHit& hit,
@@ -128,6 +189,13 @@ inline constexpr double kApertureTolerance = 1e-9;
 
 /// One sequential step: intersect_surface(), then Vignetted (ray at the hit point) if the hit
 /// lies outside the aperture, otherwise apply_event(). Parameters as for apply_event().
+[[nodiscard]] RayState sequential_step(const RayState& ray,
+                                       const compile::CompiledSurface& surface,
+                                       std::uint32_t surface_index,
+                                       model::EventKind kind,
+                                       const EventMedia& media) noexcept;
+
+/// sequential_step() with real indices and no coating layers (M1 form, as apply_event()).
 [[nodiscard]] RayState sequential_step(const RayState& ray,
                                        const compile::CompiledSurface& surface,
                                        std::uint32_t surface_index,
