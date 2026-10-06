@@ -4,6 +4,25 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
 
 ## [Unreleased]
 
+### Hinzugefügt
+- `rtt-material`: Materialbibliothek für eine GUI (#85, G9): `MaterialLibrary::catalogs()` und
+  `catalog(name)` listen die geladenen AGF-Kataloge so, wie sie in der Datei stehen (NM-Extras
+  status/exclude sub/melt freq, GC, ED, TD, MD, OD mit Resistenzklassen auch als Bereich „a-b“,
+  IT); Katalog-Alias `add_catalog(path, name)` für gleichnamige Dateien; `add_catalog_text` lädt
+  aus dem Speicher; `index_many` ist bitgleich zum skalaren `index`. Einheiten von ED, MD und IT
+  belegt am SCHOTT-Datenblatt N-BK7 (`docs/quellen.md`).
+- `rtt-py`: Modul `raytatouille.materials` mit `MaterialLibrary` (Unterklasse der C++-Bibliothek,
+  `rt.MaterialLibrary`): `glasses(catalog)`, `glass(reference)` (`GlassInfo`, `ClassRange`,
+  `ThermalData`, `MechanicalData`), `glass_map()` mit n_d/ν_d aus den NM-Datensätzen;
+  `add_catalog(path, name=None)`, `add_catalog_text(data, name)`, `catalogs()`; `index()` nimmt
+  auch NumPy-Arrays von Wellenlängen (bitgleich zum skalaren Aufruf) (#85).
+
+### Geändert
+- `rtt-material`: Die AGF-Datensätze NM-Extras, MD, OD und IT werden jetzt streng gelesen statt
+  übersprungen: falsche Feldanzahl oder unbekannte Tokens ergeben einen `AgfError` mit Zeile; nur
+  die Platzhalter der Herstellerdateien (`_`, `-`, melt freq −1/0) gelten als „nicht vorhanden“
+  (Nachtrag ADR 0008). Alle geprüften Herstellerkataloge laden weiter (#85).
+
 ## [0.4.0] – M3 Polarisation
 
 ### Hinzugefügt

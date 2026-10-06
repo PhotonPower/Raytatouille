@@ -17,9 +17,11 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "rtt/math/types.hpp"
 
@@ -63,6 +65,19 @@ class Material {
     return std::nullopt;
   }
 };
+
+/// Material::index for many wavelengths at one temperature and pressure, e.g. a dispersion
+/// curve (#85). Element i is exactly material.index(wavelength_um[i], temperature_c,
+/// pressure_atm), so the result is bit-identical with the scalar calls.
+/// @param wavelength_um vacuum wavelengths in micrometre
+/// @param temperature_c medium temperature in degree Celsius
+/// @param pressure_atm  medium pressure in atm
+[[nodiscard]] std::vector<math::Complex> index_many(const Material& material,
+                                                    std::span<const double> wavelength_um,
+                                                    double temperature_c,
+                                                    double pressure_atm);
+
+struct AgfCatalog;  // rtt/material/agf.hpp
 
 /// Thrown by MaterialLibrary::resolve for references that are unknown or malformed.
 class UnknownMaterial : public std::runtime_error {
@@ -114,17 +129,44 @@ class MaterialLibrary {
   /// Manufacturer catalogues are not shipped with Raytatouille; the user provides them.
   /// @param path an .agf file, or a directory whose *.agf files (case-insensitive, not
   ///             recursive) are loaded in sorted order
+  /// @param name optional catalogue name (alias, #85) instead of the file stem, e.g. "SCHOTT_M2"
+  ///             for a second `schott.agf`; only for a single file. Taken as given (references
+  ///             are case-sensitive, so "schott" and "SCHOTT" are different catalogues): not
+  ///             empty, no ':', no whitespace, not "CONST". Without it nothing changes.
   /// @throws AgfError for malformed files (with file and line)
-  /// @throws std::invalid_argument if the path has no .agf file, a catalogue name is empty,
-  ///         reserved or already loaded, or a glass name is already in use; nothing is
-  ///         registered in that case
-  void add_catalog(const std::filesystem::path& path);
+  /// @throws std::invalid_argument if the path has no .agf file, a name is given for a
+  ///         directory or is invalid, a catalogue name is empty, reserved or already loaded,
+  ///         or a glass name is already in use; nothing is registered in that case
+  void add_catalog(const std::filesystem::path& path,
+                   const std::optional<std::string>& name = std::nullopt);
+
+  /// Loads an AGF catalogue from memory (#85), e.g. text pasted into a GUI.
+  /// @param bytes  file content; UTF-16LE with byte order mark, UTF-8 or ANSI (decode_agf_text)
+  /// @param name   catalogue name, same rules as the alias of add_catalog
+  /// @param source name for error messages and AgfCatalog::file, e.g. the original file name
+  /// @throws as add_catalog for one file
+  void add_catalog_text(std::string_view bytes,
+                        const std::string& name,
+                        const std::string& source = "<memory>");
+
+  /// Names of the loaded catalogues in ascending order (#85).
+  [[nodiscard]] std::vector<std::string> catalogs() const;
+
+  /// A loaded catalogue as read from its file (#85): all glasses in file order with the data of
+  /// rtt/material/agf.hpp, including glasses whose formula is not supported (resolve() throws
+  /// for them, agf_formula() gives the reason). N(d) and V(d) are the values of the NM record;
+  /// values computed from the dispersion formula come from Material::index (or index_many).
+  /// @throws UnknownMaterial if no catalogue of that name is loaded
+  [[nodiscard]] std::shared_ptr<const AgfCatalog> catalog(std::string_view name) const;
 
  private:
+  /// Registers parsed catalogues and their glasses, all or nothing.
+  void register_catalogs(std::vector<AgfCatalog> catalogs);
+
   mutable std::mutex mutex_;
   mutable std::map<std::string, std::shared_ptr<const Material>, std::less<>> cache_;
-  /// Loaded catalogues: name -> file.
-  std::map<std::string, std::string, std::less<>> catalogs_;
+  /// Loaded catalogues by name.
+  std::map<std::string, std::shared_ptr<const AgfCatalog>, std::less<>> catalogs_;
   /// Catalogue glasses that exist but cannot be evaluated: reference -> message.
   std::map<std::string, std::string, std::less<>> unsupported_;
 };
