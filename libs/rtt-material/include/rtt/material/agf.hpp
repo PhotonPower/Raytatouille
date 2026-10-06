@@ -13,10 +13,17 @@
 ///   TD <D0> <D1> <D2> <E0> <E1> <Ltk> <Temp>      (dn/dT model, reference temperature in degC)
 ///   ED <TCE -30..70> <TCE 100..300> <density> <dPgF> <ignore thermal expansion>
 ///   GC, MD, OD, IT, BD                            (read and ignored)
+/// A line whose first character is a digit, '+', '-' or '.' (a number) continues the CD or TD
+/// record directly above it (or
+/// above its previous continuation line); vendor files wrap long records this way (#42). The
+/// format description does not mention it; the evidence is NIKON-HIKARI_201911.AGF
+/// (docs/quellen.md).
 /// The order of the CD coefficients is not part of that description; it is verified for the
-/// supported formulas against the free SCHOTT catalogue (docs/quellen.md, #24): formula 1
-/// (Schott) a0..a5, formula 2 (Sellmeier 1) K1 L1 K2 L2 K3 L3. All other formula numbers are
-/// rejected when the glass is resolved (#42).
+/// supported formulas against N(d) and V(d) of free vendor catalogues (docs/quellen.md): formula
+/// 1 (Schott) a0..a5 and formula 2 (Sellmeier 1) K1 L1 K2 L2 K3 L3 (SCHOTT, #24); formula 6
+/// (Sellmeier 3) K1 L1 .. K4 L4, formula 12 (Extended 2) a0..a6 and formula 13 (Extended 3)
+/// a0..a8 (NIKON-HIKARI, #42). All other formula numbers, and formula 12 with a7 != 0, are
+/// rejected when the glass is resolved.
 
 #include <cstddef>
 #include <filesystem>
@@ -81,7 +88,9 @@ struct AgfCatalog {
 /// @param file file name for error messages
 /// @throws AgfError with file and line for malformed or unknown records, records before the
 ///         first NM, missing or empty CD, duplicate CD/LD/TD/ED records of a glass, duplicate
-///         glass names and invalid numbers
+///         glass names, invalid numbers, a continuation line that does not follow CD or TD
+///         (or follows an empty or comment line), and more than 10 CD or (with continuation
+///         lines) 7 TD values
 [[nodiscard]] AgfCatalog parse_agf(std::string_view text, std::string name, std::string file);
 
 /// Reads, decodes and parses an AGF file; the catalogue name is the file name without
@@ -136,11 +145,17 @@ class CatalogMaterial final : public Material {
   std::optional<SchottThermalCoefficients> thermal_;
 };
 
-/// Builds the dispersion formula of a glass. Supported: formula 1 (Schott, CD = a0..a5) and
-/// formula 2 (Sellmeier 1, CD = K1 L1 K2 L2 K3 L3). Missing trailing coefficients count as 0
-/// (the format allows "up to 10").
+/// Builds the dispersion formula of a glass (lambda in um, coefficients as in dispersion.hpp).
+/// Supported, with the verified CD order (docs/quellen.md): formula 1 (Schott, CD = a0..a5),
+/// 2 (Sellmeier 1, K1 L1 K2 L2 K3 L3), 6 (Sellmeier 3, K1 L1 .. K4 L4), 12 (Extended 2,
+/// a0..a6; a7 must be 0) and 13 (Extended 3, a0..a8). Missing trailing coefficients count as 0
+/// (the format allows "up to 10"); CD values beyond those of the formula must be 0 (they are 0
+/// in all glasses of the verifying catalogues, and a value there most likely is a record whose
+/// mnemonic was lost and that continues CD, #42).
 /// @param where text naming catalogue, file and line for messages
-/// @throws std::invalid_argument for other formula numbers (see #42)
+/// @throws std::invalid_argument for other formula numbers, for formula 12 with a7 != 0,
+///         whose CD position is not verified, and for a CD value != 0 beyond those of the
+///         formula (see #42)
 [[nodiscard]] DispersionFormula agf_formula(const AgfGlass& glass, const std::string& where);
 
 }  // namespace rtt::material

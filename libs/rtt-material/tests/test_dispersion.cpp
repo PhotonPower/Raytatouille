@@ -11,6 +11,8 @@ using Catch::Matchers::WithinRel;
 using rtt::material::CauchyCoefficients;
 using rtt::material::ConradyCoefficients;
 using rtt::material::DispersionMaterial;
+using rtt::material::Extended2Coefficients;
+using rtt::material::Extended3Coefficients;
 using rtt::material::HerzbergerCoefficients;
 using rtt::material::refractive_index;
 using rtt::material::SchottCoefficients;
@@ -101,6 +103,27 @@ TEST_CASE("Cauchy: n = A + B/l^2 + C/l^4", "[dispersion]") {
   const CauchyCoefficients c{1.5, 0.004, 0.0002};
   require_n(refractive_index(c, 1.0), 1.5042);
   require_n(refractive_index(c, 2.0), 1.5010125);  // 1.5 + 0.001 + 0.0002/16
+}
+
+TEST_CASE("Extended 2: n^2 = a0 + a1 l^2 + a2 l^-2 + ... + a5 l^-8 + a6 l^4 + a7 l^6",
+          "[dispersion]") {
+  const Extended2Coefficients c{{2.0, 0.01, 0.02, 0.003, 0.0004, 0.00005, 0.001, 0.0001}};
+  // l = 1: n^2 = sum of all coefficients = 2.03455
+  require_n(refractive_index(c, 1.0), std::sqrt(2.03455));
+  // l = 2: as Schott (2.0451939453125) + 0.001 * 16 + 0.0001 * 64
+  require_n(refractive_index(c, 2.0), std::sqrt(2.0451939453125 + 0.016 + 0.0064));
+}
+
+TEST_CASE("Extended 3: n^2 = a0 + a1 l^2 + a2 l^4 + a3 l^-2 + ... + a8 l^-12", "[dispersion]") {
+  const Extended3Coefficients c{
+      {2.0, 0.01, 0.001, 0.02, 0.003, 0.0004, 0.00005, 0.000006, 0.0000007}};
+  // l = 1: n^2 = sum of all coefficients = 2.0344567
+  require_n(refractive_index(c, 1.0), std::sqrt(2.0344567));
+  // l = 2: 2 + 0.01*4 + 0.001*16 + 0.02/4 + 0.003/16 + 0.0004/64 + 0.00005/256 + 6e-6/1024
+  //        + 7e-7/4096
+  require_n(refractive_index(c, 2.0),
+            std::sqrt(2.0 + 0.04 + 0.016 + 0.005 + 0.0001875 + 0.00000625 + 0.0000001953125 +
+                      0.000000005859375 + 0.0000000001708984375));
 }
 
 TEST_CASE("DispersionMaterial evaluates its formula and knows its range", "[dispersion]") {

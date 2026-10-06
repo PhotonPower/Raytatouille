@@ -13,8 +13,8 @@
 ///
 /// Sources (docs/quellen.md): Ansys Zemax OpticStudio User Guide, Release 2025 R1, "The Glass
 /// Dispersion Formulas" (one page per formula, each with a single unnumbered equation, lambda in
-/// um); Cauchy: J. M. Palmer, "Models for fitting refractive index n vs. lambda", University of
-/// Arizona, p. 1, equation CAUCHY.
+/// um; Extended 2 and 3 added for #42); Cauchy: J. M. Palmer, "Models for fitting refractive index
+/// n vs. lambda", University of Arizona, p. 1, equation CAUCHY.
 
 #include <array>
 #include <cmath>
@@ -91,6 +91,26 @@ struct ConradyCoefficients {
   bool operator==(const ConradyCoefficients&) const = default;
 };
 
+/// Extended 2: n^2 = a0 + a1 l^2 + a2 l^-2 + a3 l^-4 + a4 l^-6 + a5 l^-8 + a6 l^4 + a7 l^6
+/// (OpticStudio User Guide, "The Extended 2 Formula"). Note that a6 and a7 multiply positive
+/// powers, after the negative ones.
+struct Extended2Coefficients {
+  /// a0 dimensionless, a1 in um^-2, a2 in um^2, a3 in um^4, a4 in um^6, a5 in um^8,
+  /// a6 in um^-4, a7 in um^-6
+  std::array<double, 8> a{};
+  bool operator==(const Extended2Coefficients&) const = default;
+};
+
+/// Extended 3: n^2 = a0 + a1 l^2 + a2 l^4 + a3 l^-2 + a4 l^-4 + a5 l^-6 + a6 l^-8 + a7 l^-10
+/// + a8 l^-12 (OpticStudio User Guide, "The Extended 3 Formula"). Note a2 l^4 before the
+/// negative powers.
+struct Extended3Coefficients {
+  /// a0 dimensionless, a1 in um^-2, a2 in um^-4, a3 in um^2, a4 in um^4, a5 in um^6,
+  /// a6 in um^8, a7 in um^10, a8 in um^12
+  std::array<double, 9> a{};
+  bool operator==(const Extended3Coefficients&) const = default;
+};
+
 /// Cauchy: n = A + B / l^2 + C / l^4 (Palmer, "Models for fitting refractive index n vs.
 /// lambda", p. 1, CAUCHY).
 struct CauchyCoefficients {
@@ -158,6 +178,30 @@ template <math::Real T>
   return c.n0 + c.a / wavelength_um + c.b / pow(wavelength_um, T(3.5));
 }
 
+/// Extended 2, see Extended2Coefficients. @param wavelength_um vacuum wavelength in um
+template <math::Real T>
+[[nodiscard]] T refractive_index(const Extended2Coefficients& c, T wavelength_um) {
+  const T l2 = wavelength_um * wavelength_um;
+  const T inv = T(1) / l2;
+  // Horner forms of a2 l^-2 + .. + a5 l^-8 and a1 l^2 + a6 l^4 + a7 l^6.
+  const T negative = inv * (c.a[2] + inv * (c.a[3] + inv * (c.a[4] + inv * c.a[5])));
+  const T positive = l2 * (c.a[1] + l2 * (c.a[6] + l2 * c.a[7]));
+  return index_from_square(c.a[0] + positive + negative);
+}
+
+/// Extended 3, see Extended3Coefficients. @param wavelength_um vacuum wavelength in um
+template <math::Real T>
+[[nodiscard]] T refractive_index(const Extended3Coefficients& c, T wavelength_um) {
+  const T l2 = wavelength_um * wavelength_um;
+  const T inv = T(1) / l2;
+  // Horner forms of a3 l^-2 + .. + a8 l^-12 and a1 l^2 + a2 l^4.
+  const T negative =
+      inv *
+      (c.a[3] + inv * (c.a[4] + inv * (c.a[5] + inv * (c.a[6] + inv * (c.a[7] + inv * c.a[8])))));
+  const T positive = l2 * (c.a[1] + l2 * c.a[2]);
+  return index_from_square(c.a[0] + positive + negative);
+}
+
 /// Cauchy, see CauchyCoefficients. @param wavelength_um vacuum wavelength in um
 template <math::Real T>
 [[nodiscard]] T refractive_index(const CauchyCoefficients& c, T wavelength_um) {
@@ -174,7 +218,9 @@ using DispersionFormula = std::variant<SchottCoefficients,
                                        Sellmeier5Coefficients,
                                        HerzbergerCoefficients,
                                        ConradyCoefficients,
-                                       CauchyCoefficients>;
+                                       CauchyCoefficients,
+                                       Extended2Coefficients,
+                                       Extended3Coefficients>;
 
 /// Real index n(lambda) of a formula. @param wavelength_um vacuum wavelength in um
 template <math::Real T>

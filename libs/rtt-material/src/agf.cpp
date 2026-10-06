@@ -101,9 +101,49 @@ class Parser {
     return *glass_;
   }
 
+  /// Record that a continuation line may extend: the CD or TD record directly above it.
+  enum class Continuable : std::uint8_t { kNone, kCd, kTd };
+
+  /// True if an item starts like a number (digit, '+', '-' or '.'): a continuation line (#42).
+  static bool starts_with_number(std::string_view item) {
+    return std::string_view("+-.0123456789").find(item.front()) != std::string_view::npos;
+  }
+
+  /// Appends a continuation line to the CD or TD record above it. NIKON-HIKARI_201911.AGF
+  /// (nikon.com) wraps both records this way; the format description does not mention it
+  /// (docs/quellen.md, #42).
+  void continue_record(const std::vector<std::string_view>& items, std::size_t line_no) {
+    std::vector<double>* values = nullptr;
+    if (glass_ && continuable_ == Continuable::kCd) {
+      values = &glass_->coefficients;
+    } else if (glass_ && continuable_ == Continuable::kTd && glass_->thermal) {
+      values = &*glass_->thermal;  // set by the TD line above
+    }
+    if (values == nullptr) {
+      fail(line_no,
+           "line starts with a number but is no continuation of a CD or TD record (a "
+           "continuation line must directly follow CD, TD or another continuation line)");
+    }
+    for (const std::string_view item : items) values->push_back(number(item, line_no));
+    if (continuable_ == Continuable::kCd && values->size() > 10) {
+      fail(line_no, "CD has more than 10 coefficients");
+    }
+    if (continuable_ == Continuable::kTd && values->size() > 7) {
+      fail(line_no, "TD has more than 7 values");
+    }
+  }
+
   void parse_line(std::string_view line, std::size_t line_no) {
     const std::vector<std::string_view> items = split(line);
-    if (items.empty() || items[0].starts_with("!")) return;  // empty or comment line
+    if (items.empty() || items[0].starts_with("!")) {  // empty or comment line
+      continuable_ = Continuable::kNone;
+      return;
+    }
+    if (starts_with_number(items[0])) {
+      continue_record(items, line_no);
+      return;
+    }
+    continuable_ = Continuable::kNone;
     const std::string_view m = items[0];
     if (m == "CC") {
       const std::size_t start = line.find("CC") + 2;
@@ -137,6 +177,7 @@ class Parser {
       if (g.coefficients.empty()) fail(line_no, "CD record without coefficients");
       if (g.coefficients.size() > 10) fail(line_no, "CD has more than 10 coefficients");
       has_cd_ = true;
+      continuable_ = Continuable::kCd;
     } else if (m == "LD") {
       AgfGlass& g = current(m, line_no);
       if (g.range) fail(line_no, "second LD record for glass " + g.name);
@@ -149,6 +190,7 @@ class Parser {
       AgfGlass& g = current(m, line_no);
       if (g.thermal) fail(line_no, "second TD record for glass " + g.name);
       g.thermal = numbers(items, line_no);
+      continuable_ = Continuable::kTd;
     } else if (m == "ED") {
       AgfGlass& g = current(m, line_no);
       if (g.extra) fail(line_no, "second ED record for glass " + g.name);
@@ -171,6 +213,7 @@ class Parser {
   AgfCatalog catalog_;
   std::optional<AgfGlass> glass_;
   bool has_cd_ = false;
+  Continuable continuable_ = Continuable::kNone;
   std::set<std::string, std::less<>> names_;
 };
 
@@ -244,11 +287,46 @@ DispersionFormula agf_formula(const AgfGlass& glass, const std::string& where) {
   const auto c = [&](std::size_t i) {
     return i < glass.coefficients.size() ? glass.coefficients[i] : 0.0;
   };
+  // CD values beyond those of the formula must be 0: they are 0 in all verifying catalogues, and
+  // a line without mnemonic after CD continues the CD record (#42), so a value there most likely
+  // is a lost record (e.g. "LD").
+  const auto require_unused_zero = [&](std::size_t used, const char* formula_name) {
+    for (std::size_t i = used; i < glass.coefficients.size(); ++i) {
+      if (glass.coefficients[i] != 0.0) {
+        std::ostringstream text;
+        text << "glass " << glass.name << " (" << where << "): CD value " << i + 1 << " = "
+             << glass.coefficients[i] << " is not used by AGF dispersion formula " << glass.formula
+             << " (" << formula_name << ", " << used
+             << " values) and must be 0; a line without mnemonic after CD continues the CD "
+                "record, see #42";
+        throw std::invalid_argument(text.str());
+      }
+    }
+  };
   switch (glass.formula) {
     case 1:  // Schott: CD = a0 a1 a2 a3 a4 a5 (order verified, docs/quellen.md, #24)
+      require_unused_zero(6, "Schott");
       return SchottCoefficients{{c(0), c(1), c(2), c(3), c(4), c(5)}};
     case 2:  // Sellmeier 1: CD = K1 L1 K2 L2 K3 L3 (order verified, docs/quellen.md, #24)
+      require_unused_zero(6, "Sellmeier 1");
       return Sellmeier1Coefficients{{c(0), c(2), c(4)}, {c(1), c(3), c(5)}};
+    case 6:  // Sellmeier 3: CD = K1 L1 .. K4 L4 (order verified, docs/quellen.md, #42)
+      require_unused_zero(8, "Sellmeier 3");
+      return Sellmeier3Coefficients{{c(0), c(2), c(4), c(6)}, {c(1), c(3), c(5), c(7)}};
+    case 12:  // Extended 2: CD = a0..a6 verified (docs/quellen.md, #42); a7 is 0 in every
+              // catalogue glass, so its position is not verified and a7 != 0 is rejected.
+      if (c(7) != 0.0) {
+        std::ostringstream text;
+        text << "glass " << glass.name << " (" << where
+             << "): AGF dispersion formula 12 (Extended 2) with a7 = " << c(7)
+             << " != 0 is not supported: the CD position of a7 is not verified, see #42";
+        throw std::invalid_argument(text.str());
+      }
+      require_unused_zero(8, "Extended 2");
+      return Extended2Coefficients{{c(0), c(1), c(2), c(3), c(4), c(5), c(6), 0.0}};
+    case 13:  // Extended 3: CD = a0..a8 (order verified, docs/quellen.md, #42)
+      require_unused_zero(9, "Extended 3");
+      return Extended3Coefficients{{c(0), c(1), c(2), c(3), c(4), c(5), c(6), c(7), c(8)}};
     default:
       break;
   }
@@ -272,7 +350,9 @@ DispersionFormula agf_formula(const AgfGlass& glass, const std::string& where) {
   std::ostringstream text;
   text << "glass " << glass.name << " (" << where << "): AGF dispersion formula " << glass.formula
        << " (" << kNames[index]
-       << ") is not supported yet; supported are 1 (Schott) and 2 (Sellmeier 1), see #42";
+       << ") is not supported: its coefficient order is not verified; supported are 1 (Schott), 2 "
+          "(Sellmeier 1), 6 (Sellmeier 3), 12 (Extended 2 with a7 = 0) and 13 (Extended 3), "
+          "see #42";
   throw std::invalid_argument(text.str());
 }
 
