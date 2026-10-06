@@ -5,11 +5,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
-#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -201,6 +199,11 @@ TEST_CASE("AGF listing: resistance classes as ranges, as SCHOTT writes them", "[
   REQUIRE(old.other == AgfOtherData{std::nullopt, AgfClassRange{3.0, 3.0}, AgfClassRange{2.0, 2.0},
                                     AgfClassRange{52.3, 52.3}, AgfClassRange{4.3, 4.3},
                                     AgfClassRange{4.3, 4.3}});
+  // A single number with an exponent is one class, not a range; -1 is kept as written.
+  const AgfCatalog exp =
+      rtt::material::parse_agf("CC c\nNM A 2 1 1.5 60\nCD 1 2\nOD 1 1e-5 -1 3 4 5\n", "S", "s.agf");
+  REQUIRE(exp.glasses[0].other->cr == AgfClassRange{1e-5, 1e-5});
+  REQUIRE(exp.glasses[0].other->fr == AgfClassRange{-1.0, -1.0});
   // "-" also stands for a missing class in OD, but not in MD or IT (error cases below).
   REQUIRE_FALSE(
       rtt::material::parse_agf("CC c\nNM A 2 1 1.5 60\nCD 1 2\nOD 1 - 3 4 5 6\n", "S", "s.agf")
@@ -225,6 +228,9 @@ TEST_CASE("AGF listing: malformed or out-of-range extra data are errors with the
       {glass + "OD 1 2-1 3 4 5 6\n", 4, "'2-1'"},  // range with a > b
       {glass + "OD 1 1-x 3 4 5 6\n", 4, "'1-x'"},  // range of two numbers
       {glass + "OD 1 1- 3 4 5 6\n", 4, "'1-'"},
+      {glass + "OD 1 -1-2 3 4 5 6\n", 4, "'-1-2'"},      // classes are >= 0
+      {glass + "OD 1 1e-5-2 3 4 5 6\n", 4, "'1e-5-2'"},  // no exponent in a range
+      {glass + "GC first\nGC second\n", 5, "second GC"},
       {glass + "MD 1 2 3 4\n", 4, "MD"},      // MD needs exactly 5 values
       {glass + "MD 1 2 3 4 - \n", 4, "'-'"},  // "-" only in the NM extras
       {glass + "IT 0.5 0.9\n", 4, "IT"},      // IT needs exactly 3 values
@@ -297,6 +303,19 @@ TEST_CASE("catalogue alias: invalid names and collisions register nothing", "[li
   REQUIRE_THROWS_AS(lib.add_catalog(kCatalogDir / "m2", std::string("M2")), std::invalid_argument);
   REQUIRE(lib.catalogs() == std::vector<std::string>{"SCHOTT"});
   REQUIRE_THROWS_AS((void)lib.resolve("M2:N-LAK9"), UnknownMaterial);
+  // A glass reference already in use: nothing of the catalogue is registered.
+  lib.add("A2:N-LAK9", lib.resolve("CONST:1.5"));
+  REQUIRE_THROWS_AS(lib.add_catalog(kCatalogDir / "m2" / "schott.agf", std::string("A2")),
+                    std::invalid_argument);
+  REQUIRE(lib.catalogs() == std::vector<std::string>{"SCHOTT"});
+  REQUIRE_THROWS_AS((void)lib.resolve("A2:N-SF5"), UnknownMaterial);
+  // add_catalog_text checks its name like an alias.
+  for (const std::string name : {"", "A:B", "A B", "CONST", "SCHOTT"}) {
+    INFO("'" << name << "'");
+    REQUIRE_THROWS_AS(lib.add_catalog_text("CC c\nNM A 2 1 1.5 60\nCD 1 2\n", name),
+                      std::invalid_argument);
+  }
+  REQUIRE(lib.catalogs() == std::vector<std::string>{"SCHOTT"});
 }
 
 TEST_CASE("catalogue from memory: same listing and indices as from the file", "[library]") {

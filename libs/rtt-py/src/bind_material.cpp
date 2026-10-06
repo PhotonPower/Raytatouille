@@ -35,8 +35,6 @@ using material::AgfGlass;
 using material::MaterialLibrary;
 
 using WavelengthsIn = nb::ndarray<const double, nb::c_contig, nb::device::cpu>;
-using ComplexOut = nb::ndarray<nb::numpy, math::Complex>;
-using RealOut = nb::ndarray<nb::numpy, double>;
 
 /// NumPy array of `shape` that owns `values`.
 template <typename T>
@@ -74,8 +72,11 @@ nb::dict glass_record(const std::string& catalog, const AgfGlass& g, const std::
   d["name"] = g.name;
   d["line"] = g.line;
   d["formula"] = g.formula;
+  // The same check as MaterialLibrary::add_catalog: a glass is supported if its CatalogMaterial
+  // can be built (formula with verified coefficient order, LD range and TD with 7 values).
   try {
     (void)material::agf_formula(g, file + ":" + std::to_string(g.line));
+    (void)material::CatalogMaterial(g, catalog);
     d["unsupported_reason"] = nb::none();
   } catch (const std::invalid_argument& e) {
     d["unsupported_reason"] = std::string(e.what());

@@ -148,10 +148,19 @@ def test_vectorized_index_is_bit_identical_with_the_scalar_one(catalog_dir: Path
         many = lib.index(ref, wl, 23.5, 0.95)
         assert many.dtype == np.complex128 and many.shape == wl.shape
         one = np.array([lib.index(ref, float(x), 23.5, 0.95) for x in wl])
-        assert np.array_equal(many, one), ref
+        assert many.tobytes() == one.tobytes(), ref  # bit for bit
     grid = wl.reshape(25, 40)
     assert lib.index("SCHOTT:N-BK7", grid).shape == (25, 40)
     assert np.array_equal(lib.index("SCHOTT:N-BK7", grid).ravel(), lib.index("SCHOTT:N-BK7", wl))
+    # 0-d, strided and float32 arrays are converted like any NumPy input; lists are not accepted.
+    zero_d = lib.index("SCHOTT:N-BK7", np.array(0.55))
+    assert zero_d.shape == () and zero_d == lib.index("SCHOTT:N-BK7", 0.55)
+    strided = lib.index("SCHOTT:N-BK7", wl[::200])
+    assert strided.tobytes() == lib.index("SCHOTT:N-BK7", np.ascontiguousarray(wl[::200])).tobytes()
+    single = lib.index("SCHOTT:N-BK7", np.array([0.55], dtype=np.float32))
+    assert single[0] == lib.index("SCHOTT:N-BK7", float(np.float32(0.55)))
+    with pytest.raises(TypeError):
+        lib.index("SCHOTT:N-BK7", [0.5, 0.6])  # type: ignore[call-overload]
 
 
 def test_glass_map_uses_the_nm_records(catalog_dir: Path) -> None:
@@ -171,8 +180,42 @@ def test_glass_map_uses_the_nm_records(catalog_dir: Path) -> None:
 
 
 def test_material_library_still_compiles_systems(catalog_dir: Path, reference_dir: Path) -> None:
+    # A system with catalogue glasses (Cooke triplet, #34) through the Python subclass.
     lib = rt.MaterialLibrary()
-    lib.add_catalog(catalog_dir / "schott.agf")
+    lib.add_catalog(catalog_dir / "m2" / "schott.agf")
     assert isinstance(lib, rt._core.MaterialLibrary)
-    system = rt.load(reference_dir / "m1" / "singlet_const.rtt.json")
-    assert rt.compile(system, lib) is not None
+    system = rt.load(reference_dir / "m2" / "cooke_triplet.rtt.json")
+    compiled = rt.compile(system, lib)
+    n = lib.index("SCHOTT:N-LAK9", 0.5875618, system.environment.temperature_c, 1.0)
+    assert n.real > 1.69
+    assert compiled is not None
+
+
+def test_supported_matches_index(catalog_dir: Path) -> None:
+    # S1 of the review: supported is False exactly when index() raises, also for a TD record
+    # without 7 values (CatalogMaterial rejects it like an unverified formula).
+    lib = rt.MaterialLibrary()
+    lib.add_catalog_text(ALL + "NM TD6 2 1 1.5 60\nCD 1 0.01 0 0 0 0\nTD 1 2 3 4 5 6\n", "ALLCAT")
+    lib.add_catalog(catalog_dir / "nikon" / "nikon-hikari.agf")
+    td6 = lib.glass("ALLCAT:TD6")
+    assert not td6.supported and td6.unsupported_reason is not None and "TD" in td6.unsupported_reason
+    for catalog in lib.catalogs():
+        for g in lib.glasses(catalog):
+            try:
+                lib.index(g.reference, 0.55)
+                raised = False
+            except rt.UnknownMaterial:
+                raised = True
+            assert raised == (not g.supported), g.reference
+
+
+def test_names_of_catalogues_from_memory() -> None:
+    lib = rt.MaterialLibrary()
+    for bad in ("", "A:B", "A B", "CONST"):
+        with pytest.raises(ValueError):
+            lib.add_catalog_text(ALL, bad)
+    assert lib.catalogs() == []
+    first = lib.glasses
+    lib.add_catalog_text(ALL.encode("utf-8"), "BYTES")
+    g = first("BYTES")[0]
+    assert not g.transmission.flags.writeable

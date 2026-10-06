@@ -130,7 +130,8 @@ class Parser {
   }
 
   /// A resistance class of OD: "_" or "-" (not available), a number (one class), or a range
-  /// "a-b" of two numbers with a <= b as SCHOTT writes it (e.g. "1-2", docs/quellen.md, #85).
+  /// "a-b" of two numbers with 0 <= a <= b as SCHOTT writes it (e.g. "1-2", docs/quellen.md,
+  /// #85).
   std::optional<AgfClassRange> class_range(std::string_view item, std::size_t line) const {
     if (item == "_" || item == "-") return std::nullopt;
     const auto parse = [](std::string_view text) -> std::optional<double> {
@@ -148,10 +149,10 @@ class Parser {
     if (dash != std::string_view::npos) {
       const std::optional<double> low = parse(item.substr(0, dash));
       const std::optional<double> high = parse(item.substr(dash + 1));
-      if (low && high && *low <= *high) return AgfClassRange{*low, *high};
+      if (low && high && *low >= 0.0 && *low <= *high) return AgfClassRange{*low, *high};
     }
     fail(line, "OD: resistance class '" + std::string(item) +
-                   "' is not a number, \"_\" or a range \"a-b\" with a <= b");
+                   "' is not a number, \"_\", \"-\" or a range \"a-b\" with 0 <= a <= b");
   }
 
   /// An NM extra (exclude sub, status, melt freq): "_" or "-" is "not available", otherwise an

@@ -70,6 +70,7 @@ class MechanicalData(NamedTuple):
     youngs_modulus_gpa: float | None
     poisson_ratio: float | None
     knoop_hardness: float | None
+    """Knoop hardness HK in kgf/mm^2."""
     specific_heat_j_per_kg_k: float | None
     thermal_conductivity_w_per_m_k: float | None
 
@@ -106,7 +107,8 @@ class GlassInfo:
     tce_m30_70: float | None
     """Thermal expansion -30..70 degC in 1e-6/K (ED)."""
     tce_100_300: float | None
-    """Thermal expansion 100..300 degC in 1e-6/K (ED)."""
+    """Thermal expansion 100..300 degC in 1e-6/K (ED; SCHOTT writes alpha(+20/+300 degC) of its
+    data sheet here, the format description calls it "currently not used")."""
     density_g_per_cm3: float | None
     dpgf: float | None
     ignore_thermal_expansion: bool | None
@@ -118,7 +120,7 @@ class GlassInfo:
     alkali_resistance: ClassRange | None
     phosphate_resistance: ClassRange | None
     transmission: npt.NDArray[np.float64]
-    """Internal transmittance, shape (n, 3): wavelength in um, tau_i, thickness in mm."""
+    """Internal transmittance, shape (n, 3): wavelength in um, tau_i, thickness in mm (read-only)."""
 
 
 class GlassMap(NamedTuple):
@@ -140,6 +142,11 @@ def _class_range(value: tuple[float, float] | None) -> ClassRange | None:
     if value is None or (value[0] == -1.0 and value[1] == -1.0):
         return None
     return ClassRange(value[0], value[1])
+
+
+def _read_only(a: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    a.setflags(write=False)
+    return a
 
 
 def _item(values: Sequence[float] | None, i: int) -> float | None:
@@ -182,7 +189,7 @@ def _glass_info(r: dict[str, Any]) -> GlassInfo:
         acid_resistance=_class_range(other.get("sr")),
         alkali_resistance=_class_range(other.get("ar")),
         phosphate_resistance=_class_range(other.get("pr")),
-        transmission=np.asarray(r["transmission"], dtype=np.float64),
+        transmission=_read_only(np.asarray(r["transmission"], dtype=np.float64)),
     )
 
 
@@ -214,7 +221,11 @@ class MaterialLibrary(_core.MaterialLibrary):
 
     def glass_map(self, catalogs: Sequence[str] | None = None) -> GlassMap:
         """n_d and v_d of the NM records for a glass map, over all loaded catalogues or the given
-        ones (in the given order, glasses in file order)."""
+        ones (in the given order, glasses in file order).
+
+        The values are as written in the catalogues; some manufacturers write placeholders there
+        (e.g. n_d = 1, v_d = 0 for infrared glasses), which a plot should leave out.
+        """
         names = self.catalogs() if catalogs is None else list(catalogs)
         infos = [g for c in names for g in self.glasses(c)]
         return GlassMap(

@@ -109,9 +109,12 @@ struct AgfGlass {
   std::optional<WavelengthRange> range;        ///< LD in um
   std::optional<std::vector<double>> thermal;  ///< TD: D0 D1 D2 E0 E1 Ltk Temp (thermal.hpp)
   /// ED: TCE -30..70 degC and TCE 100..300 degC in 1e-6/K, density in g/cm^3, dPgF, ignore
-  /// thermal expansion (0/1); as many values as the file gives (manufacturers write 4 to 6)
+  /// thermal expansion (0/1); as many values as the file gives (manufacturers write 4 to 6).
+  /// SCHOTT writes alpha(+20/+300 degC) of its data sheet as the second value, which the format
+  /// description calls TCE 100..300 degC ("currently not used").
   std::optional<std::vector<double>> extra;
-  /// MD, exactly 5 values: Young's modulus in GPa, Poisson's ratio, Knoop hardness HK,
+  /// MD, exactly 5 values: Young's modulus in GPa, Poisson's ratio, Knoop hardness HK in
+  /// kgf/mm^2,
   /// specific heat capacity in J/(kg K), heat conductivity in W/(m K)
   std::optional<std::vector<std::optional<double>>> mechanical;
   /// OD, exactly 6 values: relative cost (a number, "_" or "-"), CR, FR, SR, AR, PR (a number,
@@ -146,7 +149,7 @@ struct AgfCatalog {
 ///         glass names, invalid numbers, a continuation line that does not follow CD or TD
 ///         (or follows an empty or comment line), more than 10 CD or (with continuation
 ///         lines) 7 TD values; MD, OD and IT with another number of values than 5, 6 and 3, a
-///         second MD or OD record, and NM extras that are not "_"/"-" or in range
+///         second GC, MD or OD record, and NM extras that are not "_"/"-" or in range
 ///         (exclude sub 0/1, status 0..4, melt freq -1..5) or more than three of them
 [[nodiscard]] AgfCatalog parse_agf(std::string_view text, std::string name, std::string file);
 

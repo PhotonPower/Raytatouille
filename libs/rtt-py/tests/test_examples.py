@@ -24,6 +24,14 @@ def test_polarization_example(capsys: pytest.CaptureFixture[str]) -> None:
     assert "Malus's law" in out and "Stokes after the quarter-wave plate" in out
 
 
+def test_materials_example(capsys: pytest.CaptureFixture[str]) -> None:
+    # main() returns 1 if the vectorized dispersion curve differs from the scalar calls.
+    namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "materials.py"))
+    assert namespace["main"]() == 0
+    out = capsys.readouterr().out
+    assert "Catalogues: SCHOTT, SCHOTT_M2" in out and "SCHOTT_M2:N-LAK9" in out
+
+
 def test_ray_paths_example(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     # main() returns 1 if a last recorded slot differs from the final ray state.
     namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "ray_paths.py"))

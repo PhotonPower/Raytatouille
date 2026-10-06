@@ -168,7 +168,7 @@ void MaterialLibrary::add_catalog(const std::filesystem::path& path,
     }
     catalogs.push_back(std::move(cat));
   }
-  register_catalogs(std::move(catalogs));
+  register_catalogs(std::move(catalogs), "add_catalog");
 }
 
 void MaterialLibrary::add_catalog_text(std::string_view bytes,
@@ -177,10 +177,11 @@ void MaterialLibrary::add_catalog_text(std::string_view bytes,
   check_catalog_name(name, "add_catalog_text");
   std::vector<AgfCatalog> catalogs;
   catalogs.push_back(parse_agf(decode_agf_text(bytes, source), name, source));
-  register_catalogs(std::move(catalogs));
+  register_catalogs(std::move(catalogs), "add_catalog_text");
 }
 
-void MaterialLibrary::register_catalogs(std::vector<AgfCatalog> catalogs) {
+void MaterialLibrary::register_catalogs(std::vector<AgfCatalog> catalogs, const char* function) {
+  const std::string prefix = std::string("MaterialLibrary::") + function + ": ";
   // Build the materials before touching the library (all or nothing).
   struct Entry {
     std::string reference;
@@ -192,8 +193,8 @@ void MaterialLibrary::register_catalogs(std::vector<AgfCatalog> catalogs) {
     const AgfCatalog& cat = catalogs[i];
     for (std::size_t j = 0; j < i; ++j) {
       if (catalogs[j].name == cat.name) {
-        throw std::invalid_argument("MaterialLibrary::add_catalog: catalog " + cat.name +
-                                    " appears twice (" + catalogs[j].file + ", " + cat.file + ")");
+        throw std::invalid_argument(prefix + "catalog " + cat.name + " appears twice (" +
+                                    catalogs[j].file + ", " + cat.file + ")");
       }
     }
     for (const AgfGlass& glass : cat.glasses) {
@@ -211,14 +212,13 @@ void MaterialLibrary::register_catalogs(std::vector<AgfCatalog> catalogs) {
   const std::scoped_lock lock(mutex_);
   for (const AgfCatalog& cat : catalogs) {
     if (const auto it = catalogs_.find(cat.name); it != catalogs_.end()) {
-      throw std::invalid_argument("MaterialLibrary::add_catalog: catalog " + cat.name +
-                                  " is already loaded from " + it->second->file);
+      throw std::invalid_argument(prefix + "catalog " + cat.name + " is already loaded from " +
+                                  it->second->file);
     }
   }
   for (const Entry& entry : entries) {
     if (cache_.contains(entry.reference) || unsupported_.contains(entry.reference)) {
-      throw std::invalid_argument("MaterialLibrary::add_catalog: '" + entry.reference +
-                                  "' is already in use");
+      throw std::invalid_argument(prefix + "'" + entry.reference + "' is already in use");
     }
   }
   for (AgfCatalog& cat : catalogs) {

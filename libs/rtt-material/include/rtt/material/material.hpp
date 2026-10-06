@@ -100,10 +100,11 @@ class UnknownMaterial : public std::runtime_error {
 /// Matching is case-sensitive. Further materials are registered with add(); glass catalogues
 /// in the AGF format are loaded with add_catalog() and resolved as `KATALOG:NAME`.
 ///
-/// resolve, add and add_catalog are thread-safe; resolve returns the same object for identical
-/// reference strings for the lifetime of the library. Object identity does not mean "same medium":
-/// different strings such as `CONST:1.5` and `CONST:1.50` give distinct objects with equal
-/// indices. The cache holds every resolved or added reference until the library is destroyed.
+/// resolve, add, add_catalog, add_catalog_text, catalogs and catalog are thread-safe; resolve
+/// returns the same object for identical reference strings for the lifetime of the library. Object
+/// identity does not mean "same medium": different strings such as `CONST:1.5` and `CONST:1.50`
+/// give distinct objects with equal indices. The cache holds every resolved or added reference
+/// until the library is destroyed.
 class MaterialLibrary {
  public:
   MaterialLibrary() = default;
@@ -161,7 +162,8 @@ class MaterialLibrary {
 
  private:
   /// Registers parsed catalogues and their glasses, all or nothing.
-  void register_catalogs(std::vector<AgfCatalog> catalogs);
+  /// @param function name of the public function for error messages
+  void register_catalogs(std::vector<AgfCatalog> catalogs, const char* function);
 
   mutable std::mutex mutex_;
   mutable std::map<std::string, std::shared_ptr<const Material>, std::less<>> cache_;
