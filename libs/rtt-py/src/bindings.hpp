@@ -79,5 +79,6 @@ void bind_paraxial(nanobind::module_& m);
 void bind_trace(nanobind::module_& m);
 void bind_analysis(nanobind::module_& m);
 void bind_polar(nanobind::module_& m);
+void bind_layout(nanobind::module_& m);
 
 }  // namespace rtt::py
