@@ -101,8 +101,9 @@ struct AgfGlass {
   std::optional<int> exclude_substitution;
   /// NM: 0 standard, 1 preferred, 2 obsolete, 3 special, 4 melt
   std::optional<int> status;
-  /// NM: relative melt frequency 1..5. The format description gives 1..5; the manufacturers'
-  /// files also write -1 and 0 for "not given", which are stored as nullopt.
+  /// NM: relative melt frequency, an integer kept as written. The format description gives
+  /// 1..5; the manufacturers' files also write -1, 0 and 9 (docs/quellen.md). Not used by
+  /// Raytatouille; nullopt only for "_" or "-".
   std::optional<int> melt_frequency;
   std::string comment;                         ///< GC text (empty without GC)
   std::vector<double> coefficients;            ///< CD, as in the file
@@ -117,8 +118,8 @@ struct AgfGlass {
   /// kgf/mm^2,
   /// specific heat capacity in J/(kg K), heat conductivity in W/(m K)
   std::optional<std::vector<std::optional<double>>> mechanical;
-  /// OD, exactly 6 values: relative cost (a number, "_" or "-"), CR, FR, SR, AR, PR (a number,
-  /// "_", "-" or a class range "a-b" with a <= b)
+  /// OD, exactly 6 values: relative cost (a number, "_" or "-"), CR, FR, SR, AR, PR (a class
+  /// >= 0 or -1, "_", "-" or a class range "a-b" with 0 <= a <= b)
   std::optional<AgfOtherData> other;
   std::vector<AgfTransmission> transmission;  ///< IT records in file order
   std::size_t line = 0;                       ///< line of the NM record
@@ -150,7 +151,7 @@ struct AgfCatalog {
 ///         (or follows an empty or comment line), more than 10 CD or (with continuation
 ///         lines) 7 TD values; MD, OD and IT with another number of values than 5, 6 and 3, a
 ///         second GC, MD or OD record, and NM extras that are not "_"/"-" or in range
-///         (exclude sub 0/1, status 0..4, melt freq -1..5) or more than three of them
+///         (exclude sub 0/1, status 0..4, melt freq an integer) or more than three of them
 [[nodiscard]] AgfCatalog parse_agf(std::string_view text, std::string name, std::string file);
 
 /// Reads, decodes and parses an AGF file; the catalogue name is the file name without

@@ -144,7 +144,10 @@ class Parser {
       }
       return value;
     };
-    if (const std::optional<double> v = parse(item)) return AgfClassRange{*v, *v};
+    // One class: >= 0, or -1 for "not available" (format description; kept as written).
+    if (const std::optional<double> v = parse(item); v && (*v >= 0.0 || *v == -1.0)) {
+      return AgfClassRange{*v, *v};
+    }
     const std::size_t dash = item.find('-', 1);
     if (dash != std::string_view::npos) {
       const std::optional<double> low = parse(item.substr(0, dash));
@@ -156,14 +159,20 @@ class Parser {
   }
 
   /// An NM extra (exclude sub, status, melt freq): "_" or "-" is "not available", otherwise an
-  /// integer in [lo, hi] (#85).
-  std::optional<int> nm_extra(
-      std::string_view item, const char* what, int lo, int hi, std::size_t line) const {
+  /// integer, in [lo, hi] if a range is given (#85).
+  std::optional<int> nm_extra(std::string_view item,
+                              const char* what,
+                              std::optional<std::pair<int, int>> range,
+                              std::size_t line) const {
     if (item == "_" || item == "-") return std::nullopt;
     const double v = number(item, line);
-    if (v != std::floor(v) || v < lo || v > hi) {
+    constexpr double kIntLimit = 2147483647.0;
+    if (v != std::floor(v) || std::abs(v) > kIntLimit) {
+      fail(line, std::string("NM: ") + what + " '" + std::string(item) + "' is not an integer");
+    }
+    if (range && (v < range->first || v > range->second)) {
       fail(line, std::string("NM: ") + what + " '" + std::string(item) + "' is not an integer in " +
-                     std::to_string(lo) + ".." + std::to_string(hi));
+                     std::to_string(range->first) + ".." + std::to_string(range->second));
     }
     return static_cast<int>(v);
   }
@@ -228,18 +237,17 @@ class Parser {
       g.formula = static_cast<int>(formula);
       g.nd = number(items[4], line_no);
       g.vd = number(items[5], line_no);
-      // Optional extras (format description); melt freq -1 and 0 mean "not given" in the
-      // manufacturers' files although the description says 1..5 (docs/quellen.md, #85).
+      // Optional extras (format description). The melt frequency is kept as written: the
+      // description says 1..5, the manufacturers' files also write -1, 0 and 9
+      // (docs/quellen.md, #85); it is not used by Raytatouille.
       if (items.size() > 9) {
         fail(line_no, "NM has more than <exclude sub> <status> <melt freq> after V(d)");
       }
-      if (items.size() > 6)
-        g.exclude_substitution = nm_extra(items[6], "exclude sub", 0, 1, line_no);
-      if (items.size() > 7) g.status = nm_extra(items[7], "status", 0, 4, line_no);
-      if (items.size() > 8) {
-        g.melt_frequency = nm_extra(items[8], "melt freq", -1, 5, line_no);
-        if (g.melt_frequency && *g.melt_frequency <= 0) g.melt_frequency.reset();
+      if (items.size() > 6) {
+        g.exclude_substitution = nm_extra(items[6], "exclude sub", std::pair{0, 1}, line_no);
       }
+      if (items.size() > 7) g.status = nm_extra(items[7], "status", std::pair{0, 4}, line_no);
+      if (items.size() > 8) g.melt_frequency = nm_extra(items[8], "melt freq", {}, line_no);
       g.line = line_no;
       if (!names_.insert(g.name).second) fail(line_no, "glass " + g.name + " appears twice");
       glass_ = std::move(g);

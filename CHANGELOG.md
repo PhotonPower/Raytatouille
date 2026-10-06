@@ -19,9 +19,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
 
 ### Geändert
 - `rtt-material`: Die AGF-Datensätze NM-Extras, MD, OD und IT werden jetzt streng gelesen statt
-  übersprungen: falsche Feldanzahl oder unbekannte Tokens ergeben einen `AgfError` mit Zeile; nur
-  die Platzhalter der Herstellerdateien (`_`, `-`, melt freq −1/0) gelten als „nicht vorhanden“
-  (Nachtrag ADR 0008). Alle geprüften Herstellerkataloge laden weiter (#85).
+  übersprungen: eine falsche Feldanzahl oder ein unbekanntes Token in GC, OD, MD, IT oder den
+  NM-Extras ist jetzt ein `AgfError` mit Zeile; nur die Platzhalter der Herstellerdateien (`_`, `-`)
+  gelten als „nicht vorhanden“, die melt freq wird als ganze Zahl wie geschrieben gespeichert
+  (Nachtrag ADR 0008). Geprüft und weiter ladbar: HOYA, OHARA, Sumita, CDGM, SCHOTT (aktuell und
+  IRG), LightPath sowie weitere ältere Kataloge der Zemax-Verteilung; NIKON-HIKARI scheitert wie
+  vorher an #71 (#85).
 
 ## [0.4.0] – M3 Polarisation
 

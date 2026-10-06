@@ -81,7 +81,7 @@ def test_listing_of_a_manufacturer_excerpt(catalog_dir: Path) -> None:
     lib.add_catalog(catalog_dir / "nikon" / "nikon-hikari.agf")
     g = lib.glass("NIKON-HIKARI:NICF-V")
     assert (g.formula, g.nd, g.vd) == (6, 1.433837, 95.260792)
-    assert g.status == 0 and g.exclude_substitution is False and g.melt_frequency is None
+    assert g.status == 0 and g.exclude_substitution is False and g.melt_frequency == 0
     assert g.comment == "TCE value is available for 0 to 25 degrees Celsius."
     assert g.relative_cost is None  # -1
     assert g.climate_resistance == ClassRange(1.0, 1.0)

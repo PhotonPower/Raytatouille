@@ -66,19 +66,18 @@ nb::object class_range(const std::optional<AgfClassRange>& r) {
 
 /// Raw data of one glass as written in the AGF file (see AgfGlass); the meaning of the values is
 /// applied in raytatouille/materials.py.
-nb::dict glass_record(const std::string& catalog, const AgfGlass& g, const std::string& file) {
+nb::dict glass_record(const MaterialLibrary& lib, const std::string& catalog, const AgfGlass& g) {
   nb::dict d;
   d["catalog"] = catalog;
   d["name"] = g.name;
   d["line"] = g.line;
   d["formula"] = g.formula;
-  // The same check as MaterialLibrary::add_catalog: a glass is supported if its CatalogMaterial
-  // can be built (formula with verified coefficient order, LD range and TD with 7 values).
+  // One source: a glass is supported exactly if the library resolves it (verified formula, LD
+  // range, TD with 7 values); otherwise the library's message is the reason.
   try {
-    (void)material::agf_formula(g, file + ":" + std::to_string(g.line));
-    (void)material::CatalogMaterial(g, catalog);
+    (void)lib.resolve(catalog + ":" + g.name);
     d["unsupported_reason"] = nb::none();
-  } catch (const std::invalid_argument& e) {
+  } catch (const material::UnknownMaterial& e) {
     d["unsupported_reason"] = std::string(e.what());
   }
   d["coefficients"] = g.coefficients;
@@ -156,8 +155,7 @@ void bind_material(nb::module_& m) {
           [](const MaterialLibrary& lib, const std::string& catalog) {
             const auto cat = lib.catalog(catalog);
             nb::list records;
-            for (const AgfGlass& g : cat->glasses)
-              records.append(glass_record(cat->name, g, cat->file));
+            for (const AgfGlass& g : cat->glasses) records.append(glass_record(lib, cat->name, g));
             return records;
           },
           "catalog"_a, "Raw AGF data of the glasses of `catalog` (use MaterialLibrary.glasses).")

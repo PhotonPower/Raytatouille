@@ -100,7 +100,8 @@ class GlassInfo:
     """0 standard, 1 preferred, 2 obsolete, 3 special, 4 melt (see STATUS_NAMES)."""
     exclude_substitution: bool | None
     melt_frequency: int | None
-    """Relative melt frequency 1..5; None if not given (the files also write -1 and 0)."""
+    """Relative melt frequency as written: the format gives 1..5, the manufacturers' files also
+    write -1, 0 and 9; None only for "_" or "-". Not used by Raytatouille."""
     comment: str
     wavelength_range_um: tuple[float, float] | None
     thermal: ThermalData | None

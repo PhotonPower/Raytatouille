@@ -61,8 +61,8 @@ const AgfGlass& glass_named(const AgfCatalog& cat, const std::string& name) {
 }
 
 /// Invented catalogue with every record that the listing exposes, including the placeholders of
-/// the manufacturers' files: "_" in MD, OD and the NM extras, "-" in the NM extras, -1 and 0 as
-/// "melt frequency not given".
+/// the manufacturers' files: "_" in MD, OD and the NM extras, "-" in OD and the NM extras;
+/// the melt frequency is kept as written (-1, 0).
 constexpr std::string_view kAll =
     "CC listing test\n"
     "NM ALL 2 517642.251 1.5168 64.17 1 3 5\n"
@@ -115,14 +115,15 @@ TEST_CASE("AGF listing: NM extras, GC, MD, OD and IT as in the file", "[library]
   REQUIRE(g.transmission[1].wavelength_um == 0.31);
   REQUIRE(g.transmission[1].transmittance == 0.25);
 
-  // Melt frequency "-", -1 and 0: not given; "_" in the NM extras: not given.
+  // Melt frequency "-": not given; -1 and 0 are kept as written (second review of #89);
+  // "_" in the NM extras: not given.
   REQUIRE(cat.glasses[1].status == 2);
   REQUIRE_FALSE(cat.glasses[1].melt_frequency.has_value());
   REQUIRE_FALSE(cat.glasses[2].exclude_substitution.has_value());
   REQUIRE(cat.glasses[2].status == 1);
-  REQUIRE_FALSE(cat.glasses[2].melt_frequency.has_value());
+  REQUIRE(cat.glasses[2].melt_frequency == -1);
   REQUIRE(cat.glasses[3].status == 4);
-  REQUIRE_FALSE(cat.glasses[3].melt_frequency.has_value());
+  REQUIRE(cat.glasses[3].melt_frequency == 0);
   // Without extras and without the optional records.
   const AgfGlass& s = cat.glasses[4];
   REQUIRE_FALSE(s.exclude_substitution.has_value());
@@ -154,7 +155,7 @@ TEST_CASE("AGF listing of a manufacturer excerpt: NICF-V of NIKON-HIKARI", "[lib
   REQUIRE(g.vd == 95.260792);
   REQUIRE(g.exclude_substitution == 0);
   REQUIRE(g.status == 0);
-  REQUIRE_FALSE(g.melt_frequency.has_value());  // 0: not given
+  REQUIRE(g.melt_frequency == 0);  // kept as written
   REQUIRE(g.comment == "TCE value is available for 0 to 25 degrees Celsius.");
   REQUIRE(g.extra == std::vector<double>{18.4, 0.0, 3.18, 0.0553, 0.0, 0.0});
   REQUIRE(g.other == AgfOtherData{-1.0, AgfClassRange{1.0, 1.0}, AgfClassRange{0.0, 0.0},
@@ -171,6 +172,20 @@ TEST_CASE("AGF listing of a manufacturer excerpt: NICF-V of NIKON-HIKARI", "[lib
   // A GC record with only tabs gives an empty comment.
   REQUIRE(glass_named(*cat, "E-LAKH1").comment.empty());
   REQUIRE_THROWS_AS((void)lib.catalog("NIKON"), UnknownMaterial);
+}
+
+TEST_CASE("AGF listing: melt frequency as written, also outside 1..5 (LightPath)", "[library]") {
+  // lightpath.agf (LightPath/Geltech, Zemax distribution), line 202: melt freq 9, which the
+  // format description does not allow (1..5); it loaded before #85 and must load (second
+  // review of #89). Also -1 (OHARA) and 0 (CDGM, HOYA, NIKON, SCHOTT) as written.
+  const AgfCatalog cat = rtt::material::parse_agf(
+      "CC c\nNM ECO550M 1 0 1.602897 50.021894 0 0 9\nCD 1 2\n"
+      "NM M1 1 0 1.5 60 0 0 -1\nCD 1 2\nNM Z 1 0 1.5 60 0 0 0\nCD 1 2\n",
+      "LP", "lightpath.agf");
+  REQUIRE(cat.glasses[0].melt_frequency == 9);
+  REQUIRE(cat.glasses[0].status == 0);
+  REQUIRE(cat.glasses[1].melt_frequency == -1);
+  REQUIRE(cat.glasses[2].melt_frequency == 0);
 }
 
 TEST_CASE("AGF listing: resistance classes as ranges, as SCHOTT writes them", "[library]") {
@@ -237,11 +252,11 @@ TEST_CASE("AGF listing: malformed or out-of-range extra data are errors with the
       {glass + "IT 0.5 _ 10\n", 4, "'_'"},    // no placeholder in IT
       {glass + "OD 1 2 3 4 5 6\nOD 1 2 3 4 5 6\n", 5, "second OD"},
       {glass + "MD 1 2 3 4 5\nMD 1 2 3 4 5\n", 5, "second MD"},
-      {"CC c\nNM A 2 1 1.5 60 0 1 3 9\nCD 1 2\n", 2, "NM"},  // more than 3 extras
-      {"CC c\nNM A 2 1 1.5 60 2\nCD 1 2\n", 2, "exclude"},   // exclude sub not 0/1
-      {"CC c\nNM A 2 1 1.5 60 0 5\nCD 1 2\n", 2, "status"},  // status not 0..4
-      {"CC c\nNM A 2 1 1.5 60 0 1 6\nCD 1 2\n", 2, "melt"},  // melt freq not -1..5
-      {"CC c\nNM A 2 1 1.5 60 0 1 -2\nCD 1 2\n", 2, "melt"},
+      {"CC c\nNM A 2 1 1.5 60 0 1 3 9\nCD 1 2\n", 2, "NM"},    // more than 3 extras
+      {"CC c\nNM A 2 1 1.5 60 2\nCD 1 2\n", 2, "exclude"},     // exclude sub not 0/1
+      {"CC c\nNM A 2 1 1.5 60 0 5\nCD 1 2\n", 2, "status"},    // status not 0..4
+      {"CC c\nNM A 2 1 1.5 60 0 1 1.5\nCD 1 2\n", 2, "melt"},  // melt freq not an integer
+      {glass + "OD 1 -2 3 4 5 6\n", 4, "'-2'"},                // one class: >= 0 or -1
       {"CC c\nNM A 2 1 1.5 60 0 1.5\nCD 1 2\n", 2, "status"},  // not an integer
       {"CC c\nNM A 2 1 1.5 60 0 1 y\nCD 1 2\n", 2, "'y'"},
   };
