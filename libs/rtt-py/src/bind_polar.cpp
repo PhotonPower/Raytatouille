@@ -23,8 +23,8 @@
 
 #include "bindings.hpp"
 #include "polar_batch.hpp"
+#include "polar_matrix.hpp"
 #include "rtt/polar/ideal.hpp"
-#include "rtt/polar/prt.hpp"
 #include "rtt/polar/prt_analysis.hpp"
 #include "rtt/trace/ray_batch.hpp"
 
@@ -206,15 +206,15 @@ void bind_polar(nb::module_& m) {
             !std::isfinite(a_p.real()) || !std::isfinite(a_p.imag())) {
           throw std::invalid_argument("a_s and a_p must be finite");
         }
-        return cmat3_out(rtt::polar::prt_matrix(unit(k_in, "k_in"), unit(k_out, "k_out"),
-                                                unit(normal, "normal"), a_s, a_p));
+        return cmat3_out(polar_matrix::prt_matrix(unit(k_in, "k_in"), unit(k_out, "k_out"),
+                                                  unit(normal, "normal"), a_s, a_p));
       },
       "k_in"_a, "k_out"_a, "normal"_a, "a_s"_a, "a_p"_a);
   m.def(
       "polar_geometric_transform",
       [](const RealIn& k_in, const RealIn& k_out, const RealIn& normal, bool reflection) {
-        const Mat3 q = rtt::polar::geometric_transform(unit(k_in, "k_in"), unit(k_out, "k_out"),
-                                                       unit(normal, "normal"), reflection);
+        const Mat3 q = polar_matrix::geometric_transform(unit(k_in, "k_in"), unit(k_out, "k_out"),
+                                                         unit(normal, "normal"), reflection);
         std::vector<double> data(9);
         for (int r = 0; r < 3; ++r) {
           for (int c = 0; c < 3; ++c) data[static_cast<std::size_t>(3 * r + c)] = q(r, c);

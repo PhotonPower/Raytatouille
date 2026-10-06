@@ -21,9 +21,43 @@ Vec3 direction(const RayBatch& rays, std::size_t i) {
   return {rays.dir_x()[i], rays.dir_y()[i], rays.dir_z()[i]};
 }
 
+// Products and dot products are written as explicit loops over the three components: GCC -O2
+// reports -Wnull-dereference inside Eigen's lazy product evaluators for them (CI of #62).
+
+/// Sum_i a_i b_i of a real and a complex vector (no conjugation).
+Complex dot(const Vec3& a, const CVec3& b) {
+  Complex sum(0.0);
+  for (int i = 0; i < 3; ++i) sum += a[i] * b[i];
+  return sum;
+}
+
+/// Sum_i a_i b_i of two real vectors.
+double dot(const Vec3& a, const Vec3& b) {
+  double sum = 0.0;
+  for (int i = 0; i < 3; ++i) sum += a[i] * b[i];
+  return sum;
+}
+
+/// P E.
+CVec3 times(const CMat3& p, const CVec3& e) {
+  CVec3 out;
+  for (int r = 0; r < 3; ++r) {
+    Complex sum(0.0);
+    for (int c = 0; c < 3; ++c) sum += p(r, c) * e[c];
+    out[r] = sum;
+  }
+  return out;
+}
+
 /// k0 = Re(P^T k) (see initial_directions()).
 Vec3 initial_direction(const CMat3& p, const Vec3& k) {
-  return (p.transpose() * k.cast<Complex>()).real();
+  Vec3 k0;
+  for (int c = 0; c < 3; ++c) {
+    double sum = 0.0;
+    for (int r = 0; r < 3; ++r) sum += p(r, c).real() * k[r];
+    k0[c] = sum;
+  }
+  return k0;
 }
 
 bool finite(const CVec3& v) {
@@ -51,7 +85,7 @@ void check_states(std::span<const CVec3> states, std::span<const Vec3> k0) {
       throw std::invalid_argument(where + " is not a unit vector (|E| = 1 within 1e-12)");
     }
     // Complex E . k0 without conjugation: the component of E along the real k0.
-    if (!(std::abs(k0[i].cast<Complex>().dot(e)) <= kStateTolerance)) {
+    if (!(std::abs(dot(k0[i], e)) <= kStateTolerance)) {
       throw std::invalid_argument(where + " is not transverse to the initial direction of ray " +
                                   std::to_string(i) +
                                   " (use transverse_polarization to project it)");
@@ -59,10 +93,16 @@ void check_states(std::span<const CVec3> states, std::span<const Vec3> k0) {
   }
 }
 
-/// ||P_T||_F^2 with P_T = (I - k k^T) P (ADR 0021; as in rtt-trace apply_event.cpp).
+/// ||P_T||_F^2 with P_T = (I - k k^T) P (ADR 0021; as in rtt-trace apply_event.cpp): every
+/// column of P minus its component along k.
 double transverse_norm2(const CMat3& p, const Vec3& k) {
-  const math::Mat3 projector = math::Mat3::Identity() - k * k.transpose();
-  return (projector.cast<Complex>() * p).squaredNorm();
+  double sum = 0.0;
+  for (int c = 0; c < 3; ++c) {
+    const CVec3 column(p(0, c), p(1, c), p(2, c));
+    const Complex along = dot(k, column);
+    for (int r = 0; r < 3; ++r) sum += std::norm(column[r] - k[r] * along);
+  }
+  return sum;
 }
 
 }  // namespace
@@ -82,8 +122,10 @@ std::vector<CVec3> transverse_polarization(const RayBatch& rays, const CVec3& e)
   for (std::size_t i = 0; i < rays.size(); ++i) {
     // Normalised first: |k0| = 1 only up to rounding, and for a projection just above the
     // threshold the residual k0 . E would otherwise be (|k0|^2 - 1) |k0 . e| / |projection|.
-    const CVec3 k = k0[i].normalized().cast<Complex>();
-    const CVec3 projected = e - k * k.dot(e);
+    const Vec3 k = k0[i].normalized();
+    const Complex along = dot(k, e);
+    CVec3 projected;
+    for (int c = 0; c < 3; ++c) projected[c] = e[c] - k[c] * along;
     if (!(projected.norm() >= kStateTolerance * e.norm()) || e.norm() == 0.0) {
       throw std::invalid_argument("polarization is parallel to the initial direction of ray " +
                                   std::to_string(i));
@@ -106,7 +148,8 @@ std::vector<double> transmission(const RayBatch& rays, std::span<const CVec3> st
   for (std::size_t i = 0; i < rays.size(); ++i) {
     const CMat3 p = rays.prt_matrix(i);
     const double half_norm = 0.5 * transverse_norm2(p, direction(rays, i));
-    power[i] = half_norm > 0.0 ? weight[i] * (p * state(states, i)).squaredNorm() / half_norm : 0.0;
+    power[i] =
+        half_norm > 0.0 ? weight[i] * times(p, state(states, i)).squaredNorm() / half_norm : 0.0;
   }
   return power;
 }
@@ -137,7 +180,7 @@ Retardances retardance(const RayBatch& rays) {
   for (std::size_t i = 0; i < rays.size(); ++i) {
     const CMat3 p = rays.prt_matrix(i);
     const Vec3 k = direction(rays, i);
-    if (k.dot(initial_direction(p, k)) >= 1.0 - kSameDirection) {
+    if (dot(k, initial_direction(p, k)) >= 1.0 - kSameDirection) {
       const rtt::polar::Retardance ri = rtt::polar::retardance(p, k);
       r.value[i] = ri.value;
       r.fast_axis[i] = ri.fast_axis;
@@ -159,11 +202,11 @@ std::vector<std::array<double, 4>> stokes(const RayBatch& rays,
   for (std::size_t i = 0; i < rays.size(); ++i) {
     const Vec3 k = direction(rays, i);
     // The precondition of rtt::polar::transverse_axis(), with the same expression.
-    const Vec3 projected = axis - axis.dot(k) * k;
+    const Vec3 projected = axis - dot(axis, k) * k;
     if (!(projected.norm() >= rtt::polar::kAxisAlongK * axis.norm()) || axis.norm() == 0.0) {
       throw std::invalid_argument("axis is parallel to the direction of ray " + std::to_string(i));
     }
-    const CVec3 e = rays.prt_matrix(i) * state(states, i);
+    const CVec3 e = times(rays.prt_matrix(i), state(states, i));
     const rtt::polar::Stokes<double> si = rtt::polar::stokes<double>(e, axis, k);
     s[i] = {si.s0, si.s1, si.s2, si.s3};
   }
