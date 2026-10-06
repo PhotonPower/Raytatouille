@@ -20,25 +20,12 @@
 #include <variant>
 #include <vector>
 
+#include "rtt/json/strict.hpp"
+
 namespace rtt::coating {
 namespace {
 
 using Json = nlohmann::json;
-
-/// A key as JSON pointer token (RFC 6901: ~ -> ~0, / -> ~1).
-std::string token(const std::string& key) {
-  std::string out;
-  for (const char c : key) {
-    if (c == '~') {
-      out += "~0";
-    } else if (c == '/') {
-      out += "~1";
-    } else {
-      out += c;
-    }
-  }
-  return out;
-}
 
 /// Strict reader of one catalogue (ADR 0008): every error names the file and a JSON pointer.
 class Reader {
@@ -56,7 +43,8 @@ class Reader {
     if (!j.is_object()) fail(pointer, "expected an object");
     for (const auto& item : j.items()) {
       if (std::find(allowed.begin(), allowed.end(), item.key()) == allowed.end()) {
-        fail(pointer + "/" + token(item.key()), "unknown key '" + item.key() + "'");
+        fail(pointer + "/" + rtt::json::pointer_token(item.key()),
+             "unknown key '" + item.key() + "'");
       }
     }
   }
@@ -165,11 +153,10 @@ CoatingCatalog parse_coating_catalog(std::string_view json_text, const std::stri
   const Reader r(file);
   Json j;
   try {
-    j = Json::parse(json_text);
-  } catch (const Json::exception& e) {
-    // parse_error for the syntax, out_of_range (406) for a number that overflows double: the
-    // only way a JSON number can be non-finite.
-    r.fail("", std::string("invalid JSON: ") + e.what());
+    // Duplicate keys, syntax errors and number overflow (ADR 0008 addendum, ADR 0020).
+    j = rtt::json::parse_strict(json_text);
+  } catch (const rtt::json::StrictParseError& e) {
+    r.fail(e.pointer(), e.message());
   }
   r.object(j, "", {"format", "schema_version", "catalog", "coatings"});
   if (r.string(r.required(j, "", "format"), "/format") != kCatalogFormat) {

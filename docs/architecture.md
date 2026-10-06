@@ -47,6 +47,7 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 | 0017 | Kittglieder: Material je Segment (`Lens`, `Plate`), Schema 0.2 |
 | 0018 | Python-Build- und Testwerkzeuge (nanobind, scikit-build-core, numpy, pytest, mypy) über `pyproject.toml` statt vcpkg |
 | 0019 | Coating-Kataloge als eigene JSON-Dateien (`CATALOG:NAME`), Auflösung in `compile()`, Substrat = Inneres des Elements |
+| 0020 | Gemeinsamer strikter JSON-Parser `rtt-json` (header-only, Schicht Basis): doppelte Schlüssel und Zahlen-Overflow sind Fehler mit Pointer |
 
 **Konventionen (verbindlich für alle Bibliotheken)**
 
@@ -71,7 +72,7 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 
 ## Systemübersicht
 
-15 CMake-Bibliotheken bzw. -Programme in sieben Schichten. Jede darf nur Bibliotheken aus tieferen Schichten verwenden. Ausnahmen: die Schicht Tracing mit der festen Reihenfolge `rtt-compile` < `rtt-paraxial` < `rtt-trace`, dort darf eine Bibliothek zusätzlich die in dieser Reihenfolge vor ihr stehenden verwenden (ADR 0016); in der Schicht Schnittstellen dürfen `rtt-py` und `apps/rtt-cli` `rtt-io` verwenden (Dateien lesen und schreiben).
+16 CMake-Bibliotheken bzw. -Programme in sieben Schichten. Jede darf nur Bibliotheken aus tieferen Schichten verwenden. Ausnahmen: die Schicht Tracing mit der festen Reihenfolge `rtt-compile` < `rtt-paraxial` < `rtt-trace`, dort darf eine Bibliothek zusätzlich die in dieser Reihenfolge vor ihr stehenden verwenden (ADR 0016); in der Schicht Schnittstellen dürfen `rtt-py` und `apps/rtt-cli` `rtt-io` verwenden (Dateien lesen und schreiben).
 
 | Schicht | Bibliotheken | Status |
 | --- | --- | --- |
@@ -81,7 +82,7 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 | Tracing | `rtt-compile` < `rtt-paraxial` < `rtt-trace` | M1 |
 | Modell | `rtt-model` | M0 |
 | Physik | `rtt-geom`, `rtt-material`, `rtt-coating`, `rtt-polar` | M1–M4 |
-| Basis | `rtt-math` | M0 |
+| Basis | `rtt-math`, `rtt-json` (strikter JSON-Parser für `rtt-io` und `rtt-coating`, ADR 0020) | `rtt-math`: M0; `rtt-json`: M3 |
 
 Die vier Physik-Bibliotheken kennen weder Modell noch Tracer und können daher parallel gebaut werden. `rtt-model` beschreibt nur, `rtt-compile` macht daraus ein unveränderliches `CompiledSystem`, `rtt-paraxial` und `rtt-trace` rechnen, `rtt-analysis` wertet aus. CMake-Targets heißen `rtt_<name>` mit Alias `rtt::<name>`.
 
@@ -120,7 +121,7 @@ Das Modell ist reine Datenstruktur ohne Tracing-Logik. Header: `libs/rtt-model/i
 
 Ein System ist eine Datei `*.rtt.json`. Die vollständige Struktur steht in `schema/raytatouille.schema.json`; Referenz ist aber der C++-Parser.
 
-- **Strikt:** unbekannte Schlüssel, falsche Typen, andere Einheiten und inkompatible `schema_version` sind Fehler mit JSON-Pointer.
+- **Strikt:** unbekannte und doppelte Schlüssel, falsche Typen, Zahlen jenseits des `double`-Bereichs, andere Einheiten und inkompatible `schema_version` sind Fehler mit JSON-Pointer (doppelte Schlüssel und Overflow über `rtt-json`, ADR 0020).
 - **Versionierung:** `schema_version` SemVer; aktuell 0.2.0. Vor 1.0 müssen Major und Minor exakt passen oder zu einer älteren Version gehören, die `rtt-io` migriert (derzeit 0.1 → 0.2; geschrieben wird immer die aktuelle Version). Jede Formatänderung erhöht die Version und bringt eine getestete Migration mit. Das JSON-Schema beschreibt nur die aktuelle Version.
 - **Material:** `"material"` ist ein String (ein Material für alle Segmente) oder ein Array mit einem Eintrag je Segment, z. B. `"material": ["SCHOTT:N-BK7", "SCHOTT:F2"]` (ADR 0017). Die gelesene Form wird unverändert geschrieben.
 - **Kanonisch:** `rtt::io::to_json` schreibt immer dieselben Bytes: 2 Leerzeichen Einzug, LF, abschließender Zeilenumbruch, Standardwerte weggelassen, kleine Objekte aus Skalaren auf einer Zeile. Für jede kanonische Datei gilt `to_json(parse(text)) == text`. `rtt format` bringt Dateien in diese Form.

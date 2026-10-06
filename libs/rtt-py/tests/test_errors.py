@@ -21,6 +21,17 @@ def test_parse_error_has_the_json_pointer(reference_dir: Path) -> None:
     assert str(error).startswith("/wavelengths: ")
 
 
+def test_duplicate_key_is_a_parse_error(reference_dir: Path) -> None:
+    # json.dumps cannot write a duplicate key, so it is inserted into the text (#68).
+    text = (reference_dir / "m1" / "singlet_const.rtt.json").read_text()
+    head, sep, tail = text.partition('"schema_version"')
+    assert sep
+    with pytest.raises(rt.ParseError) as info:
+        rt.System.from_json(head + '"schema_version": "9.9.9", ' + sep + tail)
+    assert info.value.pointer == "/schema_version"
+    assert str(info.value) == "/schema_version: duplicate key 'schema_version'"
+
+
 def test_missing_file_is_an_os_error(tmp_path: Path) -> None:
     with pytest.raises(OSError):
         rt.load(tmp_path / "missing.rtt.json")

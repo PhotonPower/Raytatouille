@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "json_format.hpp"
+#include "rtt/json/strict.hpp"
 
 namespace rtt::io {
 
@@ -842,9 +843,10 @@ OJson write_system(const System& s) {
 model::System parse_system(std::string_view json_text) {
   Json j;
   try {
-    j = Json::parse(json_text.begin(), json_text.end());
-  } catch (const Json::parse_error& e) {
-    throw ParseError("", std::string("invalid JSON: ") + e.what());
+    // Duplicate keys, syntax errors and number overflow (ADR 0008 addendum, ADR 0020).
+    j = rtt::json::parse_strict(json_text);
+  } catch (const rtt::json::StrictParseError& e) {
+    throw ParseError(e.pointer(), e.message());
   }
   return read_system(j);
 }

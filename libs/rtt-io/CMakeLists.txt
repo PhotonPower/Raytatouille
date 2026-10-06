@@ -3,7 +3,7 @@ add_library(rtt::io ALIAS rtt_io)
 target_include_directories(rtt_io PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(rtt_io PUBLIC rtt::model PRIVATE nlohmann_json::nlohmann_json)
+target_link_libraries(rtt_io PUBLIC rtt::model PRIVATE rtt::json nlohmann_json::nlohmann_json)
 rtt_target_defaults(rtt_io LIBRARY)
 
 if(RTT_BUILD_TESTS)
