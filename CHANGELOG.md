@@ -4,6 +4,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
 
 ## [Unreleased]
 
+## [0.4.0] – M3 Polarisation
+
 ### Hinzugefügt
 - Abnahme M3 (`libs/rtt-analysis/tests/test_m3_acceptance.cpp`): die M3-Zeilen der Tabelle
   „Validierung und Tests“ Ende zu Ende durch den Tracer mit konventionsfreien Größen: Fresnel an
