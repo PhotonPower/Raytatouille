@@ -4,6 +4,9 @@
 #include <oneapi/tbb/parallel_for.h>
 #include <oneapi/tbb/partitioner.h>
 
+#include <cstddef>
+#include <cstdint>
+#include <limits>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -12,10 +15,75 @@
 #include "rtt/trace/apply_event.hpp"
 
 namespace rtt::trace {
+namespace {
 
-TraceStats SequentialTracer::trace(const compile::CompiledSystem& system,
-                                   compile::PathId path,
-                                   RayBatch& rays) const {
+/// Recorder policy of trace_rays() without recording: every call is an empty inline function,
+/// so the ray loop of a plain trace is the same as before #80 (results bitwise unchanged).
+struct NoRecord {
+  void start(std::size_t /*ray*/, const RayState& /*state*/) const noexcept {}
+  void after(std::size_t /*ray*/, std::size_t /*event*/, const RayState& /*state*/) const noexcept {
+  }
+  void finish(std::size_t /*ray*/,
+              std::size_t /*steps*/,
+              const RayState& /*state*/) const noexcept {}
+};
+
+/// Recorder policy that writes the slots of the selected rays into RayPaths (ray_paths.hpp).
+/// Every ray writes only its own row, so the parallel loop stays deterministic (ADR 0004).
+/// The arrays are allocated and NaN-filled before the loop; the loop does not allocate.
+class Record {
+ public:
+  /// @param row recorded row of every RayBatch index, -1 if the ray is not recorded
+  Record(RayPaths& paths, std::span<const std::int64_t> row) : paths_(paths), row_(row) {}
+
+  /// Slot 0: the start state.
+  void start(std::size_t ray, const RayState& state) const noexcept {
+    if (row_[ray] >= 0) write(static_cast<std::size_t>(row_[ray]), 0, state);
+  }
+
+  /// Slot event + 1: the state after the event.
+  void after(std::size_t ray, std::size_t event, const RayState& state) const noexcept {
+    if (row_[ray] >= 0) write(static_cast<std::size_t>(row_[ray]), event + 1, state);
+  }
+
+  /// After `steps` events: count, lost_at and the status of the unused slots (their values
+  /// stay NaN).
+  void finish(std::size_t ray, std::size_t steps, const RayState& state) const noexcept {
+    if (row_[ray] < 0) return;
+    const auto r = static_cast<std::size_t>(row_[ray]);
+    paths_.count[r] = static_cast<std::uint32_t>(steps + 1);
+    // Stopped at the last executed event if it is no longer Alive; a ray that did not start
+    // (steps = 0) or passed every event was not lost on the path.
+    paths_.lost_at[r] =
+        steps > 0 && state.status != RayStatus::Alive ? static_cast<std::int32_t>(steps - 1) : -1;
+    for (std::size_t s = steps + 1; s < paths_.slots; ++s) {
+      paths_.status[r * paths_.slots + s] = state.status;
+    }
+  }
+
+ private:
+  void write(std::size_t r, std::size_t slot, const RayState& state) const noexcept {
+    const std::size_t i = r * paths_.slots + slot;
+    for (int c = 0; c < 3; ++c) {
+      paths_.position[3 * i + static_cast<std::size_t>(c)] = state.pos[c];
+      paths_.direction[3 * i + static_cast<std::size_t>(c)] = state.dir[c];
+    }
+    paths_.opl[i] = state.opl;
+    paths_.weight[i] = state.weight;
+    paths_.status[i] = state.status;
+  }
+
+  RayPaths& paths_;
+  std::span<const std::int64_t> row_;
+};
+
+/// The sequential ray loop shared by both trace() overloads; `recorder` sees the start state,
+/// the state after every executed event and the final state of each ray.
+template <class Recorder>
+TraceStats trace_rays(const compile::CompiledSystem& system,
+                      compile::PathId path,
+                      RayBatch& rays,
+                      const Recorder& recorder) {
   // Input checks at the API boundary (ADR 0009); the tracing loop itself never throws.
   const compile::CompiledPath& events = system.path(path);
   const std::size_t wavelengths = system.wavelengths_um().size();
@@ -67,13 +135,15 @@ TraceStats SequentialTracer::trace(const compile::CompiledSystem& system,
       ray.prt = rays.prt_matrix(i);
       ray.weight = rays.weight()[i];
       const std::uint16_t wl = rays.wl()[i];
-      for (const compile::CompiledEvent& event : events.events) {
-        if (ray.status != RayStatus::Alive) {
-          break;
-        }
+      recorder.start(i, ray);
+      std::size_t steps = 0;
+      for (; steps < events.events.size() && ray.status == RayStatus::Alive; ++steps) {
+        const compile::CompiledEvent& event = events.events[steps];
         ray = sequential_step(ray, system.surfaces()[event.surface], event.surface, event.kind,
                               event_media(event, wl));
+        recorder.after(i, steps, ray);
       }
+      recorder.finish(i, steps, ray);
       rays.pos_x()[i] = ray.pos.x();
       rays.pos_y()[i] = ray.pos.y();
       rays.pos_z()[i] = ray.pos.z();
@@ -95,6 +165,70 @@ TraceStats SequentialTracer::trace(const compile::CompiledSystem& system,
     ++stats.rays[static_cast<std::size_t>(s)];
   }
   return stats;
+}
+
+}  // namespace
+
+TraceStats SequentialTracer::trace(const compile::CompiledSystem& system,
+                                   compile::PathId path,
+                                   RayBatch& rays) const {
+  return trace_rays(system, path, rays, NoRecord{});
+}
+
+TraceStats SequentialTracer::trace(const compile::CompiledSystem& system,
+                                   compile::PathId path,
+                                   RayBatch& rays,
+                                   RayPaths& paths,
+                                   std::span<const std::size_t> record_rays,
+                                   std::size_t max_recorded_rays) const {
+  // Input checks at the API boundary (ADR 0009), before anything is traced.
+  const compile::CompiledPath& events = system.path(path);
+  const std::size_t slots = events.events.size() + 1;
+  const std::size_t n = rays.size();
+  std::vector<std::int64_t> row(n, -1);
+  std::vector<std::size_t> selected;
+  if (record_rays.empty()) {
+    if (n > max_recorded_rays) {
+      throw std::invalid_argument(
+          "recording " + std::to_string(n) + " rays of " + std::to_string(slots) +
+          " slots needs about " + std::to_string(n * slots * kRecordedBytesPerSlot) +
+          " bytes, more than max_recorded_rays = " + std::to_string(max_recorded_rays) +
+          " allows; select the rays to record with record_rays (or raise max_recorded_rays)");
+    }
+    selected.resize(n);
+    for (std::size_t i = 0; i < n; ++i) selected[i] = i;
+  } else {
+    selected.assign(record_rays.begin(), record_rays.end());
+  }
+  for (std::size_t r = 0; r < selected.size(); ++r) {
+    const std::size_t i = selected[r];
+    if (i >= n) {
+      throw std::invalid_argument("record_rays[" + std::to_string(r) + "] = " + std::to_string(i) +
+                                  " is not a ray index (batch of " + std::to_string(n) + " rays)");
+    }
+    if (row[i] >= 0) {
+      throw std::invalid_argument("record_rays lists ray " + std::to_string(i) + " twice");
+    }
+    row[i] = static_cast<std::int64_t>(r);
+  }
+
+  constexpr double nan = std::numeric_limits<double>::quiet_NaN();
+  const std::size_t recorded = selected.size();
+  paths = RayPaths{};
+  paths.slots = slots;
+  paths.ray_indices = std::move(selected);
+  paths.event_surfaces.reserve(events.events.size());
+  for (const compile::CompiledEvent& event : events.events) {
+    paths.event_surfaces.push_back(event.surface);
+  }
+  paths.position.assign(recorded * slots * 3, nan);
+  paths.direction.assign(recorded * slots * 3, nan);
+  paths.opl.assign(recorded * slots, nan);
+  paths.weight.assign(recorded * slots, nan);
+  paths.status.assign(recorded * slots, RayStatus::Alive);
+  paths.count.assign(recorded, 0);
+  paths.lost_at.assign(recorded, -1);
+  return trace_rays(system, path, rays, Record(paths, row));
 }
 
 }  // namespace rtt::trace
