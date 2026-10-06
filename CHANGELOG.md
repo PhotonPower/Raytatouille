@@ -79,6 +79,16 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   - Bitgleich gegen C++ mit fünf neuen Fällen.
   - Referenz `tests/reference/m3/polarizer_qwp.rtt.json` und Beispiel
     `examples/python/polarization.py` (#62).
+- `rtt-trace`: Strahlpfad-Aufzeichnung für die GUI. `SequentialTracer::trace(..., RayPaths&,
+  record_rays, max_recorded_rays)` zeichnet Position, Richtung, OPL, `weight` und Status vor dem
+  ersten und nach jedem Ereignis auf; verlorene Strahlen sind über `count`, `lost_at` und NaN
+  markiert. Ohne Aufzeichnung bleibt das Ergebnis bitgleich (Recorder-Policy), und der letzte
+  gültige Slot ist bitgleich mit dem Endzustand. Strahlen werden über `record_rays` ausgewählt,
+  ohne Auswahl höchstens `max_recorded_rays` (Standard 10 000), sonst ein Fehler mit dem
+  Speicherbedarf (#80).
+- `rtt-py`: `rt.trace.trace(..., record_path=True, record_rays=None, max_recorded_rays=10000)` gibt
+  `(TraceStats, RayPaths)` zurück, mit NumPy-Views (N, S, 3) bzw. (N, S) ohne Kopie; bitgleich
+  gegen C++; Beispiel `examples/python/ray_paths.py` (#80).
 
 ### Geändert
 - `rtt-analysis`: Spot-Gewichte enthalten jetzt die Fresnel-Verluste der Strahlen; gewichtete

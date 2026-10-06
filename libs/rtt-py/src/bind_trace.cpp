@@ -3,6 +3,7 @@
 #include <nanobind/stl/array.h>
 #include <nanobind/stl/optional.h>
 #include <nanobind/stl/string.h>
+#include <nanobind/stl/tuple.h>
 #include <nanobind/stl/variant.h>
 #include <nanobind/stl/vector.h>
 #include <oneapi/tbb/task_arena.h>
@@ -15,12 +16,15 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "bindings.hpp"
 #include "rtt/math/types.hpp"
 #include "rtt/trace/ray_batch.hpp"
+#include "rtt/trace/ray_paths.hpp"
 #include "rtt/trace/sequential.hpp"
 #include "rtt/trace/sources.hpp"
 
@@ -58,6 +62,47 @@ void def_column(nb::class_<RayBatch>& cls, const char* name, Get get, const char
         return column<T>(self.h, (self.p->*get)());
       },
       doc);
+}
+
+/// Read-only NumPy view of a RayPaths array with the given shape. The array holds a reference
+/// to the Python RayPaths object `owner`; RayPaths is immutable from Python, so the view cannot
+/// dangle.
+template <typename T>
+nb::ndarray<nb::numpy, const T, nb::c_contig> paths_view(nb::handle owner,
+                                                         const T* data,
+                                                         std::initializer_list<std::size_t> shape) {
+  return nb::ndarray<nb::numpy, const T, nb::c_contig>(data, shape.size(), shape.begin(), owner);
+}
+
+using IndexArray = nb::ndarray<const std::int64_t, nb::ndim<1>, nb::c_contig, nb::device::cpu>;
+
+std::tuple<trace::TraceStats, trace::RayPaths> run_trace_recorded(
+    const compile::CompiledSystem& system,
+    RayBatch& rays,
+    const PathArg& path,
+    std::optional<int> threads,
+    const std::optional<IndexArray>& record_rays,
+    std::size_t max_recorded_rays) {
+  std::vector<std::size_t> selection;
+  std::optional<std::span<const std::size_t>> selected;
+  if (record_rays) {
+    selection.reserve(record_rays->shape(0));
+    for (std::size_t r = 0; r < record_rays->shape(0); ++r) {
+      const std::int64_t i = record_rays->data()[r];
+      if (i < 0) {
+        throw std::invalid_argument("record_rays[" + std::to_string(r) +
+                                    "] = " + std::to_string(i) + " is negative");
+      }
+      selection.push_back(static_cast<std::size_t>(i));
+    }
+    selected = selection;  // an empty selection is rejected by the tracer
+  }
+  const compile::PathId id = path_id(system, path);
+  const trace::SequentialTracer tracer;
+  trace::RayPaths paths;
+  const trace::TraceStats stats = with_threads(
+      threads, [&] { return tracer.trace(system, id, rays, paths, selected, max_recorded_rays); });
+  return {stats, std::move(paths)};
 }
 
 trace::TraceStats run_trace(const compile::CompiledSystem& system,
@@ -235,6 +280,104 @@ void bind_trace(nb::module_& m) {
       },
       "P of all rays as an (N, 3, 3) complex128 array, global coordinates, power-normalised as "
       "described at prt() (ADR 0021). This is a copy: P is stored as nine separate columns.");
+
+  nb::class_<trace::RayPaths>(
+      m, "RayPaths",
+      "Recorded paths of traced rays (#80): the state before the first event (slot 0) and after "
+      "each event of the path (slot k after event k - 1), for drawing rays. Positions in mm and "
+      "unit directions in global coordinates, OPL in mm, weight as power for an unpolarized "
+      "source (ADR 0021). A ray lost at event j has count = j + 2 valid slots and lost_at = j; "
+      "slot j + 1 holds the state at the loss with the loss status, later slots are NaN with the "
+      "loss status. A ray that did not start has count 1, a ray that passed all events count = "
+      "slots; lost_at is -1 for both. Slot count - 1 is bitwise the final state in the "
+      "RayBatch. All arrays are read-only views without a copy and keep the object alive.")
+      .def_prop_ro(
+          "slots", [](const trace::RayPaths& p) { return p.slots; },
+          "Number of slots S = number of path events + 1.")
+      .def_prop_ro(
+          "n_events", [](const trace::RayPaths& p) { return p.event_surfaces.size(); },
+          "Number of path events (S - 1).")
+      .def_prop_ro("ray_count", &trace::RayPaths::ray_count, "Number of recorded rays N.")
+      .def("__len__", &trace::RayPaths::ray_count)
+      .def_prop_ro(
+          "ray_indices",
+          [](nb::pointer_and_handle<trace::RayPaths> self) {
+            return paths_view<std::size_t>(self.h, self.p->ray_indices.data(),
+                                           {self.p->ray_count()});
+          },
+          "RayBatch index of every recorded ray, (N,) uint64.")
+      .def_prop_ro(
+          "event_surfaces",
+          [](nb::pointer_and_handle<trace::RayPaths> self) {
+            return paths_view<std::uint32_t>(self.h, self.p->event_surfaces.data(),
+                                             {self.p->event_surfaces.size()});
+          },
+          "Surface index (into CompiledSystem.surface_ids) of every path event, (S - 1,) uint32.")
+      .def_prop_ro(
+          "position",
+          [](nb::pointer_and_handle<trace::RayPaths> self) {
+            return paths_view<double>(self.h, self.p->position.data(),
+                                      {self.p->ray_count(), self.p->slots, 3});
+          },
+          "Position per ray and slot, (N, S, 3) float64, mm, global; NaN after a loss.")
+      .def_prop_ro(
+          "direction",
+          [](nb::pointer_and_handle<trace::RayPaths> self) {
+            return paths_view<double>(self.h, self.p->direction.data(),
+                                      {self.p->ray_count(), self.p->slots, 3});
+          },
+          "Unit direction per ray and slot, (N, S, 3) float64, global; NaN after a loss.")
+      .def_prop_ro(
+          "opl",
+          [](nb::pointer_and_handle<trace::RayPaths> self) {
+            return paths_view<double>(self.h, self.p->opl.data(),
+                                      {self.p->ray_count(), self.p->slots});
+          },
+          "Accumulated optical path length per ray and slot, (N, S) float64, mm; NaN after a "
+          "loss.")
+      .def_prop_ro(
+          "weight",
+          [](nb::pointer_and_handle<trace::RayPaths> self) {
+            return paths_view<double>(self.h, self.p->weight.data(),
+                                      {self.p->ray_count(), self.p->slots});
+          },
+          "Power for an unpolarized source per ray and slot, (N, S) float64 (ADR 0021); NaN "
+          "after a loss.")
+      .def_prop_ro(
+          "status",
+          [](nb::pointer_and_handle<trace::RayPaths> self) {
+            // RayStatus has the underlying type std::uint8_t; access through an unsigned char
+            // type is allowed for any object.
+            const auto* data = reinterpret_cast<const std::uint8_t*>(self.p->status.data());
+            return paths_view<std::uint8_t>(self.h, data, {self.p->ray_count(), self.p->slots});
+          },
+          "Status per ray and slot, (N, S) uint8, values of RayStatus; after a loss the loss "
+          "status.")
+      .def_prop_ro(
+          "count",
+          [](nb::pointer_and_handle<trace::RayPaths> self) {
+            return paths_view<std::uint32_t>(self.h, self.p->count.data(), {self.p->ray_count()});
+          },
+          "Number of valid slots per ray, (N,) uint32.")
+      .def_prop_ro(
+          "lost_at",
+          [](nb::pointer_and_handle<trace::RayPaths> self) {
+            return paths_view<std::int32_t>(self.h, self.p->lost_at.data(), {self.p->ray_count()});
+          },
+          "Index of the event at which each ray stopped, (N,) int32; -1 if it passed all events "
+          "or did not start. The surface is event_surfaces[lost_at].");
+
+  m.attr("DEFAULT_MAX_RECORDED_RAYS") = trace::kDefaultMaxRecordedRays;
+  m.def("trace_recorded", &run_trace_recorded, "system"_a, "rays"_a, nb::kw_only(), "path"_a = 0,
+        "threads"_a.none() = nb::none(), "record_rays"_a.none() = nb::none(),
+        "max_recorded_rays"_a = trace::kDefaultMaxRecordedRays,
+        nb::call_guard<nb::gil_scoped_release>(),
+        "trace() that also records the paths of the rays `record_rays` (int64 indices into "
+        "`rays`, no duplicates; None: all rays) and returns (TraceStats, RayPaths). The rays end "
+        "bitwise as without recording. Use raytatouille.trace.trace(..., record_path=True).\n\n"
+        "Raises ValueError for an index outside the batch, a duplicate, an empty selection, or "
+        "more than `max_recorded_rays` rays without a selection (the message gives the memory "
+        "need), and as trace().");
 
   nb::class_<trace::TraceStats>(m, "TraceStats", "Number of rays per status after a trace.")
       .def_ro("rays", &trace::TraceStats::rays, "Counts indexed by RayStatus.")

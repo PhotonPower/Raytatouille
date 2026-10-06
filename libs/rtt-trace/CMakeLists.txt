@@ -13,7 +13,7 @@ if(RTT_BUILD_TESTS)
   # determinism test.
   rtt_add_test(rtt_trace_tests
     SOURCES tests/test_ray_batch.cpp tests/test_apply_event.cpp tests/test_sequential.cpp
-            tests/test_sources.cpp tests/test_interactions.cpp
+            tests/test_sources.cpp tests/test_interactions.cpp tests/test_ray_paths.cpp
     LIBS rtt::trace rtt::io rtt::polar rtt::coating TBB::tbb)
   target_compile_definitions(rtt_trace_tests PRIVATE
     RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs")

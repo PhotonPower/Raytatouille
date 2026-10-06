@@ -24,6 +24,18 @@ def test_polarization_example(capsys: pytest.CaptureFixture[str]) -> None:
     assert "Malus's law" in out and "Stokes after the quarter-wave plate" in out
 
 
+def test_ray_paths_example(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    # main() returns 1 if a last recorded slot differs from the final ray state.
+    namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "ray_paths.py"))
+    assert namespace["main"]() == 0
+    out = capsys.readouterr().out
+    assert "recorded with 5 slots" in out and "STO, L1.S1, L1.S2, IMG" in out
+    pytest.importorskip("matplotlib")
+    png = tmp_path / "ray_paths.png"
+    assert namespace["main"](str(png)) == 0
+    assert png.stat().st_size > 0
+
+
 def test_analysis_example(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "analysis.py"))
     assert namespace["main"]() == 0
