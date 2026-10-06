@@ -179,7 +179,7 @@ TraceStats SequentialTracer::trace(const compile::CompiledSystem& system,
                                    compile::PathId path,
                                    RayBatch& rays,
                                    RayPaths& paths,
-                                   std::span<const std::size_t> record_rays,
+                                   std::optional<std::span<const std::size_t>> record_rays,
                                    std::size_t max_recorded_rays) const {
   // Input checks at the API boundary (ADR 0009), before anything is traced.
   const compile::CompiledPath& events = system.path(path);
@@ -187,7 +187,12 @@ TraceStats SequentialTracer::trace(const compile::CompiledSystem& system,
   const std::size_t n = rays.size();
   std::vector<std::int64_t> row(n, -1);
   std::vector<std::size_t> selected;
-  if (record_rays.empty()) {
+  if (record_rays && record_rays->empty()) {
+    throw std::invalid_argument(
+        "record_rays is empty; pass no selection (std::nullopt, None in Python) to record all "
+        "rays");
+  }
+  if (!record_rays) {
     if (n > max_recorded_rays) {
       throw std::invalid_argument(
           "recording " + std::to_string(n) + " rays of " + std::to_string(slots) +
@@ -198,7 +203,7 @@ TraceStats SequentialTracer::trace(const compile::CompiledSystem& system,
     selected.resize(n);
     for (std::size_t i = 0; i < n; ++i) selected[i] = i;
   } else {
-    selected.assign(record_rays.begin(), record_rays.end());
+    selected.assign(record_rays->begin(), record_rays->end());
   }
   for (std::size_t r = 0; r < selected.size(); ++r) {
     const std::size_t i = selected[r];

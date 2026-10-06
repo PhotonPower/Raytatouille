@@ -136,6 +136,9 @@ def test_record_input_checks(reference_dir: Path) -> None:
             rt.trace.trace(cs, rays, record_path=True, record_rays=np.array(selection, dtype=int))
     with pytest.raises(ValueError, match="empty"):
         rt.trace.trace(cs, rays, record_path=True, record_rays=[])
+    with pytest.raises(ValueError, match=r"2\*\*63"):
+        rt.trace.trace(cs, rays, record_path=True,
+                       record_rays=np.array([2**63], dtype=np.uint64))
     with pytest.raises(ValueError, match="integer"):
         rt.trace.trace(cs, rays, record_path=True, record_rays=np.array([0.5]))
     with pytest.raises(ValueError, match="integer"):

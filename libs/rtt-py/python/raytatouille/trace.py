@@ -111,6 +111,8 @@ def trace(system: CompiledSystem, rays: RayBatch, *, path: int | str = 0,
             raise ValueError("record_rays is empty")
         if indices.ndim != 1 or not np.issubdtype(indices.dtype, np.integer):
             raise ValueError("record_rays must be a 1-D array of integer ray indices")
+        if indices.dtype.kind == "u" and int(indices.max()) > np.iinfo(np.int64).max:
+            raise ValueError("record_rays has an index of 2**63 or more, larger than any batch")
         selection = np.ascontiguousarray(indices, dtype=np.int64)
     result: tuple[TraceStats, RayPaths] = _core.trace_recorded(
         system, rays, path=path, threads=threads, record_rays=selection,

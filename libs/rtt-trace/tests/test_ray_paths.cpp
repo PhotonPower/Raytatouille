@@ -365,11 +365,16 @@ TEST_CASE("record_rays and the size limit are checked before tracing", "[ray_pat
   const RayPaths snapshot = paths;
   const std::vector<std::size_t> duplicate = {1, 3, 1};
   const std::vector<std::size_t> outside = {0, 5};
+  const std::vector<std::size_t> none;
+  // An empty selection is an error (decided for #88); "all rays" is std::nullopt.
+  REQUIRE_THROWS_AS(static_cast<void>(tracer.trace(cs, PathId{0}, rays, paths,
+                                                   std::span<const std::size_t>(none))),
+                    std::invalid_argument);
   REQUIRE_THROWS_AS(static_cast<void>(tracer.trace(cs, PathId{0}, rays, paths, duplicate)),
                     std::invalid_argument);
   REQUIRE_THROWS_AS(static_cast<void>(tracer.trace(cs, PathId{0}, rays, paths, outside)),
                     std::invalid_argument);
-  REQUIRE_THROWS_AS(static_cast<void>(tracer.trace(cs, PathId{0}, rays, paths, {}, 4)),
+  REQUIRE_THROWS_AS(static_cast<void>(tracer.trace(cs, PathId{0}, rays, paths, std::nullopt, 4)),
                     std::invalid_argument);
   // An invalid wavelength is found by the trace itself, after the record was allocated.
   RayBatch bad_wavelength(2);
@@ -387,7 +392,7 @@ TEST_CASE("record_rays and the size limit are checked before tracing", "[ray_pat
   // The limit message names the memory need and record_rays.
   RayBatch more(5);
   try {
-    static_cast<void>(tracer.trace(cs, PathId{0}, more, paths, {}, 4));
+    static_cast<void>(tracer.trace(cs, PathId{0}, more, paths, std::nullopt, 4));
     FAIL("no exception");
   } catch (const std::invalid_argument& e) {
     const std::string message = e.what();

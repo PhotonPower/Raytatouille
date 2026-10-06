@@ -84,6 +84,7 @@ std::tuple<trace::TraceStats, trace::RayPaths> run_trace_recorded(
     const std::optional<IndexArray>& record_rays,
     std::size_t max_recorded_rays) {
   std::vector<std::size_t> selection;
+  std::optional<std::span<const std::size_t>> selected;
   if (record_rays) {
     selection.reserve(record_rays->shape(0));
     for (std::size_t r = 0; r < record_rays->shape(0); ++r) {
@@ -94,13 +95,13 @@ std::tuple<trace::TraceStats, trace::RayPaths> run_trace_recorded(
       }
       selection.push_back(static_cast<std::size_t>(i));
     }
-    if (selection.empty()) throw std::invalid_argument("record_rays is empty");
+    selected = selection;  // an empty selection is rejected by the tracer
   }
   const compile::PathId id = path_id(system, path);
   const trace::SequentialTracer tracer;
   trace::RayPaths paths;
   const trace::TraceStats stats = with_threads(
-      threads, [&] { return tracer.trace(system, id, rays, paths, selection, max_recorded_rays); });
+      threads, [&] { return tracer.trace(system, id, rays, paths, selected, max_recorded_rays); });
   return {stats, std::move(paths)};
 }
 
