@@ -9,15 +9,16 @@ Example::
     import raytatouille as rt
 
     system = rt.load("singlet.rtt.json")
-    compiled = rt.compile(system)
+    compiled = rt.compile(system)  # coatings=rt.CoatingLibrary() for coated surfaces
     fo = rt.paraxial.first_order(compiled, path="main")
     spot = rt.analysis.spot(compiled, path="main", field=1, rays="hexapolar:12")
     rays = rt.trace.make_rays(compiled, rt.trace.HexapolarPupil(rings=6))
     stats = rt.trace.trace(compiled, rays)
 """
 
-from . import analysis, errors, paraxial, plot, trace
+from . import analysis, errors, paraxial, plot, polar, trace
 from ._core import (
+    CoatingLibrary,
     CompiledMedium,
     CompiledSystem,
     Diagnostic,
@@ -35,6 +36,7 @@ from ._core import (
 from .errors import (
     AgfError,
     AnalysisError,
+    CoatingCatalogError,
     CompileError,
     ParaxialError,
     ParseError,
@@ -47,6 +49,8 @@ __version__ = "0.3.0"
 __all__ = [
     "AgfError",
     "AnalysisError",
+    "CoatingCatalogError",
+    "CoatingLibrary",
     "CompileError",
     "CompiledMedium",
     "CompiledSystem",
@@ -67,6 +71,7 @@ __all__ = [
     "load",
     "paraxial",
     "plot",
+    "polar",
     "save",
     "trace",
     "validate",

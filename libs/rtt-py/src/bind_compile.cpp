@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "bindings.hpp"
+#include "rtt/coating/catalog.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/material/material.hpp"
 #include "rtt/model/system.hpp"
@@ -62,6 +63,23 @@ void bind_compile(nb::module_& m) {
           "Absolute complex index n + i*kappa (kappa >= 0 absorbs) of the material `reference` "
           "at the vacuum wavelength `wavelength_um` in um, temperature in degC and pressure in "
           "atm.\n\nRaises UnknownMaterial if the reference cannot be resolved.");
+
+  nb::class_<coating::CoatingLibrary>(
+      m, "CoatingLibrary",
+      "Resolves coating references \"CATALOG:NAME\" to thin-film designs from JSON coating "
+      "catalogues (ADR 0019; format raytatouille-coatings). Pass it to compile().")
+      .def(nb::init<>())
+      .def("add_catalog", &coating::CoatingLibrary::add_catalog, "path"_a,
+           "Loads coating catalogues: a .json file, or a directory whose *.json files are "
+           "loaded in sorted order. All or nothing: on an error nothing is added.\n\nRaises "
+           "CoatingCatalogError for a malformed file (with file and JSON pointer) and ValueError "
+           "if the path has no .json file or a catalogue name is already registered.")
+      .def(
+          "__contains__",
+          [](const coating::CoatingLibrary& lib, const std::string& reference) {
+            return lib.find(reference) != nullptr;
+          },
+          "reference"_a, "True if the reference \"CATALOG:NAME\" resolves.");
 
   nb::class_<compile::CompiledMedium>(m, "CompiledMedium", "Medium evaluated at all wavelengths.")
       .def_ro("reference", &compile::CompiledMedium::reference,
@@ -112,14 +130,18 @@ void bind_compile(nb::module_& m) {
 
   m.def(
       "compile",
-      [](const model::System& system, const material::MaterialLibrary* materials) {
-        if (materials != nullptr) return compile::compile(system, *materials);
-        const material::MaterialLibrary defaults;
-        return compile::compile(system, defaults);
+      [](const model::System& system, const material::MaterialLibrary* materials,
+         const coating::CoatingLibrary* coatings) {
+        const material::MaterialLibrary default_materials;
+        const coating::CoatingLibrary no_coatings;
+        return compile::compile(system, materials != nullptr ? *materials : default_materials,
+                                coatings != nullptr ? *coatings : no_coatings);
       },
-      "system"_a, "materials"_a.none() = nb::none(),
-      "Compiles a System. Without `materials` only VACUUM, AIR and CONST: references resolve."
-      "\n\nRaises CompileError with the diagnostics for invalid models and unknown materials.");
+      "system"_a, "materials"_a.none() = nb::none(), "coatings"_a.none() = nb::none(),
+      "Compiles a System. Without `materials` only VACUUM, AIR and CONST: references resolve; "
+      "without `coatings` a surface with a coating reference is an error (ADR 0019).\n\nRaises "
+      "CompileError with the diagnostics for invalid models, unknown materials and unknown "
+      "coatings.");
 }
 
 }  // namespace rtt::py

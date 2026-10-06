@@ -69,12 +69,17 @@ class Case:
     name: str
     file: str
     catalog: bool
-    sampling: PupilSampling | None  # None: hand_filled_rays()
+    sampling: PupilSampling | None  # None: rays set by hand, see `hand`
     wavelength: int | None
     aiming: Aiming
+    path: int = 0
+    coatings: bool = False  # load <catalog dir>/coatings (ADR 0019)
+    hand: str = "singlet"  # hand-filled rays when sampling is None: singlet, plate, michelson
+    paraxial: bool = True  # compare first-order values (not for tilted or stop-less systems)
 
 
-# Same cases as cases() in rtt_py_reference.cpp.
+# Same cases as cases() in rtt_py_reference.cpp. Since #61 every case has a non-trivial P and
+# weight (Fresnel, coatings, ideal elements, absorption); the last five are the cases of #62.
 CASES = [
     Case("singlet_hex", "m1/singlet_const.rtt.json", False, rt.trace.HexapolarPupil(6), None,
          Aiming.REAL),
@@ -82,6 +87,16 @@ CASES = [
          rt.trace.RandomPupil(500, 42), None, Aiming.PARAXIAL),
     Case("achromat_grid", "m2/achromat.rtt.json", True, rt.trace.GridPupil(15), 0, Aiming.REAL),
     Case("singlet_hand_filled", "m1/singlet_const.rtt.json", False, None, None, Aiming.REAL),
+    Case("ar_singlet_hex", "m3/ar_singlet.rtt.json", False, rt.trace.HexapolarPupil(6), 0,
+         Aiming.REAL, coatings=True),
+    Case("absorbing_ar_plate_angles", "m3/absorbing_ar_plate.rtt.json", False, None, None,
+         Aiming.REAL, coatings=True, hand="plate", paraxial=False),
+    Case("michelson_reference_arm", "m0/michelson.rtt.json", False, None, None, Aiming.REAL,
+         path=0, hand="michelson", paraxial=False),
+    Case("michelson_test_arm", "m0/michelson.rtt.json", False, None, None, Aiming.REAL,
+         path=1, hand="michelson", paraxial=False),
+    Case("polarizer_qwp_hex", "m3/polarizer_qwp.rtt.json", False, rt.trace.HexapolarPupil(4),
+         None, Aiming.REAL),
 ]
 
 
@@ -107,6 +122,55 @@ def hand_filled_rays() -> rt.trace.RayBatch:
     return rays
 
 
+def plate_rays() -> rt.trace.RayBatch:
+    """As plate_rays() in rtt_py_reference.cpp: 9 rays from the origin plane in the y-z plane
+    at direction sines -0.4 ... 0.4, so that path length and absorption in the plate vary.
+    sqrt is correctly rounded in IEEE 754 on both sides."""
+    rays = rt.trace.RayBatch(9)
+    for j in range(9):
+        s = (j - 4) / 10.0
+        rays.pos_y[j] = 0.25 * (j - 4)
+        rays.dir_y[j] = s
+        rays.dir_z[j] = math.sqrt(1.0 - s * s)
+    return rays
+
+
+def michelson_rays() -> rt.trace.RayBatch:
+    """As michelson_rays() in rtt_py_reference.cpp: 8 rays at x = -1.75 ... 1.75 mm, tilted in
+    the x-z plane by direction sines -0.02 ... 0.015."""
+    rays = rt.trace.RayBatch(8)
+    for j in range(8):
+        s = (j - 4) / 200.0
+        rays.pos_x[j] = 0.5 * j - 1.75
+        rays.pos_y[j] = 0.125 * j
+        rays.dir_x[j] = s
+        rays.dir_z[j] = math.sqrt(1.0 - s * s)
+    return rays
+
+
+HAND_RAYS = {"singlet": hand_filled_rays, "plate": plate_rays, "michelson": michelson_rays}
+
+
+def polar_results(rays: rt.trace.RayBatch) -> dict[str, npt.NDArray[np.generic]]:
+    """raytatouille.polar on the traced rays, as polar_results() in rtt_py_reference.cpp."""
+    x = rt.polar.transverse_polarization(rays, np.array([1.0, 0.0, 0.0]))
+    d = rt.polar.diattenuation(rays)
+    r = rt.polar.retardance(rays)
+    return {
+        "k0": rt.polar.initial_directions(rays),
+        "e_x": x,
+        "transmission": rt.polar.transmission(rays),
+        "transmission_x": rt.polar.transmission(rays, x),
+        "d_value": d.value,
+        "d_maximum": d.maximum,
+        "d_minimum": d.minimum,
+        "d_axis": d.axis,
+        "r_value": r.value,
+        "r_fast_axis": r.fast_axis,
+        "stokes_x": rt.polar.stokes(rays, x, np.array([1.0, 0.0, 0.0])),
+    }
+
+
 def first_order_values(fo: rt.paraxial.FirstOrder) -> npt.NDArray[np.float64]:
     def value(v: float | None) -> float:
         return math.nan if v is None else float(v)
@@ -123,13 +187,17 @@ def python_results(case: Case, reference_dir: Path, catalog_dir: Path,
     lib = rt.MaterialLibrary()
     if case.catalog:
         lib.add_catalog(catalog_dir / "schott.agf")
-    cs = rt.compile(rt.load(reference_dir / case.file), lib)
+    coatings = None
+    if case.coatings:
+        coatings = rt.CoatingLibrary()
+        coatings.add_catalog(catalog_dir / "coatings")
+    cs = rt.compile(rt.load(reference_dir / case.file), lib, coatings)
     if case.sampling is None:
-        rays = hand_filled_rays()
+        rays = HAND_RAYS[case.hand]()
     else:
-        rays = rt.trace.make_rays(cs, case.sampling, path=0, wavelength=case.wavelength,
+        rays = rt.trace.make_rays(cs, case.sampling, path=case.path, wavelength=case.wavelength,
                                   aiming=case.aiming)
-    stats = rt.trace.trace(cs, rays, path=0, threads=threads)
+    stats = rt.trace.trace(cs, rays, path=case.path, threads=threads)
     results: dict[str, npt.NDArray[np.generic]] = {
         name: np.array(getattr(rays, name)) for name in COLUMNS
     }
@@ -137,8 +205,10 @@ def python_results(case: Case, reference_dir: Path, catalog_dir: Path,
         for col in range(3):
             results[f"prt{row}{col}"] = np.array(rays.prt(row, col))
     results["stats"] = np.array(stats.rays, dtype=np.uint64)
-    wl = cs.reference_wavelength if case.wavelength is None else case.wavelength
-    results["first_order"] = first_order_values(rt.paraxial.first_order(cs, 0, wl))
+    if case.paraxial:
+        wl = cs.reference_wavelength if case.wavelength is None else case.wavelength
+        results["first_order"] = first_order_values(rt.paraxial.first_order(cs, case.path, wl))
+    results.update(polar_results(rays))
     return results
 
 
@@ -148,7 +218,7 @@ def test_python_equals_cpp_bitwise(case: Case, threads: int, cpp_dir: Path,
                                    reference_dir: Path, catalog_dir: Path) -> None:
     results = python_results(case, reference_dir, catalog_dir, threads)
     assert len(results["pos_x"]) > 0
-    if case.sampling is None:
+    if case.sampling is None and case.hand == "singlet":
         # The case must separate status and last_surface (review of #32); weight carries the
         # interaction losses since #61 and is compared bit for bit like every other column.
         assert np.unique(results["status"]).size > 1

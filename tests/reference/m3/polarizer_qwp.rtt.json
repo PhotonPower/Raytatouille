@@ -1,0 +1,98 @@
+{
+  "schema_version": "0.2.0",
+  "name": "Polarizer, quarter-wave plate at 45 deg and crossed polarizer with extinction ratio 1e-4",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [
+    {"um": 0.55, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 10.0},
+  "fields": {
+    "points": [
+      {},
+      {"y": 3.0},
+      {"y": 6.0}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 5.0}
+          }
+        ]
+      },
+      {
+        "type": "thin_element",
+        "name": "polarizer",
+        "pose": {"position": [0.0, 0.0, 10.0]},
+        "surfaces": [
+          {
+            "id": "POL1",
+            "interaction": {"type": "ideal_polarizer"}
+          }
+        ]
+      },
+      {
+        "type": "thin_element",
+        "name": "quarter-wave plate",
+        "pose": {"position": [0.0, 0.0, 20.0], "rotation_deg": [0.0, 0.0, 45.0]},
+        "surfaces": [
+          {
+            "id": "QWP",
+            "interaction": {"type": "ideal_retarder"}
+          }
+        ]
+      },
+      {
+        "type": "thin_element",
+        "name": "analyzer",
+        "pose": {"position": [0.0, 0.0, 30.0]},
+        "surfaces": [
+          {
+            "id": "POL2",
+            "interaction": {
+              "type": "ideal_polarizer",
+              "transmission_axis": [0.0, 1.0, 0.0],
+              "extinction_ratio": 0.0001
+            }
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 40.0]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"},
+    {
+      "name": "circular",
+      "events": [
+        {"surface": "STO", "kind": "transmit"},
+        {"surface": "POL1", "kind": "transmit"},
+        {"surface": "QWP", "kind": "transmit"},
+        {"surface": "IMG", "kind": "transmit"}
+      ]
+    },
+    {
+      "name": "retarder only",
+      "events": [
+        {"surface": "STO", "kind": "transmit"},
+        {"surface": "QWP", "kind": "transmit"},
+        {"surface": "IMG", "kind": "transmit"}
+      ]
+    }
+  ]
+}

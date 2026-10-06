@@ -16,6 +16,14 @@ def test_singlet_example(capsys: pytest.CaptureFixture[str]) -> None:
     assert "EFL" in out and "field 2" in out
 
 
+def test_polarization_example(capsys: pytest.CaptureFixture[str]) -> None:
+    # main() returns 1 if any value deviates from its analytic value by more than 1e-12.
+    namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "polarization.py"))
+    assert namespace["main"]() == 0
+    out = capsys.readouterr().out
+    assert "Malus's law" in out and "Stokes after the quarter-wave plate" in out
+
+
 def test_analysis_example(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "analysis.py"))
     assert namespace["main"]() == 0
