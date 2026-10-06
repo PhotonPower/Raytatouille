@@ -135,8 +135,9 @@ class Parser {
     if (item == "_" || item == "-") return std::nullopt;
     const auto parse = [](std::string_view text) -> std::optional<double> {
       double value = 0.0;
-      const char* const last = text.data() + text.size();
-      const auto [ptr, ec] = std::from_chars(text.data(), last, value);
+      const char* const first = text.data();
+      const char* const last = first + text.size();
+      const auto [ptr, ec] = std::from_chars(first, last, value);
       if (text.empty() || ec != std::errc{} || ptr != last || !std::isfinite(value)) {
         return std::nullopt;
       }
