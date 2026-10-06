@@ -7,6 +7,7 @@ dtypes, read-only views, the selection and the input checks.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -107,11 +108,23 @@ def test_record_rays_selects_rays_of_a_bundle(reference_dir: Path) -> None:
 def test_views_are_read_only_and_keep_the_paths_alive(reference_dir: Path) -> None:
     cs = singlet(reference_dir)
     _, paths = rt.trace.trace(cs, axial_ray(), record_path=True)
+    before = sys.getrefcount(paths)
     position = paths.position
-    del paths
-    assert position[0, 1, 2] == 0.0  # the view keeps the RayPaths alive
+    assert sys.getrefcount(paths) == before + 1  # the view holds a reference to the RayPaths
+    del position
+    assert sys.getrefcount(paths) == before
     with pytest.raises(ValueError):
-        position[0, 0, 0] = 1.0
+        paths.position[0, 0, 0] = 1.0
+
+
+def test_empty_batch(reference_dir: Path) -> None:
+    # No rays: arrays of shape (0, S, 3) and (0, S), event surfaces still listed.
+    cs = singlet(reference_dir)
+    stats, paths = rt.trace.trace(cs, rt.trace.RayBatch(0), record_path=True)
+    assert sum(stats.rays) == 0
+    assert paths.ray_count == 0 and paths.slots == 5
+    assert paths.position.shape == (0, 5, 3) and paths.opl.shape == (0, 5)
+    assert paths.count.shape == (0,) and paths.event_surfaces.shape == (4,)
 
 
 def test_record_input_checks(reference_dir: Path) -> None:
@@ -121,6 +134,8 @@ def test_record_input_checks(reference_dir: Path) -> None:
                              ([-1], "negative"), ([], "empty")):
         with pytest.raises(ValueError, match=match):
             rt.trace.trace(cs, rays, record_path=True, record_rays=np.array(selection, dtype=int))
+    with pytest.raises(ValueError, match="empty"):
+        rt.trace.trace(cs, rays, record_path=True, record_rays=[])
     with pytest.raises(ValueError, match="integer"):
         rt.trace.trace(cs, rays, record_path=True, record_rays=np.array([0.5]))
     with pytest.raises(ValueError, match="integer"):

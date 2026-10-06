@@ -197,8 +197,8 @@ def first_order_values(fo: rt.paraxial.FirstOrder) -> npt.NDArray[np.float64]:
     return np.array(values, dtype=np.float64)
 
 
-def python_results(case: Case, reference_dir: Path, catalog_dir: Path,
-                   threads: int) -> dict[str, npt.NDArray[np.generic]]:
+def python_results(case: Case, reference_dir: Path, catalog_dir: Path, threads: int,
+                   record_path: bool = False) -> dict[str, npt.NDArray[np.generic]]:
     lib = rt.MaterialLibrary()
     if case.catalog:
         lib.add_catalog(catalog_dir / "schott.agf")
@@ -212,8 +212,13 @@ def python_results(case: Case, reference_dir: Path, catalog_dir: Path,
     else:
         rays = rt.trace.make_rays(cs, case.sampling, path=case.path, wavelength=case.wavelength,
                                   aiming=case.aiming)
-    # Recorded trace (#80): the columns must still equal the plain C++ trace bitwise.
-    stats, paths = rt.trace.trace(cs, rays, path=case.path, threads=threads, record_path=True)
+    paths = None
+    if record_path:
+        # Recorded trace (#80): the columns must still equal the plain C++ trace bitwise.
+        stats, paths = rt.trace.trace(cs, rays, path=case.path, threads=threads,
+                                      record_path=True)
+    else:
+        stats = rt.trace.trace(cs, rays, path=case.path, threads=threads)
     results: dict[str, npt.NDArray[np.generic]] = {
         name: np.array(getattr(rays, name)) for name in COLUMNS
     }
@@ -225,15 +230,19 @@ def python_results(case: Case, reference_dir: Path, catalog_dir: Path,
         wl = cs.reference_wavelength if case.wavelength is None else case.wavelength
         results["first_order"] = first_order_values(rt.paraxial.first_order(cs, case.path, wl))
     results.update(polar_results(rays))
-    results.update(path_results(paths))
+    if paths is not None:
+        results.update(path_results(paths))
     return results
 
 
+@pytest.mark.parametrize("record_path", [False, True], ids=["plain", "recorded"])
 @pytest.mark.parametrize("threads", [1, 4], ids=lambda t: f"py{t}threads")
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c.name)
-def test_python_equals_cpp_bitwise(case: Case, threads: int, cpp_dir: Path,
+def test_python_equals_cpp_bitwise(case: Case, threads: int, record_path: bool, cpp_dir: Path,
                                    reference_dir: Path, catalog_dir: Path) -> None:
-    results = python_results(case, reference_dir, catalog_dir, threads)
+    # record_path=False is the comparison of #32; with True (#80) the recorded trace must give
+    # the same columns and the paths of rtt_py_reference.
+    results = python_results(case, reference_dir, catalog_dir, threads, record_path)
     assert len(results["pos_x"]) > 0
     if case.sampling is None and case.hand == "singlet":
         # The case must separate status and last_surface (review of #32); weight carries the

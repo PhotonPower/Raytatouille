@@ -79,7 +79,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   Speicherbedarf (#80).
 - `rtt-py`: `rt.trace.trace(..., record_path=True, record_rays=None, max_recorded_rays=10000)` gibt
   `(TraceStats, RayPaths)` zurück, mit NumPy-Views (N, S, 3) bzw. (N, S) ohne Kopie; bitgleich
-  gegen C++ (#80).
+  gegen C++; Beispiel `examples/python/ray_paths.py` (#80).
 
 ### Geändert
 - `rtt-analysis`: Spot-Gewichte enthalten jetzt die Fresnel-Verluste der Strahlen; gewichtete

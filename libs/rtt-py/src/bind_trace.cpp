@@ -280,7 +280,6 @@ void bind_trace(nb::module_& m) {
       "P of all rays as an (N, 3, 3) complex128 array, global coordinates, power-normalised as "
       "described at prt() (ADR 0021). This is a copy: P is stored as nine separate columns.");
 
-  static_assert(sizeof(std::size_t) == sizeof(std::uint64_t));
   nb::class_<trace::RayPaths>(
       m, "RayPaths",
       "Recorded paths of traced rays (#80): the state before the first event (slot 0) and after "
@@ -302,8 +301,8 @@ void bind_trace(nb::module_& m) {
       .def_prop_ro(
           "ray_indices",
           [](nb::pointer_and_handle<trace::RayPaths> self) {
-            const auto* data = reinterpret_cast<const std::uint64_t*>(self.p->ray_indices.data());
-            return paths_view<std::uint64_t>(self.h, data, {self.p->ray_count()});
+            return paths_view<std::size_t>(self.h, self.p->ray_indices.data(),
+                                           {self.p->ray_count()});
           },
           "RayBatch index of every recorded ray, (N,) uint64.")
       .def_prop_ro(

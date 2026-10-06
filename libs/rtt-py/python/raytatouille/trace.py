@@ -70,6 +70,14 @@ def trace(system: CompiledSystem, rays: RayBatch, *, path: int | str = 0,
           max_recorded_rays: int = DEFAULT_MAX_RECORDED_RAYS) -> tuple[TraceStats, RayPaths]: ...
 
 
+@overload
+def trace(system: CompiledSystem, rays: RayBatch, *, path: int | str = 0,
+          threads: int | None = None, record_path: bool = False,
+          record_rays: npt.ArrayLike | None = None,
+          max_recorded_rays: int = DEFAULT_MAX_RECORDED_RAYS,
+          ) -> TraceStats | tuple[TraceStats, RayPaths]: ...
+
+
 def trace(system: CompiledSystem, rays: RayBatch, *, path: int | str = 0,
           threads: int | None = None, record_path: bool = False,
           record_rays: npt.ArrayLike | None = None,
@@ -99,6 +107,8 @@ def trace(system: CompiledSystem, rays: RayBatch, *, path: int | str = 0,
     selection = None
     if record_rays is not None:
         indices = np.asarray(record_rays)
+        if indices.ndim == 1 and indices.size == 0:
+            raise ValueError("record_rays is empty")
         if indices.ndim != 1 or not np.issubdtype(indices.dtype, np.integer):
             raise ValueError("record_rays must be a 1-D array of integer ray indices")
         selection = np.ascontiguousarray(indices, dtype=np.int64)
