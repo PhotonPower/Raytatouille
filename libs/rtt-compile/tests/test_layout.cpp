@@ -64,7 +64,8 @@ rtt::model::Conic conic(double radius, double k = 0.0) {
   return {Param(radius), Param(k)};
 }
 
-/// Closed form of the conic sag with even polynomial (Forbes 2011, Eq. (1); rtt-geom).
+/// Closed form of the conic sag (Forbes 2011, Eq. (2.1)) with the even polynomial of
+/// ISO 10110-12, as in rtt-geom (docs/quellen.md).
 double sag_formula(double c, double k, const std::vector<double>& a, double r) {
   double z = c * r * r / (1.0 + std::sqrt(1.0 - (1.0 + k) * c * c * r * r));
   for (std::size_t i = 0; i < a.size(); ++i) z += a[i] * std::pow(r, 2.0 * i + 4.0);
@@ -113,11 +114,21 @@ bool segments_cross(const Vec3& a, const Vec3& b, const Vec3& c, const Vec3& d) 
          ((d3 > 0.0 && d4 < 0.0) || (d3 < 0.0 && d4 > 0.0));
 }
 
-/// Closed (last point = first) and simple (no two non-adjacent edges cross) in the y-z plane.
+/// Closed (last point = first) and simple in the y-z plane: no two non-adjacent edges cross, no
+/// edge of zero length, and no edge runs back along the previous one (collinear overlap).
 void require_closed_simple(const Polyline& p) {
   REQUIRE(p.size() >= 4);
   REQUIRE(p.front() == p.back());
   const std::size_t n = p.size() - 1;  // edges
+  std::size_t degenerate = 0;
+  for (std::size_t i = 0; i < n; ++i) {
+    const Vec3 e1 = p[i + 1] - p[i];
+    const Vec3 e2 = p[(i + 2) % n == 0 ? 1 : (i + 2) % n] - p[i + 1];
+    const double cross = e1.y() * e2.z() - e1.z() * e2.y();
+    if (e1.norm() == 0.0) ++degenerate;
+    if (std::abs(cross) <= 1e-12 * e1.norm() * e2.norm() && e1.dot(e2) < 0.0) ++degenerate;
+  }
+  REQUIRE(degenerate == 0);
   std::size_t crossings = 0;
   for (std::size_t i = 0; i < n; ++i) {
     for (std::size_t j = i + 2; j < n; ++j) {
@@ -140,7 +151,8 @@ double sphere_sag_integral(double radius, double a) {
 
 TEST_CASE("sag and normals against the closed formulas", "[layout]") {
   // Sphere R = 50, conic R = -80 with k = -0.6 and even asphere R = 40, k = -1.2, A4 = 1e-5,
-  // A6 = -2e-8 (Forbes 2011, Eq. (1); docs/quellen.md), on a grid of local points within
+  // A6 = -2e-8 (Forbes 2011, Eq. (2.1); polynomial ISO 10110-12; docs/quellen.md), on a grid
+  // of local points within
   // r <= 11.3 mm. The normal is (-dz/dx, -dz/dy, 1) / |...| with dz/dx = (dz/dr) x / r.
   // Tolerance 1e-12 mm for the sag, 1e-12 for the normal components.
   System s = base_system();
@@ -448,6 +460,149 @@ TEST_CASE("outline step between rims of different radius, annulus, non-segmented
   REQUIRE(rtt::compile::element_outlines(cs, 2, yz_plane(), 5).empty());
   REQUIRE(rtt::compile::element_outlines(cs, 3, yz_plane(), 5).empty());
   REQUIRE_THROWS_AS(rtt::compile::element_outlines(cs, 9, yz_plane(), 5), std::out_of_range);
+}
+
+TEST_CASE("profiles of rectangular and elliptical apertures and at the shape domain", "[layout]") {
+  // Plane surfaces with a rectangle (half widths 6 in x, 8 in y) and an ellipse (semi-axes 5 in
+  // x, 9 in y), and a sphere R = 40 without aperture (domain r <= 40, the hemisphere).
+  // - Rectangle: in the y-z plane y = -8 ... 8 (direction +y); in the plane y = 0 with normal
+  //   (0, 1, 0) the direction is t = z x n = -x, so x runs from 6 to -6.
+  // - Ellipse: y = -+9 through the axis; in the plane x = 3, y = -+9 sqrt(1 - 9/25) = -+7.2.
+  // - Sphere: the profile ends 1e-12 R inside the domain (layout.hpp), at |y| = 40 (1 - 1e-12),
+  //   with the sag of the formula there and within 40 sqrt(2e-12) = 5.7e-5 mm of z = 40.
+  // Tolerance 1e-12. For the sag at the domain edge: dz/dr = r / sqrt(R^2 - r^2) = 7.1e5 there,
+  // and |y| from the global point carries about one ulp of 40 (7.1e-15), so z = sag(|y|) agrees
+  // to about 5e-9: tolerance 1e-8. (First set to 1e-9 without this product; the measured
+  // 1.6e-9 showed the missing factor.)
+  System s = base_system();
+  Surface rect = surface("RE", 0.0, rtt::model::Plane{}, std::nullopt);
+  rect.aperture = rtt::model::RectangularAperture{6.0, 8.0};
+  Surface ellipse = surface("EL", 5.0, rtt::model::Plane{}, std::nullopt);
+  ellipse.aperture = rtt::model::EllipticalAperture{5.0, 9.0};
+  Element lens{"L",
+               ElementKind::Lens,
+               Pose::along_z(0.0),
+               "CONST:1.5",
+               {rect, ellipse, surface("SP", 50.0, conic(40.0), std::nullopt)}};
+  s.root.children = {{lens}};
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+
+  const auto re_yz = rtt::compile::surface_profile(cs, 0, yz_plane(), 3);
+  REQUIRE(re_yz.size() == 1);
+  REQUIRE((re_yz[0].front() - Vec3(0.0, -8.0, 0.0)).norm() <= 1e-12);
+  REQUIRE((re_yz[0].back() - Vec3(0.0, 8.0, 0.0)).norm() <= 1e-12);
+  const SectionPlane xz{Vec3::Zero(), Vec3(0.0, 1.0, 0.0)};
+  const auto re_xz = rtt::compile::surface_profile(cs, 0, xz, 3);
+  REQUIRE(re_xz.size() == 1);
+  REQUIRE((re_xz[0].front() - Vec3(6.0, 0.0, 0.0)).norm() <= 1e-12);
+  REQUIRE((re_xz[0].back() - Vec3(-6.0, 0.0, 0.0)).norm() <= 1e-12);
+
+  const auto el_axis = rtt::compile::surface_profile(cs, 1, yz_plane(), 3);
+  REQUIRE((el_axis[0].front() - Vec3(0.0, -9.0, 5.0)).norm() <= 1e-12);
+  REQUIRE((el_axis[0].back() - Vec3(0.0, 9.0, 5.0)).norm() <= 1e-12);
+  const auto el_off = rtt::compile::surface_profile(cs, 1, yz_plane(3.0), 3);
+  REQUIRE((el_off[0].front() - Vec3(3.0, -7.2, 5.0)).norm() <= 1e-12);
+  REQUIRE((el_off[0].back() - Vec3(3.0, 7.2, 5.0)).norm() <= 1e-12);
+
+  const auto sphere = rtt::compile::surface_profile(cs, 2, yz_plane(), 5);
+  REQUIRE(sphere.size() == 1);
+  const double edge = 40.0 * (1.0 - 1e-12);
+  for (const Vec3& end : {sphere[0].front(), sphere[0].back()}) {
+    REQUIRE(end.allFinite());
+    REQUIRE(std::abs(std::abs(end.y()) - edge) <= 1e-12 * 40.0);
+    REQUIRE(std::abs(end.z() - 50.0 - sag_formula(1.0 / 40.0, 0.0, {}, std::abs(end.y()))) <= 1e-8);
+    REQUIRE(std::abs(end.z() - 90.0) <= 1e-4);
+  }
+}
+
+TEST_CASE("outline edges: unequal bores, a turned-over surface, a tilted element, errors",
+          "[layout]") {
+  // 1. Annulus lens, thickness 4: front 3 <= r <= 10, back 2 <= r <= 10. The glass fills
+  //    2 <= |y| <= 10 for 0 <= z <= 4 (bore at the smaller radius, flat shoulder at the front):
+  //    two outlines of 8 x 4 = 32 mm^2 with the corners (+-2, 0).
+  // 2. A singlet (sphere R = 50 at z = 0, plane at z = 4, r = 10) and the same with the plane
+  //    turned over (rotated by 180 deg about x): identical geometry, equal areas.
+  // 3. The step lens of the previous test (P1 r = 10 at 0, P2 r = 12 at 4) at (0, 2, 50),
+  //    rotated by 10 deg about x: still 96 mm^2 (a rotation within the section plane), and the
+  //    corners (0, +-12, 0) of P1's frame at (0, 2 +- 12 cos 10, 50 +- 12 sin 10).
+  // 4. An annulus on the front surface only gives a different number of pieces: an error.
+  // Tolerance 1e-12.
+  System s = base_system();
+  Surface b1 = surface("B1", 0.0, rtt::model::Plane{}, std::nullopt);
+  Surface b2 = surface("B2", 4.0, rtt::model::Plane{}, std::nullopt);
+  b1.aperture = rtt::model::CircularAperture{10.0, 3.0};
+  b2.aperture = rtt::model::CircularAperture{10.0, 2.0};
+  Element bores{"B", ElementKind::Lens, Pose::along_z(0.0), "CONST:1.5", {b1, b2}};
+  Element plain{
+      "S",
+      ElementKind::Lens,
+      Pose::along_z(20.0),
+      "CONST:1.5",
+      {surface("S1", 0.0, conic(50.0), 10.0), surface("S2", 4.0, rtt::model::Plane{}, 10.0)}};
+  Surface turned_plane = surface("T2", 4.0, rtt::model::Plane{}, 10.0);
+  turned_plane.pose.rotation_deg[0] = Param(180.0);
+  Element turned{"T",
+                 ElementKind::Lens,
+                 Pose::along_z(30.0),
+                 "CONST:1.5",
+                 {surface("T1", 0.0, conic(50.0), 10.0), turned_plane}};
+  Pose tilt;
+  tilt.position = {Param(0.0), Param(2.0), Param(50.0)};
+  tilt.rotation_deg[0] = Param(10.0);
+  Element step{"P",
+               ElementKind::Lens,
+               tilt,
+               "CONST:1.5",
+               {surface("P1", 0.0, rtt::model::Plane{}, 10.0),
+                surface("P2", 4.0, rtt::model::Plane{}, 12.0)}};
+  Surface m1 = surface("M1", 0.0, rtt::model::Plane{}, std::nullopt);
+  m1.aperture = rtt::model::CircularAperture{10.0, 3.0};
+  Element mismatch{"X",
+                   ElementKind::Lens,
+                   Pose::along_z(80.0),
+                   "CONST:1.5",
+                   {m1, surface("M2", 4.0, rtt::model::Plane{}, 10.0)}};
+  s.root.children = {{bores}, {plain}, {turned}, {step}, {mismatch}};
+  s.paths = {{"main", false, {{SurfaceId("B1"), rtt::model::EventKind::Refract, 0}}}};
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+  const auto has_point = [](const Polyline& p, const Vec3& q) {
+    for (const Vec3& x : p) {
+      if ((x - q).norm() <= 1e-12) return true;
+    }
+    return false;
+  };
+
+  const auto bore_outlines = rtt::compile::element_outlines(cs, 0, yz_plane(), 5);
+  REQUIRE(bore_outlines.size() == 2);
+  for (const Polyline& o : bore_outlines) {
+    require_closed_simple(o);
+    REQUIRE(std::abs(std::abs(yz_area(o)) - 32.0) <= 1e-12);
+  }
+  REQUIRE(has_point(bore_outlines[0], Vec3(0.0, -2.0, 0.0)));
+  REQUIRE(has_point(bore_outlines[1], Vec3(0.0, 2.0, 0.0)));
+
+  const auto plain_outline = rtt::compile::element_outlines(cs, 1, yz_plane(), 101);
+  const auto turned_outline = rtt::compile::element_outlines(cs, 2, yz_plane(), 101);
+  REQUIRE(plain_outline.size() == 1);
+  REQUIRE(turned_outline.size() == 1);
+  require_closed_simple(turned_outline[0]);
+  REQUIRE(std::abs(std::abs(yz_area(turned_outline[0])) - std::abs(yz_area(plain_outline[0]))) <=
+          1e-12);
+
+  const auto tilted = rtt::compile::element_outlines(cs, 3, yz_plane(), 5);
+  REQUIRE(tilted.size() == 1);
+  require_closed_simple(tilted[0]);
+  REQUIRE(std::abs(std::abs(yz_area(tilted[0])) - 96.0) <= 1e-12);
+  const double b = 10.0 * kPi / 180.0;
+  for (const double sign : {-1.0, 1.0}) {
+    const Vec3 corner(0.0, 2.0 + sign * 12.0 * std::cos(b), 50.0 + sign * 12.0 * std::sin(b));
+    INFO("corner " << sign);
+    REQUIRE(has_point(tilted[0], corner));
+  }
+
+  REQUIRE_THROWS_AS(rtt::compile::element_outlines(cs, 4, yz_plane(), 5), std::invalid_argument);
 }
 
 TEST_CASE("elements and the media in front of and behind each surface", "[layout]") {

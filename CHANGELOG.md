@@ -117,7 +117,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   - `surface_sag` und `surface_normal`, vektorisiert, lokal oder global.
   - `surface_profile` in Schnittebenen parallel zur lokalen z-Achse, begrenzt durch die Apertur (der Ring ergibt zwei Stücke) und den Formbereich.
   - `element_outlines`: geschlossene Polygone der Glassegmente von Linsen und segmentierten Platten, Randkanten als Stufe (#81).
-- `rtt-py`: Modul `rt.layout` mit `surfaces`, `elements`, `sag` und `normal` mit Broadcasting, `profile` und `outlines` (Schnittebene `"yz"`, `"xz"` oder Punkt und Normale); Beispiel `examples/python/layout.py` (#81).
+- `rtt-py`: Modul `rt.layout` mit `surfaces`, `elements`, `sag` und `normal` mit Broadcasting, `profile` und `outlines` (Schnittebene `"yz"`, `"xz"` oder Punkt und Normale); Beispiel `examples/python/layout.py` (Achromat) (#81).
 
 ### Geändert
 - `rtt-analysis`: Spot-Gewichte enthalten jetzt die Fresnel-Verluste der Strahlen; gewichtete

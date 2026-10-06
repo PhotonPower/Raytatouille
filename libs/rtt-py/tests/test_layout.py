@@ -20,7 +20,7 @@ def singlet(reference_dir: Path) -> rt.CompiledSystem:
 
 
 def sphere_sag(radius: float, r: np.ndarray) -> np.ndarray:
-    # Conic sag with k = 0 (Forbes 2011, Eq. (1)): c r^2 / (1 + sqrt(1 - c^2 r^2)).
+    # Conic sag with k = 0 (Forbes 2011, Eq. (2.1)): c r^2 / (1 + sqrt(1 - c^2 r^2)).
     c = 1.0 / radius
     result: np.ndarray = c * r * r / (1.0 + np.sqrt(1.0 - c * c * r * r))
     return result
@@ -122,7 +122,20 @@ def test_layout_errors(reference_dir: Path) -> None:
         rt.layout.normal(cs, 1, 0.0, 0.0, frame="world")
     with pytest.raises(ValueError, match="samples"):
         rt.layout.profile(cs, 1, samples=1)
-    with pytest.raises(IndexError):
-        rt.layout.sag(cs, 99, 0.0, 0.0)
-    with pytest.raises(IndexError):
-        rt.layout.outlines(cs, 99)
+    for bad in (99, -1):
+        with pytest.raises(IndexError):
+            rt.layout.sag(cs, bad, 0.0, 0.0)
+        with pytest.raises(IndexError):
+            rt.layout.outlines(cs, bad)
+    with pytest.raises(ValueError, match="samples"):
+        rt.layout.outlines(cs, 1, samples=-3)
+
+
+def test_plane_shorthands_run_along_plus_y_and_plus_x(reference_dir: Path) -> None:
+    # "yz" runs along +y, "xz" along +x (normal (0, -1, 0), t = z x n = +x): the profile of the
+    # plane L1.S2 (r = 12.7 at z = 9) starts at -12.7 in both.
+    cs = singlet(reference_dir)
+    yz = rt.layout.profile(cs, "L1.S2", "yz", samples=3)[0]
+    xz = rt.layout.profile(cs, "L1.S2", "xz", samples=3)[0]
+    assert np.max(np.abs(yz - np.array([[0, -12.7, 9], [0, 0, 9], [0, 12.7, 9]]))) <= 1e-12
+    assert np.max(np.abs(xz - np.array([[-12.7, 0, 9], [0, 0, 9], [12.7, 0, 9]]))) <= 1e-12

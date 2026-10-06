@@ -49,7 +49,7 @@ def test_layout_example(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> N
     namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "layout.py"))
     assert namespace["main"]() == 0
     out = capsys.readouterr().out
-    assert "3 lens outlines in the y-z plane" in out and "L2.S1" in out
+    assert "2 lens outlines in the y-z plane" in out and "L1.S2" in out
     pytest.importorskip("matplotlib")
     png = tmp_path / "layout.png"
     assert namespace["main"](str(png)) == 0

@@ -57,11 +57,15 @@ void surface_normal(const CompiledSystem& system,
 /// Profile of `surface` in a section plane: the curve z = sag along the line in which the plane
 /// cuts the local x-y plane, clipped to the aperture (an annulus gives two pieces) and to the
 /// domain of the shape, in global coordinates. The plane must be parallel to the local z axis of
-/// the surface (|n . z_local| < 1e-12 |n|), which covers meridional sections, tilts within the
-/// section plane, fold mirrors and planes offset from the axis; other planes need a general
-/// surface section (with the 3D meshes, M10). Each piece has `samples` points, equally spaced
-/// along the line, from one aperture edge to the other in the direction t = z_local x n
-/// (local); the end points lie on the aperture edge. No piece if the line misses the aperture.
+/// the surface (|n . z_local| <= 1e-12 for the unit normal n), which covers meridional sections,
+/// tilts within the section plane, fold mirrors and planes offset from the axis; other planes
+/// need a general surface section (with the 3D meshes, M10). Each piece has `samples` points,
+/// equally spaced along the line in the direction t = z_local x n (local), from one end to the
+/// other; ends on the aperture edge are exact. Where the domain of the shape (max_radius, e.g.
+/// the hemisphere of a sphere) limits the piece, it ends 1e-12 max_radius inside it, since the
+/// sag is NaN beyond and has an infinite slope there. No piece if the line misses the aperture.
+/// A surface without aperture is cut at the domain of its shape, which is rarely what a drawing
+/// wants: give lens surfaces apertures (semi-diameters).
 /// @throws std::out_of_range if `surface` is not a surface index
 /// @throws std::invalid_argument if samples < 2, the plane normal is zero or not finite, the
 ///         plane is not parallel to the local z axis, or the surface has neither an aperture nor
@@ -74,15 +78,18 @@ void surface_normal(const CompiledSystem& system,
 /// Closed outlines of the glass segments of `element` in a section plane, global coordinates:
 /// for segment j between surfaces j and j + 1, the profile of surface j, the edge to surface
 /// j + 1, the profile of surface j + 1 backwards and the edge back; the last point repeats the
-/// first. Edges between rims of different radius are a step: parallel to the axis of surface j
-/// at the larger radius up to the axial position of the smaller rim, then along the section
-/// line to it (as lens drawings show a cylindrical edge and a flat shoulder). An annulus on both
-/// surfaces gives one outline per side of the hole.
+/// first. Both profiles are taken along the section direction of surface j (a turned-over
+/// surface j + 1 is reversed). Edges, in the section coordinates of surface j: if the two rims
+/// end at different positions along the section line, the edge is a step, parallel to the axis
+/// of surface j at the outermost of the two rims (as seen from the glass), then along the
+/// section line to the other rim. At an outer rim this is the cylindrical edge at the larger
+/// radius with a flat shoulder, at a central hole the bore at the smaller radius. An annulus on
+/// both surfaces gives one outline per side of the hole.
 ///
-/// Only elements whose surfaces bound the segments pairwise: lenses and segmented plates. Plates,
-/// prisms and rhombs of one material, mirrors, thin elements, stops and detectors give no
-/// outline (empty list); draw their surface profiles. Pieces that the section plane misses on
-/// both surfaces of a segment give no outline.
+/// Only lenses and segmented plates, whose surfaces bound the segments pairwise, have outlines.
+/// All plates of one material (windows, prisms, rhombs), mirrors, thin elements, stops and
+/// detectors give an empty list; draw their surface profiles. Pieces that the section plane
+/// misses on both surfaces of a segment give no outline.
 /// @throws std::out_of_range if `element` is not an element index
 /// @throws std::invalid_argument as surface_profile(), or if the two surfaces of a segment give
 ///         a different number of pieces (annulus on one surface only, or the plane misses one

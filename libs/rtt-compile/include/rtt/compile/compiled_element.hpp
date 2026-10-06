@@ -14,8 +14,8 @@ namespace rtt::compile {
 
 /// One element of the model in tree order (CompiledSystem::elements()).
 struct CompiledElement {
-  std::string name;  ///< element name from the model
-  model::ElementKind kind = model::ElementKind::Lens;
+  std::string name;                                    ///< element name from the model
+  model::ElementKind kind = model::ElementKind::Lens;  ///< kind of the element
   std::uint32_t first_surface = 0;  ///< surfaces [first_surface, + surface_count)
   std::uint32_t surface_count = 0;
   /// Media of the body, indices into CompiledSystem::media(): Lens and Plate one per segment

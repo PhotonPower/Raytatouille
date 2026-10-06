@@ -7,10 +7,12 @@ the origin, +z along its axis); "global" are the system coordinates (right-hande
 +z). ``surface`` is an index into ``CompiledSystem.surface_ids`` or a surface id, ``element`` an
 index into ``elements(system)``.
 
-Section planes are given as ``"yz"`` (x = 0), ``"xz"`` (y = 0) or a tuple ``(point, normal)``
-in global coordinates. Profiles exist for planes parallel to the local z axis of the surface
-(meridional sections, tilts in the plane, fold mirrors, planes offset from the axis); other
-planes raise ValueError (general sections come with the 3D meshes, M10).
+Section planes are given as ``"yz"`` (x = 0; profiles run along +y), ``"xz"`` (y = 0; along
++x) or a tuple ``(point, normal)`` in global coordinates (along z_local x normal). Profiles
+exist for planes parallel to the local z axis of the surface (meridional sections, tilts in the
+plane, fold mirrors, planes offset from the axis); other planes raise ValueError (general
+sections come with the 3D meshes, M10). A surface without aperture is cut at the domain of its
+shape (e.g. the hemisphere of a sphere): give lens surfaces apertures for drawings.
 """
 
 from __future__ import annotations
@@ -100,17 +102,27 @@ def elements(system: CompiledSystem) -> list[CompiledElement]:
 
 
 def _surface_index(system: CompiledSystem, surface: int | str) -> int:
+    ids = system.surface_ids
     if isinstance(surface, str):
-        ids = system.surface_ids
         if surface not in ids:
             raise ValueError(f"unknown surface id {surface!r}")
         return ids.index(surface)
-    return int(surface)
+    index = int(surface)
+    if not 0 <= index < len(ids):
+        raise IndexError(f"surface index {index} out of range ({len(ids)} surfaces)")
+    return index
+
+
+def _samples(samples: int) -> int:
+    if samples < 2:
+        raise ValueError("a profile needs at least 2 samples")
+    return int(samples)
 
 
 def _plane(plane: SectionPlane) -> tuple[FloatArray, FloatArray]:
     if isinstance(plane, str):
-        normals = {"yz": [1.0, 0.0, 0.0], "xz": [0.0, 1.0, 0.0]}
+        # Normals chosen so that the profiles run along +y ("yz") and +x ("xz"): t = z x n.
+        normals = {"yz": [1.0, 0.0, 0.0], "xz": [0.0, -1.0, 0.0]}
         if plane not in normals:
             raise ValueError(f"unknown section plane {plane!r}; use 'yz', 'xz' or (point, normal)")
         return np.zeros(3), np.array(normals[plane])
@@ -152,7 +164,7 @@ def profile(system: CompiledSystem, surface: int | str, plane: SectionPlane = "y
     plane that misses the surface none."""
     point, normal_ = _plane(plane)
     result: list[FloatArray] = _core.layout_profile(system, _surface_index(system, surface),
-                                                    point, normal_, samples)
+                                                    point, normal_, _samples(samples))
     return result
 
 
@@ -160,10 +172,16 @@ def outlines(system: CompiledSystem, element: int, plane: SectionPlane = "yz",
              samples: int = 101) -> list[FloatArray]:
     """Closed outlines (last point = first) of the glass segments of a lens or segmented plate
     in the section plane, global coordinates, (M, 3) each: profile of the front surface, edge,
-    profile of the back surface backwards, edge. Rims of different radius are joined by a step
-    (parallel to the axis at the larger radius, then along the section line). Elements whose
-    surfaces do not bound segments pairwise (plates and prisms of one material, mirrors, thin
-    elements, stops, detectors) give an empty list; draw their profiles."""
+    profile of the back surface backwards, edge. Rims ending at different places along the
+    section line are joined by a step (parallel to the axis at the outermost rim as seen from the
+    glass, then along the section line): the cylindrical edge at the larger radius, a bore at the
+    smaller one. Only lenses and segmented plates have outlines; all plates of one material
+    (windows, prisms), mirrors, thin elements, stops and detectors give an empty list; draw
+    their profiles."""
+    count = len(_core.layout_elements(system))
+    if not 0 <= int(element) < count:
+        raise IndexError(f"element index {element} out of range ({count} elements)")
     point, normal_ = _plane(plane)
-    result: list[FloatArray] = _core.layout_outlines(system, element, point, normal_, samples)
+    result: list[FloatArray] = _core.layout_outlines(system, int(element), point, normal_,
+                                                     _samples(samples))
     return result

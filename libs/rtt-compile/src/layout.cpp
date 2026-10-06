@@ -21,6 +21,12 @@ using math::Vec3;
 /// Tolerance of the check that the section plane is parallel to the local z axis.
 constexpr double kParallel = 1e-12;
 
+/// Relative margin by which a profile limited by the domain of the shape (max_radius) ends
+/// inside it: exactly at r = max_radius rounding can give r slightly beyond it, where the sag is
+/// NaN. The sag has an infinite slope there, so z at the end differs from the value at the
+/// domain edge by up to max_radius sqrt(2 kDomainMargin) (about 1.4e-6 max_radius).
+constexpr double kDomainMargin = 1e-12;
+
 template <class>
 inline constexpr bool kUnhandledAperture = false;
 
@@ -169,7 +175,7 @@ std::vector<Interval> profile_pieces(const CompiledSurface& s, const Line& line)
     pieces = {{-std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity()}};
   }
   if (r_max) {
-    const std::optional<Interval> domain = disc(line, *r_max);
+    const std::optional<Interval> domain = disc(line, *r_max * (1.0 - kDomainMargin));
     pieces = domain ? intersect(pieces, {*domain}) : std::vector<Interval>{};
   }
   return pieces;
@@ -199,28 +205,41 @@ Polyline sample_piece(const CompiledSurface& s,
   return points;
 }
 
+/// Coordinates of a global point in the section coordinates of surface a: (parameter on a's
+/// section line, local z of a).
+std::pair<double, double> section_coordinates(const CompiledSurface& a,
+                                              const Line& line,
+                                              const Vec3& global) {
+  const Vec3 local = a.to_local.apply_point(global);
+  return {(local.x() - line.q0x) * line.tx + (local.y() - line.q0y) * line.ty, local.z()};
+}
+
 /// Edge of an outline from rim point `from` to rim point `to` (global; one on surface a, one on
-/// the next surface): a step corner if the rims have different distances from the axis of `a`,
-/// in a's section coordinates (parameter on a's line, local z of a).
+/// the next surface), in a's section coordinates. At the upper end of a piece (`upper`, largest
+/// parameter) the glass lies at smaller parameters, at the lower end at larger ones; if the two
+/// rims end at different parameters, the edge is a step: parallel to the axis of a at the
+/// outermost of the two rims (max at the upper, min at the lower end), then along the section
+/// line to the other rim. At an outer rim this is the cylindrical edge at the larger radius, at
+/// a central hole the bore at the smaller radius. The corner is left out where it coincides
+/// with a rim.
 void append_edge(Polyline& outline,
                  const CompiledSurface& a,
                  const Line& line,
                  const Vec3& from,
-                 const Vec3& to) {
-  const auto coordinates = [&](const Vec3& global) {
-    const Vec3 local = a.to_local.apply_point(global);
-    const double param = (local.x() - line.q0x) * line.tx + (local.y() - line.q0y) * line.ty;
-    return std::pair<double, double>{param, local.z()};
-  };
-  const auto [s_from, z_from] = coordinates(from);
-  const auto [s_to, z_to] = coordinates(to);
-  if (std::abs(std::abs(s_from) - std::abs(s_to)) > 1e-12) {
-    // Parallel to the axis at the larger rim, then along the section line to the smaller one.
-    const bool from_larger = std::abs(s_from) > std::abs(s_to);
-    const double s_corner = from_larger ? s_from : s_to;
-    const double z_corner = from_larger ? z_to : z_from;
-    const Vec3 corner(line.x(s_corner), line.y(s_corner), z_corner);
-    outline.push_back(a.to_global.apply_point(corner));
+                 const Vec3& to,
+                 bool upper) {
+  const auto [s_from, z_from] = section_coordinates(a, line, from);
+  const auto [s_to, z_to] = section_coordinates(a, line, to);
+  const double scale = std::max({1.0, std::abs(s_from), std::abs(s_to)});
+  if (std::abs(s_from - s_to) > 1e-12 * scale) {
+    const bool corner_at_from = upper ? s_from > s_to : s_from < s_to;
+    const double s_corner = corner_at_from ? s_from : s_to;
+    const double z_corner = corner_at_from ? z_to : z_from;
+    if (std::abs(z_corner - (corner_at_from ? z_from : z_to)) >
+        1e-12 * std::max(1.0, std::abs(z_corner))) {
+      outline.push_back(
+          a.to_global.apply_point(Vec3(line.x(s_corner), line.y(s_corner), z_corner)));
+    }
   }
   outline.push_back(to);
 }
@@ -301,11 +320,20 @@ std::vector<Polyline> element_outlines(const CompiledSystem& system,
           std::to_string(back.size()) + " of " + system.surfaces()[ia + 1].id.str());
     }
     const Line line = section_line(a, plane);
+    // The pieces of the next surface run along its own direction z_b x n; if that is opposite
+    // to a's (a surface turned over, or tilted by more than 90 deg), reverse them so that both
+    // run along a's section line and piece k of both lies on the same side.
+    std::vector<Polyline> next = back;
+    if (!next.empty() && section_coordinates(a, line, next.front().front()).first >
+                             section_coordinates(a, line, next.front().back()).first) {
+      std::reverse(next.begin(), next.end());
+      for (Polyline& piece : next) std::reverse(piece.begin(), piece.end());
+    }
     for (std::size_t k = 0; k < front.size(); ++k) {
       Polyline outline(front[k]);
-      append_edge(outline, a, line, front[k].back(), back[k].back());
-      outline.insert(outline.end(), back[k].rbegin() + 1, back[k].rend());
-      append_edge(outline, a, line, back[k].front(), front[k].front());
+      append_edge(outline, a, line, front[k].back(), next[k].back(), true);
+      outline.insert(outline.end(), next[k].rbegin() + 1, next[k].rend());
+      append_edge(outline, a, line, next[k].front(), front[k].front(), false);
       outlines.push_back(std::move(outline));
     }
   }
