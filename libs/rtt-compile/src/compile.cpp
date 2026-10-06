@@ -74,6 +74,8 @@ class Compiler {
   std::vector<model::Diagnostic> errors_;
   std::vector<double> wavelengths_um_;
   std::vector<CompiledSurface> surfaces_;
+  std::vector<CompiledElement>
+      compiled_elements_;  ///< in tree order, see CompiledSystem::elements()
   std::vector<CompiledMedium> media_;
   std::vector<CompiledCoating> compiled_coatings_;
   std::vector<CompiledPath> paths_;
@@ -357,6 +359,7 @@ class Compiler {
       c.id = s.id;
       c.element_kind = element.kind;
       c.element_name = element.name;
+      c.element = element_index;
       c.to_global = to_global * model::to_isometry(s.pose);
       c.to_local = c.to_global.inverse();
       c.shape = compile_shape(s.shape, surface_location + "/shape");
@@ -379,6 +382,22 @@ class Compiler {
       surface_element_.push_back(element_index);
       surfaces_.push_back(std::move(c));
     }
+
+    // Media in front of and behind each surface in the element's surface order (#81): a
+    // refraction through the surfaces in order, from the environment, with the rules of cross()
+    // (ADR 0017). Independent of the paths.
+    MediumState state{std::nullopt, 0, environment_};
+    for (std::uint32_t j = 0; j < info.surface_count; ++j) {
+      CompiledSurface& c = surfaces_[info.first_surface + j];
+      c.medium_front = state.current;
+      // In order from outside through the first surface, cross() is never ambiguous.
+      if (const std::optional<MediumState> crossed = cross(info.first_surface + j, state)) {
+        state = *crossed;
+      }
+      c.medium_back = state.current;
+    }
+    compiled_elements_.push_back(CompiledElement{element.name, element.kind, info.first_surface,
+                                                 info.surface_count, info.media, info.segmented});
   }
 
   CompiledShape compile_shape(const model::ShapeStack& shape, const std::string& location) {
@@ -618,6 +637,7 @@ CompiledSystem compile(const model::System& system,
   cs.fields_ = system.fields;
   cs.object_ = system.object;
   cs.surfaces_ = std::move(compiler.surfaces_);
+  cs.elements_ = std::move(compiler.compiled_elements_);
   cs.media_ = std::move(compiler.media_);
   cs.coatings_ = std::move(compiler.compiled_coatings_);
   cs.paths_ = std::move(compiler.paths_);

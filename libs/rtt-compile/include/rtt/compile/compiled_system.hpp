@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "rtt/coating/transfer_matrix.hpp"
+#include "rtt/compile/compiled_element.hpp"
 #include "rtt/geom/asphere.hpp"
 #include "rtt/geom/conic.hpp"
 #include "rtt/geom/plane.hpp"
@@ -59,6 +60,15 @@ struct CompiledSurface {
   model::SurfaceId id;  ///< stable surface id from the model, e.g. "L1.S1"
   model::ElementKind element_kind = model::ElementKind::Lens;  ///< kind of the owning element
   std::string element_name;                                    ///< name of the owning element
+  std::uint32_t element = 0;  ///< index of the owning element in CompiledSystem::elements()
+  /// Media before and after the surface in the surface order of its element (#81), indices into
+  /// CompiledSystem::media(): what a refraction through the element's surfaces in order, coming
+  /// from the environment, would see (rules of ADR 0017: segments for lenses and segmented
+  /// plates, inside/environment toggle otherwise; environment on both sides for an element
+  /// without material). Independent of the paths: the media of a path are in its events, and a
+  /// reflection or a path running backwards may see the surface differently.
+  std::uint32_t medium_front = 0;
+  std::uint32_t medium_back = 0;
   /// Local surface coordinates -> global coordinates (assembly -> element -> surface poses
   /// chained, see rtt::math::Isometry3::from_pose for the convention).
   math::Isometry3 to_global;
@@ -221,6 +231,8 @@ class CompiledSystem {
 
   /// All surfaces in tree order.
   [[nodiscard]] const std::vector<CompiledSurface>& surfaces() const noexcept { return surfaces_; }
+  /// Elements in tree order; CompiledSurface::element indexes this list (#81).
+  [[nodiscard]] const std::vector<CompiledElement>& elements() const noexcept { return elements_; }
   /// Distinct media; media()[environment_medium()] is the environment.
   [[nodiscard]] const std::vector<CompiledMedium>& media() const noexcept { return media_; }
   [[nodiscard]] std::uint32_t environment_medium() const noexcept { return 0; }
@@ -254,6 +266,7 @@ class CompiledSystem {
   model::FieldSet fields_;
   model::ObjectSpace object_;
   std::vector<CompiledSurface> surfaces_;
+  std::vector<CompiledElement> elements_;
   std::vector<CompiledMedium> media_;
   std::vector<CompiledCoating> coatings_;
   std::vector<CompiledPath> paths_;
