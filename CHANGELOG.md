@@ -4,7 +4,16 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
 
 ## [Unreleased]
 
+## [0.4.0] – M3 Polarisation
+
 ### Hinzugefügt
+- Abnahme M3 (`libs/rtt-analysis/tests/test_m3_acceptance.cpp`): die M3-Zeilen der Tabelle
+  „Validierung und Tests“ Ende zu Ende durch den Tracer mit konventionsfreien Größen: Fresnel an
+  N-BK7 und Brewster, Totalreflexion (Grenzwinkel auf 1e−12 in ξ, s/p-Phasensprung),
+  λ/4-AR aus MgF₂, verlustfreier Schichtstapel R + T = 1, Malus, λ/4 unter 45° (mit Händigkeit),
+  λ/2 unter θ, Metallspiegel unter 45° als ellipsometrisches Verhältnis gegen den idealen Leiter
+  (Testmetall ñ = 1,2 + 7,26i), Metall-Periskop und Fresnel-Rhombus. Referenzsysteme unter
+  `tests/reference/m3/`, Testkatalog `tests/catalogs/coatings/m3.json` (#63).
 - `rtt-polar` (neue Bibliothek, Schicht Physik, nur `rtt-math`): Fresnel-Amplituden r_s, r_p, t_s, t_p
   mit Phase für komplexe Indizes ñ = n + iκ, inklusive Totalreflexion (`fresnel`, kanonische Eingabe
   ξ = Re(ñ_i) sin θ_i; `fresnel_at_angle` für nicht absorbierende Einfallsmedien), Reflexions- und Transmissionsgrade (`fresnel_power`), Normalkomponente mit

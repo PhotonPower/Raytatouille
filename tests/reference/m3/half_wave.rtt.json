@@ -1,0 +1,64 @@
+{
+  "schema_version": "0.2.0",
+  "name": "M3 acceptance: x polarizer and an ideal half-wave plate with its fast axis at 22.5 deg",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [
+    {"um": 0.55, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 10.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 5.0}
+          }
+        ]
+      },
+      {
+        "type": "thin_element",
+        "name": "polarizer",
+        "pose": {"position": [0.0, 0.0, 5.0]},
+        "surfaces": [
+          {
+            "id": "POL",
+            "interaction": {"type": "ideal_polarizer"}
+          }
+        ]
+      },
+      {
+        "type": "thin_element",
+        "name": "half wave plate",
+        "pose": {"position": [0.0, 0.0, 10.0], "rotation_deg": [0.0, 0.0, 22.5]},
+        "surfaces": [
+          {
+            "id": "HWP",
+            "interaction": {"type": "ideal_retarder", "retardance_waves": 0.5}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 20.0]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}

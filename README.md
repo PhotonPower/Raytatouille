@@ -4,8 +4,11 @@ Raytracing-Engine für Optikdesign: Linsen (sphärisch, asphärisch, Freiform), 
 Beschichtungen, Strahlteiler, Polarisatoren und Retarder; Polarisation von Anfang an.
 C++20 mit Python-API, Linux und Windows, MIT-Lizenz.
 
-**Stand:** Meilenstein M0 (Fundament) – Datenmodell, Dateiformat `.rtt.json`,
-Validierung und Kommandozeile `rtt`. Noch kein Raytracing; das folgt mit M1.
+**Stand:** Meilenstein M3 (Polarisation) erreicht. Sequenzielles Raytracing mit Ray Aiming und
+paraxialer Analyse (M1); Glaskataloge (AGF), Luft und dn/dT, Spot, Ray Fans, OPD, Verzeichnung,
+Seidel und Python-API (M2); Polarisations-Raytracing mit Fresnel (komplexer Index), Coatings
+(Transfermatrix, Kataloge), idealen Polarisatoren und Retardern (M3). Als Nächstes: Multi-Path
+(M4). Der Plan steht in [docs/architecture.md](docs/architecture.md).
 
 ## Bauen
 
@@ -27,7 +30,8 @@ rtt validate tests/reference/m0/singlet.rtt.json   # Struktur und Semantik prüf
 rtt format meine_optik.rtt.json                     # in kanonische Form bringen
 ```
 
-Beispielsysteme liegen unter `tests/reference/m0/`.
+Beispielsysteme liegen unter `tests/reference/`, mit einem Unterordner je Meilenstein (`m0/` bis
+`m3/`).
 
 ## Dokumentation
 
