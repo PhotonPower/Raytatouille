@@ -224,12 +224,13 @@ TEST_CASE("ideal mirror and a mirror without material: no loss, E_r = -(I - 2 N 
     const CompiledSystem cs = compile(s, lib);
     const RayBatch rays = trace_one(cs, Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 1.0));
     const Vec3 n = cs.surfaces()[0].to_global.apply_vector(Vec3(0.0, 0.0, 1.0));
-    const Mat3 conductor = -(Mat3::Identity() - 2.0 * n * n.transpose());
+    // -(I - 2 N N^T) E, applied to E directly.
+    const auto conductor = [&n](const Vec3& e) -> Vec3 { return -(e - 2.0 * n.dot(e) * n); };
     INFO("ideal " << ideal);
     REQUIRE(std::abs(rays.weight()[0] - 1.0) <= 1e-14);
-    for (const Vec3 e : {Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0)}) {
+    for (const Vec3& e : {Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0)}) {
       const CVec3 out = rays.prt_matrix(0) * e.cast<Cx>();
-      REQUIRE((out - (conductor * e).cast<Cx>()).norm() <= 1e-14);
+      REQUIRE((out - conductor(e).cast<Cx>()).norm() <= 1e-14);
     }
   }
 }
@@ -271,10 +272,11 @@ TEST_CASE("ideal beam splitter reflection has the sign of a mirror: no retardanc
   const CompiledSystem cs = compile(s, lib);
   const RayBatch rays = trace_one(cs, Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 1.0));
   const Vec3 n = cs.surfaces()[0].to_global.apply_vector(Vec3(0.0, 0.0, 1.0));
-  const Mat3 conductor = -(Mat3::Identity() - 2.0 * n * n.transpose());
-  for (const Vec3 e : {Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0)}) {
+  // -(I - 2 N N^T) E, applied to E directly.
+  const auto conductor = [&n](const Vec3& e) -> Vec3 { return -(e - 2.0 * n.dot(e) * n); };
+  for (const Vec3& e : {Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0)}) {
     const CVec3 out = rays.prt_matrix(0) * e.cast<Cx>();
-    REQUIRE((out - (0.6 * conductor * e).cast<Cx>()).norm() <= 1e-14);
+    REQUIRE((out - (0.6 * conductor(e)).cast<Cx>()).norm() <= 1e-14);
   }
 }
 
