@@ -73,6 +73,7 @@ ReadOnlyArray<T> read_only_array(const Items& items, Get get) {
 void register_errors(nanobind::module_& m);
 
 void bind_model(nanobind::module_& m);
+void bind_material(nanobind::module_& m);
 void bind_compile(nanobind::module_& m);
 void bind_paraxial(nanobind::module_& m);
 void bind_trace(nanobind::module_& m);

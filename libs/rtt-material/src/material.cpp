@@ -94,8 +94,8 @@ std::shared_ptr<const Material> MaterialLibrary::resolve(std::string_view refere
     const std::string text = "unknown material reference '" + std::string(reference) + "': ";
     if (const auto cat = catalogs_.find(catalog); cat != catalogs_.end()) {
       throw UnknownMaterial(text + "glass '" + std::string(reference.substr(colon + 1)) +
-                            "' not found in catalog " + std::string(catalog) + " (" + cat->second +
-                            ")");
+                            "' not found in catalog " + std::string(catalog) + " (" +
+                            cat->second->file + ")");
     }
     throw UnknownMaterial(text + "catalog " + std::string(catalog) +
                           " not loaded (use MaterialLibrary::add_catalog)");
@@ -120,11 +120,32 @@ void MaterialLibrary::add(std::string name, std::shared_ptr<const Material> mate
   cache_.emplace(std::move(name), std::move(material));
 }
 
-void MaterialLibrary::add_catalog(const std::filesystem::path& path) {
+namespace {
+
+/// Checks an explicit catalogue name (alias or in-memory catalogue, #85).
+void check_catalog_name(const std::string& name, const char* function) {
+  const bool bad =
+      name.empty() || name == "CONST" || name.find_first_of(": \t\n\r\v\f") != std::string::npos;
+  if (bad) {
+    throw std::invalid_argument(std::string("MaterialLibrary::") + function + ": catalog name '" +
+                                name +
+                                "' must not be empty, contain ':' or whitespace, or be CONST");
+  }
+}
+
+}  // namespace
+
+void MaterialLibrary::add_catalog(const std::filesystem::path& path,
+                                  const std::optional<std::string>& name) {
   namespace fs = std::filesystem;
+  if (name) check_catalog_name(*name, "add_catalog");
   // Files to load: the path itself, or the *.agf files of a directory in sorted order.
   std::vector<fs::path> files;
   if (fs::is_directory(path)) {
+    if (name) {
+      throw std::invalid_argument("MaterialLibrary::add_catalog: a catalog name (" + *name +
+                                  ") needs a single .agf file, not the directory " + path.string());
+    }
     for (const auto& entry : fs::directory_iterator(path)) {
       std::string ext = entry.path().extension().string();
       for (char& c : ext) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
@@ -137,25 +158,43 @@ void MaterialLibrary::add_catalog(const std::filesystem::path& path) {
   } else {
     files.push_back(path);
   }
+  std::vector<AgfCatalog> catalogs;
+  for (const fs::path& file : files) {
+    AgfCatalog cat = load_agf(file);
+    if (name) cat.name = *name;
+    if (cat.name.empty() || cat.name == "CONST") {
+      throw std::invalid_argument("MaterialLibrary::add_catalog: catalog name '" + cat.name +
+                                  "' of " + file.string() + " is empty or reserved");
+    }
+    catalogs.push_back(std::move(cat));
+  }
+  register_catalogs(std::move(catalogs), "add_catalog");
+}
 
-  // Parse everything and build the materials before touching the library (all or nothing).
+void MaterialLibrary::add_catalog_text(std::string_view bytes,
+                                       const std::string& name,
+                                       const std::string& source) {
+  check_catalog_name(name, "add_catalog_text");
+  std::vector<AgfCatalog> catalogs;
+  catalogs.push_back(parse_agf(decode_agf_text(bytes, source), name, source));
+  register_catalogs(std::move(catalogs), "add_catalog_text");
+}
+
+void MaterialLibrary::register_catalogs(std::vector<AgfCatalog> catalogs, const char* function) {
+  const std::string prefix = std::string("MaterialLibrary::") + function + ": ";
+  // Build the materials before touching the library (all or nothing).
   struct Entry {
     std::string reference;
     std::shared_ptr<const Material> material;  // null: unsupported, see message
     std::string message;
   };
-  std::vector<AgfCatalog> catalogs;
   std::vector<Entry> entries;
-  for (const fs::path& file : files) {
-    AgfCatalog cat = load_agf(file);
-    if (cat.name.empty() || cat.name == "CONST") {
-      throw std::invalid_argument("MaterialLibrary::add_catalog: catalog name '" + cat.name +
-                                  "' of " + file.string() + " is empty or reserved");
-    }
-    for (const AgfCatalog& other : catalogs) {
-      if (other.name == cat.name) {
-        throw std::invalid_argument("MaterialLibrary::add_catalog: catalog " + cat.name +
-                                    " appears twice (" + other.file + ", " + cat.file + ")");
+  for (std::size_t i = 0; i < catalogs.size(); ++i) {
+    const AgfCatalog& cat = catalogs[i];
+    for (std::size_t j = 0; j < i; ++j) {
+      if (catalogs[j].name == cat.name) {
+        throw std::invalid_argument(prefix + "catalog " + cat.name + " appears twice (" +
+                                    catalogs[j].file + ", " + cat.file + ")");
       }
     }
     for (const AgfGlass& glass : cat.glasses) {
@@ -168,23 +207,24 @@ void MaterialLibrary::add_catalog(const std::filesystem::path& path) {
       }
       entries.push_back(std::move(entry));
     }
-    catalogs.push_back(std::move(cat));
   }
 
   const std::scoped_lock lock(mutex_);
   for (const AgfCatalog& cat : catalogs) {
     if (const auto it = catalogs_.find(cat.name); it != catalogs_.end()) {
-      throw std::invalid_argument("MaterialLibrary::add_catalog: catalog " + cat.name +
-                                  " is already loaded from " + it->second);
+      throw std::invalid_argument(prefix + "catalog " + cat.name + " is already loaded from " +
+                                  it->second->file);
     }
   }
   for (const Entry& entry : entries) {
     if (cache_.contains(entry.reference) || unsupported_.contains(entry.reference)) {
-      throw std::invalid_argument("MaterialLibrary::add_catalog: '" + entry.reference +
-                                  "' is already in use");
+      throw std::invalid_argument(prefix + "'" + entry.reference + "' is already in use");
     }
   }
-  for (const AgfCatalog& cat : catalogs) catalogs_.emplace(cat.name, cat.file);
+  for (AgfCatalog& cat : catalogs) {
+    std::string key = cat.name;
+    catalogs_.emplace(std::move(key), std::make_shared<const AgfCatalog>(std::move(cat)));
+  }
   for (Entry& entry : entries) {
     if (entry.material) {
       cache_.emplace(std::move(entry.reference), std::move(entry.material));
@@ -192,6 +232,33 @@ void MaterialLibrary::add_catalog(const std::filesystem::path& path) {
       unsupported_.emplace(std::move(entry.reference), std::move(entry.message));
     }
   }
+}
+
+std::vector<std::string> MaterialLibrary::catalogs() const {
+  const std::scoped_lock lock(mutex_);
+  std::vector<std::string> names;
+  names.reserve(catalogs_.size());
+  for (const auto& [name, cat] : catalogs_) names.push_back(name);
+  return names;  // std::map keeps them in ascending order
+}
+
+std::shared_ptr<const AgfCatalog> MaterialLibrary::catalog(std::string_view name) const {
+  const std::scoped_lock lock(mutex_);
+  if (const auto it = catalogs_.find(name); it != catalogs_.end()) return it->second;
+  throw UnknownMaterial("catalog " + std::string(name) +
+                        " not loaded (use MaterialLibrary::add_catalog)");
+}
+
+std::vector<math::Complex> index_many(const Material& material,
+                                      std::span<const double> wavelength_um,
+                                      double temperature_c,
+                                      double pressure_atm) {
+  std::vector<math::Complex> out;
+  out.reserve(wavelength_um.size());
+  for (const double wl : wavelength_um) {
+    out.push_back(material.index(wl, temperature_c, pressure_atm));
+  }
+  return out;
 }
 
 }  // namespace rtt::material

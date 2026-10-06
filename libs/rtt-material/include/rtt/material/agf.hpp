@@ -12,7 +12,14 @@
 ///   LD <min lambda> <max lambda>                  (um)
 ///   TD <D0> <D1> <D2> <E0> <E1> <Ltk> <Temp>      (dn/dT model, reference temperature in degC)
 ///   ED <TCE -30..70> <TCE 100..300> <density> <dPgF> <ignore thermal expansion>
-///   GC, MD, OD, IT, BD                            (read and ignored)
+///   GC <comment>
+///   MD <E> <Poisson> <HK> <c_p> <heat conductivity> (exactly 5 values)
+///   OD <rel. cost> <CR> <FR> <SR> <AR> <PR>       (exactly 6 values; classes may be "a-b")
+///   IT <lambda> <internal transmittance> <thickness> (one line per point, exactly 3 values)
+///   BD                                            (read and ignored)
+/// Placeholders (#85, ADR 0008 addendum): the manufacturers write "_" for a missing value in
+/// MD, OD and the NM extras and "-" in OD and the NM extras; both mean "not available". IT has
+/// no placeholders. Units of ED, MD and IT: see AgfGlass.
 /// A line whose first character is a digit, '+', '-' or '.' (a number) continues the CD or TD
 /// record directly above it (or
 /// above its previous continuation line); vendor files wrap long records this way (#42). The
@@ -53,17 +60,69 @@ class AgfError : public std::runtime_error {
   std::size_t line_;
 };
 
-/// One glass of an AGF catalogue as read from the file (no unit conversion).
+/// A resistance class of the OD record: one class (low == high) or a range "a-b" as SCHOTT
+/// writes it (e.g. "1-2", docs/quellen.md, #85).
+struct AgfClassRange {
+  double low = 0.0;
+  double high = 0.0;
+  bool operator==(const AgfClassRange&) const = default;
+};
+
+/// The OD record ("other data"): relative cost and the resistance classes CR (climate), FR
+/// (stain), SR (acid), AR (alkali), PR (phosphate). The format description writes -1 for "not
+/// available", which is kept as written; "_" and "-" in the file are nullopt.
+struct AgfOtherData {
+  std::optional<double> relative_cost;
+  std::optional<AgfClassRange> cr;
+  std::optional<AgfClassRange> fr;
+  std::optional<AgfClassRange> sr;
+  std::optional<AgfClassRange> ar;
+  std::optional<AgfClassRange> pr;
+  bool operator==(const AgfOtherData&) const = default;
+};
+
+/// One IT record: internal transmittance of a sample of the given thickness.
+struct AgfTransmission {
+  double wavelength_um = 0.0;  ///< wavelength in um (as LD; checked against SCHOTT, quellen.md)
+  double transmittance = 0.0;  ///< internal transmittance tau_i, 0..1
+  double thickness_mm = 0.0;   ///< sample thickness in mm
+};
+
+/// One glass of an AGF catalogue as read from the file (no unit conversion). Units of the data
+/// records follow the format description and, where it gives none, the SCHOTT N-BK7 data sheet
+/// (docs/quellen.md, #85). A value written as the placeholder "_" (MD, OD, NM extras) or "-" (NM
+/// extras) is "not available" (nullopt), as in the manufacturers' files.
 struct AgfGlass {
   std::string name;
-  int formula = 0;                             ///< AGF dispersion formula number
-  double nd = 0.0;                             ///< N(d) from NM, for reference only
-  double vd = 0.0;                             ///< V(d) from NM, for reference only
+  int formula = 0;  ///< AGF dispersion formula number
+  double nd = 0.0;  ///< N(d) from NM, for reference only
+  double vd = 0.0;  ///< V(d) from NM, for reference only
+  /// NM: exclude from glass substitution, 0 (no) or 1 (yes)
+  std::optional<int> exclude_substitution;
+  /// NM: 0 standard, 1 preferred, 2 obsolete, 3 special, 4 melt
+  std::optional<int> status;
+  /// NM: relative melt frequency, an integer kept as written. The format description gives
+  /// 1..5; the manufacturers' files also write -1, 0 and 9 (docs/quellen.md). Not used by
+  /// Raytatouille; nullopt only for "_" or "-".
+  std::optional<int> melt_frequency;
+  std::string comment;                         ///< GC text (empty without GC)
   std::vector<double> coefficients;            ///< CD, as in the file
   std::optional<WavelengthRange> range;        ///< LD in um
   std::optional<std::vector<double>> thermal;  ///< TD: D0 D1 D2 E0 E1 Ltk Temp (thermal.hpp)
-  std::optional<std::vector<double>> extra;    ///< ED (unused)
-  std::size_t line = 0;                        ///< line of the NM record
+  /// ED: TCE -30..70 degC and TCE 100..300 degC in 1e-6/K, density in g/cm^3, dPgF, ignore
+  /// thermal expansion (0/1); as many values as the file gives (manufacturers write 4 to 6).
+  /// SCHOTT writes alpha(+20/+300 degC) of its data sheet as the second value, which the format
+  /// description calls TCE 100..300 degC ("currently not used").
+  std::optional<std::vector<double>> extra;
+  /// MD, exactly 5 values: Young's modulus in GPa, Poisson's ratio, Knoop hardness HK in
+  /// kgf/mm^2,
+  /// specific heat capacity in J/(kg K), heat conductivity in W/(m K)
+  std::optional<std::vector<std::optional<double>>> mechanical;
+  /// OD, exactly 6 values: relative cost (a number, "_" or "-"), CR, FR, SR, AR, PR (a class
+  /// >= 0 or -1, "_", "-" or a class range "a-b" with 0 <= a <= b)
+  std::optional<AgfOtherData> other;
+  std::vector<AgfTransmission> transmission;  ///< IT records in file order
+  std::size_t line = 0;                       ///< line of the NM record
 };
 
 /// A parsed AGF catalogue.
@@ -89,8 +148,10 @@ struct AgfCatalog {
 /// @throws AgfError with file and line for malformed or unknown records, records before the
 ///         first NM, missing or empty CD, duplicate CD/LD/TD/ED records of a glass, duplicate
 ///         glass names, invalid numbers, a continuation line that does not follow CD or TD
-///         (or follows an empty or comment line), and more than 10 CD or (with continuation
-///         lines) 7 TD values
+///         (or follows an empty or comment line), more than 10 CD or (with continuation
+///         lines) 7 TD values; MD, OD and IT with another number of values than 5, 6 and 3, a
+///         second GC, MD or OD record, and NM extras that are not "_"/"-" or in range
+///         (exclude sub 0/1, status 0..4, melt freq an integer) or more than three of them
 [[nodiscard]] AgfCatalog parse_agf(std::string_view text, std::string name, std::string file);
 
 /// Reads, decodes and parses an AGF file; the catalogue name is the file name without

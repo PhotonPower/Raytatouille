@@ -101,6 +101,82 @@ class Parser {
     return *glass_;
   }
 
+  /// Text after the mnemonic, without leading and trailing spaces and tabs (CC, GC).
+  static std::string text_after(std::string_view line, std::string_view mnemonic) {
+    const std::size_t first = line.find_first_not_of(" \t", line.find(mnemonic) + mnemonic.size());
+    if (first == std::string_view::npos) return {};
+    const std::size_t last = line.find_last_not_of(" \t");
+    return std::string(line.substr(first, last - first + 1));
+  }
+
+  /// A record of exactly `count` values where "_" means "not available" (MD, OD; placeholder of
+  /// the manufacturers' files, #85).
+  std::vector<std::optional<double>> values_with_placeholders(
+      const std::vector<std::string_view>& items, std::size_t count, std::size_t line) const {
+    if (items.size() - 1 != count) {
+      fail(line, std::string(items[0]) + " needs exactly " + std::to_string(count) +
+                     " values (\"_\" for a missing one), got " + std::to_string(items.size() - 1));
+    }
+    std::vector<std::optional<double>> values;
+    values.reserve(count);
+    for (std::size_t i = 1; i < items.size(); ++i) {
+      if (items[i] == "_") {
+        values.emplace_back(std::nullopt);
+      } else {
+        values.emplace_back(number(items[i], line));
+      }
+    }
+    return values;
+  }
+
+  /// A resistance class of OD: "_" or "-" (not available), a number (one class), or a range
+  /// "a-b" of two numbers with 0 <= a <= b as SCHOTT writes it (e.g. "1-2", docs/quellen.md,
+  /// #85).
+  std::optional<AgfClassRange> class_range(std::string_view item, std::size_t line) const {
+    if (item == "_" || item == "-") return std::nullopt;
+    const auto parse = [](std::string_view text) -> std::optional<double> {
+      double value = 0.0;
+      const char* const first = text.data();
+      const char* const last = first + text.size();
+      const auto [ptr, ec] = std::from_chars(first, last, value);
+      if (text.empty() || ec != std::errc{} || ptr != last || !std::isfinite(value)) {
+        return std::nullopt;
+      }
+      return value;
+    };
+    // One class: >= 0, or -1 for "not available" (format description; kept as written).
+    if (const std::optional<double> v = parse(item); v && (*v >= 0.0 || *v == -1.0)) {
+      return AgfClassRange{*v, *v};
+    }
+    const std::size_t dash = item.find('-', 1);
+    if (dash != std::string_view::npos) {
+      const std::optional<double> low = parse(item.substr(0, dash));
+      const std::optional<double> high = parse(item.substr(dash + 1));
+      if (low && high && *low >= 0.0 && *low <= *high) return AgfClassRange{*low, *high};
+    }
+    fail(line, "OD: resistance class '" + std::string(item) +
+                   "' is not a number, \"_\", \"-\" or a range \"a-b\" with 0 <= a <= b");
+  }
+
+  /// An NM extra (exclude sub, status, melt freq): "_" or "-" is "not available", otherwise an
+  /// integer, in [lo, hi] if a range is given (#85).
+  std::optional<int> nm_extra(std::string_view item,
+                              const char* what,
+                              std::optional<std::pair<int, int>> range,
+                              std::size_t line) const {
+    if (item == "_" || item == "-") return std::nullopt;
+    const double v = number(item, line);
+    constexpr double kIntLimit = 2147483647.0;
+    if (v != std::floor(v) || std::abs(v) > kIntLimit) {
+      fail(line, std::string("NM: ") + what + " '" + std::string(item) + "' is not an integer");
+    }
+    if (range && (v < range->first || v > range->second)) {
+      fail(line, std::string("NM: ") + what + " '" + std::string(item) + "' is not an integer in " +
+                     std::to_string(range->first) + ".." + std::to_string(range->second));
+    }
+    return static_cast<int>(v);
+  }
+
   /// Record that a continuation line may extend: the CD or TD record directly above it.
   enum class Continuable : std::uint8_t { kNone, kCd, kTd };
 
@@ -146,13 +222,7 @@ class Parser {
     continuable_ = Continuable::kNone;
     const std::string_view m = items[0];
     if (m == "CC") {
-      const std::size_t start = line.find("CC") + 2;
-      const std::size_t first = line.find_first_not_of(" \t", start);
-      catalog_.comment = first == std::string_view::npos ? "" : std::string(line.substr(first));
-      while (!catalog_.comment.empty() &&
-             (catalog_.comment.back() == ' ' || catalog_.comment.back() == '\t')) {
-        catalog_.comment.pop_back();
-      }
+      catalog_.comment = text_after(line, "CC");
     } else if (m == "NM") {
       finish_glass();
       if (items.size() < 6) {
@@ -167,6 +237,17 @@ class Parser {
       g.formula = static_cast<int>(formula);
       g.nd = number(items[4], line_no);
       g.vd = number(items[5], line_no);
+      // Optional extras (format description). The melt frequency is kept as written: the
+      // description says 1..5, the manufacturers' files also write -1, 0 and 9
+      // (docs/quellen.md, #85); it is not used by Raytatouille.
+      if (items.size() > 9) {
+        fail(line_no, "NM has more than <exclude sub> <status> <melt freq> after V(d)");
+      }
+      if (items.size() > 6) {
+        g.exclude_substitution = nm_extra(items[6], "exclude sub", std::pair{0, 1}, line_no);
+      }
+      if (items.size() > 7) g.status = nm_extra(items[7], "status", std::pair{0, 4}, line_no);
+      if (items.size() > 8) g.melt_frequency = nm_extra(items[8], "melt freq", {}, line_no);
       g.line = line_no;
       if (!names_.insert(g.name).second) fail(line_no, "glass " + g.name + " appears twice");
       glass_ = std::move(g);
@@ -195,7 +276,40 @@ class Parser {
       AgfGlass& g = current(m, line_no);
       if (g.extra) fail(line_no, "second ED record for glass " + g.name);
       g.extra = numbers(items, line_no);
-    } else if (m == "GC" || m == "MD" || m == "OD" || m == "IT" || m == "BD") {
+    } else if (m == "GC") {
+      AgfGlass& g = current(m, line_no);
+      if (has_gc_) fail(line_no, "second GC record for glass " + g.name);
+      g.comment = text_after(line, "GC");
+      has_gc_ = true;
+    } else if (m == "MD") {
+      AgfGlass& g = current(m, line_no);
+      if (g.mechanical) fail(line_no, "second MD record for glass " + g.name);
+      g.mechanical = values_with_placeholders(items, 5, line_no);
+    } else if (m == "OD") {
+      AgfGlass& g = current(m, line_no);
+      if (g.other) fail(line_no, "second OD record for glass " + g.name);
+      if (items.size() != 7) {
+        fail(line_no, "OD needs exactly 6 values (\"_\" for a missing one), got " +
+                          std::to_string(items.size() - 1));
+      }
+      AgfOtherData od;
+      // "_" and "-" (SCHOTT, old glasses): not available (docs/quellen.md, #85).
+      if (items[1] != "_" && items[1] != "-") od.relative_cost = number(items[1], line_no);
+      od.cr = class_range(items[2], line_no);
+      od.fr = class_range(items[3], line_no);
+      od.sr = class_range(items[4], line_no);
+      od.ar = class_range(items[5], line_no);
+      od.pr = class_range(items[6], line_no);
+      g.other = od;
+    } else if (m == "IT") {
+      AgfGlass& g = current(m, line_no);
+      const std::vector<double> v = numbers(items, line_no);
+      if (v.size() != 3) {
+        fail(line_no, "IT needs exactly <lambda> <transmittance> <thickness>, got " +
+                          std::to_string(v.size()) + " values");
+      }
+      g.transmission.push_back(AgfTransmission{v[0], v[1], v[2]});
+    } else if (m == "BD") {
       (void)current(m, line_no);  // described in the format, not used by Raytatouille
     } else {
       fail(line_no, "unknown record '" + std::string(m) + "'");
@@ -208,11 +322,13 @@ class Parser {
     catalog_.glasses.push_back(std::move(*glass_));
     glass_.reset();
     has_cd_ = false;
+    has_gc_ = false;
   }
 
   AgfCatalog catalog_;
   std::optional<AgfGlass> glass_;
   bool has_cd_ = false;
+  bool has_gc_ = false;
   Continuable continuable_ = Continuable::kNone;
   std::set<std::string, std::less<>> names_;
 };

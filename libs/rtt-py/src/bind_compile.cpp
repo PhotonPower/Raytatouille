@@ -44,25 +44,7 @@ std::uint16_t wavelength_index(const compile::CompiledSystem& system,
 }
 
 void bind_compile(nb::module_& m) {
-  nb::class_<material::MaterialLibrary>(
-      m, "MaterialLibrary",
-      "Resolves material references (\"VACUUM\", \"AIR\", \"CONST:<n>\", catalogue glasses).")
-      .def(nb::init<>())
-      .def("add_catalog", &material::MaterialLibrary::add_catalog, "path"_a,
-           "Loads AGF glass catalogues: an .agf file, or a directory whose *.agf files are "
-           "loaded in sorted order. The catalogue name is the file name without extension in "
-           "upper case (schott.agf -> SCHOTT; glasses resolve as SCHOTT:N-BK7).\n\nRaises "
-           "AgfError for malformed files and ValueError for names already in use.")
-      .def(
-          "index",
-          [](const material::MaterialLibrary& lib, const std::string& reference,
-             double wavelength_um, double temperature_c, double pressure_atm) {
-            return lib.resolve(reference)->index(wavelength_um, temperature_c, pressure_atm);
-          },
-          "reference"_a, "wavelength_um"_a, "temperature_c"_a = 20.0, "pressure_atm"_a = 1.0,
-          "Absolute complex index n + i*kappa (kappa >= 0 absorbs) of the material `reference` "
-          "at the vacuum wavelength `wavelength_um` in um, temperature in degC and pressure in "
-          "atm.\n\nRaises UnknownMaterial if the reference cannot be resolved.");
+  bind_material(m);  // before compile(), which takes a MaterialLibrary
 
   nb::class_<coating::CoatingLibrary>(
       m, "CoatingLibrary",
