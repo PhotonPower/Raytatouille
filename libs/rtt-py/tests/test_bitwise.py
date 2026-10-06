@@ -148,6 +148,21 @@ def michelson_rays() -> rt.trace.RayBatch:
     return rays
 
 
+def path_results(paths: rt.trace.RayPaths) -> dict[str, npt.NDArray[np.generic]]:
+    """RayPaths of the recorded trace, as write_paths() in rtt_py_reference.cpp."""
+    return {
+        "path_ray_indices": np.array(paths.ray_indices),
+        "path_event_surfaces": np.array(paths.event_surfaces),
+        "path_position": np.array(paths.position),
+        "path_direction": np.array(paths.direction),
+        "path_opl": np.array(paths.opl),
+        "path_weight": np.array(paths.weight),
+        "path_status": np.array(paths.status),
+        "path_count": np.array(paths.count),
+        "path_lost_at": np.array(paths.lost_at),
+    }
+
+
 HAND_RAYS = {"singlet": hand_filled_rays, "plate": plate_rays, "michelson": michelson_rays}
 
 
@@ -197,7 +212,8 @@ def python_results(case: Case, reference_dir: Path, catalog_dir: Path,
     else:
         rays = rt.trace.make_rays(cs, case.sampling, path=case.path, wavelength=case.wavelength,
                                   aiming=case.aiming)
-    stats = rt.trace.trace(cs, rays, path=case.path, threads=threads)
+    # Recorded trace (#80): the columns must still equal the plain C++ trace bitwise.
+    stats, paths = rt.trace.trace(cs, rays, path=case.path, threads=threads, record_path=True)
     results: dict[str, npt.NDArray[np.generic]] = {
         name: np.array(getattr(rays, name)) for name in COLUMNS
     }
@@ -209,6 +225,7 @@ def python_results(case: Case, reference_dir: Path, catalog_dir: Path,
         wl = cs.reference_wavelength if case.wavelength is None else case.wavelength
         results["first_order"] = first_order_values(rt.paraxial.first_order(cs, case.path, wl))
     results.update(polar_results(rays))
+    results.update(path_results(paths))
     return results
 
 

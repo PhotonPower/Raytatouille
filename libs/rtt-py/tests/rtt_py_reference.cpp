@@ -35,6 +35,7 @@
 #include "rtt/material/material.hpp"
 #include "rtt/paraxial/paraxial.hpp"
 #include "rtt/trace/ray_batch.hpp"
+#include "rtt/trace/ray_paths.hpp"
 #include "rtt/trace/sequential.hpp"
 #include "rtt/trace/sources.hpp"
 
@@ -216,6 +217,28 @@ void write_polar(const RayBatch& rays, const File& file) {
                      polar::stokes(rays, x, rtt::math::Vec3(1.0, 0.0, 0.0)), 4);
 }
 
+/// RayPaths of the recorded trace, as path_results() in test_bitwise.py.
+template <typename File>
+void write_paths(const rtt::trace::RayPaths& p, const File& file) {
+  using rtt::py::reference::write_npy;
+  const auto bytes = [](const auto& v) {
+    const std::span<const std::byte> b = std::as_bytes(std::span(v));
+    return std::span<const char>(reinterpret_cast<const char*>(b.data()), b.size());
+  };
+  const std::size_t n = p.ray_count();
+  const std::size_t s = p.slots;
+  static_assert(sizeof(std::size_t) == 8);
+  write_npy(file("path_ray_indices"), "<u8", {n}, bytes(p.ray_indices));
+  write_npy(file("path_event_surfaces"), "<u4", {p.event_surfaces.size()}, bytes(p.event_surfaces));
+  write_npy(file("path_position"), "<f8", {n, s, 3}, bytes(p.position));
+  write_npy(file("path_direction"), "<f8", {n, s, 3}, bytes(p.direction));
+  write_npy(file("path_opl"), "<f8", {n, s}, bytes(p.opl));
+  write_npy(file("path_weight"), "<f8", {n, s}, bytes(p.weight));
+  write_npy(file("path_status"), "|u1", {n, s}, bytes(p.status));
+  write_npy(file("path_count"), "<u4", {n}, bytes(p.count));
+  write_npy(file("path_lost_at"), "<i4", {n}, bytes(p.lost_at));
+}
+
 void run(const Case& c,
          const fs::path& reference_dir,
          const fs::path& catalog_dir,
@@ -235,9 +258,15 @@ void run(const Case& c,
   oneapi::tbb::task_arena arena(threads);
   RayBatch rays;
   rtt::trace::TraceStats stats;
+  rtt::trace::RayPaths paths;
   arena.execute([&] {
     rays = c.sampling ? rtt::trace::make_rays(system, path, fields, wl, *c.sampling, c.aiming)
                       : hand_rays(c.hand);
+    // The paths come from a second, recorded trace of the same rays (#80); the columns below
+    // from the plain trace, so the Python side (which records) also checks that recording
+    // leaves the rays bitwise unchanged.
+    RayBatch recorded = rays;
+    static_cast<void>(rtt::trace::SequentialTracer{}.trace(system, path, recorded, paths));
     stats = rtt::trace::SequentialTracer{}.trace(system, path, rays);
   });
 
@@ -272,6 +301,7 @@ void run(const Case& c,
     write_column<double>(file("first_order"), "<f8", fo);
   }
   write_polar(r, file);
+  write_paths(paths, file);
 }
 
 }  // namespace
