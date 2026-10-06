@@ -1,0 +1,65 @@
+{
+  "schema_version": "0.2.0",
+  "name": "M3 acceptance: quarter-wave MgF2 (1.38) anti-reflection on 1.52 in vacuum at its design wavelength",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [
+    {"um": 0.55, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 10.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 5.0}
+          }
+        ]
+      },
+      {
+        "type": "plate",
+        "name": "P",
+        "pose": {"position": [0.0, 0.0, 10.0]},
+        "material": "CONST:1.52",
+        "surfaces": [
+          {
+            "id": "P.S1",
+            "interaction": {"type": "coating", "name": "DEMO:AR_MGF2"}
+          },
+          {
+            "id": "P.S2",
+            "pose": {"position": [0.0, 0.0, 10.0]}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 40.0]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"},
+    {
+      "name": "reflect S1",
+      "events": [
+        {"surface": "STO", "kind": "transmit"},
+        {"surface": "P.S1", "kind": "reflect"}
+      ]
+    }
+  ]
+}

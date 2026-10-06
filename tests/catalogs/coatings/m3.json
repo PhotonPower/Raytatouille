@@ -1,0 +1,19 @@
+{
+  "format": "raytatouille-coatings",
+  "schema_version": "0.1.0",
+  "catalog": "M3",
+  "coatings": [
+    {
+      "name": "HL5",
+      "description": "Lossless test stack for the M3 acceptance (#63): five quarter-wave layers H L H L H at 0.55 um, H = 2.35, L = 1.38 (invented constant indices).",
+      "design_wavelength_um": 0.55,
+      "layers": [
+        {"material": "CONST:2.35", "qwot": 1.0},
+        {"material": "CONST:1.38", "qwot": 1.0},
+        {"material": "CONST:2.35", "qwot": 1.0},
+        {"material": "CONST:1.38", "qwot": 1.0},
+        {"material": "CONST:2.35", "qwot": 1.0}
+      ]
+    }
+  ]
+}

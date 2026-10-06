@@ -1,0 +1,68 @@
+{
+  "schema_version": "0.2.0",
+  "name": "M3 acceptance: lossless five-layer stack M3:HL5 on 1.52, R + T = 1 at 0, 30 and 60 deg",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [
+    {"um": 0.55, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 10.0},
+  "fields": {
+    "points": [
+      {},
+      {"y": 30.0},
+      {"y": 60.0}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 5.0}
+          }
+        ]
+      },
+      {
+        "type": "plate",
+        "name": "P",
+        "pose": {"position": [0.0, 0.0, 10.0]},
+        "material": "CONST:1.52",
+        "surfaces": [
+          {
+            "id": "P.S1",
+            "interaction": {"type": "coating", "name": "M3:HL5"}
+          },
+          {
+            "id": "P.S2",
+            "pose": {"position": [0.0, 0.0, 10.0]},
+            "interaction": {"type": "ideal_anti_reflection"}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 40.0]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"},
+    {
+      "name": "reflect S1",
+      "events": [
+        {"surface": "STO", "kind": "transmit"},
+        {"surface": "P.S1", "kind": "reflect"}
+      ]
+    }
+  ]
+}

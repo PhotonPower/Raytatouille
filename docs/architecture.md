@@ -374,9 +374,9 @@ Nach M1 können bis zu drei Agenten parallel arbeiten. M4 und M6 brauchen M2 und
 | Meilenstein | Umfang | Abnahme |
 | --- | --- | --- |
 | **M0 Fundament** ✅ | CMake mit vcpkg, `rtt-math`, `rtt-model`, `rtt-io` (JSON mit Schema), `rtt` CLI, CI Linux und Windows | Roundtrip Datei → Modell → Datei bitgleich; CI grün |
-| M1 Sequenzieller Kern | Ebene, Sphäre, Konik, gerade Asphäre; Schnitt, Brechung, Reflexion; `CompiledSystem`; Ray Aiming; paraxialer Trace | Paraboloid-Fokus, Linsenmacherformel, Konvergenz real → paraxial |
-| M2 Materialien, Analyse | Dispersionsformeln, AGF-Import, Luft, dn/dT; Spot, Ray Fans, OPD, Verzeichnung, Seidel; Python-Bindings dafür | Seidel-Fall, Farblängsfehler eines Achromaten; Cooke-Triplet als Golden-Test |
-| M3 Polarisation | P-Matrix, Fresnel mit ñ, Transfermatrix-Coatings, ideale Coatings, Polarisator, Retarder | Fresnel, Brewster, TIR, AR, Malus, λ/4, λ/2, Metallspiegel |
+| **M1 Sequenzieller Kern** ✅ | Ebene, Sphäre, Konik, gerade Asphäre; Schnitt, Brechung, Reflexion; `CompiledSystem`; Ray Aiming; paraxialer Trace | Paraboloid-Fokus, Linsenmacherformel, Konvergenz real → paraxial |
+| **M2 Materialien, Analyse** ✅ | Dispersionsformeln, AGF-Import, Luft, dn/dT; Spot, Ray Fans, OPD, Verzeichnung, Seidel; Python-Bindings dafür | Seidel-Fall, Farblängsfehler eines Achromaten; Cooke-Triplet als Golden-Test |
+| **M3 Polarisation** ✅ | P-Matrix, Fresnel mit ñ, Transfermatrix-Coatings, ideale Coatings, Polarisator, Retarder | Fresnel, Brewster, TIR, AR, Malus, λ/4, λ/2, Metallspiegel |
 | M4 Multi-Path | explizite Pfade, Strahlteiler, einachsige Kristalle, Gitter, Ghost-Generator | Michelson-Bilanz, Calcit-Walk-off, Gittergleichung, Ghost-Ranking |
 | M5 Optimierung | Parameter-Pfade, Operanden, Merit-Generatoren, LM, Grenzen, Pickups, Konfigurationen | Singlet auf EFL + minimalen RMS-Spot; reproduzierbar |
 | M6 Beugung | Zernike-Fit, FFT-PSF/MTF, Encircled Energy, Jones-Pupille, Retardance-Karten | Airy-Nullstelle, analytische MTF, Jones-Pupille eines Faltspiegels |

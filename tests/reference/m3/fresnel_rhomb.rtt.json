@@ -1,0 +1,67 @@
+{
+  "schema_version": "0.2.0",
+  "name": "M3 acceptance: Fresnel rhomb in N-BK7 (n = 1.5168), two total internal reflections at 55.218 deg",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [
+    {"um": 0.55, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 10.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "plate",
+        "name": "R",
+        "material": "CONST:1.5168",
+        "surfaces": [
+          {"id": "R.S1"},
+          {
+            "id": "R.S2",
+            "pose": {
+              "position": [0.0, 0.0, 10.0],
+              "rotation_deg": [55.218468500096165, 0.0, 0.0]
+            }
+          },
+          {
+            "id": "R.S3",
+            "pose": {
+              "position": [0.0, 10.0, 10.0],
+              "rotation_deg": [55.218468500096165, 0.0, 0.0]
+            }
+          },
+          {
+            "id": "R.S4",
+            "pose": {"position": [0.0, 0.0, 30.0]}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 40.0]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {
+      "name": "rhomb",
+      "events": [
+        {"surface": "R.S1"},
+        {"surface": "R.S2", "kind": "reflect"},
+        {"surface": "R.S3", "kind": "reflect"},
+        {"surface": "R.S4"},
+        {"surface": "IMG", "kind": "transmit"}
+      ]
+    }
+  ]
+}

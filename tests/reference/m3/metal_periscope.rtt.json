@@ -1,0 +1,63 @@
+{
+  "schema_version": "0.2.0",
+  "name": "M3 acceptance: metal mirrors at 45 deg (invented test metal n = 1.2 + 7.26 i), single mirror and periscope",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [
+    {"um": 0.55, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 10.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "mirror",
+        "name": "mirror 1",
+        "pose": {"position": [0.0, 0.0, 10.0], "rotation_deg": [45.0, 0.0, 0.0]},
+        "material": "CONST:1.2,7.26",
+        "surfaces": [
+          {"id": "M1"}
+        ]
+      },
+      {
+        "type": "mirror",
+        "name": "mirror 2",
+        "pose": {"position": [0.0, 20.0, 10.0], "rotation_deg": [225.0, 0.0, 0.0]},
+        "material": "CONST:1.2,7.26",
+        "surfaces": [
+          {"id": "M2"}
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 20.0, 30.0]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {
+      "name": "single",
+      "events": [
+        {"surface": "M1", "kind": "reflect"}
+      ]
+    },
+    {
+      "name": "periscope",
+      "events": [
+        {"surface": "M1", "kind": "reflect"},
+        {"surface": "M2", "kind": "reflect"},
+        {"surface": "IMG", "kind": "transmit"}
+      ]
+    }
+  ]
+}
