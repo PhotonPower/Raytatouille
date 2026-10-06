@@ -142,7 +142,8 @@ def test_vectorized_index_is_bit_identical_with_the_scalar_one(catalog_dir: Path
     lib = rt.MaterialLibrary()
     lib.add_catalog(catalog_dir / "schott.agf")
     lib.add_catalog(catalog_dir / "nikon" / "nikon-hikari.agf")
-    wl = np.linspace(0.4, 0.7, 1000)
+    # dtype given: NumPy < 2.3 types a plain linspace as floating[Any] (mypy on Python 3.10).
+    wl = np.linspace(0.4, 0.7, 1000, dtype=np.float64)
     for ref in ("SCHOTT:N-BK7", "SCHOTT:F2", "NIKON-HIKARI:NICF-V", "NIKON-HIKARI:E-LAKH1",
                 "NIKON-HIKARI:J-SFH1", "AIR", "CONST:1.5,1e-3"):
         many = lib.index(ref, wl, 23.5, 0.95)

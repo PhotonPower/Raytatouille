@@ -159,16 +159,9 @@ void bind_material(nb::module_& m) {
             return records;
           },
           "catalog"_a, "Raw AGF data of the glasses of `catalog` (use MaterialLibrary.glasses).")
-      .def(
-          "index",
-          [](const MaterialLibrary& lib, const std::string& reference, double wavelength_um,
-             double temperature_c, double pressure_atm) {
-            return lib.resolve(reference)->index(wavelength_um, temperature_c, pressure_atm);
-          },
-          "reference"_a, "wavelength_um"_a, "temperature_c"_a = 20.0, "pressure_atm"_a = 1.0,
-          "Absolute complex index n + i*kappa (kappa >= 0 absorbs) of the material `reference` "
-          "at the vacuum wavelength `wavelength_um` in um, temperature in degC and pressure in "
-          "atm.\n\nRaises UnknownMaterial if the reference cannot be resolved.")
+      // The array overload comes first: nanobind tries the overloads in order, and with
+      // conversion NumPy < 2.3 turns a one-element array (e.g. float32) into a float for the
+      // scalar overload; the result would then depend on the NumPy version.
       .def(
           "index",
           [](const MaterialLibrary& lib, const std::string& reference,
@@ -184,7 +177,17 @@ void bind_material(nb::module_& m) {
           "reference"_a, "wavelength_um"_a, "temperature_c"_a = 20.0, "pressure_atm"_a = 1.0,
           "Vectorized form for a NumPy array of vacuum wavelengths in um: complex128 array of the "
           "same shape, element by element identical (bit for bit) with the scalar call.\n\nRaises "
-          "UnknownMaterial if the reference cannot be resolved.");
+          "UnknownMaterial if the reference cannot be resolved.")
+      .def(
+          "index",
+          [](const MaterialLibrary& lib, const std::string& reference, double wavelength_um,
+             double temperature_c, double pressure_atm) {
+            return lib.resolve(reference)->index(wavelength_um, temperature_c, pressure_atm);
+          },
+          "reference"_a, "wavelength_um"_a, "temperature_c"_a = 20.0, "pressure_atm"_a = 1.0,
+          "Absolute complex index n + i*kappa (kappa >= 0 absorbs) of the material `reference` "
+          "at the vacuum wavelength `wavelength_um` in um, temperature in degC and pressure in "
+          "atm.\n\nRaises UnknownMaterial if the reference cannot be resolved.");
 }
 
 }  // namespace rtt::py
