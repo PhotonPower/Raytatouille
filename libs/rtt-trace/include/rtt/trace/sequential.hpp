@@ -69,9 +69,10 @@ class SequentialTracer final : public Tracer {
 
   /// trace() that also records the path of selected rays into `paths` (rtt/trace/ray_paths.hpp,
   /// #80). The rays are traced exactly as without recording: the batch ends bitwise the same.
-  /// `paths` is overwritten.
+  /// `paths` is replaced on success and unchanged if an exception is thrown; `rays` is unchanged
+  /// if an input check fails (all checks run before tracing).
   /// @param record_rays       RayBatch indices of the rays to record, in this order; empty:
-  ///                          all rays
+  ///                          all rays (the Python API rejects an empty selection instead)
   /// @param max_recorded_rays limit on the number of rays recorded without a selection
   /// @throws std::invalid_argument as trace(), or if `record_rays` has an index >= rays.size()
   ///         or a duplicate, or if it is empty and rays.size() > max_recorded_rays (the message

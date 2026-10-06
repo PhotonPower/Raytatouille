@@ -212,23 +212,27 @@ TraceStats SequentialTracer::trace(const compile::CompiledSystem& system,
     row[i] = static_cast<std::int64_t>(r);
   }
 
+  // Recorded into a local object and moved into `paths` only after the trace succeeded, so that
+  // `paths` is unchanged if anything throws (strong guarantee; also for bad_alloc).
   constexpr double nan = std::numeric_limits<double>::quiet_NaN();
   const std::size_t recorded = selected.size();
-  paths = RayPaths{};
-  paths.slots = slots;
-  paths.ray_indices = std::move(selected);
-  paths.event_surfaces.reserve(events.events.size());
+  RayPaths result;
+  result.slots = slots;
+  result.ray_indices = std::move(selected);
+  result.event_surfaces.reserve(events.events.size());
   for (const compile::CompiledEvent& event : events.events) {
-    paths.event_surfaces.push_back(event.surface);
+    result.event_surfaces.push_back(event.surface);
   }
-  paths.position.assign(recorded * slots * 3, nan);
-  paths.direction.assign(recorded * slots * 3, nan);
-  paths.opl.assign(recorded * slots, nan);
-  paths.weight.assign(recorded * slots, nan);
-  paths.status.assign(recorded * slots, RayStatus::Alive);
-  paths.count.assign(recorded, 0);
-  paths.lost_at.assign(recorded, -1);
-  return trace_rays(system, path, rays, Record(paths, row));
+  result.position.assign(recorded * slots * 3, nan);
+  result.direction.assign(recorded * slots * 3, nan);
+  result.opl.assign(recorded * slots, nan);
+  result.weight.assign(recorded * slots, nan);
+  result.status.assign(recorded * slots, RayStatus::Alive);
+  result.count.assign(recorded, 0);
+  result.lost_at.assign(recorded, -1);
+  const TraceStats stats = trace_rays(system, path, rays, Record(result, row));
+  paths = std::move(result);
+  return stats;
 }
 
 }  // namespace rtt::trace

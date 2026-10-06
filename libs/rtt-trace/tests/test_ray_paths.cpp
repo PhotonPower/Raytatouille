@@ -124,13 +124,37 @@ void require_same_record(const RayPaths& a, std::size_t r, const RayPaths& b, st
   }
 }
 
+/// Requires that two RayPaths are bitwise equal in every member.
+void require_same_paths(const RayPaths& a, const RayPaths& b) {
+  REQUIRE(a.slots == b.slots);
+  REQUIRE(a.ray_indices == b.ray_indices);
+  REQUIRE(a.event_surfaces == b.event_surfaces);
+  REQUIRE(a.count == b.count);
+  REQUIRE(a.lost_at == b.lost_at);
+  REQUIRE(a.status == b.status);
+  const auto same = [](const std::vector<double>& x, const std::vector<double>& y) {
+    if (x.size() != y.size()) return false;
+    for (std::size_t i = 0; i < x.size(); ++i) {
+      if (!same_bits(x[i], y[i])) return false;
+    }
+    return true;
+  };
+  REQUIRE(same(a.position, b.position));
+  REQUIRE(same(a.direction, b.direction));
+  REQUIRE(same(a.opl, b.opl));
+  REQUIRE(same(a.weight, b.weight));
+}
+
 }  // namespace
 
 TEST_CASE("axial ray through the singlet: recorded points are the vertices", "[ray_paths]") {
   // Issue #80: the axial ray meets every surface at its vertex (0, 0, z_i), with z_i = 0 (stop),
   // 5 and 9 (lens) and 106.363 mm (image) from m1/singlet_const, and keeps the direction
   // (0, 0, 1). In vacuum with n = 1.5168 inside the lens and the start at z = -10 mm the OPL of
-  // the slots is 10, 15, 15 + 4 n and 15 + 4 n + 97.363 mm. Tolerance 1e-12 mm.
+  // the slots is 10, 15, 15 + 4 n and 15 + 4 n + 97.363 mm. The weight of the slots is 1, 1
+  // (the stop is a Transmit without effect), 1 - R, (1 - R)^2 and (1 - R)^2 (detector) with
+  // R = ((n - 1)/(n + 1))^2 for both uncoated lens surfaces at normal incidence (Byrnes,
+  // Eq. (6); ADR 0021). Tolerance 1e-12 mm, 1e-12 for the weight.
   const MaterialLibrary lib;
   const CompiledSystem cs = compile(singlet_in_vacuum(), lib);
   RayBatch rays(1);
@@ -141,6 +165,9 @@ TEST_CASE("axial ray through the singlet: recorded points are the vertices", "[r
   const double n = 1.5168;
   const std::vector<double> z = {-10.0, 0.0, 5.0, 9.0, 106.363};
   const std::vector<double> opl = {0.0, 10.0, 15.0, 15.0 + 4.0 * n, 15.0 + 4.0 * n + 97.363};
+  const double big_r = std::pow((n - 1.0) / (n + 1.0), 2);
+  const std::vector<double> weight = {1.0, 1.0, 1.0 - big_r, std::pow(1.0 - big_r, 2),
+                                      std::pow(1.0 - big_r, 2)};
   REQUIRE(paths.slots == 5);
   REQUIRE(paths.ray_count() == 1);
   REQUIRE(paths.ray_indices == std::vector<std::size_t>{0});
@@ -152,6 +179,7 @@ TEST_CASE("axial ray through the singlet: recorded points are the vertices", "[r
     REQUIRE((paths.position_at(0, s) - Vec3(0.0, 0.0, z[s])).norm() <= 1e-12);
     REQUIRE((paths.direction_at(0, s) - Vec3(0.0, 0.0, 1.0)).norm() <= 1e-12);
     REQUIRE(std::abs(paths.opl[s] - opl[s]) <= 1e-12);
+    REQUIRE(std::abs(paths.weight[s] - weight[s]) <= 1e-12);
     REQUIRE(paths.status[s] == RayStatus::Alive);
     if (s > 0) {
       const auto surface = paths.event_surfaces[s - 1];
@@ -167,6 +195,8 @@ TEST_CASE("mirror tilted by 45 deg: the recorded direction after the reflection"
   // [0, s, c]] (docs/architecture.md, Transformationen; rtt/math/isometry.hpp), so the ray along
   // +z leaves along d - 2 (d . n) n = (0, 2 sin 45 cos 45, 1 - 2 cos^2 45) = (0, 1, 0)
   // (de Greve, Eq. (13)) from the vertex (0, 0, 10). Tolerance 1e-12.
+  // With a mirror aperture of radius 1 mm a second ray at x = 2 mm is vignetted at the only
+  // event, which is also the last one: count = S = 2, lost_at = S - 2 = 0.
   System s;
   s.name = "mirror";
   s.environment.medium = "VACUUM";
@@ -177,16 +207,23 @@ TEST_CASE("mirror tilted by 45 deg: the recorded direction after the reflection"
   s.paths = {{"main", true, {}}};
   Surface m;
   m.id = SurfaceId("M");
+  m.aperture = rtt::model::CircularAperture{1.0, 0.0};
   Pose pose = Pose::along_z(10.0);
   pose.rotation_deg[0] = Param(45.0);
   s.root.children = {{Element{"M", ElementKind::Mirror, pose, std::nullopt, {m}}}};
   const MaterialLibrary lib;
   const CompiledSystem cs = compile(s, lib);
-  RayBatch rays(1);
+  RayBatch rays(2);
+  set_ray(rays, 1, Vec3(2.0, 0.0, 0.0), Vec3(0.0, 0.0, 1.0));
   RayPaths paths;
   static_cast<void>(SequentialTracer().trace(cs, PathId{0}, rays, paths));
   REQUIRE(paths.slots == 2);
   REQUIRE(paths.count[0] == 2);
+  REQUIRE(paths.lost_at[0] == -1);
+  REQUIRE(paths.count[1] == 2);
+  REQUIRE(paths.lost_at[1] == 0);
+  REQUIRE(paths.status[3] == RayStatus::Vignetted);
+  REQUIRE((paths.position_at(1, 1) - Vec3(2.0, 0.0, 10.0)).norm() <= 1e-12);
   REQUIRE((paths.position_at(0, 0) - Vec3(0.0, 0.0, 0.0)).norm() <= 1e-12);
   REQUIRE((paths.direction_at(0, 0) - Vec3(0.0, 0.0, 1.0)).norm() <= 1e-12);
   REQUIRE((paths.position_at(0, 1) - Vec3(0.0, 0.0, 10.0)).norm() <= 1e-12);
@@ -238,11 +275,15 @@ TEST_CASE("lost rays: count, lost_at and NaN after the loss", "[ray_paths]") {
   // vignetted at the stop (event 0): count 2, lost_at 0, slot 1 at the hit point (0, 15, 0)
   // with status Vignetted, slots 2 to 4 NaN with status Vignetted. A ray along -z misses the
   // stop: count 2, lost_at 0, slot 1 = start state with status Missed. A ray that is not Alive
-  // at the start is not traced: count 1, lost_at -1, NaN from slot 1.
+  // at the start is not traced: count 1, lost_at -1, NaN from slot 1. A ray from (0, 2.4, -10)
+  // along (0, 0.6, 0.8) passes the stop at y = 2.4 + 0.75 * 10 = 9.9 mm < 10 mm and reaches the
+  // first lens surface (vertex z = 5, radius 51.68) at y > 2.4 + 0.75 * 15 = 13.65 mm > 12.7 mm:
+  // vignetted at event 1, count 3, lost_at 1.
   const MaterialLibrary lib;
   const CompiledSystem cs = compile(singlet_in_vacuum(), lib);
-  RayBatch rays(3);
+  RayBatch rays(4);
   set_ray(rays, 0, Vec3(0.0, 15.0, -10.0), Vec3(0.0, 0.0, 1.0));
+  set_ray(rays, 3, Vec3(0.0, 2.4, -10.0), Vec3(0.0, 0.6, 0.8));
   set_ray(rays, 1, Vec3(0.0, 1.0, -10.0), Vec3(0.0, 0.0, -1.0));
   set_ray(rays, 2, Vec3(0.0, 0.0, -10.0), Vec3(0.0, 0.0, 1.0));
   rays.status()[2] = RayStatus::Absorbed;
@@ -264,7 +305,14 @@ TEST_CASE("lost rays: count, lost_at and NaN after the loss", "[ray_paths]") {
   REQUIRE(paths.lost_at[2] == -1);
   REQUIRE(paths.status[2 * paths.slots] == RayStatus::Absorbed);
 
-  for (std::size_t r = 0; r < 3; ++r) {
+  REQUIRE(paths.count[3] == 3);
+  REQUIRE(paths.lost_at[3] == 1);
+  REQUIRE(paths.status[3 * paths.slots + 1] == RayStatus::Alive);
+  REQUIRE(std::abs(paths.position_at(3, 1).y() - 9.9) <= 1e-12);
+  REQUIRE(paths.status[3 * paths.slots + 2] == RayStatus::Vignetted);
+  REQUIRE(paths.position_at(3, 2).y() > 13.65);
+
+  for (std::size_t r = 0; r < 4; ++r) {
     for (std::size_t s = paths.count[r]; s < paths.slots; ++s) {
       INFO("ray " << r << ", slot " << s);
       const std::size_t i = r * paths.slots + s;
@@ -311,6 +359,10 @@ TEST_CASE("record_rays and the size limit are checked before tracing", "[ray_pat
   RayBatch rays(5);
   RayPaths paths;
   const SequentialTracer tracer;
+  // A previous record that the rejected calls below must leave untouched (strong guarantee).
+  RayBatch earlier(3);
+  static_cast<void>(tracer.trace(cs, PathId{0}, earlier, paths));
+  const RayPaths snapshot = paths;
   const std::vector<std::size_t> duplicate = {1, 3, 1};
   const std::vector<std::size_t> outside = {0, 5};
   REQUIRE_THROWS_AS(static_cast<void>(tracer.trace(cs, PathId{0}, rays, paths, duplicate)),
@@ -319,8 +371,15 @@ TEST_CASE("record_rays and the size limit are checked before tracing", "[ray_pat
                     std::invalid_argument);
   REQUIRE_THROWS_AS(static_cast<void>(tracer.trace(cs, PathId{0}, rays, paths, {}, 4)),
                     std::invalid_argument);
-  // Nothing was traced by the rejected calls.
+  // An invalid wavelength is found by the trace itself, after the record was allocated.
+  RayBatch bad_wavelength(2);
+  bad_wavelength.wl()[1] = 99;
+  REQUIRE_THROWS_AS(static_cast<void>(tracer.trace(cs, PathId{0}, bad_wavelength, paths)),
+                    std::invalid_argument);
+  // Nothing was traced by the rejected calls, and the earlier record is unchanged.
   REQUIRE(rays.last_surface()[0] == rtt::trace::kNoSurface);
+  REQUIRE(bad_wavelength.last_surface()[0] == rtt::trace::kNoSurface);
+  require_same_paths(paths, snapshot);
   // A selection may exceed nothing: 2 rays of 5 with a limit of 4 are fine.
   const std::vector<std::size_t> two = {4, 2};
   static_cast<void>(tracer.trace(cs, PathId{0}, rays, paths, two, 4));
