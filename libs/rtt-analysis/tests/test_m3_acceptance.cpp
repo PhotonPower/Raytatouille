@@ -100,18 +100,61 @@ Element& element_named(System& s, const std::string& name) {
 struct Amplitudes {
   Cx rs;
   Cx rp;
+  Cx ts;
+  Cx tp;
 };
+Cx normal_component(Cx n, double xi) {
+  Cx v = std::sqrt(n * n - xi * xi);
+  if (v.imag() < 0.0 || (v.imag() == 0.0 && v.real() < 0.0)) v = -v;
+  return v;
+}
 Amplitudes fresnel_reference(Cx n_i, Cx n_t, double xi) {
-  const auto q = [xi](Cx n) {
-    Cx v = std::sqrt(n * n - xi * xi);
-    if (v.imag() < 0.0 || (v.imag() == 0.0 && v.real() < 0.0)) v = -v;
-    return v;
-  };
-  const Cx q_i = q(n_i);
-  const Cx q_t = q(n_t);
+  const Cx q_i = normal_component(n_i, xi);
+  const Cx q_t = normal_component(n_t, xi);
   const Cx cos_i = q_i / n_i;
   const Cx cos_t = q_t / n_t;
-  return {(q_i - q_t) / (q_i + q_t), (n_t * cos_i - n_i * cos_t) / (n_t * cos_i + n_i * cos_t)};
+  const Cx dp = n_t * cos_i + n_i * cos_t;
+  return {(q_i - q_t) / (q_i + q_t), (n_t * cos_i - n_i * cos_t) / dp, 2.0 * q_i / (q_i + q_t),
+          2.0 * n_i * cos_i / dp};
+}
+
+/// Layer of a stack: index and physical thickness in um.
+struct Layer {
+  Cx index;
+  double thickness_um;
+};
+
+/// Reflectances R_s, R_p of a layer stack from the ambient n_0 to the substrate n_sub, after the
+/// transfer-matrix method of Byrnes (interface form): M = (1/t_01) [[1, r_01], [r_01, 1]] times,
+/// for each layer n, diag(e^(-i delta_n), e^(i delta_n)) (1/t_(n,n+1)) [[1, r_(n,n+1)],
+/// [r_(n,n+1), 1]], with delta_n = 2 pi q_n d_n / lambda and q_n = n_n cos(theta_n)
+/// (Eqs. (8), (11), (13)); r = M_10 / M_00 (Eq. (15)). Interface amplitudes from Eq. (6). Own
+/// implementation, independent of rtt-coating.
+std::pair<double, double> stack_reflectance(
+    Cx n_0, const std::vector<Layer>& layers, Cx n_sub, double xi, double wavelength_um) {
+  const auto interface = [](Cx r, Cx t) {
+    Eigen::Matrix2cd m;
+    m << 1.0, r, r, 1.0;
+    return Eigen::Matrix2cd(m / t);
+  };
+  std::vector<Cx> n{n_0};
+  for (const Layer& l : layers) n.push_back(l.index);
+  n.push_back(n_sub);
+  const Amplitudes first = fresnel_reference(n[0], n[1], xi);
+  Eigen::Matrix2cd ms = interface(first.rs, first.ts);
+  Eigen::Matrix2cd mp = interface(first.rp, first.tp);
+  const Cx i(0.0, 1.0);
+  for (std::size_t j = 0; j < layers.size(); ++j) {
+    const Cx delta =
+        2.0 * kPi * normal_component(layers[j].index, xi) * layers[j].thickness_um / wavelength_um;
+    Eigen::Matrix2cd phase = Eigen::Matrix2cd::Zero();
+    phase(0, 0) = std::exp(-i * delta);
+    phase(1, 1) = std::exp(i * delta);
+    const Amplitudes next = fresnel_reference(n[j + 1], n[j + 2], xi);
+    ms = ms * phase * interface(next.rs, next.ts);
+    mp = mp * phase * interface(next.rp, next.tp);
+  }
+  return {std::norm(ms(1, 0) / ms(0, 0)), std::norm(mp(1, 0) / mp(0, 0))};
 }
 
 /// Rays of one field (hexapolar, one ring: 7 rays) with real aiming, traced on `path`. The start
@@ -282,13 +325,37 @@ TEST_CASE("M3 quarter-wave MgF2 anti-reflection: R = 1.26 % at the design wavele
   }
 }
 
-TEST_CASE("M3 lossless stack: R + T = 1 for s and p", "[m3]") {
-  // tests/reference/m3/lossless_stack.rtt.json: M3:HL5 (five lossless quarter-wave layers,
-  // tests/catalogs/coatings/m3.json) on n = 1.52; the exit face is an ideal anti-reflection
-  // surface (amplitude 1), so the path "main" transmits exactly the stack's T. Byrnes,
-  // Eqs. (21)-(23): R + T = 1 for a lossless incidence medium and lossless layers, for s and p,
-  // at 0, 30 and 60 deg. Tolerance 1e-12.
+TEST_CASE("M3 lossless stack: R + T = 1 for s and p, R from the transfer matrix", "[m3]") {
+  // tests/reference/m3/lossless_stack.rtt.json: M3:HL5 (five lossless quarter-wave layers H L H
+  // L H at 0.55 um, H = 2.35, L = 1.38, tests/catalogs/coatings/m3.json) on n = 1.52; the exit
+  // face is an ideal anti-reflection surface (amplitude 1), so the path "main" transmits exactly
+  // the stack's T. Byrnes, Eqs. (21)-(23): R + T = 1 for a lossless incidence medium and lossless
+  // layers, for s and p, at 0, 30 and 60 deg. Since that holds for every lossless stack, R_s and
+  // R_p are also compared with the transfer matrix of stack_reflectance (own implementation of
+  // Byrnes, Eqs. (6), (8), (11), (13), (15); second review of #87): it fixes the layer phase
+  // 2 pi q d / lambda with q = n cos(theta), not n. Tolerance 1e-12 for both: about 15 complex
+  // 2x2 products, exponentials and square roots on numbers of order 1 (|r| <= 1, |1/t| < 10 for
+  // these indices), each ~1e-16 relative, in the tracer and in the reference alike.
   const CompiledSystem cs = build(load("lossless_stack.rtt.json"));
+  const std::vector<Layer> hl5{{2.35, 0.55 / (4.0 * 2.35)},
+                               {1.38, 0.55 / (4.0 * 1.38)},
+                               {2.35, 0.55 / (4.0 * 2.35)},
+                               {1.38, 0.55 / (4.0 * 1.38)},
+                               {2.35, 0.55 / (4.0 * 2.35)}};
+  // Plausibility of the reference itself against the values of the second review (rounded).
+  struct Check {
+    double theta_deg;
+    double rs;
+    double rp;
+    double tol;
+  };
+  for (const Check c : {Check{0.0, 0.877245, 0.877245, 5e-7}, Check{30.0, 0.9072, 0.8240, 5e-5},
+                        Check{60.0, 0.9510, 0.4358, 5e-5}}) {
+    const auto [rs, rp] = stack_reflectance(1.0, hl5, 1.52, std::sin(c.theta_deg * kDeg), 0.55);
+    INFO("theta " << c.theta_deg << ": R_s " << rs << ", R_p " << rp);
+    REQUIRE(std::abs(rs - c.rs) <= c.tol);
+    REQUIRE(std::abs(rp - c.rp) <= c.tol);
+  }
   for (std::uint16_t field = 0; field < 3; ++field) {
     std::vector<Vec3> k_in;
     const RayBatch reflected = trace_field(cs, path_named(cs, "reflect S1"), field, &k_in);
@@ -303,6 +370,10 @@ TEST_CASE("M3 lossless stack: R + T = 1 for s and p", "[m3]") {
       const double r_p = power(reflected, i, e_p);
       REQUIRE(std::abs(r_s + power(transmitted, i, e_s) - 1.0) <= 1e-12);
       REQUIRE(std::abs(r_p + power(transmitted, i, e_p) - 1.0) <= 1e-12);
+      const double xi = std::hypot(k_in[i].x(), k_in[i].y());  // vacuum, normal along z
+      const auto [ref_s, ref_p] = stack_reflectance(1.0, hl5, 1.52, xi, 0.55);
+      REQUIRE(std::abs(r_s - ref_s) <= 1e-12);
+      REQUIRE(std::abs(r_p - ref_p) <= 1e-12);
       REQUIRE(r_s > 0.5);                                   // a real reflector, not a trivial case
       if (field == 2) REQUIRE(std::abs(r_s - r_p) > 1e-2);  // s and p differ at 60 deg
     }
