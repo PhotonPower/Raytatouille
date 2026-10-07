@@ -124,7 +124,9 @@ struct AimedRay {
 /// sampled within its aperture and shape domain (OPL starts on this plane wave). A field angle
 /// with a finite object places the object point on the chief ray through the EP centre at the
 /// reference wavelength.
-/// Finite object: the ray starts in the object point (OPL 0).
+/// Finite object: the ray starts in the object point (OPL 0) and runs along the line through
+/// it and the EP point into the system (+z), also for a virtual EP on the far side of the
+/// object (z_ep < z_obj, #93).
 /// The target is (px R_s, py R_s) in the local coordinates of the stop surface (first Stop event
 /// of the path), R_s = paraxial stop radius belonging to the entrance pupil. Apertures are
 /// ignored while aiming; vignetting is left to the tracer.

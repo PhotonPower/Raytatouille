@@ -107,6 +107,37 @@ System singlet() {
   return rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m1/singlet_const.rtt.json");
 }
 
+/// System of issue #93: plano-convex singlet (CONST:1.5168, R1 = 51.68 mm, d = 4 mm, apertures
+/// 25 mm) at z = 0, object at z = -200 mm (object heights 0 and 2 mm), object-space NA 0.02,
+/// stop (r = 10 mm) at z_stop, detector at z = 205 mm, in VACUUM. The rear focal point lies at
+/// z = 101.363; with the stop behind it (z_stop = 150) the paraxial entrance pupil is virtual
+/// and lies on the far side of the object (z_ep = -305.604 < -200), with the stop before it
+/// (z_stop = 60) behind the object (z_ep = 141.763). (The issue gives the values in AIR.)
+System stop_behind_focus(double z_stop) {
+  System s;
+  s.name = "stop behind F'";
+  s.environment.medium = "VACUUM";
+  s.wavelengths = {{0.5876, 1.0, true}};
+  s.object.at_infinity = false;
+  s.object.distance = Param(200.0);
+  s.aperture = {rtt::model::SystemApertureType::ObjectSpaceNA, Param(0.02)};
+  s.fields = {FieldType::ObjectHeight, {{0.0, 0.0, 1.0}, {0.0, 2.0, 1.0}}};
+  s.root.name = "root";
+  Surface s1 = surface("L1.S1", 0.0, 51.68);
+  Surface s2 = surface("L1.S2", 4.0);
+  s1.aperture = rtt::model::CircularAperture{25.0, 0.0};
+  s2.aperture = rtt::model::CircularAperture{25.0, 0.0};
+  Surface stop = surface("STO");
+  stop.aperture = rtt::model::CircularAperture{10.0, 0.0};
+  s.root.children = {
+      {Element{"L1", ElementKind::Lens, Pose::along_z(0.0), "CONST:1.5168", {s1, s2}}},
+      {Element{"stop", ElementKind::Stop, Pose::along_z(z_stop), std::nullopt, {stop}}},
+      {Element{
+          "image", ElementKind::Detector, Pose::along_z(205.0), std::nullopt, {surface("IMG")}}}};
+  s.paths = {{"main", true, {}}};
+  return s;
+}
+
 /// Index of the first Stop event of path 0.
 std::size_t stop_event(const CompiledSystem& cs) {
   const auto& events = cs.path(PathId{0}).events;
@@ -901,5 +932,117 @@ TEST_CASE("Cooke triplet: the fallback uses an aperture smaller than the shape d
     REQUIRE(aimed.ray.status == RayStatus::Alive);
     REQUIRE(aimed.ray.pos.z() <= z_min + 1e-9);  // z_rim - 1 = -10.064
     REQUIRE(std::abs(d.dot(aimed.ray.pos) - (z_ep * d.z() - offset)) <= 1e-9);
+  }
+}
+
+TEST_CASE(
+    "virtual EP on the far side of a finite object (z_ep < z_obj): rays run into the "
+    "system (#93)",
+    "[sources][aiming]") {
+  // The ray of pupil point (px, py) is the line through the object point P and the EP point
+  // Q = (px r_ep, py r_ep, z_ep) (docs/architecture.md, "Feldwinkel und Pupille"), travelling
+  // in +z, the direction of light in object space (rtt/paraxial/paraxial.hpp). With the EP on
+  // the far side of the object (z_ep < z_obj) that is d = (P - Q) / |P - Q|. Tolerance 1e-15:
+  // the expected value is the same vector expression.
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(stop_behind_focus(150.0), lib);
+  const auto fo = rtt::paraxial::first_order(cs, PathId{0}, 0);
+  REQUIRE(fo.entrance_pupil);
+  REQUIRE(fo.entrance_pupil->z);
+  REQUIRE(fo.entrance_pupil->diameter);
+  const double z_ep = *fo.entrance_pupil->z;
+  const double r_ep = *fo.entrance_pupil->diameter / 2.0;
+  REQUIRE(z_ep < -200.0);
+
+  SECTION("paraxial aiming: d = (P - Q) / |P - Q|, into +z") {
+    for (const auto& [px, py] : {std::pair{0.0, 0.0}, std::pair{0.0, 1.0}, std::pair{0.6, -0.8}}) {
+      INFO("p = (" << px << ", " << py << ")");
+      const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, 1, 0, px, py, Aiming::Paraxial);
+      const Vec3 p(0.0, 2.0, -200.0);
+      const Vec3 q(px * r_ep, py * r_ep, z_ep);
+      REQUIRE(aimed.ray.pos == p);
+      REQUIRE(aimed.ray.dir.z() > 0.0);
+      REQUIRE((aimed.ray.dir - (p - q).normalized()).cwiseAbs().maxCoeff() <= 1e-15);
+    }
+  }
+  SECTION("real aiming reaches the stop target (px R_s, py R_s)") {
+    // As in "pupil rays hit their target on the stop": < 1e-9 mm; R_s is negative here (the
+    // stop sees the virtual EP inverted).
+    const double r_s = paraxial_stop_radius(cs);
+    for (std::uint16_t f = 0; f < 2; ++f) {
+      for (const auto& [px, py] : {std::pair{0.0, 0.0}, std::pair{0.0, 1.0}, std::pair{1.0, 0.0},
+                                   std::pair{-0.7, 0.7}, std::pair{0.2, -0.5}}) {
+        INFO("field " << f << ", p = (" << px << ", " << py << ")");
+        const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, f, 0, px, py);
+        REQUIRE(aimed.ray.status == RayStatus::Alive);
+        REQUIRE(aimed.ray.dir.z() > 0.0);
+        const Vec3 hit = hit_on_stop(cs, aimed.ray);
+        REQUIRE(std::hypot(hit.x() - px * r_s, hit.y() - py * r_s) < 1e-9);
+      }
+    }
+  }
+  SECTION("a hexapolar bundle of both fields reaches the image") {
+    const std::vector<std::uint16_t> fields{0, 1};
+    rtt::trace::RayBatch rays =
+        rtt::trace::make_rays(cs, PathId{0}, fields, 0, rtt::trace::HexapolarPupil{6});
+    REQUIRE(rays.size() == 2 * 127);
+    [[maybe_unused]] const auto stats = rtt::trace::SequentialTracer().trace(cs, PathId{0}, rays);
+    for (std::size_t i = 0; i < rays.size(); ++i) {
+      INFO("field " << rays.field()[i] << ", pupil (" << rays.pupil_x()[i] << ", "
+                    << rays.pupil_y()[i] << ")");
+      REQUIRE(rays.status()[i] == RayStatus::Alive);
+      REQUIRE(rays.pos_z()[i] == 205.0);
+    }
+  }
+}
+
+TEST_CASE("EP after the object plane (z_ep > z_obj): directions unchanged, bit for bit (#93)",
+          "[sources]") {
+  // Counter case of #93 (stop before F', z_ep > z_obj): the start direction is still the
+  // expression (Q - P) / |Q - P| of before the fix, compared exactly.
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(stop_behind_focus(60.0), lib);
+  const auto fo = rtt::paraxial::first_order(cs, PathId{0}, 0);
+  REQUIRE(fo.entrance_pupil);
+  REQUIRE(fo.entrance_pupil->z);
+  REQUIRE(fo.entrance_pupil->diameter);
+  const double z_ep = *fo.entrance_pupil->z;
+  const double r_ep = *fo.entrance_pupil->diameter / 2.0;
+  REQUIRE(z_ep > -200.0);
+  for (const auto& [px, py] : {std::pair{0.0, 0.0}, std::pair{0.0, 1.0}, std::pair{0.6, -0.8}}) {
+    INFO("p = (" << px << ", " << py << ")");
+    const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, 1, 0, px, py, Aiming::Paraxial);
+    const Vec3 p(0.0, 2.0, -200.0);
+    const Vec3 q(px * r_ep, py * r_ep, z_ep);
+    REQUIRE(aimed.ray.pos == p);
+    REQUIRE(aimed.ray.dir == (q - p).normalized());
+  }
+}
+
+TEST_CASE("field angle with a finite object and z_ep < z_obj: chief ray rises (#8, #93)",
+          "[sources]") {
+  // Convention of #8: a field angle theta_y > 0 is a chief ray rising in +y, with
+  // d ~ (tan theta_x, tan theta_y, 1). With z_ep < z_obj the object point
+  // (z_obj - z_ep) tan theta_y lies at +y, and the chief ray P -> into the system has slope
+  // d_y / d_z = tan theta_y. Tolerance 1e-12 relative (a few roundings).
+  const MaterialLibrary lib;
+  System s = stop_behind_focus(150.0);
+  s.fields = {FieldType::AngleDeg, {{0.0, 0.0, 1.0}, {0.0, 0.5, 1.0}}};
+  const CompiledSystem cs = compile(s, lib);
+  const double t = std::tan(0.5 * kDeg);
+  for (const Aiming aiming : {Aiming::Paraxial, Aiming::Real}) {
+    INFO("aiming " << static_cast<int>(aiming));
+    const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, 1, 0, 0.0, 0.0, aiming);
+    REQUIRE(aimed.ray.status == RayStatus::Alive);
+    REQUIRE(aimed.ray.pos.y() > 0.0);
+    REQUIRE(aimed.ray.dir.z() > 0.0);
+    if (aiming == Aiming::Paraxial) {
+      // Through the paraxial EP centre; the real ray then misses the stop centre by the pupil
+      // aberration (here about 5 um), so the stop is checked for real aiming only.
+      REQUIRE(std::abs(aimed.ray.dir.y() / aimed.ray.dir.z() - t) <= 1e-12 * t);
+    } else {
+      const Vec3 hit = hit_on_stop(cs, aimed.ray);
+      REQUIRE(std::hypot(hit.x(), hit.y()) < 1e-9);
+    }
   }
 }

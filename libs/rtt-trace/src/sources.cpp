@@ -330,8 +330,15 @@ RayState ray_through(const Context& c, const FieldStart& f, double a, double b) 
     ray.pos = q - s * f.direction;
     ray.dir = f.direction;
   } else {
+    // The ray is the line through the object point P and Q and travels into the system, in +z
+    // (light starts towards +z in object space, rtt/paraxial/paraxial.hpp). With a virtual EP
+    // on the far side of the object (z_ep < z_obj, e.g. a stop behind the rear focal point of
+    // the group before it) that is away from Q (#93). The line is unchanged, so Q still maps to
+    // the conjugate stop point stop_scale * (a, b). P and all Q lie on the planes z_obj and
+    // z_ep, so the sign is the same for every ray of every field (paths are rotationally
+    // symmetric about z, make_context).
     ray.pos = f.object;
-    ray.dir = (q - f.object).normalized();
+    ray.dir = c.z_ep < f.object.z() ? (f.object - q).normalized() : (q - f.object).normalized();
   }
   return ray;
 }
