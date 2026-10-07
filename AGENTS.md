@@ -110,6 +110,6 @@ Neue Bibliothek: Ordner wie oben, `CMakeLists.txt` nach dem Muster von `libs/rtt
 - [ ] Referenztests für jedes neue physikalische Verhalten, mit Quelle
 - [ ] Neue Quellen in `docs/quellen.md` eingetragen
 - [ ] Öffentliche API mit Doxygen-Kommentaren inkl. Einheiten
-- [ ] `CHANGELOG.md` ergänzt
+- [ ] Changelog-Fragment `changelog.d/<issue>.<art>.md` angelegt (nicht `CHANGELOG.md` ändern; siehe `changelog.d/README.md`)
 - [ ] Bei Formatänderung: Schema-Version, JSON-Schema, Referenzdateien, Migration
 - [ ] Beispiel unter `tests/reference/` oder `examples/` für neue Features
