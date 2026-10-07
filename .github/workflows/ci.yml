@@ -18,10 +18,11 @@ jobs:
   format:
     name: clang-format
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Install clang-format
-        run: sudo apt-get update -q && sudo apt-get install -y -q clang-format-18
+        run: sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=120 update -q && sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=120 install -y -q clang-format-18
       - name: Check formatting
         run: |
           git ls-files '*.cpp' '*.hpp' | xargs clang-format-18 --dry-run -Werror
@@ -29,6 +30,7 @@ jobs:
   schema:
     name: JSON schema
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -40,6 +42,7 @@ jobs:
   linux:
     name: Linux ${{ matrix.preset }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -50,7 +53,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install tools
-        run: sudo apt-get update -q && sudo apt-get install -y -q ninja-build clang clang-tidy
+        run: sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=120 update -q && sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=120 install -y -q ninja-build clang clang-tidy
       - name: Restore vcpkg binary cache
         uses: actions/cache@v4
         with:
@@ -72,6 +75,7 @@ jobs:
   windows:
     name: Windows MSVC
     runs-on: windows-2022
+    timeout-minutes: 90
     env:
       VCPKG_ROOT: ${{ github.workspace }}\..\vcpkg
       VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\..\vcpkg-cache
@@ -102,6 +106,7 @@ jobs:
     # with pip install . per OS.
     name: Python ${{ matrix.python }} ${{ matrix.preset }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -120,7 +125,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Install tools
         if: runner.os == 'Linux'
-        run: sudo apt-get update -q && sudo apt-get install -y -q ninja-build
+        run: sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=120 update -q && sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=120 install -y -q ninja-build
       - name: Restore vcpkg binary cache
         uses: actions/cache@v4
         with:
