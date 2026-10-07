@@ -258,6 +258,14 @@ def test_load_json_accepts_patch_versions() -> None:
     ('{"format": "raytatouille-result", "schema_version": "0.1.0", "type": "TraceStats", '
      '"data": {"x": NaN}}', "NaN"),
     ("[1, 2]", "object"),
+    # second review of #104 (H1): numbers that JSON reads as infinite, too large integers
+    ('{"format": "raytatouille-result", "schema_version": "0.1.0", "type": "TraceStats", '
+     '"data": {"rays": [], "x": 1e400}}', "finite"),
+    ('{"format": "raytatouille-result", "schema_version": "0.1.0", "type": "TraceStats", '
+     '"data": {"rays": {"dtype": "float64", "shape": [1], "values": [1e400]}}}', "finite"),
+    ('{"format": "raytatouille-result", "schema_version": "0.1.0", "type": "TraceStats", '
+     '"data": {"rays": {"dtype": "float64", "shape": [1], "values": [1' + "0" * 400 + ']}}}',
+     "finite"),
     # the same mistakes as BROKEN in tests/schema/test_result_schema.py (review of #86 B, P1)
     (envelope(data={"rays": {"dtype": "uint8", "shape": [1], "values": [1.5]}}), "uint8"),
     (envelope(data={"rays": {"dtype": "int32", "shape": [1], "values": ["5"]}}), "int32"),

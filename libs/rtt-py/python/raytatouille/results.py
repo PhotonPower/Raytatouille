@@ -255,7 +255,13 @@ def _number(x: Any, where: str) -> float:
         return _SPECIAL[x]
     if type(x) not in (int, float):  # bool is no number here
         raise ValueError(f"results: {where}: {x!r} is not a number")
-    return float(x)
+    try:
+        value = float(x)
+    except OverflowError:  # an integer beyond the double range
+        raise ValueError(f"results: {where}: {x} is not a finite double") from None
+    if not math.isfinite(value):  # e.g. 1e400, which JSON reads as infinity
+        raise ValueError(f"results: {where}: {x!r} is not finite; write \"Infinity\" (ADR 0023)")
+    return value
 
 
 def _integer(x: Any, dtype: str, where: str) -> int:
@@ -311,6 +317,9 @@ def _decode(v: Any, where: str) -> Any:
         return {k: _decode(x, f"{where}/{k}") for k, x in v.items()}
     if isinstance(v, list):
         return [_decode(x, f"{where}/{i}") for i, x in enumerate(v)]
+    if isinstance(v, float) and not math.isfinite(v):  # e.g. 1e400; JSON reads it as infinity
+        raise ValueError(f"results: {where}: {v!r} is not finite; write "
+                         '{"float": "Infinity"} (ADR 0023)')
     return v
 
 
