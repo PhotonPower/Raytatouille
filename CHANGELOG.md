@@ -43,6 +43,23 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   - Quelle Greivenkamp, OPTI-502 Sec. 9 „Stops and Pupils“, in `docs/quellen.md`.
   - Python `rt.paraxial.prescription` mit NumPy-Arrays je Fläche (NaN für leere Werte), bitgleich
     gegen C++; Tabelle im Beispiel `examples/python/singlet.py` (#84).
+- `rtt-trace`: Strahlpfad-Aufzeichnung für die GUI. `SequentialTracer::trace(..., RayPaths&,
+  record_rays, max_recorded_rays)` zeichnet Position, Richtung, OPL, `weight` und Status vor dem
+  ersten und nach jedem Ereignis auf; verlorene Strahlen sind über `count`, `lost_at` und NaN
+  markiert. Ohne Aufzeichnung bleibt das Ergebnis bitgleich (Recorder-Policy), und der letzte
+  gültige Slot ist bitgleich mit dem Endzustand. Strahlen werden über `record_rays` ausgewählt,
+  ohne Auswahl höchstens `max_recorded_rays` (Standard 10 000), sonst ein Fehler mit dem
+  Speicherbedarf (#80).
+- `rtt-py`: `rt.trace.trace(..., record_path=True, record_rays=None, max_recorded_rays=10000)` gibt
+  `(TraceStats, RayPaths)` zurück, mit NumPy-Views (N, S, 3) bzw. (N, S) ohne Kopie; bitgleich
+  gegen C++; Beispiel `examples/python/ray_paths.py` (#80).
+- `rtt-compile`: Geometrie-Export für das Layout (`rtt/compile/layout.hpp`).
+  - `CompiledSystem::elements()` (Name, Art, Flächen, Medien, `segmented`).
+  - `CompiledSurface::element`, `medium_front` und `medium_back`: in der Flächenreihenfolge des Elements, Regeln von ADR 0017.
+  - `surface_sag` und `surface_normal`, vektorisiert, lokal oder global.
+  - `surface_profile` in Schnittebenen parallel zur lokalen z-Achse, begrenzt durch die Apertur (der Ring ergibt zwei Stücke) und den Formbereich.
+  - `element_outlines`: geschlossene Polygone der Glassegmente von Linsen und segmentierten Platten, Randkanten als Stufe (#81).
+- `rtt-py`: Modul `rt.layout` mit `surfaces`, `elements`, `sag` und `normal` mit Broadcasting, `profile` und `outlines` (Schnittebene `"yz"`, `"xz"` oder Punkt und Normale); Beispiel `examples/python/layout.py` (Achromat) (#81).
 
 ### Geändert
 - `rtt-material`: Die AGF-Datensätze NM-Extras, MD, OD und IT werden jetzt streng gelesen statt
@@ -148,23 +165,6 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   - Bitgleich gegen C++ mit fünf neuen Fällen.
   - Referenz `tests/reference/m3/polarizer_qwp.rtt.json` und Beispiel
     `examples/python/polarization.py` (#62).
-- `rtt-trace`: Strahlpfad-Aufzeichnung für die GUI. `SequentialTracer::trace(..., RayPaths&,
-  record_rays, max_recorded_rays)` zeichnet Position, Richtung, OPL, `weight` und Status vor dem
-  ersten und nach jedem Ereignis auf; verlorene Strahlen sind über `count`, `lost_at` und NaN
-  markiert. Ohne Aufzeichnung bleibt das Ergebnis bitgleich (Recorder-Policy), und der letzte
-  gültige Slot ist bitgleich mit dem Endzustand. Strahlen werden über `record_rays` ausgewählt,
-  ohne Auswahl höchstens `max_recorded_rays` (Standard 10 000), sonst ein Fehler mit dem
-  Speicherbedarf (#80).
-- `rtt-py`: `rt.trace.trace(..., record_path=True, record_rays=None, max_recorded_rays=10000)` gibt
-  `(TraceStats, RayPaths)` zurück, mit NumPy-Views (N, S, 3) bzw. (N, S) ohne Kopie; bitgleich
-  gegen C++; Beispiel `examples/python/ray_paths.py` (#80).
-- `rtt-compile`: Geometrie-Export für das Layout (`rtt/compile/layout.hpp`).
-  - `CompiledSystem::elements()` (Name, Art, Flächen, Medien, `segmented`).
-  - `CompiledSurface::element`, `medium_front` und `medium_back`: in der Flächenreihenfolge des Elements, Regeln von ADR 0017.
-  - `surface_sag` und `surface_normal`, vektorisiert, lokal oder global.
-  - `surface_profile` in Schnittebenen parallel zur lokalen z-Achse, begrenzt durch die Apertur (der Ring ergibt zwei Stücke) und den Formbereich.
-  - `element_outlines`: geschlossene Polygone der Glassegmente von Linsen und segmentierten Platten, Randkanten als Stufe (#81).
-- `rtt-py`: Modul `rt.layout` mit `surfaces`, `elements`, `sag` und `normal` mit Broadcasting, `profile` und `outlines` (Schnittebene `"yz"`, `"xz"` oder Punkt und Normale); Beispiel `examples/python/layout.py` (Achromat) (#81).
 
 ### Geändert
 - `rtt-analysis`: Spot-Gewichte enthalten jetzt die Fresnel-Verluste der Strahlen; gewichtete
