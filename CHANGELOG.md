@@ -27,10 +27,15 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   vorher an #71 (#85).
 
 ### Behoben
-- `rtt-trace`: Bei endlichem Objekt und virtueller Eintrittspupille hinter dem Objekt (z_EP < z_Objekt, z. B. Blende hinter dem hinteren Brennpunkt der Gruppe davor wie bei Mikroskopobjektiven mit Tubuslinse) starteten alle Strahlen in −z und gingen verloren.
-  - Jetzt läuft der Strahl auf der Geraden durch Objektpunkt und EP-Punkt ins System, also in +z.
-  - Die Zuordnung Pupillenkoordinate → Blendenpunkt, die reale Zielung und die OPD-Referenzsphäre bleiben unverändert.
-  - Damit gilt auch die Feldwinkel-Konvention aus #8 (Hauptstrahl steigt bei θ_y > 0 in +y) für diesen Fall.
+- `rtt-trace`: Bei endlichem Objekt und virtueller Eintrittspupille hinter dem Objekt
+  (z_EP < z_Objekt, z. B. Blende hinter dem hinteren Brennpunkt der Gruppe davor wie bei
+  Mikroskopobjektiven mit Tubuslinse) starteten alle Strahlen in −z und gingen verloren.
+  - Jetzt läuft der Strahl auf der Geraden durch Objektpunkt und EP-Punkt ins System, also
+    in +z.
+  - Die Zuordnung Pupillenkoordinate → Blendenpunkt, die reale Zielung und die
+    OPD-Referenzsphäre bleiben unverändert.
+  - Damit gilt auch die Feldwinkel-Konvention aus #8 (Hauptstrahl steigt bei θ_y > 0 in +y)
+    für diesen Fall.
   - Für z_EP > z_Objekt sind die Startrichtungen bitgleich zu vorher (#93).
 
 ## [0.4.0] – M3 Polarisation

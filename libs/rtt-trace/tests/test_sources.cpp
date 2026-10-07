@@ -110,9 +110,9 @@ System singlet() {
 /// System of issue #93: plano-convex singlet (CONST:1.5168, R1 = 51.68 mm, d = 4 mm, apertures
 /// 25 mm) at z = 0, object at z = -200 mm (object heights 0 and 2 mm), object-space NA 0.02,
 /// stop (r = 10 mm) at z_stop, detector at z = 205 mm, in VACUUM. The rear focal point lies at
-/// z = 101.44; with the stop behind it (z_stop = 150) the paraxial entrance pupil is virtual and
-/// lies on the far side of the object (z_ep = -306.35 < -200), with the stop before it
-/// (z_stop = 60) behind the object (z_ep = 141.61).
+/// z = 101.363; with the stop behind it (z_stop = 150) the paraxial entrance pupil is virtual
+/// and lies on the far side of the object (z_ep = -305.604 < -200), with the stop before it
+/// (z_stop = 60) behind the object (z_ep = 141.763). (The issue gives the values in AIR.)
 System stop_behind_focus(double z_stop) {
   System s;
   s.name = "stop behind F'";
@@ -935,8 +935,10 @@ TEST_CASE("Cooke triplet: the fallback uses an aperture smaller than the shape d
   }
 }
 
-TEST_CASE("virtual entrance pupil behind a finite object: rays run into the system (#93)",
-          "[sources][aiming]") {
+TEST_CASE(
+    "virtual EP on the far side of a finite object (z_ep < z_obj): rays run into the "
+    "system (#93)",
+    "[sources][aiming]") {
   // The ray of pupil point (px, py) is the line through the object point P and the EP point
   // Q = (px r_ep, py r_ep, z_ep) (docs/architecture.md, "Feldwinkel und Pupille"), travelling
   // in +z, the direction of light in object space (rtt/paraxial/paraxial.hpp). With the EP on
@@ -994,7 +996,7 @@ TEST_CASE("virtual entrance pupil behind a finite object: rays run into the syst
   }
 }
 
-TEST_CASE("entrance pupil behind the object plane: directions unchanged, bit for bit (#93)",
+TEST_CASE("EP after the object plane (z_ep > z_obj): directions unchanged, bit for bit (#93)",
           "[sources]") {
   // Counter case of #93 (stop before F', z_ep > z_obj): the start direction is still the
   // expression (Q - P) / |Q - P| of before the fix, compared exactly.
@@ -1017,7 +1019,7 @@ TEST_CASE("entrance pupil behind the object plane: directions unchanged, bit for
   }
 }
 
-TEST_CASE("field angle with a finite object and the EP behind it: chief ray rises (#8, #93)",
+TEST_CASE("field angle with a finite object and z_ep < z_obj: chief ray rises (#8, #93)",
           "[sources]") {
   // Convention of #8: a field angle theta_y > 0 is a chief ray rising in +y, with
   // d ~ (tan theta_x, tan theta_y, 1). With z_ep < z_obj the object point
