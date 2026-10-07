@@ -1,30 +1,16 @@
 {
   "schema_version": "0.2.0",
   "name": "Hohlspiegel R = −200 mm, Parabel (k = −1, f/2,5)",
-  "units": {
-    "length": "mm",
-    "wavelength": "um"
-  },
+  "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [
-    {
-      "um": 0.5876,
-      "reference": true
-    }
+    {"um": 0.5876, "reference": true}
   ],
-  "aperture": {
-    "type": "epd",
-    "value": 40.0
-  },
+  "aperture": {"type": "epd", "value": 40.0},
   "fields": {
-    "type": "angle_deg",
     "points": [
       {},
-      {
-        "y": 0.5
-      },
-      {
-        "y": 1.0
-      }
+      {"y": 0.5},
+      {"y": 1.0}
     ]
   },
   "root": {
@@ -34,22 +20,13 @@
       {
         "type": "stop",
         "name": "stop",
+        "pose": {"position": [0.0, 0.0, -30.0]},
         "surfaces": [
           {
             "id": "STO",
-            "aperture": {
-              "type": "circular",
-              "radius": 20.0
-            }
+            "aperture": {"type": "circular", "radius": 20.0}
           }
-        ],
-        "pose": {
-          "position": [
-            0,
-            0,
-            -30.0
-          ]
-        }
+        ]
       },
       {
         "type": "mirror",
@@ -58,44 +35,24 @@
           {
             "id": "M",
             "shape": {
-              "base": {
-                "type": "conic",
-                "radius": -200.0,
-                "conic": -1.0
-              }
+              "base": {"type": "conic", "radius": -200.0, "conic": -1.0}
             },
-            "aperture": {
-              "type": "circular",
-              "radius": 22.0
-            },
-            "interaction": {
-              "type": "ideal_mirror"
-            }
+            "aperture": {"type": "circular", "radius": 22.0},
+            "interaction": {"type": "ideal_mirror"}
           }
         ]
       },
       {
         "type": "detector",
         "name": "image",
+        "pose": {"position": [0.0, 0.0, -100.0]},
         "surfaces": [
-          {
-            "id": "IMG"
-          }
-        ],
-        "pose": {
-          "position": [
-            0,
-            0,
-            -100.0
-          ]
-        }
+          {"id": "IMG"}
+        ]
       }
     ]
   },
   "paths": [
-    {
-      "name": "main",
-      "events": "auto"
-    }
+    {"name": "main", "events": "auto"}
   ]
 }

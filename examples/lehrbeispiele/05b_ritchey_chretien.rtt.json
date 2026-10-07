@@ -1,33 +1,17 @@
 {
   "schema_version": "0.2.0",
   "name": "Ritchey-Chrétien-Teleskop: zwei Hyperbeln, f ≈ 1440 mm (f/14,4)",
-  "units": {
-    "length": "mm",
-    "wavelength": "um"
-  },
+  "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [
-    {
-      "um": 0.5876,
-      "reference": true
-    }
+    {"um": 0.5876, "reference": true}
   ],
-  "aperture": {
-    "type": "epd",
-    "value": 100.0
-  },
+  "aperture": {"type": "epd", "value": 100.0},
   "fields": {
-    "type": "angle_deg",
     "points": [
       {},
-      {
-        "y": 0.25
-      },
-      {
-        "y": 0.5
-      },
-      {
-        "y": 1.0
-      }
+      {"y": 0.25},
+      {"y": 0.5},
+      {"y": 1.0}
     ]
   },
   "root": {
@@ -37,22 +21,13 @@
       {
         "type": "stop",
         "name": "stop",
+        "pose": {"position": [0.0, 0.0, -5.0]},
         "surfaces": [
           {
             "id": "STO",
-            "aperture": {
-              "type": "circular",
-              "radius": 50.0
-            }
+            "aperture": {"type": "circular", "radius": 50.0}
           }
-        ],
-        "pose": {
-          "position": [
-            0,
-            0,
-            -5.0
-          ]
-        }
+        ]
       },
       {
         "type": "mirror",
@@ -61,74 +36,39 @@
           {
             "id": "M1",
             "shape": {
-              "base": {
-                "type": "conic",
-                "radius": -800.0,
-                "conic": -1.0514
-              }
+              "base": {"type": "conic", "radius": -800.0, "conic": -1.0514}
             },
-            "aperture": {
-              "type": "circular",
-              "radius": 55.0
-            },
-            "interaction": {
-              "type": "ideal_mirror"
-            }
+            "aperture": {"type": "circular", "radius": 55.0},
+            "interaction": {"type": "ideal_mirror"}
           }
         ]
       },
       {
         "type": "mirror",
         "name": "M2",
-        "pose": {
-          "position": [
-            0,
-            0,
-            -300.0
-          ]
-        },
+        "pose": {"position": [0.0, 0.0, -300.0]},
         "surfaces": [
           {
             "id": "M2",
             "shape": {
-              "base": {
-                "type": "conic",
-                "radius": -276.923,
-                "conic": -3.6764
-              }
+              "base": {"type": "conic", "radius": -276.923, "conic": -3.6764}
             },
-            "aperture": {
-              "type": "circular",
-              "radius": 18.0
-            },
-            "interaction": {
-              "type": "ideal_mirror"
-            }
+            "aperture": {"type": "circular", "radius": 18.0},
+            "interaction": {"type": "ideal_mirror"}
           }
         ]
       },
       {
         "type": "detector",
         "name": "image",
+        "pose": {"position": [0.0, 0.0, 60.0]},
         "surfaces": [
-          {
-            "id": "IMG"
-          }
-        ],
-        "pose": {
-          "position": [
-            0,
-            0,
-            60.0
-          ]
-        }
+          {"id": "IMG"}
+        ]
       }
     ]
   },
   "paths": [
-    {
-      "name": "main",
-      "events": "auto"
-    }
+    {"name": "main", "events": "auto"}
   ]
 }

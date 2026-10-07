@@ -1,27 +1,15 @@
 {
   "schema_version": "0.2.0",
   "name": "Plankonvex-Linse mit Hyperbelfläche (k = −n²): Descartes-Linse",
-  "units": {
-    "length": "mm",
-    "wavelength": "um"
-  },
+  "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [
-    {
-      "um": 0.5876,
-      "reference": true
-    }
+    {"um": 0.5876, "reference": true}
   ],
-  "aperture": {
-    "type": "epd",
-    "value": 20.0
-  },
+  "aperture": {"type": "epd", "value": 20.0},
   "fields": {
-    "type": "angle_deg",
     "points": [
       {},
-      {
-        "y": 3.0
-      }
+      {"y": 3.0}
     ]
   },
   "root": {
@@ -34,77 +22,41 @@
         "surfaces": [
           {
             "id": "STO",
-            "aperture": {
-              "type": "circular",
-              "radius": 10.0
-            }
+            "aperture": {"type": "circular", "radius": 10.0}
           }
         ]
       },
       {
         "type": "lens",
         "name": "L1",
-        "pose": {
-          "position": [
-            0,
-            0,
-            5.0
-          ]
-        },
+        "pose": {"position": [0.0, 0.0, 5.0]},
         "material": "CONST:1.5168",
         "surfaces": [
           {
             "id": "L1.S1",
-            "aperture": {
-              "type": "circular",
-              "radius": 14.0
-            }
+            "aperture": {"type": "circular", "radius": 14.0}
           },
           {
             "id": "L1.S2",
-            "pose": {
-              "position": [
-                0,
-                0,
-                4.0
-              ]
-            },
+            "pose": {"position": [0.0, 0.0, 4.0]},
             "shape": {
-              "base": {
-                "type": "conic",
-                "radius": -51.68,
-                "conic": -2.3007
-              }
+              "base": {"type": "conic", "radius": -51.68, "conic": -2.3007}
             },
-            "aperture": {
-              "type": "circular",
-              "radius": 14.0
-            }
+            "aperture": {"type": "circular", "radius": 14.0}
           }
         ]
       },
       {
         "type": "detector",
         "name": "image",
+        "pose": {"position": [0.0, 0.0, 109.08]},
         "surfaces": [
-          {
-            "id": "IMG"
-          }
-        ],
-        "pose": {
-          "position": [
-            0,
-            0,
-            109.08
-          ]
-        }
+          {"id": "IMG"}
+        ]
       }
     ]
   },
   "paths": [
-    {
-      "name": "main",
-      "events": "auto"
-    }
+    {"name": "main", "events": "auto"}
   ]
 }

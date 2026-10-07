@@ -1,30 +1,16 @@
 {
   "schema_version": "0.2.0",
   "name": "Vergleich: einfache Linse f ≈ 200 mm (Baulänge = Brennweite)",
-  "units": {
-    "length": "mm",
-    "wavelength": "um"
-  },
+  "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [
-    {
-      "um": 0.5876,
-      "reference": true
-    }
+    {"um": 0.5876, "reference": true}
   ],
-  "aperture": {
-    "type": "epd",
-    "value": 20.0
-  },
+  "aperture": {"type": "epd", "value": 20.0},
   "fields": {
-    "type": "angle_deg",
     "points": [
       {},
-      {
-        "y": 1.0
-      },
-      {
-        "y": 2.0
-      }
+      {"y": 1.0},
+      {"y": 2.0}
     ]
   },
   "root": {
@@ -37,82 +23,44 @@
         "surfaces": [
           {
             "id": "STO",
-            "aperture": {
-              "type": "circular",
-              "radius": 10.0
-            }
+            "aperture": {"type": "circular", "radius": 10.0}
           }
         ]
       },
       {
         "type": "lens",
         "name": "L1",
-        "pose": {
-          "position": [
-            0,
-            0,
-            3.0
-          ]
-        },
+        "pose": {"position": [0.0, 0.0, 3.0]},
         "material": "CONST:1.5168",
         "surfaces": [
           {
             "id": "L1.S1",
             "shape": {
-              "base": {
-                "type": "conic",
-                "radius": 206.72
-              }
+              "base": {"type": "conic", "radius": 206.72}
             },
-            "aperture": {
-              "type": "circular",
-              "radius": 12.0
-            }
+            "aperture": {"type": "circular", "radius": 12.0}
           },
           {
             "id": "L1.S2",
-            "pose": {
-              "position": [
-                0,
-                0,
-                4.0
-              ]
-            },
+            "pose": {"position": [0.0, 0.0, 4.0]},
             "shape": {
-              "base": {
-                "type": "conic",
-                "radius": -206.72
-              }
+              "base": {"type": "conic", "radius": -206.72}
             },
-            "aperture": {
-              "type": "circular",
-              "radius": 12.0
-            }
+            "aperture": {"type": "circular", "radius": 12.0}
           }
         ]
       },
       {
         "type": "detector",
         "name": "image",
+        "pose": {"position": [0.0, 0.0, 206.498]},
         "surfaces": [
-          {
-            "id": "IMG"
-          }
-        ],
-        "pose": {
-          "position": [
-            0,
-            0,
-            206.498
-          ]
-        }
+          {"id": "IMG"}
+        ]
       }
     ]
   },
   "paths": [
-    {
-      "name": "main",
-      "events": "auto"
-    }
+    {"name": "main", "events": "auto"}
   ]
 }
