@@ -85,6 +85,9 @@ Wenn ein Meilenstein abgeschlossen ist, schlage die Issues für den nächsten vo
    Der Workflow „Rerun infrastructure failures“ startet abgebrochene oder durch Runner-Ausfälle
    gescheiterte CI-Jobs selbst neu (höchstens vier Versuche, echte Testfehler nie).
 6. Nach dem Merge den Worktree beenden; Claude Code bietet beim Beenden das Aufräumen an.
+7. Changelog: Jeder PR legt ein Fragment in `changelog.d/` an, statt `CHANGELOG.md` zu ändern
+   (keine Konflikte zwischen parallelen PRs). Beim Release führt der Koordinator die Fragmente mit
+   `python tools/changelog.py release <version> "<Titel>"` zusammen, im Versions-PR vor dem Tag.
 
 ## Wenn etwas schiefgeht
 

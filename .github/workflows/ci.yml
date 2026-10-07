@@ -38,6 +38,8 @@ jobs:
           python-version: "3.12"
       - run: pip install -r tests/schema/requirements.txt
       - run: pytest -q tests/schema
+      - name: Changelog fragments
+        run: python tools/changelog.py check
 
   linux:
     name: Linux ${{ matrix.preset }}

@@ -1,6 +1,8 @@
 # Changelog
 
 Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen nach SemVer.
+Neue Einträge stehen bis zum nächsten Release als Fragmente in [`changelog.d/`](changelog.d/README.md)
+(`python tools/changelog.py preview` zeigt den vollständigen Abschnitt [Unreleased]).
 
 ## [Unreleased]
 
