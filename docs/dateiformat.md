@@ -31,7 +31,7 @@ Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/a
 | `environment` | nein | `temperature_c`, `pressure_atm`, `medium` (Standard: Luft nach Ciddor, 20 °C, 1 atm) |
 | `object` | nein | `{"at_infinity": true}` ist der Standard; sonst `distance` |
 | `wavelengths` | ja | Liste von `{"um": …, "weight": …, "reference": true}`. **Genau eine** Wellenlänge ist `reference`. |
-| `aperture` | ja | `{"type": "epd" \| "image_fnumber" \| "object_na" \| "stop_size", "value": …}` |
+| `aperture` | ja | `{"type": "epd" \| "image_fnumber" \| "object_na" \| "stop_size", "value": …}`; `stop_size` braucht kein `value` (die Blendengröße kommt aus der Apertur der Blende) |
 | `fields` | ja | `{"type": "angle_deg" \| "object_height" \| "paraxial_image_height", "points": [{"x":…, "y":…, "weight":…}]}`. `{}` ist der Achspunkt. |
 | `root` | ja | die oberste Baugruppe |
 | `paths` | ja | mindestens ein Pfad, meist `{"name": "main", "events": "auto"}` |
@@ -41,8 +41,8 @@ Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/a
 | Typ | Verwendung | Material |
 | --- | --- | --- |
 | `lens` | Linse; N Flächen ergeben N − 1 Glassegmente (Kittglieder) | `material` |
-| `plate` | Platte oder Prisma | `material` |
-| `mirror` | Spiegel, meist mit `"interaction": {"type": "ideal_mirror"}` | – |
+| `plate` | Platte oder Prisma (Prisma: expliziter Pfad nötig, siehe Pfade) | `material` |
+| `mirror` | Spiegel; Standard-Interaktion `fresnel` (siehe unten) | optional `material` (Substrat) |
 | `thin_element` | dünnes Element ohne Dicke (Polarisator, Retarder, Strahlteiler) | – |
 | `stop` | Aperturblende | – |
 | `detector` | Bildebene | – |
@@ -52,24 +52,34 @@ einen Eintrag pro Segment. Gültig sind `AIR`, `VACUUM`, `CONST:1.5168` und Kata
 wie `SCHOTT:N-BK7`. Der Katalogname ist der Dateiname der AGF-Datei in Großbuchstaben (oder
 ein Alias), die Datei lädt man beim Kompilieren oder im Explorer.
 
+**Spiegel.** Ohne Angabe hat jede Fläche die Interaktion `fresnel`. Ein Spiegel **ohne** `material`
+wirkt dann als idealer Leiter (r_s = −1, r_p = +1, verlustfrei), dasselbe wie `ideal_mirror`. Ein
+Spiegel **mit** `material` (Substrat, z. B. `CONST:1.2,7.26` für ein Metall mit komplexem Index)
+reflektiert nach Fresnel am Substrat. Ein Coating auf einem Spiegel (`{"type": "coating", …}`)
+braucht das Substrat, ohne `material` ist es ein Kompilierfehler.
+
 ## Flächen
 
 | Feld | Inhalt |
 | --- | --- |
 | `shape.base` | `{"type": "plane"}`, `{"type": "conic", "radius": R, "conic": k}` oder `{"type": "even_asphere", "radius": R, "conic": k, "coefficients": [A4, A6, …]}` |
 | `aperture` | `circular` (`radius`, optional `inner_radius`), `rectangular` (`half_width_x`, `half_width_y`) oder `elliptical` (`semi_axis_x`, `semi_axis_y`) |
-| `interaction` | `fresnel`, `ideal_mirror`, `ideal_anti_reflection`, `absorber`, `ideal_beam_splitter`, `ideal_polarizer`, `ideal_retarder` oder `{"type": "coating", "name": "KATALOG:NAME"}` |
+| `interaction` | `fresnel` (Standard), `ideal_mirror`, `ideal_anti_reflection`, `absorber`, `ideal_beam_splitter` (`reflectance_s`, `reflectance_p`), `ideal_polarizer` (`transmission_axis`, `extinction_ratio`), `ideal_retarder` (`fast_axis`, `retardance_waves`) oder `{"type": "coating", "name": "KATALOG:NAME"}`. Die Achsen von Polarisator und Retarder stehen in Elementkoordinaten. |
 
 Zahlenwerte dürfen auch als `{"value": …, "variable": true}` stehen, das markiert sie später als
-Optimierungsvariable. Zernike-Terme (`shape.terms`) kennt das Schema, die Engine kompiliert
-sie in Version 0.4.0 aber noch nicht (Meldung: "not supported before M8"). Gitter und Phasenflächen
-(`phases`) lassen sich laden und kompilieren; ob ein Pfad sie auswertet, habe ich nicht geprüft.
+Optimierungsvariable (`pickup` ist ebenfalls vorgesehen). Zernike-Terme (`shape.terms`) kennt das
+Schema, die Engine kompiliert sie in Version 0.4.0 aber noch nicht (Meldung: "not supported before
+M8"). Gitter und Phasenflächen (`phases`) übernimmt die Kompilierung, der Tracer ignoriert sie aber
+bis M4. Ein Ereignis `diffract`, `ordinary` oder `extraordinary` beendet den Strahl bis dahin mit
+dem Status `EventImpossible`.
 
 ## Pfade
 
-`"events": "auto"` besucht alle Flächen in Baumreihenfolge: Linsen brechen, Spiegel reflektieren,
-Blenden und Detektoren lassen durch. Wo das nicht reicht (Prismen mit Reflexion, Strahlteiler,
-Doppeldurchgang), steht eine explizite Liste:
+`"events": "auto"` besucht alle Flächen in Baumreihenfolge: Linsen und Platten brechen, Spiegel
+reflektieren, dünne Elemente, Blenden und Detektoren lassen durch. Zwei Fälle lehnt "auto" mit einem
+Kompilierfehler ab: eine Platte aus einem Material mit mehr als zwei Flächen (Prisma, Würfel) und
+ein Spiegel mit Substrat und mehreren Flächen (Mangin-Spiegel). Dort und wo "auto" sonst nicht
+reicht (Strahlteiler, Doppeldurchgang), steht eine explizite Liste:
 
 ```json
 "events": [{"surface": "P.S1"}, {"surface": "P.S2", "kind": "reflect"}]
@@ -79,8 +89,9 @@ Doppeldurchgang), steht eine explizite Liste:
 
 ## Beispiel 1: Plankonvex-Singlet
 
-Das ist die kleinste sinnvolle Datei (f ≈ 100 mm; geprüft: EFL = 100,0527 mm). Die Blende liegt
-bei z = 0, die Linse bei z = 5 mm, ihre zweite Fläche 4 mm dahinter.
+Das ist die kleinste sinnvolle Datei (f ≈ 100 mm; geprüft: EFL = 100,0527 mm in Luft, der
+Standardumgebung). Die Blende liegt bei z = 0, die Linse bei z = 5 mm, ihre zweite Fläche 4 mm
+dahinter, der Detektor im paraxialen Fokus bei z = 106,442 mm.
 
 ```json
 {
@@ -99,7 +110,7 @@ bei z = 0, die Linse bei z = 5 mm, ihre zweite Fläche 4 mm dahinter.
         "aperture": {"type": "circular", "radius": 12.7}},
        {"id": "L1.S2", "pose": {"position": [0, 0, 4.0]},
         "aperture": {"type": "circular", "radius": 12.7}}]},
-    {"type": "detector", "name": "image", "pose": {"position": [0, 0, 106.363]},
+    {"type": "detector", "name": "image", "pose": {"position": [0, 0, 106.442]},
      "surfaces": [{"id": "IMG"}]}
   ]},
   "paths": [{"name": "main", "events": "auto"}]
@@ -126,7 +137,8 @@ ersten Fläche). Es braucht einen Katalog mit N-LAK9 und N-SF5 (EFL ≈ 60,59 mm
 ## Beispiel 3: Hohlspiegel mit Blende
 
 Der Spiegel liegt bei z = 0 und der Detektor im Fokus bei z = −100 mm. Die Blende davor ist nötig,
-sonst lassen sich keine Strahlen über die Pupille erzeugen (EFL ≈ 99,97 mm, also |R|/2).
+sonst lassen sich keine Strahlen über die Pupille erzeugen. Die Schnittweite (BFL) ist |R|/2 =
+100 mm; die EFL ist 1/Φ und in Luft |R|/(2 n_Luft) ≈ 99,97 mm.
 
 ```json
 "children": [
