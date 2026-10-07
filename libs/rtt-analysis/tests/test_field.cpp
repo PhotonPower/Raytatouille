@@ -363,33 +363,20 @@ TEST_CASE("invalid field-analysis input", "[distortion][field-curvature]") {
   REQUIRE_THROWS_AS(rtt::analysis::distortion(axis, PathId{0}, 1), std::invalid_argument);
 }
 
-TEST_CASE("object-space telecentric system: distortion, field curvature, spot and OPD run (#96)",
+TEST_CASE("object-space telecentric system: distortion, field curvature, spot, fans, OPD (#96)",
           "[distortion][telecentric]") {
-  // Telecentric lens of rtt-trace test_sources.cpp (telecentric_lens): plano-convex CONST:1.5,
+  // tests/reference/m1/telecentric_singlet.rtt.json, the lens of telecentric_lens in rtt-trace
+  // test_sources.cpp: plano-convex CONST:1.5,
   // R = 64, vertices at z = 0 and 3 (f = 128, H = V1, H' at z = 1), stop in the rear focal
   // plane z = 129 (entrance pupil at infinity), object at z = -200, object-space NA 0.05,
   // detector in the paraxial image at z = 1 + 25600 / 72. The paraxial chief ray of an object
   // height h is parallel to the axis (decided for #96), so its height in the image plane is
-  // m h with m = -(25600 / 72) / 200 (Gauss, distances from H and H'). Tolerance 1e-12
+  // m h with m = -(25600 / 72) / 200 (Gauss, distances from H and H'; derived from the y-nu
+  // equations, Greivenkamp, OPTI-201/202 lecture notes, Sec. 9, p. 9-2). Tolerance 1e-12
   // relative (a few roundings of the paraxial trace). The exit pupil is the stop itself (no
   // surface after it), finite, so the OPD reference sphere is defined.
-  System s = base_system("telecentric");
-  s.object = {false, Param(200.0)};
-  s.aperture = {rtt::model::SystemApertureType::ObjectSpaceNA, Param(0.05)};
-  s.fields = {FieldType::ObjectHeight, {{0.0, 0.0, 1.0}, {0.0, 2.0, 1.0}}};
-  s.root.children = {{Element{"L",
-                              ElementKind::Lens,
-                              Pose::along_z(0.0),
-                              "CONST:1.5",
-                              {surface("L.S1", 0.0, 64.0), surface("L.S2", 3.0)}}},
-                     {stop_at(129.0, 10.0)},
-                     {Element{"image",
-                              ElementKind::Detector,
-                              Pose::along_z(1.0 + 25600.0 / 72.0),
-                              std::nullopt,
-                              {surface("IMG")}}}};
   const MaterialLibrary lib;
-  const CompiledSystem cs = compile(s, lib);
+  const CompiledSystem cs = compile(load("m1/telecentric_singlet.rtt.json"), lib);
   REQUIRE_FALSE(rtt::paraxial::first_order(cs, PathId{0}, 0).entrance_pupil->z);
 
   const double m = -(25600.0 / 72.0) / 200.0;
@@ -406,6 +393,16 @@ TEST_CASE("object-space telecentric system: distortion, field curvature, spot an
 
   const auto spot = rtt::analysis::spot(cs, PathId{0}, 1, std::uint16_t{0});
   REQUIRE(spot.rays_arrived == spot.rays_launched);
+  const auto fan = rtt::analysis::ray_fan(cs, PathId{0}, 2, 0);
+  REQUIRE(fan.tangential.size() == 21);
+  for (const auto& q : fan.tangential) {
+    REQUIRE(q.status == rtt::trace::RayStatus::Alive);
+    REQUIRE(std::isfinite(q.ey));
+  }
+  for (const auto& q : fan.sagittal) {
+    REQUIRE(q.status == rtt::trace::RayStatus::Alive);
+    REQUIRE(std::isfinite(q.ex));
+  }
   const auto opd = rtt::analysis::opd_map(cs, PathId{0}, 1, 0);
   REQUIRE(opd.vignetted == 0);
   REQUIRE(std::isfinite(opd.rms));

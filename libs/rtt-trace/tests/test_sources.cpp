@@ -1273,3 +1273,116 @@ TEST_CASE("object-space telecentric: field and aperture types (#96)", "[sources]
     REQUIRE_THROWS_AS(rtt::trace::aim_ray(cs, PathId{0}, 0, 0, 0.0, 0.0), std::invalid_argument);
   }
 }
+
+namespace {
+
+/// The lens of telecentric_lens in SCHOTT:N-BK7 (test catalogue) at F, d (reference) and C,
+/// stop at z_stop: dispersive, so the rear focal point and the side of the entrance pupil depend
+/// on the wavelength.
+System dispersive_lens(double z_stop) {
+  System s = telecentric_lens(z_stop);
+  s.wavelengths = {{0.4861, 1.0, false}, {0.5876, 1.0, true}, {0.6563, 1.0, false}};
+  std::get<Element>(s.root.children[0].value).material = "SCHOTT:N-BK7";
+  return s;
+}
+
+/// As hit_on_stop, at wavelength index wl.
+Vec3 hit_on_stop_at(const CompiledSystem& cs, RayState ray, std::uint16_t wl) {
+  const auto& events = cs.path(PathId{0}).events;
+  const std::size_t stop = stop_event(cs);
+  for (std::size_t i = 0; i < stop; ++i) {
+    const auto& e = events[i];
+    ray = rtt::trace::sequential_step(ray, cs.surfaces()[e.surface], e.surface, e.kind,
+                                      cs.media()[e.medium_before].index[wl].real(),
+                                      cs.media()[e.medium_after].index[wl].real());
+  }
+  REQUIRE(ray.status == RayStatus::Alive);
+  const auto hit = rtt::trace::intersect_surface(ray, cs.surfaces()[events[stop].surface]);
+  REQUIRE(hit.status == rtt::geom::HitStatus::Hit);
+  return hit.point;
+}
+
+/// Signed paraxial stop radius R_s = r_ep * stop_scale at wavelength wl (finite EP).
+double stop_radius_at(const CompiledSystem& cs, std::uint16_t wl) {
+  const auto fo = rtt::paraxial::first_order(cs, PathId{0}, wl);
+  REQUIRE(fo.entrance_pupil);
+  REQUIRE(fo.entrance_pupil->z);
+  REQUIRE(fo.entrance_pupil->diameter);
+  const double scale =
+      rtt::paraxial::trace_ray(cs, PathId{0}, wl, *fo.entrance_pupil->z, 1.0, 0.0)[stop_event(cs)]
+          .y;
+  return *fo.entrance_pupil->diameter / 2.0 * scale;
+}
+
+double ep_side(const CompiledSystem& cs, std::uint16_t wl) {
+  const auto fo = rtt::paraxial::first_order(cs, PathId{0}, wl);
+  REQUIRE(fo.entrance_pupil);
+  REQUIRE(fo.entrance_pupil->z);
+  return *fo.entrance_pupil->z < -200.0 ? -1.0 : 1.0;
+}
+
+}  // namespace
+
+TEST_CASE("pupil labels are oriented at the reference wavelength (#96)",
+          "[sources][aiming][telecentric]") {
+  // Decided for #96 (refining #93): the image of the pupil turns over when the EP passes
+  // through infinity. A wavelength whose EP lies on the other side of the object than that of
+  // the reference wavelength uses sigma = side(ref) side(lambda) = -1: pupil point (px, py) is
+  // the EP point sigma (px, py) r_ep, so it reaches the same side of the stop as at the
+  // reference wavelength, target sigma (px, py) R_s(lambda).
+  MaterialLibrary lib;
+  lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/schott.agf");
+  // Rear focal points at F and C (independent of the stop); the stop half-way between them puts
+  // the EP of F and C on different sides of the object.
+  const CompiledSystem probe = compile(dispersive_lens(129.0), lib);
+  const double z_f = *rtt::paraxial::first_order(probe, PathId{0}, 0).rear_focal_z;
+  const double z_c = *rtt::paraxial::first_order(probe, PathId{0}, 2).rear_focal_z;
+  REQUIRE(z_f < z_c);  // normal dispersion: more power in the blue
+  const CompiledSystem cs = compile(dispersive_lens(0.5 * (z_f + z_c)), lib);
+  REQUIRE(ep_side(cs, 0) != ep_side(cs, 2));
+  const double side_ref = ep_side(cs, 1);
+  const double r_s_ref = stop_radius_at(cs, 1);
+
+  for (std::uint16_t wl = 0; wl < 3; ++wl) {
+    const double sigma = side_ref * ep_side(cs, wl);
+    const double r_s = stop_radius_at(cs, wl);
+    // Same side of the stop as at the reference wavelength.
+    REQUIRE((sigma * r_s > 0.0) == (r_s_ref > 0.0));
+    for (std::uint16_t f = 0; f < 3; ++f) {
+      for (const auto& [px, py] :
+           {std::pair{0.0, 1.0}, std::pair{1.0, 0.0}, std::pair{0.6, -0.8}}) {
+        INFO("wavelength " << wl << ", field " << f << ", p = (" << px << ", " << py << ")");
+        const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, f, wl, px, py);
+        REQUIRE(aimed.ray.status == RayStatus::Alive);
+        const Vec3 hit = hit_on_stop_at(cs, aimed.ray, wl);
+        // As in "pupil rays hit their target on the stop": < 1e-9 mm.
+        REQUIRE(std::hypot(hit.x() - sigma * px * r_s, hit.y() - sigma * py * r_s) < 1e-9);
+      }
+    }
+  }
+}
+
+TEST_CASE("without a change of the EP side over the wavelengths: rays as before (#96)",
+          "[sources][telecentric]") {
+  // The same dispersive lens with the stop well before the rear focal points (z = 60): the EP
+  // of every wavelength lies behind the object, sigma = +1, and the start directions are the
+  // expression (Q - P) / |Q - P| of before #96 at every wavelength, compared exactly.
+  MaterialLibrary lib;
+  lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/schott.agf");
+  const CompiledSystem cs = compile(dispersive_lens(60.0), lib);
+  for (std::uint16_t wl = 0; wl < 3; ++wl) {
+    const auto fo = rtt::paraxial::first_order(cs, PathId{0}, wl);
+    REQUIRE(fo.entrance_pupil);
+    REQUIRE(fo.entrance_pupil->z);
+    REQUIRE(fo.entrance_pupil->diameter);
+    REQUIRE(*fo.entrance_pupil->z > -200.0);
+    const double r_ep = *fo.entrance_pupil->diameter / 2.0;
+    for (const auto& [px, py] : {std::pair{0.0, 1.0}, std::pair{0.6, -0.8}}) {
+      INFO("wavelength " << wl << ", p = (" << px << ", " << py << ")");
+      const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, 2, wl, px, py, Aiming::Paraxial);
+      const Vec3 p(0.0, 2.0, -200.0);
+      const Vec3 q(px * r_ep, py * r_ep, *fo.entrance_pupil->z);
+      REQUIRE(aimed.ray.dir == (q - p).normalized());
+    }
+  }
+}

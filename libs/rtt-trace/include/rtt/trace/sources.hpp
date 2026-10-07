@@ -58,7 +58,8 @@ inline constexpr double kAimStepRelative = 1e-6;
 /// h = max(kAimStepRelative |R_s|, kAimStepPupilFloor r_ep) (ADR 0007, addendum #96). The step
 /// is sized in stop units but applied to pupil coordinates; for an entrance pupil far away,
 /// |R_s / r_ep| -> 0, the first term falls below the resolution of the pupil coordinates. The
-/// floor acts only for |R_s / r_ep| < kAimStepPupilFloor / kAimStepRelative = 1e-4.
+/// floor acts only for |R_s / r_ep| < kAimStepPupilFloor / kAimStepRelative = 1e-4. For an
+/// object-space telecentric system the step is h = kAimStepRelative u_m in slope units.
 inline constexpr double kAimStepPupilFloor = 1e-10;
 
 /// One ray at normalised pupil coordinates (px, py).
@@ -136,7 +137,10 @@ struct AimedRay {
 /// it and the EP point into the system (+z), also for a virtual EP on the far side of the
 /// object (z_ep < z_obj, #93). Object-space telecentric (EP at infinity, #96): (px, py) are
 /// object-space slopes, d ~ (px u_m, py u_m, 1) with the paraxial marginal slope u_m (NA / n
-/// for object_na, r_stop / |s| for stop_size); the chief ray is parallel to the axis.
+/// for object_na, r_stop / |s| for stop_size); the paraxial chief ray is parallel to the axis.
+/// Pupil points are oriented at the reference wavelength: if the EP of `wavelength` lies on the
+/// other side of the object than that of the reference wavelength, (px, py) is used as
+/// -(px, py), so it reaches the same side of the stop (#96).
 /// The target is (px R_s, py R_s) in the local coordinates of the stop surface (first Stop event
 /// of the path), R_s = paraxial stop radius belonging to the entrance pupil. Apertures are
 /// ignored while aiming; vignetting is left to the tracer.
