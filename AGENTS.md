@@ -36,6 +36,18 @@ Vor jedem PR müssen lokal grün sein: Build mit `-DRTT_WARNINGS_AS_ERRORS=ON`, 
 `clang-format --dry-run -Werror`, die Schema-Tests. Clang-tidy läuft mit
 `-DRTT_ENABLE_CLANG_TIDY=ON`, Sanitizer mit `-DRTT_ENABLE_SANITIZERS=ON`.
 
+Zwei Fehlerquellen, die nur die CI sieht, vorab lokal prüfen:
+
+- **Python mit dem NumPy-Stand für Python 3.10.** Die CI testet `rtt-py` auch mit dem Pin für
+  Python < 3.11 aus `libs/rtt-py/tests/requirements.txt` (derzeit `numpy==2.2.6`). Ältere NumPy
+  wandelt Ein-Element-Arrays anders um (Reihenfolge der nanobind-Overloads), und ihre Stubs sind für
+  mypy strenger (z. B. `np.ndarray` ohne Typargument). Wer Bindings, Python-Code oder Python-Tests
+  ändert, lässt pytest und `mypy --strict` zusätzlich in einer venv mit genau diesem Pin laufen
+  (ein Python ≥ 3.10 genügt).
+- **GCC mit Optimierung.** Manche Warnungen (`-Wnull-dereference`, `-Wrange-loop-construct`) meldet
+  GCC nur bei `-O2`, nicht bei `-fsyntax-only` oder im Debug-Build. Geänderte Übersetzungseinheiten
+  einmal mit `-O2 -Werror` und den Projektwarnungen übersetzen (Release-Build oder `g++ -c`).
+
 ## Aufbau
 
 ```text
