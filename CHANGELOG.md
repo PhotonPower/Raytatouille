@@ -123,6 +123,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
 - `rtt-py`: `rt.trace.trace(..., record_path=True, record_rays=None, max_recorded_rays=10000)` gibt
   `(TraceStats, RayPaths)` zurück, mit NumPy-Views (N, S, 3) bzw. (N, S) ohne Kopie; bitgleich
   gegen C++; Beispiel `examples/python/ray_paths.py` (#80).
+- `rtt-compile`: Geometrie-Export für das Layout (`rtt/compile/layout.hpp`).
+  - `CompiledSystem::elements()` (Name, Art, Flächen, Medien, `segmented`).
+  - `CompiledSurface::element`, `medium_front` und `medium_back`: in der Flächenreihenfolge des Elements, Regeln von ADR 0017.
+  - `surface_sag` und `surface_normal`, vektorisiert, lokal oder global.
+  - `surface_profile` in Schnittebenen parallel zur lokalen z-Achse, begrenzt durch die Apertur (der Ring ergibt zwei Stücke) und den Formbereich.
+  - `element_outlines`: geschlossene Polygone der Glassegmente von Linsen und segmentierten Platten, Randkanten als Stufe (#81).
+- `rtt-py`: Modul `rt.layout` mit `surfaces`, `elements`, `sag` und `normal` mit Broadcasting, `profile` und `outlines` (Schnittebene `"yz"`, `"xz"` oder Punkt und Normale); Beispiel `examples/python/layout.py` (Achromat) (#81).
 
 ### Geändert
 - `rtt-analysis`: Spot-Gewichte enthalten jetzt die Fresnel-Verluste der Strahlen; gewichtete

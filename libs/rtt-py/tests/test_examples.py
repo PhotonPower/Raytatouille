@@ -44,6 +44,18 @@ def test_ray_paths_example(capsys: pytest.CaptureFixture[str], tmp_path: Path) -
     assert png.stat().st_size > 0
 
 
+def test_layout_example(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    # main() returns 1 if an outline is not closed.
+    namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "layout.py"))
+    assert namespace["main"]() == 0
+    out = capsys.readouterr().out
+    assert "2 lens outlines in the y-z plane" in out and "L1.S2" in out
+    pytest.importorskip("matplotlib")
+    png = tmp_path / "layout.png"
+    assert namespace["main"](str(png)) == 0
+    assert png.stat().st_size > 0
+
+
 def test_analysis_example(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "analysis.py"))
     assert namespace["main"]() == 0
