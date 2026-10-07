@@ -16,7 +16,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   `ThermalData`, `MechanicalData`), `glass_map()` mit n_d/ν_d aus den NM-Datensätzen;
   `add_catalog(path, name=None)`, `add_catalog_text(data, name)`, `catalogs()`; `index()` nimmt
   auch NumPy-Arrays von Wellenlängen (bitgleich zum skalaren Aufruf) (#85).
-- Stabile Diagnosecodes (ADR 0022, vorgeschlagen; #86):
+- Stabile Diagnosecodes (ADR 0022, angenommen; #86):
   - Jede `Diagnostic` trägt einen Code in Punktnotation, z. B. `material.unknown`. Die Codes bleiben
     über Versionen gleich; Liste in `docs/diagnostics.md`.
   - Registry in der neuen header-only Bibliothek `rtt-diagnostics` (Schicht Basis). Ein nicht
