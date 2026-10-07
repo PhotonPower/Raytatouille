@@ -25,7 +25,7 @@ Neue Entscheidungen bekommen die nächste Nummer. Bestehende ADRs werden nicht u
 | [0019](0019.md) | Coating-Kataloge als eigene JSON-Dateien | angenommen |
 | [0020](0020.md) | Gemeinsamer strikter JSON-Parser in der Basisschicht | angenommen |
 | [0021](0021.md) | Interaktionen im Tracer, Semantik von prt und weight | angenommen |
-| [0022](0022.md) | Fehlercodes, Fehlerorte und Diagnosekanal | vorgeschlagen |
+| [0022](0022.md) | Fehlercodes, Fehlerorte und Diagnosekanal | angenommen |
 
 ## Vorlage
 
