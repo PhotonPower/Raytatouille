@@ -391,7 +391,7 @@ TEST_CASE("object-space telecentric system: distortion, field curvature, spot, f
   REQUIRE(std::isfinite(fc.tangential));
   REQUIRE(std::isfinite(fc.sagittal));
 
-  const auto spot = rtt::analysis::spot(cs, PathId{0}, 1, std::uint16_t{0});
+  const auto spot = rtt::analysis::spot(cs, PathId{0}, 2, std::uint16_t{0});
   REQUIRE(spot.rays_arrived == spot.rays_launched);
   const auto fan = rtt::analysis::ray_fan(cs, PathId{0}, 2, 0);
   REQUIRE(fan.tangential.size() == 21);
@@ -403,7 +403,7 @@ TEST_CASE("object-space telecentric system: distortion, field curvature, spot, f
     REQUIRE(q.status == rtt::trace::RayStatus::Alive);
     REQUIRE(std::isfinite(q.ex));
   }
-  const auto opd = rtt::analysis::opd_map(cs, PathId{0}, 1, 0);
+  const auto opd = rtt::analysis::opd_map(cs, PathId{0}, 2, 0);
   REQUIRE(opd.vignetted == 0);
   REQUIRE(std::isfinite(opd.rms));
 }
