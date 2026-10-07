@@ -17,6 +17,8 @@
 #include "rtt/coating/catalog.hpp"
 #include "rtt/coating/thickness.hpp"
 #include "rtt/compile/compiled_system.hpp"
+#include "rtt/compile/errors.hpp"
+#include "rtt/diagnostics/codes.hpp"
 
 namespace rtt::compile {
 namespace {
@@ -60,7 +62,8 @@ class Compiler {
 
   void run() {
     if (wavelengths_um_.size() > std::numeric_limits<std::uint16_t>::max()) {
-      error("/wavelengths", "at most 65535 wavelengths are supported (RayBatch::wl is 16 bit)");
+      report("wavelengths.too_many", "/wavelengths",
+             "at most 65535 wavelengths are supported (RayBatch::wl is 16 bit)");
     }
     // The environment is always media_[0] (CompiledSystem::environment_medium()).
     environment_ = medium(system_.environment.medium, "/environment/medium").value_or(0);
@@ -72,6 +75,7 @@ class Compiler {
   }
 
   std::vector<model::Diagnostic> errors_;
+  std::vector<model::Diagnostic> warnings_;
   std::vector<double> wavelengths_um_;
   std::vector<CompiledSurface> surfaces_;
   std::vector<CompiledElement>
@@ -81,8 +85,12 @@ class Compiler {
   std::vector<CompiledPath> paths_;
 
  private:
-  void error(std::string location, std::string message) {
-    errors_.push_back({model::Severity::Error, std::move(location), std::move(message)});
+  /// Adds a diagnostic with the severity of `code` in the registry: errors make compile() throw,
+  /// warnings end up in CompiledSystem::diagnostics().
+  void report(diagnostics::DiagnosticCode code, std::string location, std::string message) {
+    auto& list = code.severity() == model::Severity::Error ? errors_ : warnings_;
+    list.push_back(
+        {code.severity(), std::move(location), std::move(message), std::string(code.str())});
   }
 
   /// Index of the medium for `reference`, resolving and evaluating it on first use.
@@ -94,7 +102,7 @@ class Compiler {
     try {
       material = materials_.resolve(reference);
     } catch (const material::UnknownMaterial& e) {
-      error(location, e.what());
+      report("material.unknown", location, e.what());
       return std::nullopt;
     }
     // Materials are evaluated once per wavelength into constants (ADR 0014).
@@ -144,9 +152,10 @@ class Compiler {
       const material::WavelengthRange& valid = range.value();
       for (const double wl : wavelengths_um_) {
         if (valid.contains(wl)) continue;
-        error(location.value(), "wavelength " + number(wl) + " um is outside the valid range [" +
-                                    number(valid.min_um) + ", " + number(valid.max_um) +
-                                    "] um of material '" + media_[m].reference + "'");
+        report("material.wavelength_out_of_range", location.value(),
+               "wavelength " + number(wl) + " um is outside the valid range [" +
+                   number(valid.min_um) + ", " + number(valid.max_um) + "] um of material '" +
+                   media_[m].reference + "'");
         break;
       }
     }
@@ -171,11 +180,11 @@ class Compiler {
       const material::WavelengthRange& valid = check.range.value();
       for (const double wl : wavelengths_um_) {
         if (valid.contains(wl)) continue;
-        error(location.value(), "wavelength " + number(wl) + " um is outside the valid range [" +
-                                    number(valid.min_um) + ", " + number(valid.max_um) +
-                                    "] um of material '" + check.material + "' in layer " +
-                                    std::to_string(check.layer) + " of coating '" +
-                                    compiled_coatings_[check.coating].reference + "'");
+        report("coating.wavelength_out_of_range", location.value(),
+               "wavelength " + number(wl) + " um is outside the valid range [" +
+                   number(valid.min_um) + ", " + number(valid.max_um) + "] um of material '" +
+                   check.material + "' in layer " + std::to_string(check.layer) + " of coating '" +
+                   compiled_coatings_[check.coating].reference + "'");
         break;
       }
     }
@@ -193,7 +202,8 @@ class Compiler {
       case model::ElementKind::Lens:
       case model::ElementKind::Plate:
         if (info.media.empty()) {
-          error(location, "coating on an element without material: no substrate (ADR 0019)");
+          report("coating.no_substrate", location,
+                 "coating on an element without material: no substrate (ADR 0019)");
         } else if (!info.segmented || j == 0) {
           // Every face of a plate of one material bounds its inside; the first surface of a
           // segmented element bounds segment 0.
@@ -201,16 +211,16 @@ class Compiler {
         } else if (j == last) {
           substrate = info.media[last - 1];
         } else {
-          error(location,
-                "coating on an inner surface between two segments: the substrate side is "
-                "ambiguous (ADR 0019)");
+          report("coating.substrate_ambiguous", location,
+                 "coating on an inner surface between two segments: the substrate side is "
+                 "ambiguous (ADR 0019)");
         }
         break;
       case model::ElementKind::Mirror:
         if (info.media.empty()) {
-          error(location,
-                "coating on a mirror without substrate material: no substrate "
-                "(ADR 0019; use ideal_mirror for a mirror without substrate)");
+          report("coating.no_substrate", location,
+                 "coating on a mirror without substrate material: no substrate "
+                 "(ADR 0019; use ideal_mirror for a mirror without substrate)");
         } else {
           substrate = info.media[0];
         }
@@ -218,9 +228,9 @@ class Compiler {
       case model::ElementKind::ThinElement:
       case model::ElementKind::Stop:
       case model::ElementKind::Detector:
-        error(location,
-              "coating on a surface of a thin element, stop or detector: only lens, plate and "
-              "mirror surfaces have a substrate (ADR 0019)");
+        report("coating.not_allowed", location,
+               "coating on a surface of a thin element, stop or detector: only lens, plate and "
+               "mirror surfaces have a substrate (ADR 0019)");
         break;
     }
     const std::optional<std::uint32_t> coating = compiled_coating(ref.name, location + "/name");
@@ -238,7 +248,7 @@ class Compiler {
     try {
       design = coatings_.resolve(reference);
     } catch (const coating::UnknownCoating& e) {
-      error(location, e.what());
+      report("coating.unknown", location, e.what());
       coating_index_.emplace(reference, std::nullopt);  // report once
       return std::nullopt;
     }
@@ -256,7 +266,7 @@ class Compiler {
       try {
         material = materials_.resolve(spec.material);
       } catch (const material::UnknownMaterial& e) {
-        error(location, what + ": " + e.what());
+        report("coating.layer_material_unknown", location, what + ": " + e.what());
         ok = false;
         continue;
       }
@@ -268,8 +278,9 @@ class Compiler {
         const double l0 = qwot->design_wavelength_um;
         const auto range = material->wavelength_range_um();
         if (range && !range->contains(l0)) {
-          error(location, what + ": design wavelength " + number(l0) +
-                              " um is outside the valid range of material '" + spec.material + "'");
+          report("coating.design_wavelength_out_of_range", location,
+                 what + ": design wavelength " + number(l0) +
+                     " um is outside the valid range of material '" + spec.material + "'");
           ok = false;
           continue;
         }
@@ -279,7 +290,7 @@ class Compiler {
       try {
         thickness_um = coating::physical_thickness_um(spec.thickness, index_at_design);
       } catch (const std::invalid_argument& e) {
-        error(location, what + ": " + e.what());
+        report("coating.thickness_invalid", location, what + ": " + e.what());
         ok = false;
         continue;
       }
@@ -360,6 +371,7 @@ class Compiler {
       c.element_kind = element.kind;
       c.element_name = element.name;
       c.element = element_index;
+      c.location = surface_location;
       c.to_global = to_global * model::to_isometry(s.pose);
       c.to_local = c.to_global.inverse();
       c.shape = compile_shape(s.shape, surface_location + "/shape");
@@ -402,7 +414,8 @@ class Compiler {
 
   CompiledShape compile_shape(const model::ShapeStack& shape, const std::string& location) {
     for (std::size_t k = 0; k < shape.terms.size(); ++k) {
-      error(idx(location + "/terms", k), "Zernike sag terms are not supported before M8");
+      report("shape.zernike_unsupported", idx(location + "/terms", k),
+             "Zernike sag terms are not supported before M8");
     }
     if (const auto* conic = std::get_if<model::Conic>(&shape.base)) {
       // c = 1/R (docs/architecture.md, Konventionen); validate() guarantees R finite, != 0.
@@ -428,9 +441,9 @@ class Compiler {
         // surface; reflecting at every surface would be wrong (#6).
         if (e.kind == model::ElementKind::Mirror && !e.media.empty() && e.surface_count > 1) {
           if (mangin_reported_.emplace(e.location).second) {
-            error(e.location + "/surfaces",
-                  "mirror with substrate material on the automatic path: use an explicit path "
-                  "(Refract, Reflect, Refract)");
+            report("paths.mangin_mirror_automatic", e.location + "/surfaces",
+                   "mirror with substrate material on the automatic path: use an explicit path "
+                   "(Refract, Reflect, Refract)");
           }
           continue;
         }
@@ -439,9 +452,9 @@ class Compiler {
         if (e.kind == model::ElementKind::Plate && !e.media.empty() && !e.segmented &&
             e.surface_count > 2) {
           if (uniform_plate_reported_.emplace(e.location).second) {
-            error(e.location + "/surfaces",
-                  "plate with more than 2 surfaces and uniform material needs an explicit path "
-                  "(prism or cube: the faces used depend on the design)");
+            report("paths.uniform_plate_automatic", e.location + "/surfaces",
+                   "plate with more than 2 surfaces and uniform material needs an explicit path "
+                   "(prism or cube: the faces used depend on the design)");
           }
           continue;
         }
@@ -559,13 +572,14 @@ class Compiler {
           const std::uint32_t element = surface_element_[event.surface];
           const ElementInfo& info = elements_[element];
           const std::uint32_t i = event.surface - info.first_surface;
-          error(idx(location, k),
-                "inner surface " + surfaces_[event.surface].id.str() + " of element '" +
-                    surfaces_[event.surface].element_name +
-                    "' reached from outside the element is ambiguous: the segments on its two "
-                    "sides have different materials ('" +
-                    media_[info.media[i - 1]].reference + "', '" + media_[info.media[i]].reference +
-                    "'); enter a cemented group through its first or last surface (ADR 0017)");
+          report("paths.inner_surface_ambiguous", idx(location, k),
+                 "inner surface " + surfaces_[event.surface].id.str() + " of element '" +
+                     surfaces_[event.surface].element_name +
+                     "' reached from outside the element is ambiguous: the segments on its two "
+                     "sides have different materials ('" +
+                     media_[info.media[i - 1]].reference + "', '" +
+                     media_[info.media[i]].reference +
+                     "'); enter a cemented group through its first or last surface (ADR 0017)");
           state = MediumState{std::nullopt, state.segment, environment_};
         }
       }
@@ -607,6 +621,21 @@ class Compiler {
 CompileError::CompileError(std::vector<model::Diagnostic> diagnostics)
     : std::runtime_error(join_errors(diagnostics)), diagnostics_(std::move(diagnostics)) {}
 
+NoStopError::NoStopError(std::string path_name, std::string location)
+    : std::invalid_argument("the path '" + path_name + "' (" + location +
+                            ") has no stop: aiming at the stop, the pupils, Seidel sums and OPD "
+                            "need a Stop element on the path"),
+      path_name_(std::move(path_name)),
+      location_(std::move(location)) {}
+
+void require_stop(const CompiledSystem& system, PathId path) {
+  const CompiledPath& p = system.path(path);
+  const bool has_stop = std::any_of(p.events.begin(), p.events.end(), [&](const CompiledEvent& e) {
+    return system.surfaces()[e.surface].element_kind == model::ElementKind::Stop;
+  });
+  if (!has_stop) throw NoStopError(p.name, "/paths/" + std::to_string(path.index));
+}
+
 CompiledSystem compile(const model::System& system, const material::MaterialLibrary& materials) {
   const coating::CoatingLibrary none;
   return compile(system, materials, none);
@@ -641,6 +670,9 @@ CompiledSystem compile(const model::System& system,
   cs.media_ = std::move(compiler.media_);
   cs.coatings_ = std::move(compiler.compiled_coatings_);
   cs.paths_ = std::move(compiler.paths_);
+  cs.diagnostics_ = std::move(diagnostics);  // only warnings are left
+  cs.diagnostics_.insert(cs.diagnostics_.end(), compiler.warnings_.begin(),
+                         compiler.warnings_.end());
   return cs;
 }
 

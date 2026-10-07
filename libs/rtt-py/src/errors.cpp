@@ -1,8 +1,12 @@
+#include "rtt/compile/errors.hpp"
+
 #include <nanobind/nanobind.h>
+#include <nanobind/stl/optional.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 
 #include <exception>
+#include <optional>
 #include <utility>
 
 #include "bindings.hpp"
@@ -29,6 +33,16 @@ void raise(const char* name, Args&&... args) {
   PyErr_SetObject(cls.ptr(), error.ptr());
 }
 
+/// None or the value as a Python object.
+template <typename T>
+nb::object optional(const std::optional<T>& value) {
+  return value ? nb::cast(*value) : nb::none();
+}
+
+nb::object optional(const std::optional<model::SurfaceId>& id) {
+  return id ? nb::cast(id->str()) : nb::none();
+}
+
 }  // namespace
 
 void register_errors(nb::module_& /*m*/) {
@@ -41,14 +55,19 @@ void register_errors(nb::module_& /*m*/) {
       raise("ParseError", e.what(), e.pointer());
     } catch (const compile::CompileError& e) {
       raise("CompileError", e.what(), e.diagnostics());
+    } catch (const compile::NoStopError& e) {
+      // Before nanobind's std::invalid_argument -> ValueError; the Python class also derives
+      // from ParaxialError and AnalysisError (ADR 0022).
+      raise("NoStopError", e.what(), e.path_name(), e.location());
     } catch (const paraxial::ParaxialError& e) {
-      raise("ParaxialError", e.what());
+      raise("ParaxialError", e.what(), optional(e.surface()), optional(e.location()));
     } catch (const material::UnknownMaterial& e) {
       raise("UnknownMaterial", e.what());
     } catch (const material::AgfError& e) {
       raise("AgfError", e.what(), e.file(), e.line());
     } catch (const analysis::AnalysisError& e) {
-      raise("AnalysisError", e.what());
+      raise("AnalysisError", e.what(), optional(e.surface()), optional(e.location()),
+            optional(e.ray_status()), optional(e.field()), optional(e.wavelength()));
     } catch (const coating::CoatingCatalogError& e) {
       raise("CoatingCatalogError", e.what(), e.file(), e.pointer());
     }

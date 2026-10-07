@@ -40,73 +40,79 @@ class Validator {
   }
 
  private:
-  void error(std::string location, std::string message) {
-    out_.push_back({Severity::Error, std::move(location), std::move(message)});
-  }
-
-  void warning(std::string location, std::string message) {
-    out_.push_back({Severity::Warning, std::move(location), std::move(message)});
+  /// Adds a diagnostic with the severity of `code` in the registry.
+  void report(diagnostics::DiagnosticCode code, std::string location, std::string message) {
+    out_.push_back(
+        {code.severity(), std::move(location), std::move(message), std::string(code.str())});
   }
 
   void check_wavelengths() {
     if (system_.wavelengths.empty()) {
-      error("/wavelengths", "at least one wavelength is required");
+      report("wavelengths.empty", "/wavelengths", "at least one wavelength is required");
       return;
     }
     std::size_t references = 0;
     for (std::size_t i = 0; i < system_.wavelengths.size(); ++i) {
       const Wavelength& w = system_.wavelengths[i];
       const std::string loc = idx("/wavelengths", i);
-      if (!finite_positive(w.um)) error(loc + "/um", "wavelength must be finite and > 0 um");
-      if (!std::isfinite(w.weight) || w.weight < 0.0) error(loc + "/weight", "weight must be >= 0");
+      if (!finite_positive(w.um))
+        report("wavelengths.value_invalid", loc + "/um", "wavelength must be finite and > 0 um");
+      if (!std::isfinite(w.weight) || w.weight < 0.0)
+        report("wavelengths.weight_invalid", loc + "/weight", "weight must be >= 0");
       if (w.reference) ++references;
     }
     if (references != 1) {
-      error("/wavelengths",
-            "exactly one wavelength must be the reference, found " + std::to_string(references));
+      report("wavelengths.reference_count", "/wavelengths",
+             "exactly one wavelength must be the reference, found " + std::to_string(references));
     }
   }
 
   void check_aperture() {
     if (system_.aperture.type != SystemApertureType::StopSize &&
         !finite_positive(system_.aperture.value.value)) {
-      error("/aperture/value", "aperture value must be finite and > 0");
+      report("aperture.value_invalid", "/aperture/value", "aperture value must be finite and > 0");
     }
     if (system_.aperture.type == SystemApertureType::ObjectSpaceNA &&
         system_.aperture.value.value >= 1.0 && system_.environment.medium == "AIR") {
-      warning("/aperture/value", "object-space NA >= 1 in air is not physical");
+      report("aperture.na_not_physical", "/aperture/value",
+             "object-space NA >= 1 in air is not physical");
     }
   }
 
   void check_fields() {
     if (system_.fields.points.empty()) {
-      error("/fields/points", "at least one field point is required");
+      report("fields.empty", "/fields/points", "at least one field point is required");
     }
     for (std::size_t i = 0; i < system_.fields.points.size(); ++i) {
       const Field& f = system_.fields.points[i];
       const std::string loc = idx("/fields/points", i);
       if (!std::isfinite(f.x) || !std::isfinite(f.y))
-        error(loc, "field coordinates must be finite");
-      if (!std::isfinite(f.weight) || f.weight < 0.0) error(loc + "/weight", "weight must be >= 0");
+        report("fields.coordinate_invalid", loc, "field coordinates must be finite");
+      if (!std::isfinite(f.weight) || f.weight < 0.0)
+        report("fields.weight_invalid", loc + "/weight", "weight must be >= 0");
     }
   }
 
   void check_object_and_environment() {
     if (!system_.object.at_infinity && !finite_positive(system_.object.distance.value)) {
-      error("/object/distance", "finite object distance must be > 0 mm");
+      report("object.distance_invalid", "/object/distance",
+             "finite object distance must be > 0 mm");
     }
     const Environment& e = system_.environment;
     if (!std::isfinite(e.temperature_c) || e.temperature_c <= -273.15) {
-      error("/environment/temperature_c", "temperature must be above absolute zero");
+      report("environment.temperature_invalid", "/environment/temperature_c",
+             "temperature must be above absolute zero");
     }
     if (!std::isfinite(e.pressure_atm) || e.pressure_atm < 0.0) {
-      error("/environment/pressure_atm", "pressure must be >= 0 atm");
+      report("environment.pressure_invalid", "/environment/pressure_atm",
+             "pressure must be >= 0 atm");
     }
-    if (e.medium.empty()) error("/environment/medium", "medium must not be empty");
+    if (e.medium.empty())
+      report("environment.medium_empty", "/environment/medium", "medium must not be empty");
   }
 
   void check_assembly(const Assembly& a, const std::string& loc) {
-    if (a.name.empty()) error(loc + "/name", "assembly name must not be empty");
+    if (a.name.empty()) report("node.name_empty", loc + "/name", "assembly name must not be empty");
     check_name(a.name, loc);
     for (std::size_t i = 0; i < a.children.size(); ++i) {
       const std::string child_loc = idx(loc + "/children", i);
@@ -123,49 +129,59 @@ class Validator {
     if (name.empty()) return;
     auto [it, inserted] = node_names_.emplace(name, loc);
     if (!inserted)
-      error(loc + "/name", "duplicate node name '" + name + "' (first at " + it->second + ")");
+      report("node.name_duplicate", loc + "/name",
+             "duplicate node name '" + name + "' (first at " + it->second + ")");
   }
 
   void check_element(const Element& e, const std::string& loc) {
-    if (e.name.empty()) error(loc + "/name", "element name must not be empty");
+    if (e.name.empty()) report("node.name_empty", loc + "/name", "element name must not be empty");
     check_name(e.name, loc);
     const std::size_t n = e.surfaces.size();
     switch (e.kind) {
       case ElementKind::Lens:
-        if (n < 2) error(loc + "/surfaces", "a lens needs at least 2 surfaces");
+        if (n < 2)
+          report("element.surface_count", loc + "/surfaces", "a lens needs at least 2 surfaces");
         check_segment_materials(e, loc, "a lens");
         break;
       case ElementKind::Plate:
-        if (n < 2) error(loc + "/surfaces", "a plate needs at least 2 surfaces");
+        if (n < 2)
+          report("element.surface_count", loc + "/surfaces", "a plate needs at least 2 surfaces");
         check_segment_materials(e, loc, "a plate");
         for (std::size_t i = 0; i < n; ++i) {
           if (!std::holds_alternative<Plane>(e.surfaces[i].shape.base)) {
-            error(idx(loc + "/surfaces", i) + "/shape", "plate surfaces must be planes");
+            report("element.plate_surface_not_plane", idx(loc + "/surfaces", i) + "/shape",
+                   "plate surfaces must be planes");
           }
         }
         break;
       case ElementKind::Mirror:
-        if (n < 1) error(loc + "/surfaces", "a mirror needs at least 1 surface");
+        if (n < 1)
+          report("element.surface_count", loc + "/surfaces", "a mirror needs at least 1 surface");
         if (!e.segment_materials.empty()) {
-          error(loc + "/material", "a mirror takes a single substrate material, not a list");
+          report("element.material_list_not_allowed", loc + "/material",
+                 "a mirror takes a single substrate material, not a list");
         }
         break;
       case ElementKind::ThinElement:
       case ElementKind::Stop:
       case ElementKind::Detector:
-        if (n != 1) error(loc + "/surfaces", "this element kind needs exactly 1 surface");
+        if (n != 1)
+          report("element.surface_count", loc + "/surfaces",
+                 "this element kind needs exactly 1 surface");
         if (e.material || !e.segment_materials.empty()) {
-          error(loc + "/material", "this element kind has no material");
+          report("element.material_not_allowed", loc + "/material",
+                 "this element kind has no material");
         }
         break;
     }
     if (e.kind == ElementKind::Stop) {
       stops_.push_back(loc);
       if (n == 1 && !e.surfaces[0].aperture) {
-        error(loc + "/surfaces/0/aperture", "a stop needs an aperture");
+        report("stop.aperture_missing", loc + "/surfaces/0/aperture", "a stop needs an aperture");
       }
     }
-    if (e.material && e.material->empty()) error(loc + "/material", "material must not be empty");
+    if (e.material && e.material->empty())
+      report("element.material_empty", loc + "/material", "material must not be empty");
     for (std::size_t i = 0; i < n; ++i) check_surface(e.surfaces[i], idx(loc + "/surfaces", i));
   }
 
@@ -176,33 +192,36 @@ class Validator {
     const std::size_t n = e.surfaces.size();
     const auto& list = e.segment_materials;
     if (e.material && !list.empty()) {
-      error(mloc, "use either one material for all segments or a list, not both");
+      report("element.material_both", mloc,
+             "use either one material for all segments or a list, not both");
       return;
     }
     if (!e.material && list.empty()) {
-      error(mloc, std::string(what) + " needs a material");
+      report("element.material_missing", mloc, std::string(what) + " needs a material");
       return;
     }
     if (list.empty()) return;
     const std::size_t segments = n < 2 ? 0 : n - 1;
     if (list.size() != segments) {
-      error(mloc, std::string(what) + " with " + std::to_string(n) + " surfaces needs " +
-                      std::to_string(segments) + " segment materials, found " +
-                      std::to_string(list.size()));
+      report("element.segment_count", mloc,
+             std::string(what) + " with " + std::to_string(n) + " surfaces needs " +
+                 std::to_string(segments) + " segment materials, found " +
+                 std::to_string(list.size()));
     }
     for (std::size_t i = 0; i < list.size(); ++i) {
-      if (list[i].empty()) error(idx(mloc, i), "material must not be empty");
+      if (list[i].empty())
+        report("element.material_empty", idx(mloc, i), "material must not be empty");
     }
   }
 
   void check_surface(const Surface& s, const std::string& loc) {
     if (s.id.empty()) {
-      error(loc + "/id", "surface id must not be empty");
+      report("surface.id_empty", loc + "/id", "surface id must not be empty");
     } else {
       auto [it, inserted] = surface_ids_.emplace(s.id.str(), loc);
       if (!inserted) {
-        error(loc + "/id",
-              "duplicate surface id '" + s.id.str() + "' (first at " + it->second + ")");
+        report("surface.id_duplicate", loc + "/id",
+               "duplicate surface id '" + s.id.str() + "' (first at " + it->second + ")");
       }
     }
     check_shape(s.shape, loc + "/shape");
@@ -215,7 +234,8 @@ class Validator {
 
   void check_radius(const Param& r, const std::string& loc) {
     if (!std::isfinite(r.value) || r.value == 0.0) {
-      error(loc, "radius must be finite and non-zero (use a plane for flat surfaces)");
+      report("shape.radius_invalid", loc,
+             "radius must be finite and non-zero (use a plane for flat surfaces)");
     }
   }
 
@@ -225,42 +245,51 @@ class Validator {
       check_radius(c->radius, base + "/radius");
     } else if (const auto* a = std::get_if<EvenAsphere>(&shape.base)) {
       check_radius(a->radius, base + "/radius");
-      if (a->coefficients.empty()) warning(base + "/coefficients", "asphere without coefficients");
+      if (a->coefficients.empty())
+        report("shape.asphere_without_coefficients", base + "/coefficients",
+               "asphere without coefficients");
     }
     for (std::size_t i = 0; i < shape.terms.size(); ++i) {
       const auto& z = std::get<ZernikeSag>(shape.terms[i]);
       const std::string t = idx(loc + "/terms", i);
       if (!finite_positive(z.normalization_radius.value)) {
-        error(t + "/normalization_radius", "normalization radius must be > 0 mm");
+        report("shape.zernike_radius_invalid", t + "/normalization_radius",
+               "normalization radius must be > 0 mm");
       }
-      if (z.coefficients.empty()) warning(t + "/coefficients", "Zernike term without coefficients");
+      if (z.coefficients.empty())
+        report("shape.zernike_without_coefficients", t + "/coefficients",
+               "Zernike term without coefficients");
     }
   }
 
   void check_aperture(const Aperture& a, const std::string& loc) {
     if (const auto* c = std::get_if<CircularAperture>(&a)) {
-      if (!finite_positive(c->radius)) error(loc + "/radius", "radius must be > 0 mm");
+      if (!finite_positive(c->radius))
+        report("surface_aperture.radius_invalid", loc + "/radius", "radius must be > 0 mm");
       if (!std::isfinite(c->inner_radius) || c->inner_radius < 0.0 ||
           c->inner_radius >= c->radius) {
-        error(loc + "/inner_radius", "inner radius must be >= 0 and < radius");
+        report("surface_aperture.inner_radius_invalid", loc + "/inner_radius",
+               "inner radius must be >= 0 and < radius");
       }
     } else if (const auto* r = std::get_if<RectangularAperture>(&a)) {
       if (!finite_positive(r->half_width_x) || !finite_positive(r->half_width_y)) {
-        error(loc, "half widths must be > 0 mm");
+        report("surface_aperture.half_width_invalid", loc, "half widths must be > 0 mm");
       }
     } else if (const auto* e = std::get_if<EllipticalAperture>(&a)) {
       if (!finite_positive(e->semi_axis_x) || !finite_positive(e->semi_axis_y)) {
-        error(loc, "semi axes must be > 0 mm");
+        report("surface_aperture.semi_axis_invalid", loc, "semi axes must be > 0 mm");
       }
     }
   }
 
   void check_phase(const PhaseLayer& p, const std::string& loc) {
     if (const auto* g = std::get_if<LinearGrating>(&p)) {
-      if (!finite_positive(g->lines_per_mm.value)) error(loc + "/lines_per_mm", "must be > 0");
+      if (!finite_positive(g->lines_per_mm.value))
+        report("phase.lines_per_mm_invalid", loc + "/lines_per_mm", "must be > 0");
     } else if (const auto* r = std::get_if<RadialPhase>(&p)) {
       if (!finite_positive(r->normalization_radius.value)) {
-        error(loc + "/normalization_radius", "normalization radius must be > 0 mm");
+        report("phase.radius_invalid", loc + "/normalization_radius",
+               "normalization radius must be > 0 mm");
       }
     }
   }
@@ -268,51 +297,60 @@ class Validator {
   void check_interaction(const Interaction& i, const std::string& loc) {
     if (const auto* bs = std::get_if<IdealBeamSplitter>(&i)) {
       for (const double r : {bs->reflectance_s, bs->reflectance_p}) {
-        if (!std::isfinite(r) || r < 0.0 || r > 1.0) error(loc, "reflectance must be in [0, 1]");
+        if (!std::isfinite(r) || r < 0.0 || r > 1.0)
+          report("interaction.reflectance_invalid", loc, "reflectance must be in [0, 1]");
       }
     } else if (const auto* c = std::get_if<CoatingRef>(&i)) {
-      if (c->name.empty()) error(loc + "/name", "coating name must not be empty");
+      if (c->name.empty())
+        report("interaction.coating_name_empty", loc + "/name", "coating name must not be empty");
     } else if (const auto* pol = std::get_if<IdealPolarizer>(&i)) {
       if (!nonzero_axis(pol->transmission_axis))
-        error(loc + "/transmission_axis", "axis must be non-zero");
+        report("interaction.axis_invalid", loc + "/transmission_axis", "axis must be non-zero");
       if (!std::isfinite(pol->extinction_ratio) || pol->extinction_ratio < 0.0 ||
           pol->extinction_ratio > 1.0) {
-        error(loc + "/extinction_ratio", "extinction ratio must be in [0, 1]");
+        report("interaction.extinction_ratio_invalid", loc + "/extinction_ratio",
+               "extinction ratio must be in [0, 1]");
       }
     } else if (const auto* ret = std::get_if<IdealRetarder>(&i)) {
-      if (!nonzero_axis(ret->fast_axis)) error(loc + "/fast_axis", "axis must be non-zero");
-      if (!std::isfinite(ret->retardance_waves)) error(loc + "/retardance_waves", "must be finite");
+      if (!nonzero_axis(ret->fast_axis))
+        report("interaction.axis_invalid", loc + "/fast_axis", "axis must be non-zero");
+      if (!std::isfinite(ret->retardance_waves))
+        report("interaction.retardance_invalid", loc + "/retardance_waves", "must be finite");
     }
   }
 
   void check_stops() {
-    if (stops_.size() > 1) error(stops_[1], "only one stop element is allowed");
+    if (stops_.size() > 1) report("stop.multiple", stops_[1], "only one stop element is allowed");
     if (stops_.empty() && system_.aperture.type == SystemApertureType::StopSize) {
-      error("/aperture/type", "aperture type 'stop_size' requires a stop element");
+      report("aperture.stop_missing", "/aperture/type",
+             "aperture type 'stop_size' requires a stop element");
     }
   }
 
   void check_paths() {
     if (system_.paths.empty()) {
-      error("/paths", "at least one path is required");
+      report("paths.empty", "/paths", "at least one path is required");
       return;
     }
     std::unordered_set<std::string> names;
     for (std::size_t i = 0; i < system_.paths.size(); ++i) {
       const Path& p = system_.paths[i];
       const std::string loc = idx("/paths", i);
-      if (p.name.empty()) error(loc + "/name", "path name must not be empty");
+      if (p.name.empty()) report("paths.name_empty", loc + "/name", "path name must not be empty");
       if (!names.insert(p.name).second)
-        error(loc + "/name", "duplicate path name '" + p.name + "'");
-      if (!p.automatic && p.events.empty()) error(loc + "/events", "explicit path without events");
+        report("paths.name_duplicate", loc + "/name", "duplicate path name '" + p.name + "'");
+      if (!p.automatic && p.events.empty())
+        report("paths.events_empty", loc + "/events", "explicit path without events");
       for (std::size_t k = 0; k < p.events.size(); ++k) {
         const Event& e = p.events[k];
         const std::string eloc = idx(loc + "/events", k);
         if (!surface_ids_.contains(e.surface.str())) {
-          error(eloc + "/surface", "unknown surface id '" + e.surface.str() + "'");
+          report("paths.unknown_surface", eloc + "/surface",
+                 "unknown surface id '" + e.surface.str() + "'");
         }
         if (e.kind != EventKind::Diffract && e.order != 0) {
-          error(eloc + "/order", "order is only allowed for diffract events");
+          report("paths.order_not_allowed", eloc + "/order",
+                 "order is only allowed for diffract events");
         }
       }
     }
@@ -337,8 +375,9 @@ bool has_errors(const std::vector<Diagnostic>& diagnostics) {
 }
 
 std::string to_string(const Diagnostic& diagnostic) {
-  return std::string(diagnostic.severity == Severity::Error ? "error " : "warning ") +
-         diagnostic.location + ": " + diagnostic.message;
+  std::string text = diagnostic.severity == Severity::Error ? "error " : "warning ";
+  if (!diagnostic.code.empty()) text += "[" + diagnostic.code + "] ";
+  return text + diagnostic.location + ": " + diagnostic.message;
 }
 
 }  // namespace rtt::model

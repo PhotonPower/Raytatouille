@@ -136,8 +136,9 @@ std::pair<math::Vec3, math::Vec3> trace_to_image(const CompiledSystem& system,
   const trace::AimedRay aimed = trace::aim_ray(system, path, field, wavelength, px, py, aiming);
   const trace::RayBatch rays = trace_aimed(system, path, aimed, wavelength);
   if (!arrived(rays, 0, image_surface(system, path))) {
-    throw AnalysisError("analysis: a ray at pupil (" + std::to_string(px) + ", " +
-                        std::to_string(py) + ") does not reach the image surface");
+    detail::throw_lost(system, rays, 0, std::nullopt,
+                       "analysis: a ray at pupil (" + std::to_string(px) + ", " +
+                           std::to_string(py) + ") does not reach the image surface");
   }
   return {math::Vec3(rays.pos_x()[0], rays.pos_y()[0], rays.pos_z()[0]),
           math::Vec3(rays.dir_x()[0], rays.dir_y()[0], rays.dir_z()[0])};

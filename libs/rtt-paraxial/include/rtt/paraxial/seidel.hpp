@@ -143,11 +143,13 @@ struct Seidel {
 /// @param path       path to evaluate
 /// @param wavelength index into system.wavelengths_um() for the paraxial rays and n
 /// @param chromatic  wavelength pair for C_L and C_T; without it they are 0
+/// @throws rtt::compile::NoStopError (a std::invalid_argument) if the path has no stop (checked
+///         by rtt::compile::require_stop after the checks of first_order; ADR 0022)
 /// @throws ParaxialError if the path is not rotationally symmetric, the stop aperture is not
-///         circular, the path has no stop, the entrance pupil is at infinity or has no
-///         diameter, an object height is given for an object at infinity, a field angle is not
-///         in (-90, 90) degree, a paraxial image height is given without a finite paraxial
-///         image, or a path id or wavelength index does not exist
+///         circular, the entrance pupil is at infinity or has no diameter, an object height is
+///         given for an object at infinity, a field angle is not in (-90, 90) degree, a paraxial
+///         image height is given without a finite paraxial image, or a path id or wavelength index
+///         does not exist
 [[nodiscard]] Seidel seidel(const compile::CompiledSystem& system,
                             compile::PathId path,
                             std::uint16_t wavelength,

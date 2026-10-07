@@ -16,6 +16,23 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   `ThermalData`, `MechanicalData`), `glass_map()` mit n_d/ν_d aus den NM-Datensätzen;
   `add_catalog(path, name=None)`, `add_catalog_text(data, name)`, `catalogs()`; `index()` nimmt
   auch NumPy-Arrays von Wellenlängen (bitgleich zum skalaren Aufruf) (#85).
+- Stabile Diagnosecodes (ADR 0022, angenommen; #86):
+  - Jede `Diagnostic` trägt einen Code in Punktnotation, z. B. `material.unknown`. Die Codes bleiben
+    über Versionen gleich; Liste in `docs/diagnostics.md`.
+  - Registry in der neuen header-only Bibliothek `rtt-diagnostics` (Schicht Basis). Ein nicht
+    registrierter Code kompiliert nicht.
+  - Python: `Diagnostic.code`, `CompileError.codes`, `rt.diagnostics.CODES`.
+- Diagnosekanal (#86): `CompiledSystem::diagnostics()` hält die Warnungen von `validate()`. Python
+  gibt sie zusätzlich als `rt.errors.RaytatouilleWarning` mit `code` und `location` aus.
+- Fehlerorte (#86):
+  - `CompiledSurface::location` (Python `CompiledSystem.surface_locations`) ist der JSON-Pointer
+    jeder Fläche.
+  - `ParaxialError` mit `surface` und `location`.
+  - `AnalysisError` mit `surface`, `location`, `ray_status`, `field` und `wavelength` des verlorenen
+    Strahls.
+- `rtt::compile::NoStopError` mit `path_name` und `location` und die einzige Prüfung
+  `rtt::compile::require_stop` (`rtt/compile/errors.hpp`). Python: `rt.NoStopError(ParaxialError,
+  AnalysisError, ValueError)` (#86).
 
 ### Geändert
 - `rtt-material`: Die AGF-Datensätze NM-Extras, MD, OD und IT werden jetzt streng gelesen statt
@@ -25,6 +42,14 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
   (Nachtrag ADR 0008). Geprüft und weiter ladbar: HOYA, OHARA, Sumita, CDGM, SCHOTT (aktuell und
   IRG), LightPath sowie weitere ältere Kataloge der Zemax-Verteilung; NIKON-HIKARI scheitert wie
   vorher an #71 (#85).
+- `rtt validate` und `to_string(Diagnostic)` schreiben den Code mit: `error [code] /pointer:
+  Meldung`. Ebenso die Meldung von `CompileError`. Die Exit-Codes bleiben (#86).
+- **C++:** Ein Pfad ohne Blende wirft jetzt überall `rtt::compile::NoStopError` (ein
+  `std::invalid_argument`) statt `ParaxialError` (`seidel()`) bzw. `AnalysisError` (OPD). Wer nur
+  diese Typen fängt, fängt den Fall nicht mehr. Strahlquellen, Spot und Fächer warfen schon
+  `std::invalid_argument`. In Python fangen bestehende `except ParaxialError`, `AnalysisError` und
+  `ValueError` den Fall weiter, weil `NoStopError` von allen dreien erbt (#86).
+- `compile()` verwirft die Warnungen von `validate()` nicht mehr (#86).
 
 ### Behoben
 - `rtt-trace`: Bei endlichem Objekt und virtueller Eintrittspupille hinter dem Objekt

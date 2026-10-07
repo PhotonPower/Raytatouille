@@ -16,7 +16,7 @@ Example::
     stats = rt.trace.trace(compiled, rays)
 """
 
-from . import analysis, errors, layout, materials, paraxial, plot, polar, trace
+from . import analysis, diagnostics, errors, layout, materials, paraxial, plot, polar, trace
 from ._core import (
     CoatingLibrary,
     CompiledMedium,
@@ -38,9 +38,11 @@ from .errors import (
     AnalysisError,
     CoatingCatalogError,
     CompileError,
+    NoStopError,
     ParaxialError,
     ParseError,
     RaytatouilleError,
+    RaytatouilleWarning,
     UnknownMaterial,
 )
 
@@ -58,15 +60,18 @@ __all__ = [
     "Environment",
     "Field",
     "MaterialLibrary",
+    "NoStopError",
     "ParaxialError",
     "ParseError",
     "RaytatouilleError",
+    "RaytatouilleWarning",
     "Severity",
     "System",
     "UnknownMaterial",
     "Wavelength",
     "analysis",
     "compile",
+    "diagnostics",
     "errors",
     "layout",
     "load",

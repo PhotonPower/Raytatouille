@@ -5,8 +5,10 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 #include "rtt/analysis/spot.hpp"
 #include "rtt/compile/compiled_system.hpp"
@@ -72,6 +74,24 @@ inline trace::RayBatch trace_aimed(const CompiledSystem& system,
 /// True if ray i ended Alive on the image surface.
 inline bool arrived(const trace::RayBatch& rays, std::size_t i, std::uint32_t image) {
   return rays.status()[i] == trace::RayStatus::Alive && rays.last_surface()[i] == image;
+}
+
+/// AnalysisError for ray i that did not arrive, with its surface, status, field and wavelength.
+[[noreturn]] inline void throw_lost(const CompiledSystem& system,
+                                    const trace::RayBatch& rays,
+                                    std::size_t i,
+                                    std::optional<std::uint16_t> field,
+                                    const std::string& message) {
+  AnalysisError::LostRay ray;
+  const std::uint32_t last = rays.last_surface()[i];
+  if (last != trace::kNoSurface) {
+    ray.surface = system.surfaces()[last].id;
+    ray.location = system.surfaces()[last].location;
+  }
+  ray.ray_status = rays.status()[i];
+  ray.field = field;
+  ray.wavelength = rays.wl()[i];
+  throw AnalysisError(message, std::move(ray));
 }
 
 /// Local x, y of ray i on the image surface, mm.

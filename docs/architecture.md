@@ -48,6 +48,7 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 | 0018 | Python-Build- und Testwerkzeuge (nanobind, scikit-build-core, numpy, pytest, mypy) über `pyproject.toml` statt vcpkg |
 | 0019 | Coating-Kataloge als eigene JSON-Dateien (`CATALOG:NAME`), Auflösung in `compile()`, Substrat = Inneres des Elements |
 | 0020 | Gemeinsamer strikter JSON-Parser `rtt-json` (header-only, Schicht Basis): doppelte Schlüssel und Zahlen-Overflow sind Fehler mit Pointer |
+| 0022 | Stabile Diagnosecodes in Punktnotation mit Registry `rtt-diagnostics` (header-only, Schicht Basis), Warnungen von `compile()` als Daten, Fehlerorte in `ParaxialError`/`AnalysisError`, eine Klasse `NoStopError` (angenommen) |
 
 **Konventionen (verbindlich für alle Bibliotheken)**
 
@@ -72,7 +73,7 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 
 ## Systemübersicht
 
-16 CMake-Bibliotheken bzw. -Programme in sieben Schichten. Jede darf nur Bibliotheken aus tieferen Schichten verwenden. Ausnahmen: die Schicht Tracing mit der festen Reihenfolge `rtt-compile` < `rtt-paraxial` < `rtt-trace`, dort darf eine Bibliothek zusätzlich die in dieser Reihenfolge vor ihr stehenden verwenden (ADR 0016); in der Schicht Schnittstellen dürfen `rtt-py` und `apps/rtt-cli` `rtt-io` verwenden (Dateien lesen und schreiben).
+17 CMake-Bibliotheken bzw. -Programme in sieben Schichten. Jede darf nur Bibliotheken aus tieferen Schichten verwenden. Ausnahmen: die Schicht Tracing mit der festen Reihenfolge `rtt-compile` < `rtt-paraxial` < `rtt-trace`, dort darf eine Bibliothek zusätzlich die in dieser Reihenfolge vor ihr stehenden verwenden (ADR 0016); in der Schicht Schnittstellen dürfen `rtt-py` und `apps/rtt-cli` `rtt-io` verwenden (Dateien lesen und schreiben).
 
 | Schicht | Bibliotheken | Status |
 | --- | --- | --- |
@@ -82,7 +83,7 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 | Tracing | `rtt-compile` < `rtt-paraxial` < `rtt-trace` | M1 |
 | Modell | `rtt-model` | M0 |
 | Physik | `rtt-geom`, `rtt-material`, `rtt-coating`, `rtt-polar` | M1–M4 |
-| Basis | `rtt-math`, `rtt-json` (strikter JSON-Parser für `rtt-io` und `rtt-coating`, ADR 0020) | `rtt-math`: M0; `rtt-json`: M3 |
+| Basis | `rtt-math`, `rtt-json` (strikter JSON-Parser für `rtt-io` und `rtt-coating`, ADR 0020), `rtt-diagnostics` (Registry der Diagnosecodes, ADR 0022) | `rtt-math`: M0; `rtt-json`: M3; `rtt-diagnostics`: #86 |
 
 Die vier Physik-Bibliotheken kennen weder Modell noch Tracer und können daher parallel gebaut werden. `rtt-model` beschreibt nur, `rtt-compile` macht daraus ein unveränderliches `CompiledSystem`, `rtt-paraxial` und `rtt-trace` rechnen, `rtt-analysis` wertet aus. CMake-Targets heißen `rtt_<name>` mit Alias `rtt::<name>`.
 
@@ -115,7 +116,7 @@ Das Modell ist reine Datenstruktur ohne Tracing-Logik. Header: `libs/rtt-model/i
 
 **Parameter:** Jeder optimierbare Wert ist ein `Param { double value; bool variable; std::optional<std::string> pickup; }`. Pickup-Ausdrücke werden ab M5 ausgewertet. Multi-Konfigurationen kommen mit M5.
 
-**Validierung:** `rtt::model::validate(system)` liefert `Diagnostic`s mit JSON-Pointer auf die betroffene Stelle (Wellenlängen, Apertur, Element-Regeln inkl. Länge der Materialliste, eindeutige IDs und Namen, gültige Radien und Aperturen, Pfadverweise).
+**Validierung:** `rtt::model::validate(system)` liefert `Diagnostic`s mit JSON-Pointer auf die betroffene Stelle (Wellenlängen, Apertur, Element-Regeln inkl. Länge der Materialliste, eindeutige IDs und Namen, gültige Radien und Aperturen, Pfadverweise). Jede Diagnose trägt einen stabilen Code aus der Registry `rtt-diagnostics`, z. B. `material.unknown` (ADR 0022, Liste in [diagnostics.md](diagnostics.md)). `compile()` behält die Warnungen in `CompiledSystem::diagnostics()`, kennt den JSON-Pointer jeder Fläche (`CompiledSurface::location`) und meldet Fehler mit Code in `CompileError`. `ParaxialError` und `AnalysisError` tragen den Ort, wo er bekannt ist; „keine Blende“ ist überall `rtt::compile::NoStopError` aus einer einzigen Prüfung `require_stop`.
 
 ## Dateiformat (`rtt-io`, umgesetzt in M0)
 
@@ -384,7 +385,7 @@ sys.save("doublet_opt.rtt.json")
   - Analytische Prüfungen: Malus, (1 + ε)/4, |S3| = S0, π/2.
   - Beispiel `examples/python/polarization.py`.
 
-**CLI (`rtt`):** vorhanden: `rtt validate`, `rtt format [--check]`, `rtt --version`. Geplant: `rtt trace`, `rtt analyze`, `rtt optimize`, `rtt import <zmx> <rtt.json>`.
+**CLI (`rtt`):** vorhanden: `rtt validate` (Ausgabe `error [code] /pointer: Meldung`, ADR 0022), `rtt format [--check]`, `rtt --version`. Geplant: `rtt trace`, `rtt analyze`, `rtt optimize`, `rtt import <zmx> <rtt.json>`.
 
 ## Validierung und Tests
 

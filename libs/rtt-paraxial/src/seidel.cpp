@@ -4,8 +4,11 @@
 #include <cmath>
 #include <cstddef>
 #include <numbers>
+#include <stdexcept>
 #include <string>
 #include <variant>
+
+#include "rtt/compile/errors.hpp"
 
 namespace rtt::paraxial {
 namespace {
@@ -54,11 +57,13 @@ RayStart chief_ray(const CompiledSystem& system,
   // Largest radial field value: tan theta for angles (chief ray d ~ (tan theta_x, tan theta_y,
   // 1), docs/architecture.md "Feldwinkel und Pupille"), mm for heights.
   double value = 0.0;
-  for (const auto& f : points) {
+  for (std::size_t i = 0; i < points.size(); ++i) {
+    const model::Field& f = points[i];
     double radial = std::hypot(f.x, f.y);
     if (system.fields().type == model::FieldType::AngleDeg) {
       if (!(std::abs(f.x) < 90.0 && std::abs(f.y) < 90.0)) {
-        throw ParaxialError(field_error("field angles must lie in (-90, 90) degree"));
+        throw ParaxialError(field_error("field angles must lie in (-90, 90) degree"),
+                            "/fields/points/" + std::to_string(i));
       }
       radial = std::hypot(std::tan(f.x * std::numbers::pi / 180.0),
                           std::tan(f.y * std::numbers::pi / 180.0));
@@ -79,7 +84,8 @@ RayStart chief_ray(const CompiledSystem& system,
     }
     case model::FieldType::ObjectHeight: {
       if (infinite) {
-        throw ParaxialError(field_error("an object height needs a finite object distance"));
+        throw ParaxialError(field_error("an object height needs a finite object distance"),
+                            "/fields/type");
       }
       const RayStart r = unit_ray(false);
       return {r.z, value, value * r.u};
@@ -178,7 +184,9 @@ Seidel seidel(const compile::CompiledSystem& system,
   if (chromatic && (chromatic->first >= n_wl || chromatic->second >= n_wl)) {
     throw ParaxialError(field_error("wavelength index of the chromatic pair does not exist"));
   }
-  if (!fo.entrance_pupil) throw ParaxialError(field_error("the path needs a stop"));
+  compile::require_stop(system, path);  // after the argument checks of first_order (ADR 0022)
+  // With a stop on the path first_order() always gives the entrance pupil.
+  if (!fo.entrance_pupil) throw std::logic_error("seidel: no entrance pupil despite a stop");
   const Pupil& ep = *fo.entrance_pupil;
   if (!ep.z) throw ParaxialError(field_error("the entrance pupil lies at infinity"));
   if (!ep.diameter) {

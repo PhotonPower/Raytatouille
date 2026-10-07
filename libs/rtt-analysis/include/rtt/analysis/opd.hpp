@@ -85,9 +85,11 @@ struct OpdFan {
 ///         rtt::trace::make_rays)
 /// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric or the stop
 ///         aperture is not circular (aiming and exit pupil)
+/// @throws rtt::compile::NoStopError (a std::invalid_argument) if the path has no stop; checked
+///         by rtt::compile::require_stop before any ray is traced (ADR 0022)
 /// @throws AnalysisError if a chief ray does not reach the image surface or misses the
-///         reference sphere, the path has no stop, the exit pupil is at infinity (image-space
-///         telecentric, not supported yet) or no ray arrives
+///         reference sphere, the exit pupil is at infinity (image-space telecentric, not
+///         supported yet) or no ray arrives
 [[nodiscard]] OpdMap opd_map(const compile::CompiledSystem& system,
                              compile::PathId path,
                              std::uint16_t field,

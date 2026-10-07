@@ -50,7 +50,9 @@ def seidel(
     (marginal ray at the paraxial entrance pupil, chief ray of the largest field, signs) in
     rtt/paraxial/seidel.hpp.
 
-    Raises ParaxialError if the path is not rotationally symmetric or has no stop.
+    Raises ParaxialError if the path is not rotationally symmetric (``surface`` and
+    ``location`` name the place where known), NoStopError (also a ParaxialError) if it has no
+    stop.
     """
     return _core.seidel(
         compiled(system, materials), path, wavelength, chromatic_pair(pair)

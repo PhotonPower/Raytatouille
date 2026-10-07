@@ -24,6 +24,8 @@
 #include <optional>
 #include <span>
 #include <stdexcept>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "rtt/compile/compiled_system.hpp"
@@ -33,10 +35,46 @@
 namespace rtt::analysis {
 
 /// Thrown when an analysis has no defined result, e.g. the chief ray does not reach the image
-/// surface or no ray arrives.
+/// surface or no ray arrives. For a single lost ray (chief or zone ray) the accessors give the
+/// place and the cause (ADR 0022); otherwise they are empty.
 class AnalysisError : public std::runtime_error {
  public:
+  /// The lost ray of an AnalysisError.
+  struct LostRay {
+    /// Last surface the ray reached (RayBatch::last_surface): for Vignetted, Absorbed, Tir and
+    /// EventImpossible the surface where it stopped; for Missed and NoConvergence the surface
+    /// before the one it did not reach. None if the ray reached no surface.
+    std::optional<model::SurfaceId> surface;
+    std::optional<std::string> location;  ///< JSON pointer of that surface in the system file
+    trace::RayStatus ray_status = trace::RayStatus::Alive;
+    std::optional<std::uint16_t> field;  ///< index into CompiledSystem::fields().points
+    std::uint16_t wavelength = 0;        ///< index into CompiledSystem::wavelengths_um()
+  };
+
   using std::runtime_error::runtime_error;
+
+  AnalysisError(const std::string& message, LostRay ray)
+      : std::runtime_error(message), ray_(std::move(ray)) {}
+
+  [[nodiscard]] std::optional<model::SurfaceId> surface() const {
+    return ray_ ? ray_->surface : std::nullopt;
+  }
+  [[nodiscard]] std::optional<std::string> location() const {
+    return ray_ ? ray_->location : std::nullopt;
+  }
+  /// Status of the lost ray; Alive if it ended alive on another surface than the image.
+  [[nodiscard]] std::optional<trace::RayStatus> ray_status() const {
+    return ray_ ? std::optional(ray_->ray_status) : std::nullopt;
+  }
+  [[nodiscard]] std::optional<std::uint16_t> field() const {
+    return ray_ ? ray_->field : std::nullopt;
+  }
+  [[nodiscard]] std::optional<std::uint16_t> wavelength() const {
+    return ray_ ? std::optional(ray_->wavelength) : std::nullopt;
+  }
+
+ private:
+  std::optional<LostRay> ray_;
 };
 
 /// Point in the local x, y plane of the image surface, mm.
@@ -93,6 +131,8 @@ struct SpotDiagram {
 /// @throws std::invalid_argument for an invalid path, field or wavelength, a wavelength weight
 ///         that is negative or not finite, or weights that do not sum to a positive value (and
 ///         as rtt::trace::make_rays)
+/// @throws rtt::compile::NoStopError (a std::invalid_argument) if the path has no stop; checked
+///         by rtt::compile::require_stop before any ray is traced (ADR 0022)
 /// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric (aiming)
 /// @throws AnalysisError if the chief ray does not reach the image surface, or no ray with a
 ///         positive weight arrives (e.g. all rays of the weighted wavelengths are vignetted)
@@ -131,6 +171,8 @@ struct RayFan {
 /// Ray fans of `field` at `wavelength`, relative to the chief ray (see file comment).
 /// @throws std::invalid_argument for an invalid path, field, wavelength or points < 1 (and as
 ///         rtt::trace::make_rays)
+/// @throws rtt::compile::NoStopError (a std::invalid_argument) if the path has no stop; checked
+///         by rtt::compile::require_stop before any ray is traced (ADR 0022)
 /// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric (aiming)
 /// @throws AnalysisError if the chief ray does not reach the image surface
 [[nodiscard]] RayFan ray_fan(const compile::CompiledSystem& system,

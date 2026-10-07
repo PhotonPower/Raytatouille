@@ -43,6 +43,23 @@ std::uint16_t wavelength_index(const compile::CompiledSystem& system,
   return wavelength.value_or(system.reference_wavelength());
 }
 
+namespace {
+
+/// Issues every warning of `diagnostics` as a raytatouille.errors.RaytatouilleWarning (ADR 0022).
+/// Called from C++, stacklevel 1 is already the Python line that called compile(). An error
+/// raised by a warnings filter ("error") propagates as that Python exception.
+void warn(const std::vector<model::Diagnostic>& diagnostics) {
+  for (const model::Diagnostic& d : diagnostics) {
+    if (d.severity != model::Severity::Warning) continue;
+    const nb::object category =
+        nb::module_::import_("raytatouille.errors").attr("RaytatouilleWarning");
+    nb::module_::import_("warnings")
+        .attr("warn")(category(d.message, d.code, d.location), "stacklevel"_a = 1);
+  }
+}
+
+}  // namespace
+
 void bind_compile(nb::module_& m) {
   bind_material(m);  // before compile(), which takes a MaterialLibrary
 
@@ -101,6 +118,17 @@ void bind_compile(nb::module_& m) {
             return ids;
           },
           "Surface ids in tree order (index = surface index, e.g. RayBatch.last_surface).")
+      .def_prop_ro(
+          "surface_locations",
+          [](const compile::CompiledSystem& s) {
+            std::vector<std::string> locations;
+            for (const auto& surface : s.surfaces()) locations.push_back(surface.location);
+            return locations;
+          },
+          "JSON pointers of the surfaces in the system file, same order as surface_ids, e.g. "
+          "\"/root/children/1/surfaces/0\" (ADR 0022).")
+      .def_prop_ro("diagnostics", &compile::CompiledSystem::diagnostics,
+                   "Warnings found while compiling, with code and JSON pointer (ADR 0022).")
       .def(
           "find_path",
           [](const compile::CompiledSystem& s, const std::string& name) -> std::optional<int> {
@@ -116,14 +144,18 @@ void bind_compile(nb::module_& m) {
          const coating::CoatingLibrary* coatings) {
         const material::MaterialLibrary default_materials;
         const coating::CoatingLibrary no_coatings;
-        return compile::compile(system, materials != nullptr ? *materials : default_materials,
-                                coatings != nullptr ? *coatings : no_coatings);
+        compile::CompiledSystem compiled =
+            compile::compile(system, materials != nullptr ? *materials : default_materials,
+                             coatings != nullptr ? *coatings : no_coatings);
+        warn(compiled.diagnostics());
+        return compiled;
       },
       "system"_a, "materials"_a.none() = nb::none(), "coatings"_a.none() = nb::none(),
       "Compiles a System. Without `materials` only VACUUM, AIR and CONST: references resolve; "
       "without `coatings` a surface with a coating reference is an error (ADR 0019).\n\nRaises "
       "CompileError with the diagnostics for invalid models, unknown materials and unknown "
-      "coatings.");
+      "coatings.\n\nEvery warning (CompiledSystem.diagnostics) is also issued as a "
+      "raytatouille.errors.RaytatouilleWarning with its code and location.");
 }
 
 }  // namespace rtt::py

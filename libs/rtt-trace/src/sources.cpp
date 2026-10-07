@@ -10,6 +10,7 @@
 #include <string>
 #include <type_traits>
 
+#include "rtt/compile/errors.hpp"
 #include "rtt/paraxial/paraxial.hpp"
 
 namespace rtt::trace {
@@ -87,13 +88,11 @@ Context make_context(const CompiledSystem& system, PathId path, std::uint16_t wa
   c.system = &system;
   c.path = path;
   c.wavelength = wavelength;
+  compile::require_stop(system, path);  // the one check for all users of the stop (ADR 0022)
   const auto& events = system.path(path).events;
   const auto stop = std::find_if(events.begin(), events.end(), [&](const auto& e) {
     return system.surfaces()[e.surface].element_kind == model::ElementKind::Stop;
   });
-  if (stop == events.end()) {
-    throw std::invalid_argument("sources: the path has no stop to aim at");
-  }
   c.stop_event = static_cast<std::size_t>(stop - events.begin());
   c.first_order = paraxial::first_order(system, path, wavelength);
   const auto& ep = c.first_order.entrance_pupil;
