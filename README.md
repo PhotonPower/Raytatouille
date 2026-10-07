@@ -41,6 +41,7 @@ Beispielsysteme liegen unter `tests/reference/`, mit einem Unterordner je Meilen
 - [Agenten einsetzen (Anleitung)](docs/agenten.md)
 - [Geprüfte Literaturquellen](docs/quellen.md)
 - [Dateiformat (JSON-Schema)](schema/raytatouille.schema.json)
+- [Komplexe Modelle: Mikroskopobjektiv 20x/0,45](examples/komplexe_modelle/README.md)
 
 ## Lizenz
 

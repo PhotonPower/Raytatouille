@@ -1,0 +1,262 @@
+{
+  "schema_version": "0.2.0",
+  "name": "Mikroskopobjektiv 20x/0,45 nach Schnittbild (rückwärts: Tubusseite → Präparat)",
+  "units": {"length": "mm", "wavelength": "um"},
+  "wavelengths": [
+    {"um": 0.4861},
+    {"um": 0.5876, "reference": true},
+    {"um": 0.6563}
+  ],
+  "aperture": {"type": "epd", "value": 9.0},
+  "fields": {
+    "type": "paraxial_image_height",
+    "points": [
+      {},
+      {"y": 0.385},
+      {"y": 0.55}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "Objektiv 20x/0.45",
+    "children": [
+      {
+        "type": "lens",
+        "name": "G8",
+        "material": "NIKON-HIKARI:E-LAKH1",
+        "surfaces": [
+          {
+            "id": "G8.S2",
+            "shape": {
+              "base": {"type": "conic", "radius": 41.623}
+            },
+            "aperture": {"type": "circular", "radius": 5.0}
+          },
+          {
+            "id": "G8.S1",
+            "pose": {"position": [0.0, 0.0, 3.0]},
+            "shape": {
+              "base": {"type": "conic", "radius": 63.261}
+            },
+            "aperture": {"type": "circular", "radius": 5.0}
+          }
+        ]
+      },
+      {
+        "type": "stop",
+        "name": "Blende (hintere Brennebene)",
+        "pose": {"position": [0.0, 0.0, 3.23]},
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 4.7}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "G7",
+        "pose": {"position": [0.0, 0.0, 3.3]},
+        "material": ["NIKON-HIKARI:E-LAKH1", "NIKON-HIKARI:J-SFH1"],
+        "surfaces": [
+          {
+            "id": "G7.S3",
+            "shape": {
+              "base": {"type": "conic", "radius": 16.94}
+            },
+            "aperture": {"type": "circular", "radius": 4.9}
+          },
+          {
+            "id": "G7.S2",
+            "pose": {"position": [0.0, 0.0, 2.6]},
+            "shape": {
+              "base": {"type": "conic", "radius": 7.563}
+            },
+            "aperture": {"type": "circular", "radius": 4.9}
+          },
+          {
+            "id": "G7.S1",
+            "pose": {"position": [0.0, 0.0, 3.8]},
+            "shape": {
+              "base": {"type": "conic", "radius": 14.225}
+            },
+            "aperture": {"type": "circular", "radius": 4.9}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "G6",
+        "pose": {"position": [0.0, 0.0, 7.4]},
+        "material": ["NIKON-HIKARI:J-SFH1", "NIKON-HIKARI:J-FK5"],
+        "surfaces": [
+          {
+            "id": "G6.S3",
+            "shape": {
+              "base": {"type": "conic", "radius": 13.452}
+            },
+            "aperture": {"type": "circular", "radius": 4.6}
+          },
+          {
+            "id": "G6.S2",
+            "pose": {"position": [0.0, 0.0, 1.6]},
+            "shape": {
+              "base": {"type": "conic", "radius": 6.596}
+            },
+            "aperture": {"type": "circular", "radius": 4.6}
+          },
+          {
+            "id": "G6.S1",
+            "pose": {"position": [0.0, 0.0, 5.2]},
+            "shape": {
+              "base": {"type": "conic", "radius": -12.392}
+            },
+            "aperture": {"type": "circular", "radius": 4.6}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "G5",
+        "pose": {"position": [0.0, 0.0, 12.9]},
+        "material": "NIKON-HIKARI:E-KZFH1",
+        "surfaces": [
+          {
+            "id": "G5.S2",
+            "shape": {
+              "base": {"type": "conic", "radius": -11.805}
+            },
+            "aperture": {"type": "circular", "radius": 4.5}
+          },
+          {
+            "id": "G5.S1",
+            "pose": {"position": [0.0, 0.0, 2.3]},
+            "shape": {
+              "base": {"type": "conic", "radius": 42.889}
+            },
+            "aperture": {"type": "circular", "radius": 4.5}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "G4",
+        "pose": {"position": [0.0, 0.0, 15.9]},
+        "material": "NIKON-HIKARI:J-FK5",
+        "surfaces": [
+          {
+            "id": "G4.S2",
+            "shape": {
+              "base": {"type": "conic", "radius": 15.97}
+            },
+            "aperture": {"type": "circular", "radius": 4.6}
+          },
+          {
+            "id": "G4.S1",
+            "pose": {"position": [0.0, 0.0, 2.5]},
+            "aperture": {"type": "circular", "radius": 4.6}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "G3",
+        "pose": {"position": [0.0, 0.0, 18.9]},
+        "material": ["NIKON-HIKARI:NICF-V", "NIKON-HIKARI:J-SFH1", "NIKON-HIKARI:NICF-V"],
+        "surfaces": [
+          {
+            "id": "G3.S4",
+            "shape": {
+              "base": {"type": "conic", "radius": 13.665}
+            },
+            "aperture": {"type": "circular", "radius": 5.0}
+          },
+          {
+            "id": "G3.S3",
+            "pose": {"position": [0.0, 0.0, 3.2]},
+            "shape": {
+              "base": {"type": "conic", "radius": -27.842}
+            },
+            "aperture": {"type": "circular", "radius": 5.0}
+          },
+          {
+            "id": "G3.S2",
+            "pose": {"position": [0.0, 0.0, 4.4]},
+            "shape": {
+              "base": {"type": "conic", "radius": -103.777}
+            },
+            "aperture": {"type": "circular", "radius": 5.0}
+          },
+          {
+            "id": "G3.S1",
+            "pose": {"position": [0.0, 0.0, 8.4]},
+            "shape": {
+              "base": {"type": "conic", "radius": -13.173}
+            },
+            "aperture": {"type": "circular", "radius": 5.0}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "G2",
+        "pose": {"position": [0.0, 0.0, 27.9]},
+        "material": "NIKON-HIKARI:NICF-V",
+        "surfaces": [
+          {
+            "id": "G2.S2",
+            "shape": {
+              "base": {"type": "conic", "radius": 6.735}
+            },
+            "aperture": {"type": "circular", "radius": 3.4}
+          },
+          {
+            "id": "G2.S1",
+            "pose": {"position": [0.0, 0.0, 2.3]},
+            "shape": {
+              "base": {"type": "conic", "radius": 72.42}
+            },
+            "aperture": {"type": "circular", "radius": 3.4}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "G1",
+        "pose": {"position": [0.0, 0.0, 30.5]},
+        "material": "NIKON-HIKARI:E-LAKH1",
+        "surfaces": [
+          {
+            "id": "G1.S2",
+            "shape": {
+              "base": {"type": "conic", "radius": 5.455}
+            },
+            "aperture": {"type": "circular", "radius": 2.7}
+          },
+          {
+            "id": "G1.S1",
+            "pose": {"position": [0.0, 0.0, 3.2]},
+            "shape": {
+              "base": {"type": "conic", "radius": 2.885}
+            },
+            "aperture": {"type": "circular", "radius": 1.2}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "Präparat",
+        "pose": {"position": [0.0, 0.0, 34.2095]},
+        "surfaces": [
+          {
+            "id": "OBJ",
+            "aperture": {"type": "circular", "radius": 1.0}
+          }
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}
