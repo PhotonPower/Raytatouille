@@ -1,0 +1,68 @@
+{
+  "schema_version": "0.2.0",
+  "name": "Blende 20 mm vor der Linse (Tonnenverzeichnung)",
+  "units": {"length": "mm", "wavelength": "um"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 12.0},
+  "fields": {
+    "points": [
+      {},
+      {"y": 5.0},
+      {"y": 10.0},
+      {"y": 15.0}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "pose": {"position": [0.0, 0.0, 5.0]},
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 6.0}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "L1",
+        "pose": {"position": [0.0, 0.0, 25.0]},
+        "material": "CONST:1.5168",
+        "surfaces": [
+          {
+            "id": "L1.S1",
+            "shape": {
+              "base": {"type": "conic", "radius": 58.82}
+            },
+            "aperture": {"type": "circular", "radius": 16.0}
+          },
+          {
+            "id": "L1.S2",
+            "pose": {"position": [0.0, 0.0, 5.0]},
+            "shape": {
+              "base": {"type": "conic", "radius": -415.7}
+            },
+            "aperture": {"type": "circular", "radius": 16.0}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 127.248]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}

@@ -37,6 +37,7 @@ Beispielsysteme liegen unter `tests/reference/`, mit einem Unterordner je Meilen
 
 - [Architektur, Konventionen, Roadmap](docs/architecture.md)
 - [Systemdateien `.rtt.json` schreiben (Kurzanleitung)](docs/dateiformat.md)
+- [Lehrbeispiele: 16 Systeme mit Messwerten](examples/lehrbeispiele/README.md)
 - [Architekturentscheidungen](docs/adr/README.md)
 - [Regeln für Programmieragenten](AGENTS.md)
 - [Agenten einsetzen (Anleitung)](docs/agenten.md)

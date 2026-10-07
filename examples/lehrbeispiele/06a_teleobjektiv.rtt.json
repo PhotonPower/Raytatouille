@@ -1,0 +1,89 @@
+{
+  "schema_version": "0.2.0",
+  "name": "Teleobjektiv: Sammellinse + Zerstreuungslinse, f ≈ 200 mm, kurze Baulänge",
+  "units": {"length": "mm", "wavelength": "um"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 20.0},
+  "fields": {
+    "points": [
+      {},
+      {"y": 1.0},
+      {"y": 2.0}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 10.0}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "L1",
+        "pose": {"position": [0.0, 0.0, 3.0]},
+        "material": "CONST:1.5168",
+        "surfaces": [
+          {
+            "id": "L1.S1",
+            "shape": {
+              "base": {"type": "conic", "radius": 52.63}
+            },
+            "aperture": {"type": "circular", "radius": 12.0}
+          },
+          {
+            "id": "L1.S2",
+            "pose": {"position": [0.0, 0.0, 4.0]},
+            "shape": {
+              "base": {"type": "conic", "radius": -187.79}
+            },
+            "aperture": {"type": "circular", "radius": 12.0}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "L2",
+        "pose": {"position": [0.0, 0.0, 55.67]},
+        "material": "CONST:1.5168",
+        "surfaces": [
+          {
+            "id": "L2.S1",
+            "shape": {
+              "base": {"type": "conic", "radius": -18.87}
+            },
+            "aperture": {"type": "circular", "radius": 10.0}
+          },
+          {
+            "id": "L2.S2",
+            "pose": {"position": [0.0, 0.0, 3.0]},
+            "shape": {
+              "base": {"type": "conic", "radius": -73.72}
+            },
+            "aperture": {"type": "circular", "radius": 10.0}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 130.942]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}

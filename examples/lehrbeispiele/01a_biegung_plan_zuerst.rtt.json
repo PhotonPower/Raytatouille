@@ -1,0 +1,62 @@
+{
+  "schema_version": "0.2.0",
+  "name": "Plankonvex-Linse f = 100 mm, plane Seite zuerst (schlechte Biegung)",
+  "units": {"length": "mm", "wavelength": "um"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 20.0},
+  "fields": {
+    "points": [
+      {},
+      {"y": 3.0}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 10.0}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "L1",
+        "pose": {"position": [0.0, 0.0, 5.0]},
+        "material": "CONST:1.5168",
+        "surfaces": [
+          {
+            "id": "L1.S1",
+            "aperture": {"type": "circular", "radius": 14.0}
+          },
+          {
+            "id": "L1.S2",
+            "pose": {"position": [0.0, 0.0, 4.0]},
+            "shape": {
+              "base": {"type": "conic", "radius": -51.68}
+            },
+            "aperture": {"type": "circular", "radius": 14.0}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 109.08]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}
