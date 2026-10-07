@@ -95,8 +95,7 @@ struct OpdFan {
 /// @throws rtt::compile::NoStopError (a std::invalid_argument) if the path has no stop; checked
 ///         by rtt::compile::require_stop before any ray is traced (ADR 0022)
 /// @throws AnalysisError if a chief ray does not reach the image surface or misses the
-///         reference sphere, the exit pupil is at infinity (image-space telecentric, not
-///         supported yet) or no ray arrives
+///         reference sphere, or no ray arrives (an exit pupil at infinity is supported, #102)
 [[nodiscard]] OpdMap opd_map(const compile::CompiledSystem& system,
                              compile::PathId path,
                              std::uint16_t field,

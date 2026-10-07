@@ -202,7 +202,9 @@ def opd_map(
     """OPD map of ``field`` on a grid x grid pupil grid (points inside the unit circle), in
     waves at the reference wavelength, against the reference sphere centred on the chief ray.
 
-    Raises AnalysisError e.g. for a path without stop or an exit pupil at infinity."""
+    An exit pupil at infinity uses the limit of the reference sphere (radius inf).
+
+    Raises AnalysisError e.g. for a path without stop."""
     return _core.opd_map(
         compiled(system, materials), path, field, wavelength, grid, aiming, threads
     )

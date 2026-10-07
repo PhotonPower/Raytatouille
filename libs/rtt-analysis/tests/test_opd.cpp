@@ -259,7 +259,8 @@ double max_abs_w(const rtt::analysis::OpdMap& map) {
 }
 
 /// Largest |W_a(px, py) - W_b(label px, label py)| over the grid, waves; every point of a must
-/// have its counterpart in b (the grid is symmetric).
+/// have its counterpart in b. The exact comparison holds because the default grid (33) is
+/// exactly symmetric: p = -1 + 2 i / 32 with a power of two in the denominator.
 double max_abs_dw(const rtt::analysis::OpdMap& a, const rtt::analysis::OpdMap& b, double label) {
   double m = 0.0;
   for (const auto& q : a.points) {
