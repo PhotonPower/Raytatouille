@@ -10,19 +10,22 @@ import math
 from pathlib import Path
 
 import numpy as np
+import numpy.typing as npt
 import pytest
 
 import raytatouille as rt
+
+FloatArray = npt.NDArray[np.float64]
 
 
 def singlet(reference_dir: Path) -> rt.CompiledSystem:
     return rt.compile(rt.load(reference_dir / "m1" / "singlet_const.rtt.json"))
 
 
-def sphere_sag(radius: float, r: np.ndarray) -> np.ndarray:
+def sphere_sag(radius: float, r: FloatArray) -> FloatArray:
     # Conic sag with k = 0 (Forbes 2011, Eq. (2.1)): c r^2 / (1 + sqrt(1 - c^2 r^2)).
     c = 1.0 / radius
-    result: np.ndarray = c * r * r / (1.0 + np.sqrt(1.0 - c * c * r * r))
+    result: FloatArray = c * r * r / (1.0 + np.sqrt(1.0 - c * c * r * r))
     return result
 
 
