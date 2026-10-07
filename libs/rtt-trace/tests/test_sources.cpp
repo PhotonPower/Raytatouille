@@ -138,6 +138,46 @@ System stop_behind_focus(double z_stop) {
   return s;
 }
 
+/// Object-space telecentric lens of issue #96, with binary-exact numbers: plano-convex,
+/// CONST:1.5, R = 64 mm, vertices at z = 0 and 3 (reduced thickness tau = 3 / 1.5 = 2), so
+/// phi = 0.5 / 64 = 1 / 128, f = 128 mm, H = V1 and H' = V2 - 2 = 1 (plane rear surface).
+/// Object at z = -200 mm (object heights 0, 1 and 2 mm), object-space NA 0.05, stop (r = 10 mm)
+/// at z_stop, detector in the paraxial image at z = 1 + 1 / (1/128 - 1/200) = 1 + 25600 / 72,
+/// VACUUM. (Thickness 0 would do paraxially, but a real ray meets the curved S1 at z = sag > 0
+/// and then misses a plane S2 at z = 0.) With z_stop = 129 the stop lies in the rear focal
+/// plane: y-nu with y = 1, nu = 0: nu = -1/128 after S1, y = 1 - 2/128 = 63/64 at S2,
+/// y = 63/64 - 126/128 = 0 at the stop, so the front matrix has a = 0 exactly and the entrance
+/// pupil is at infinity. The ray from the axial object point with unit slope: nu = 1 - 200/128
+/// = -0.5625 after S1, y = 200 - 2 * 0.5625 at S2 and s = 198.875 - 126 * 0.5625 = 128 at the
+/// stop (b n1 = 128, as a d - b c = 1 with c = -1/128), so R_s = 0.05 * 128 = 6.4 mm.
+System telecentric_lens(double z_stop) {
+  System s;
+  s.name = "object-space telecentric lens";
+  s.environment.medium = "VACUUM";
+  s.wavelengths = {{0.5876, 1.0, true}};
+  s.object.at_infinity = false;
+  s.object.distance = Param(200.0);
+  s.aperture = {rtt::model::SystemApertureType::ObjectSpaceNA, Param(0.05)};
+  s.fields = {FieldType::ObjectHeight, {{0.0, 0.0, 1.0}, {0.0, 1.0, 1.0}, {0.0, 2.0, 1.0}}};
+  s.root.name = "root";
+  Surface stop = surface("STO");
+  stop.aperture = rtt::model::CircularAperture{10.0, 0.0};
+  s.root.children = {
+      {Element{"L",
+               ElementKind::Lens,
+               Pose::along_z(0.0),
+               "CONST:1.5",
+               {surface("L.S1", 0.0, 64.0), surface("L.S2", 3.0)}}},
+      {Element{"stop", ElementKind::Stop, Pose::along_z(z_stop), std::nullopt, {stop}}},
+      {Element{"image",
+               ElementKind::Detector,
+               Pose::along_z(1.0 + 25600.0 / 72.0),
+               std::nullopt,
+               {surface("IMG")}}}};
+  s.paths = {{"main", true, {}}};
+  return s;
+}
+
 /// Index of the first Stop event of path 0.
 std::size_t stop_event(const CompiledSystem& cs) {
   const auto& events = cs.path(PathId{0}).events;
@@ -1044,5 +1084,192 @@ TEST_CASE("field angle with a finite object and z_ep < z_obj: chief ray rises (#
       const Vec3 hit = hit_on_stop(cs, aimed.ray);
       REQUIRE(std::hypot(hit.x(), hit.y()) < 1e-9);
     }
+  }
+}
+
+TEST_CASE("object-space telecentric: pupil coordinates are object-space slopes (#96)",
+          "[sources][aiming][telecentric]") {
+  // Decided for #96: with the entrance pupil at infinity (finite object), pupil point (px, py)
+  // is the ray from the object point P with d ~ (px u_m, py u_m, 1), u_m = NA / n = 0.05 (the
+  // paraxial reading of object_na, as in first_order); the chief ray is parallel to the axis.
+  // The stop target is (px, py) R_s with R_s = u_m s = 6.4 mm (see telecentric_lens).
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(telecentric_lens(129.0), lib);
+  const auto fo = rtt::paraxial::first_order(cs, PathId{0}, 0);
+  REQUIRE(fo.entrance_pupil);
+  REQUIRE_FALSE(fo.entrance_pupil->z);  // exactly telecentric
+  const std::vector<std::pair<double, double>> points{
+      {0.0, 0.0}, {0.0, 1.0}, {1.0, 0.0}, {0.6, -0.8}, {-0.3, 0.4}};
+
+  SECTION("paraxial aiming: chief ray (0, 0, 1), others d ~ (px u_m, py u_m, 1)") {
+    for (std::uint16_t f = 0; f < 3; ++f) {
+      for (const auto& [px, py] : points) {
+        INFO("field " << f << ", p = (" << px << ", " << py << ")");
+        const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, f, 0, px, py, Aiming::Paraxial);
+        REQUIRE(aimed.ray.status == RayStatus::Alive);
+        REQUIRE(aimed.ray.pos == Vec3(0.0, static_cast<double>(f), -200.0));
+        const Vec3 expected = Vec3(px * 0.05, py * 0.05, 1.0).normalized();
+        REQUIRE((aimed.ray.dir - expected).cwiseAbs().maxCoeff() <= 1e-15);
+      }
+      const auto chief = rtt::trace::aim_ray(cs, PathId{0}, f, 0, 0.0, 0.0, Aiming::Paraxial);
+      REQUIRE(chief.ray.dir == Vec3(0.0, 0.0, 1.0));
+    }
+  }
+  SECTION("real aiming reaches (px, py) R_s on the stop, R_s = 6.4 mm") {
+    // As in "pupil rays hit their target on the stop": < 1e-9 mm. 0.05 * 128 is 6.4 up to one
+    // rounding (< 1e-15 mm), far below that.
+    for (std::uint16_t f = 0; f < 3; ++f) {
+      for (const auto& [px, py] : points) {
+        INFO("field " << f << ", p = (" << px << ", " << py << ")");
+        const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, f, 0, px, py);
+        REQUIRE(aimed.ray.status == RayStatus::Alive);
+        const Vec3 hit = hit_on_stop(cs, aimed.ray);
+        REQUIRE(std::hypot(hit.x() - px * 6.4, hit.y() - py * 6.4) < 1e-9);
+      }
+    }
+  }
+  SECTION("a hexapolar bundle of every field reaches the image") {
+    const std::vector<std::uint16_t> fields{0, 1, 2};
+    rtt::trace::RayBatch rays =
+        rtt::trace::make_rays(cs, PathId{0}, fields, 0, rtt::trace::HexapolarPupil{6});
+    REQUIRE(rays.size() == 3 * 127);
+    [[maybe_unused]] const auto stats = rtt::trace::SequentialTracer().trace(cs, PathId{0}, rays);
+    for (std::size_t i = 0; i < rays.size(); ++i) {
+      INFO("field " << rays.field()[i] << ", pupil (" << rays.pupil_x()[i] << ", "
+                    << rays.pupil_y()[i] << ")");
+      REQUIRE(rays.status()[i] == RayStatus::Alive);
+    }
+  }
+}
+
+TEST_CASE("object-space telecentric: the real chief ray deviates from parallel as h^3 (#96)",
+          "[sources][aiming][telecentric]") {
+  // Paraxially the chief ray is parallel to the axis. The real chief ray through the stop
+  // centre deviates by the pupil aberration: the third-order term of the stop height,
+  // y_s = s u + k h^3 + ..., gives u_chief = -k h^3 / s, so u(2) / u(1) = 8. The next term is of
+  // fifth order, relative size (h / R)^2 O(1) <= (2 / 64)^2 = 1e-3 for h <= 2 mm on the lens
+  // (R = 64 mm), and the aiming residual (< 1e-9 mm at s = 128) adds < 1e-11 to u. Tolerance
+  // 1e-2 relative on the ratio: a margin of 10 for an O(1) coefficient of the fifth order.
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(telecentric_lens(129.0), lib);
+  const auto chief_slope = [&](std::uint16_t f) {
+    const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, f, 0, 0.0, 0.0);
+    REQUIRE(aimed.ray.status == RayStatus::Alive);
+    REQUIRE(aimed.ray.dir.x() == 0.0);
+    return aimed.ray.dir.y() / aimed.ray.dir.z();
+  };
+  const double u1 = chief_slope(1);
+  const double u2 = chief_slope(2);
+  INFO("u(1) = " << u1 << ", u(2) = " << u2);
+  REQUIRE(u1 != 0.0);
+  REQUIRE(std::abs(u2 / u1 - 8.0) <= 8.0 * 1e-2);
+}
+
+TEST_CASE("object-space telecentric: the finite-EP path converges to it, also for tiny offsets",
+          "[sources][aiming][telecentric]") {
+  // Stop at 129 + delta: a = -delta / 128, z_ep = b n1 / a = (128 + delta)(-128 / delta). For
+  // delta > 0 the EP is virtual on the far side of the object (z_ep -> -infinity, #93), for
+  // delta < 0 far behind the system (z_ep -> +infinity). The bundle is continuous from both
+  // sides; the label of the pupil point is continuous from z_ep -> +infinity and mirrored
+  // (px, py) -> (-px, -py) from z_ep -> -infinity (the image of the pupil turns over through
+  // infinity, docs/architecture.md "Feldwinkel und Pupille").
+  // Paraxial aiming: slope (py r_ep - h) / (z_ep - z_obj) differs from py u_m by
+  // h / |z_ep - z_obj| ~ h |delta| / 128^2 (z_ep - z_obj ~ 128^2 / delta): bound
+  // 2 h |delta| / 128^2 + 1e-15 (rounding of the normalised direction).
+  // Real aiming: the targets differ by |R_s(delta) - R_s| <~ 0.1 |delta| and the stop moves by
+  // delta, which changes the slope to a target by <~ u_m |delta| / s; together <~ 1e-3 |delta|,
+  // bound 1e-2 |delta| plus 1e-10 for the aiming residuals (1e-9 mm at s = 128).
+  // delta = 1e-10 puts the EP at about 1.6e14 mm (r_ep about 8e12 mm): the finite-EP path must
+  // stay numerically clean there (chief direction, stop hits, complete spot).
+  const MaterialLibrary lib;
+  const CompiledSystem tele = compile(telecentric_lens(129.0), lib);
+  for (const double delta : {1e-2, -1e-2, 1e-4, -1e-4, 1e-10, -1e-10}) {
+    INFO("delta = " << delta);
+    const CompiledSystem near = compile(telecentric_lens(129.0 + delta), lib);
+    const auto fo = rtt::paraxial::first_order(near, PathId{0}, 0);
+    REQUIRE(fo.entrance_pupil);
+    REQUIRE(fo.entrance_pupil->z);
+    REQUIRE((*fo.entrance_pupil->z < -200.0) == (delta > 0.0));
+    const double label = delta > 0.0 ? -1.0 : 1.0;  // mirrored from z_ep -> -infinity
+    const double r_s = paraxial_stop_radius(near);
+    // R_s = NA (b n1 + a (z_first - z_obj)) sign(a) = 0.05 (128 + delta - 200 delta / 128) sign(a)
+    // = 6.4 - 0.028125 delta (times the label): bound 0.05 |delta| + 1e-12.
+    REQUIRE(std::abs(r_s - label * 6.4) <= 0.05 * std::abs(delta) + 1e-12);
+    for (std::uint16_t f = 0; f < 3; ++f) {
+      const double h = static_cast<double>(f);
+      for (const auto& [px, py] :
+           {std::pair{0.0, 0.0}, std::pair{0.0, 1.0}, std::pair{0.6, -0.8}}) {
+        INFO("field " << f << ", p = (" << px << ", " << py << ")");
+        const auto pn = rtt::trace::aim_ray(near, PathId{0}, f, 0, px, py, Aiming::Paraxial);
+        const auto pt =
+            rtt::trace::aim_ray(tele, PathId{0}, f, 0, label * px, label * py, Aiming::Paraxial);
+        REQUIRE((pn.ray.dir - pt.ray.dir).cwiseAbs().maxCoeff() <=
+                2.0 * h * std::abs(delta) / (128.0 * 128.0) + 1e-15);
+        const auto rn = rtt::trace::aim_ray(near, PathId{0}, f, 0, px, py);
+        const auto rt = rtt::trace::aim_ray(tele, PathId{0}, f, 0, label * px, label * py);
+        REQUIRE(rn.ray.status == RayStatus::Alive);
+        REQUIRE(rt.ray.status == RayStatus::Alive);
+        const Vec3 hit = hit_on_stop(near, rn.ray);
+        REQUIRE(std::hypot(hit.x() - px * r_s, hit.y() - py * r_s) < 1e-9);
+        REQUIRE((rn.ray.dir - rt.ray.dir).cwiseAbs().maxCoeff() <= 1e-2 * std::abs(delta) + 1e-10);
+      }
+    }
+    const std::vector<std::uint16_t> fields{0, 1, 2};
+    rtt::trace::RayBatch rays =
+        rtt::trace::make_rays(near, PathId{0}, fields, 0, rtt::trace::HexapolarPupil{6});
+    [[maybe_unused]] const auto stats = rtt::trace::SequentialTracer().trace(near, PathId{0}, rays);
+    for (std::size_t i = 0; i < rays.size(); ++i) {
+      REQUIRE(rays.status()[i] == RayStatus::Alive);
+    }
+  }
+}
+
+TEST_CASE("object-space telecentric: field and aperture types (#96)", "[sources][telecentric]") {
+  const MaterialLibrary lib;
+  SECTION("paraxial image height: object point = image height / m, chief ray parallel") {
+    // The paraxial chief ray of unit object height is parallel to the axis; its image height is
+    // the lateral magnification m = -(25600/72) / 200 of first_order (distances from H, H').
+    System s = telecentric_lens(129.0);
+    s.fields = {FieldType::ParaxialImageHeight, {{0.0, 0.0, 1.0}, {0.0, -3.0, 1.0}}};
+    const CompiledSystem cs = compile(s, lib);
+    const auto fo = rtt::paraxial::first_order(cs, PathId{0}, 0);
+    REQUIRE(fo.lateral_magnification);
+    const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, 1, 0, 0.0, 0.0, Aiming::Paraxial);
+    REQUIRE(std::abs(aimed.ray.pos.y() - (-3.0) / *fo.lateral_magnification) <= 1e-12);
+    REQUIRE(aimed.ray.dir == Vec3(0.0, 0.0, 1.0));
+  }
+  SECTION("stop_size: u_m = r_stop / |s|, the rim ray hits the stop rim") {
+    System s = telecentric_lens(129.0);
+    s.aperture = {rtt::model::SystemApertureType::StopSize, Param(0.0)};
+    const CompiledSystem cs = compile(s, lib);
+    for (std::uint16_t f = 0; f < 3; ++f) {
+      const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, f, 0, 0.0, 1.0);
+      REQUIRE(aimed.ray.status == RayStatus::Alive);
+      const Vec3 hit = hit_on_stop(cs, aimed.ray);
+      REQUIRE(std::hypot(hit.x(), hit.y() - 10.0) < 1e-9);
+    }
+  }
+  SECTION("field angle with a finite object is not defined: error at the API boundary") {
+    System s = telecentric_lens(129.0);
+    s.fields = {FieldType::AngleDeg, {{0.0, 0.0, 1.0}, {0.0, 1.0, 1.0}}};
+    const CompiledSystem cs = compile(s, lib);
+    REQUIRE_THROWS_AS(rtt::trace::aim_ray(cs, PathId{0}, 1, 0, 0.0, 0.0), std::invalid_argument);
+  }
+  SECTION("entrance pupil diameter and image-space F-number need a finite EP") {
+    for (const auto type : {rtt::model::SystemApertureType::EntrancePupilDiameter,
+                            rtt::model::SystemApertureType::ImageSpaceFNumber}) {
+      System s = telecentric_lens(129.0);
+      s.aperture = {type, Param(4.0)};
+      const CompiledSystem cs = compile(s, lib);
+      REQUIRE_THROWS_AS(rtt::trace::aim_ray(cs, PathId{0}, 0, 0, 0.0, 0.0), std::invalid_argument);
+    }
+  }
+  SECTION("object at infinity with the EP at infinity stays an error") {
+    System s = telecentric_lens(129.0);
+    s.object.at_infinity = true;
+    s.aperture = {rtt::model::SystemApertureType::EntrancePupilDiameter, Param(4.0)};
+    s.fields = {FieldType::AngleDeg, {{0.0, 0.0, 1.0}}};
+    const CompiledSystem cs = compile(s, lib);
+    REQUIRE_THROWS_AS(rtt::trace::aim_ray(cs, PathId{0}, 0, 0, 0.0, 0.0), std::invalid_argument);
   }
 }

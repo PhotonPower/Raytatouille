@@ -9,6 +9,8 @@
 #include <vector>
 
 #include "rtt/analysis/field.hpp"
+#include "rtt/analysis/opd.hpp"
+#include "rtt/analysis/spot.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/io/json_io.hpp"
 #include "rtt/material/material.hpp"
@@ -359,4 +361,52 @@ TEST_CASE("invalid field-analysis input", "[distortion][field-curvature]") {
   s.fields.points = {{0.0, 0.0, 1.0}};
   const CompiledSystem axis = compile(s, lib);
   REQUIRE_THROWS_AS(rtt::analysis::distortion(axis, PathId{0}, 1), std::invalid_argument);
+}
+
+TEST_CASE("object-space telecentric system: distortion, field curvature, spot and OPD run (#96)",
+          "[distortion][telecentric]") {
+  // Telecentric lens of rtt-trace test_sources.cpp (telecentric_lens): plano-convex CONST:1.5,
+  // R = 64, vertices at z = 0 and 3 (f = 128, H = V1, H' at z = 1), stop in the rear focal
+  // plane z = 129 (entrance pupil at infinity), object at z = -200, object-space NA 0.05,
+  // detector in the paraxial image at z = 1 + 25600 / 72. The paraxial chief ray of an object
+  // height h is parallel to the axis (decided for #96), so its height in the image plane is
+  // m h with m = -(25600 / 72) / 200 (Gauss, distances from H and H'). Tolerance 1e-12
+  // relative (a few roundings of the paraxial trace). The exit pupil is the stop itself (no
+  // surface after it), finite, so the OPD reference sphere is defined.
+  System s = base_system("telecentric");
+  s.object = {false, Param(200.0)};
+  s.aperture = {rtt::model::SystemApertureType::ObjectSpaceNA, Param(0.05)};
+  s.fields = {FieldType::ObjectHeight, {{0.0, 0.0, 1.0}, {0.0, 2.0, 1.0}}};
+  s.root.children = {{Element{"L",
+                              ElementKind::Lens,
+                              Pose::along_z(0.0),
+                              "CONST:1.5",
+                              {surface("L.S1", 0.0, 64.0), surface("L.S2", 3.0)}}},
+                     {stop_at(129.0, 10.0)},
+                     {Element{"image",
+                              ElementKind::Detector,
+                              Pose::along_z(1.0 + 25600.0 / 72.0),
+                              std::nullopt,
+                              {surface("IMG")}}}};
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+  REQUIRE_FALSE(rtt::paraxial::first_order(cs, PathId{0}, 0).entrance_pupil->z);
+
+  const double m = -(25600.0 / 72.0) / 200.0;
+  const auto d = rtt::analysis::distortion_at(cs, PathId{0}, Field{0.0, 2.0, 1.0}, 0);
+  REQUIRE(std::abs(d.paraxial_height - 2.0 * m) <= 1e-12 * std::abs(2.0 * m));
+  REQUIRE(std::isfinite(d.real_height));
+  REQUIRE(std::isfinite(d.percent));
+  const auto sweep = rtt::analysis::distortion(cs, PathId{0}, 0);
+  REQUIRE(sweep.size() == 11);
+
+  const auto fc = rtt::analysis::field_curvature_at(cs, PathId{0}, Field{0.0, 2.0, 1.0}, 0);
+  REQUIRE(std::isfinite(fc.tangential));
+  REQUIRE(std::isfinite(fc.sagittal));
+
+  const auto spot = rtt::analysis::spot(cs, PathId{0}, 1, std::uint16_t{0});
+  REQUIRE(spot.rays_arrived == spot.rays_launched);
+  const auto opd = rtt::analysis::opd_map(cs, PathId{0}, 1, 0);
+  REQUIRE(opd.vignetted == 0);
+  REQUIRE(std::isfinite(opd.rms));
 }
