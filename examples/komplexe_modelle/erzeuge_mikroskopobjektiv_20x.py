@@ -1,5 +1,8 @@
 """Erzeugt mikroskopobjektiv_20x.rtt.json, nachgebaut nach einem Schnittbild eines Mikroskopobjektivs.
 
+Schnittbild: R. Chandler, "Die Anatomie einer Objektivlinse", Olympus LS (heute Evident), 2020,
+https://evidentscientific.com/de/insights/the-anatomy-of-an-objective-lens (nur Maße abgelesen).
+
 Unendlich-korrigiertes Objektiv 20x/0,45, f = 10 mm, Arbeitsabstand ca. 0,51 mm, Objektfeld
 Ø 1,1 mm (Sehfeldzahl 22). Gerechnet wird RÜCKWÄRTS: Das parallele Bündel kommt von der
 Tubusseite (rechts im Bild) und fokussiert auf das Präparat (links im Bild). So liegt das Objekt

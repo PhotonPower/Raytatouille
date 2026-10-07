@@ -10,7 +10,11 @@ Lehrbeispiele. Die Zahlen unten wurden mit raytatouille 0.4.0 gemessen.
 ## Mikroskopobjektiv 20x/0,45
 
 **Herkunft.** Das Objektiv ist nach einem Schnittbild nachgebaut, einer Illustration eines
-Mikroskopobjektivs mit acht Gruppen. Für das Bild wurde ein Maßstab von 0,1 mm/px angenommen. Daraus
+Mikroskopobjektivs mit acht Gruppen aus R. Chandler, „Die Anatomie einer Objektivlinse“, Olympus LS
+(heute Evident), 4. Februar 2020,
+<https://evidentscientific.com/de/insights/the-anatomy-of-an-objective-lens>. Die Abbildung selbst ist
+nicht im Repository enthalten; aus ihr wurden nur Maße abgelesen. Für das Bild wurde ein Maßstab von
+0,1 mm/px angenommen. Daraus
 stammen die Lage der Gruppen, die Mittendicken, die Luftabstände und die Wölbungsrichtungen. Die
 Radien sind auf Abbildungsqualität optimiert (gedämpfte kleinste Quadrate über den RMS-Spot bei F, d, C und
 drei Feldern, Nebenbedingungen f = 10 mm, Randdicken ≥ 0,25 mm). **Es ist kein Herstellerdatensatz.**
@@ -20,7 +24,10 @@ Schnittbild) und schreibt daraus die Systemdatei. Radien, Abstände, NA oder Fel
 
 ```bash
 python examples/komplexe_modelle/erzeuge_mikroskopobjektiv_20x.py
+rtt format examples/komplexe_modelle/mikroskopobjektiv_20x.rtt.json
 ```
+
+Erst nach `rtt format` ist die Ausgabe bytegleich mit der eingecheckten, kanonischen Datei.
 
 ### Warum rückwärts gerechnet
 
