@@ -1,0 +1,147 @@
+{
+  "schema_version": "0.2.0",
+  "name": "Achromat aus N-BK7 und F2, verkittet, f = 100 mm",
+  "units": {
+    "length": "mm",
+    "wavelength": "um"
+  },
+  "wavelengths": [
+    {
+      "um": 0.4861
+    },
+    {
+      "um": 0.5876,
+      "reference": true
+    },
+    {
+      "um": 0.6563
+    }
+  ],
+  "aperture": {
+    "type": "epd",
+    "value": 20.0
+  },
+  "fields": {
+    "type": "angle_deg",
+    "points": [
+      {},
+      {
+        "y": 2.5
+      },
+      {
+        "y": 5.0
+      }
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {
+              "type": "circular",
+              "radius": 10.0
+            }
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "L1",
+        "pose": {
+          "position": [
+            0,
+            0,
+            5.0
+          ]
+        },
+        "material": [
+          "SCHOTT:N-BK7",
+          "SCHOTT:F2"
+        ],
+        "surfaces": [
+          {
+            "id": "L1.S1",
+            "shape": {
+              "base": {
+                "type": "conic",
+                "radius": 44.39
+              }
+            },
+            "aperture": {
+              "type": "circular",
+              "radius": 14.0
+            }
+          },
+          {
+            "id": "L1.S2",
+            "pose": {
+              "position": [
+                0,
+                0,
+                6.0
+              ]
+            },
+            "shape": {
+              "base": {
+                "type": "conic",
+                "radius": -42.0
+              }
+            },
+            "aperture": {
+              "type": "circular",
+              "radius": 14.0
+            }
+          },
+          {
+            "id": "L1.S3",
+            "pose": {
+              "position": [
+                0,
+                0,
+                9.0
+              ]
+            },
+            "shape": {
+              "base": {
+                "type": "conic",
+                "radius": -830.99
+              }
+            },
+            "aperture": {
+              "type": "circular",
+              "radius": 14.0
+            }
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "surfaces": [
+          {
+            "id": "IMG"
+          }
+        ],
+        "pose": {
+          "position": [
+            0,
+            0,
+            107.708
+          ]
+        }
+      }
+    ]
+  },
+  "paths": [
+    {
+      "name": "main",
+      "events": "auto"
+    }
+  ]
+}

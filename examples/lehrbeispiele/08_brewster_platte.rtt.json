@@ -1,0 +1,92 @@
+{
+  "schema_version": "0.2.0",
+  "name": "Glasplatte unter dem Brewster-Winkel (56,6°): p-Licht geht verlustfrei durch",
+  "units": {
+    "length": "mm",
+    "wavelength": "um"
+  },
+  "wavelengths": [
+    {
+      "um": 0.5876,
+      "reference": true
+    }
+  ],
+  "aperture": {
+    "type": "epd",
+    "value": 6.0
+  },
+  "fields": {
+    "type": "angle_deg",
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "plate",
+        "name": "plate",
+        "pose": {
+          "position": [
+            0,
+            0,
+            20.0
+          ],
+          "rotation_deg": [
+            56.6,
+            0,
+            0
+          ]
+        },
+        "material": "CONST:1.5168",
+        "surfaces": [
+          {
+            "id": "P.S1",
+            "aperture": {
+              "type": "circular",
+              "radius": 20.0
+            }
+          },
+          {
+            "id": "P.S2",
+            "pose": {
+              "position": [
+                0,
+                0,
+                10.0
+              ]
+            },
+            "aperture": {
+              "type": "circular",
+              "radius": 20.0
+            }
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "surfaces": [
+          {
+            "id": "IMG"
+          }
+        ],
+        "pose": {
+          "position": [
+            0,
+            0,
+            80.0
+          ]
+        }
+      }
+    ]
+  },
+  "paths": [
+    {
+      "name": "main",
+      "events": "auto"
+    }
+  ]
+}
