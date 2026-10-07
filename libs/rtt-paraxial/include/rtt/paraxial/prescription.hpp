@@ -72,12 +72,15 @@ struct Prescription {
   std::optional<double> object_distance;
   /// Paraxial working F-number 1 / (2 |n'_K u'_K|) of the marginal ray after the last event
   /// (Greivenkamp p. 9-36, 9-37). For an object at infinity it equals EFL / EPD (p. 9-35).
-  /// None for afocal systems, without a marginal ray, or if u'_K = 0. Paraxial only: a working
-  /// F-number from a real marginal ray may follow later.
+  /// Defined for any cone of light (p. 9-36), so also for an afocal system with a finite
+  /// object. None without a marginal ray or if u'_K = 0, in particular for an afocal system
+  /// with the object at infinity (collimated output; decided by the afocal criterion of
+  /// first_order(), not by rounding). Paraxial only: a working F-number from a real marginal
+  /// ray may follow later.
   std::optional<double> paraxial_working_f_number;
   /// Paraxial image-space NA |n'_K u'_K| of the marginal ray after the last event (Greivenkamp
-  /// p. 9-34, sin U ~ u); also for afocal systems (about 0 for an object at infinity). None
-  /// without a marginal ray.
+  /// p. 9-34, sin U ~ u); also for afocal systems, exactly 0 for an afocal system with the
+  /// object at infinity. None without a marginal ray.
   std::optional<double> paraxial_image_na;
   /// Lagrange invariant H = n (u_bar y - u y_bar) in object space, evaluated at the first
   /// event vertex with the slopes before it, mm (equal to Seidel::lagrange). None without both

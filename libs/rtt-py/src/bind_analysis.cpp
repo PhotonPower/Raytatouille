@@ -455,8 +455,9 @@ void bind_analysis(nb::module_& m) {
       .def_ro("object_distance", &Prescription::object_distance,
               "First event vertex minus object z, mm; None for an object at infinity.")
       .def_ro("paraxial_working_f_number", &Prescription::paraxial_working_f_number,
-              "1 / (2 |n' u'|) of the marginal ray in image space; None if afocal or without "
-              "a marginal ray.")
+              "1 / (2 |n' u'|) of the marginal ray in image space (any cone of light, also "
+              "afocal with a finite object); None if u' = 0 (afocal, object at infinity) or "
+              "without a marginal ray.")
       .def_ro("paraxial_image_na", &Prescription::paraxial_image_na,
               "|n' u'| of the marginal ray in image space; None without a marginal ray.")
       .def_ro("lagrange_invariant", &Prescription::lagrange_invariant,

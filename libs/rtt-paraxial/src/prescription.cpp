@@ -111,9 +111,14 @@ Prescription prescription(const compile::CompiledSystem& system,
 
   if (!infinite && !axis.empty()) out.object_distance = axis.front().z - z_obj;
   if (!marginal.empty()) {
-    const double nu = std::abs(marginal.back().n * marginal.back().u);
+    // The working F/# is defined for any cone of light (Greivenkamp p. 9-36), so also for an
+    // afocal system with a finite object. An afocal system with the object at infinity leaves
+    // the marginal ray parallel: u'_K = 0 in theory, decided by the afocal criterion of
+    // first_order() (efl none) rather than by the rounding of u'_K.
+    const bool collimated = !fo.efl && infinite;
+    const double nu = collimated ? 0.0 : std::abs(marginal.back().n * marginal.back().u);
     out.paraxial_image_na = nu;
-    if (fo.efl && nu != 0.0) out.paraxial_working_f_number = 1.0 / (2.0 * nu);
+    if (nu != 0.0) out.paraxial_working_f_number = 1.0 / (2.0 * nu);
   }
   return out;
 }

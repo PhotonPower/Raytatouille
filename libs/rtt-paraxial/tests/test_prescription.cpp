@@ -332,6 +332,42 @@ TEST_CASE("afocal Kepler telescope: no F/#, angular magnification -f1/f2, H cons
   require_lagrange_constant(p);
 }
 
+TEST_CASE("afocal telescope: working F/# for any cone of light, none for a collimated one",
+          "[prescription]") {
+  // Greivenkamp p. 9-36: the working F/# = 1 / (2 NA) ~ 1 / (2 n |u|) is defined for any cone
+  // of light. An afocal system with a finite object forms a finite image cone; with the
+  // object at infinity the marginal ray leaves parallel (u'_K = 0 exactly in theory, decided
+  // by the afocal criterion of first_order() instead of by rounding): NA = 0, no F/#.
+  // Kepler telescope f1 = 100, f2 = 25 (thin, exact), separation 125, stop (r = 10) at L1.
+  const auto telescope = [] {
+    System s = base_system();
+    add(s, stop("STO", 0.0, 10.0));
+    add(s, lens("L1", 0.0, 1.5, 50.0, std::nullopt, 0.0));
+    add(s, lens("L2", 125.0, 1.5, 12.5, std::nullopt, 0.0));
+    return s;
+  };
+  SECTION("finite object at 300 mm: u0 = 10/300, u' = -2/15 after L2") {
+    // y-nu by hand (thin lenses, u' = u - y / f): u1 = 1/30 - 10/100 = -1/15;
+    // y2 = 10 - 125/15 = 5/3; u2 = -1/15 - (5/3)/25 = -2/15. NA = 2/15, F/#_W = 15/4. At the
+    // plane L2.S2: i = slope in the glass = (-2/15) / 1.5 (n'u' = -1/15 - (5/3) 0.5 / 12.5).
+    System s = telescope();
+    s.object = {false, Param(300.0)};
+    s.fields = {rtt::model::FieldType::ObjectHeight, {{0.0, 0.0, 1.0}, {0.0, 1.0, 1.0}}};
+    const Prescription p = prescription_of(s);
+    REQUIRE_FALSE(p.first_order.efl.has_value());  // afocal
+    REQUIRE(p.surfaces.size() == 5);
+    require_ray(p.surfaces[4].marginal, {5.0 / 3.0, -2.0 / 15.0, -2.0 / 15.0 / 1.5});
+    require_near(p.paraxial_image_na, 2.0 / 15.0);
+    require_near(p.paraxial_working_f_number, 15.0 / 4.0);
+  }
+  SECTION("object at infinity: collimated output, NA = 0, no F/#") {
+    const Prescription p = prescription_of(telescope());
+    REQUIRE(p.paraxial_image_na.has_value());
+    REQUIRE(*p.paraxial_image_na == 0.0);
+    REQUIRE_FALSE(p.paraxial_working_f_number.has_value());
+  }
+}
+
 TEST_CASE("Lagrange invariant constant after every event: two lenses, Cooke triplet, mirror",
           "[prescription]") {
   SECTION("two singlets with the stop between") {
