@@ -1,0 +1,28 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.0",
+ "type": "Retardance",
+ "data": {
+  "value": 0.3,
+  "fast_axis": {
+   "dtype": "complex128",
+   "shape": [
+    3
+   ],
+   "values": [
+    [
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ]
+  }
+ }
+}

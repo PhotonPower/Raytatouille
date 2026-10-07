@@ -49,6 +49,7 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 | 0019 | Coating-Kataloge als eigene JSON-Dateien (`CATALOG:NAME`), Auflösung in `compile()`, Substrat = Inneres des Elements |
 | 0020 | Gemeinsamer strikter JSON-Parser `rtt-json` (header-only, Schicht Basis): doppelte Schlüssel und Zahlen-Overflow sind Fehler mit Pointer |
 | 0022 | Stabile Diagnosecodes in Punktnotation mit Registry `rtt-diagnostics` (header-only, Schicht Basis), Warnungen von `compile()` als Daten, Fehlerorte in `ParaxialError`/`AnalysisError`, eine Klasse `NoStopError` (angenommen) |
+| 0023 | Ergebnisformat `raytatouille-result` (JSON mit dtype/shape für Arrays, NaN als Zeichenkette, Roundtrip = Daten) und Strahlverluste als Daten (vorgeschlagen) |
 
 **Konventionen (verbindlich für alle Bibliotheken)**
 
@@ -393,6 +394,8 @@ sys.save("doublet_opt.rtt.json")
   - Bitgleich gegen `rtt_py_reference` mit P und den `rt.polar`-Größen je Fall. Neue Fälle: `ar_singlet` mit Coatings, absorbierende AR-Platte unter verschiedenen Winkeln, beide Michelson-Arme, Polarisator mit λ/4 und Analysator.
   - Analytische Prüfungen: Malus, (1 + ε)/4, |S3| = S0, π/2.
   - Beispiel `examples/python/polarization.py`.
+
+**Ergebnisse als Daten (#86, ADR 0023):** Jedes Ergebnisobjekt der Python-API hat `to_dict()` und `to_json()` im Format `raytatouille-result` (Schema `schema/raytatouille-result.schema.json`, Beispiele unter `tests/reference/results/`); `rt.results.load_json` liest die Daten bitgleich zurück, ohne die C++-Objekte zu rekonstruieren. Spot, Fächer und OPD zählen in `losses` die Strahlen je Status und die Fläche mit den meisten Verlusten und melden in `warnings` die Codes `rays.lost` (über `lost_warning_fraction`, Standard 50 %) und `stop.clips_beam`; Python gibt sie zusätzlich als `RaytatouilleWarning` aus. In den rtt-py-Tests ist eine unerwartete `RaytatouilleWarning` ein Fehler.
 
 **CLI (`rtt`):** vorhanden: `rtt validate` (Ausgabe `error [code] /pointer: Meldung`, ADR 0022), `rtt format [--check]`, `rtt --version`. Geplant: `rtt trace`, `rtt analyze`, `rtt optimize`, `rtt import <zmx> <rtt.json>`.
 

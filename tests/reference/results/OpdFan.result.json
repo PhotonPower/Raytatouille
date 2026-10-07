@@ -1,0 +1,146 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.0",
+ "type": "OpdFan",
+ "data": {
+  "field": 1,
+  "wavelength": 1,
+  "sphere": {
+   "centre": {
+    "dtype": "float64",
+    "shape": [
+     3
+    ],
+    "values": [
+     0.0,
+     6.114288544093219,
+     106.363
+    ]
+   },
+   "radius": 105.4412116180069
+  },
+  "tangential": {
+   "px": {
+    "dtype": "float64",
+    "shape": [
+     5
+    ],
+    "values": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "py": {
+    "dtype": "float64",
+    "shape": [
+     5
+    ],
+    "values": [
+     -1.0,
+     -0.5,
+     0.0,
+     0.5,
+     1.0
+    ]
+   },
+   "w": {
+    "dtype": "float64",
+    "shape": [
+     5
+    ],
+    "values": [
+     7.747045663436963,
+     1.3294139588429932,
+     0.0,
+     1.8785152050337022,
+     12.395609589228506
+    ]
+   },
+   "status": {
+    "dtype": "uint8",
+    "shape": [
+     5
+    ],
+    "values": [
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  "sagittal": {
+   "px": {
+    "dtype": "float64",
+    "shape": [
+     5
+    ],
+    "values": [
+     -1.0,
+     -0.5,
+     0.0,
+     0.5,
+     1.0
+    ]
+   },
+   "py": {
+    "dtype": "float64",
+    "shape": [
+     5
+    ],
+    "values": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "w": {
+    "dtype": "float64",
+    "shape": [
+     5
+    ],
+    "values": [
+     6.766266740811314,
+     0.7913791358011382,
+     0.0,
+     0.7913791358011382,
+     6.766266740811314
+    ]
+   },
+   "status": {
+    "dtype": "uint8",
+    "shape": [
+     5
+    ],
+    "values": [
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  "losses": {
+   "launched": 10,
+   "by_status": [
+    10,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "worst_surface": null,
+   "worst_surface_count": 0
+  },
+  "warnings": []
+ }
+}

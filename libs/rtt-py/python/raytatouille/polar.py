@@ -28,12 +28,12 @@ Invalid input raises ValueError.
 
 from __future__ import annotations
 
-from typing import NamedTuple, overload
+from typing import Any, NamedTuple, overload
 
 import numpy as np
 import numpy.typing as npt
 
-from . import _core
+from . import _core, results
 from ._core import RayBatch
 
 __all__ = [
@@ -66,6 +66,14 @@ class Diattenuation(NamedTuple):
     minimum: float
     axis: ComplexArray  #: incident state (3,) with the largest transmission
 
+    def to_dict(self) -> dict[str, Any]:
+        """The data as plain Python values (ADR 0023, raytatouille.results)."""
+        return results.to_dict(self)
+
+    def to_json(self, indent: int | None = None) -> str:
+        """JSON text in the format raytatouille-result (ADR 0023)."""
+        return results.to_json(self, indent)
+
 
 class Diattenuations(NamedTuple):
     """Diattenuation of every ray: arrays (N,) and axis (N, 3) complex."""
@@ -75,6 +83,14 @@ class Diattenuations(NamedTuple):
     minimum: FloatArray
     axis: ComplexArray
 
+    def to_dict(self) -> dict[str, Any]:
+        """The data as plain Python values (ADR 0023, raytatouille.results)."""
+        return results.to_dict(self)
+
+    def to_json(self, indent: int | None = None) -> str:
+        """JSON text in the format raytatouille-result (ADR 0023)."""
+        return results.to_json(self, indent)
+
 
 class Retardance(NamedTuple):
     """Retardance delta in [0, pi] rad and the fast axis (3,) complex (Lam, Eq. (4.4))."""
@@ -82,12 +98,28 @@ class Retardance(NamedTuple):
     value: float
     fast_axis: ComplexArray
 
+    def to_dict(self) -> dict[str, Any]:
+        """The data as plain Python values (ADR 0023, raytatouille.results)."""
+        return results.to_dict(self)
+
+    def to_json(self, indent: int | None = None) -> str:
+        """JSON text in the format raytatouille-result (ADR 0023)."""
+        return results.to_json(self, indent)
+
 
 class Retardances(NamedTuple):
     """Retardance of every ray: value (N,) in rad, fast_axis (N, 3); NaN where undefined."""
 
     value: FloatArray
     fast_axis: ComplexArray
+
+    def to_dict(self) -> dict[str, Any]:
+        """The data as plain Python values (ADR 0023, raytatouille.results)."""
+        return results.to_dict(self)
+
+    def to_json(self, indent: int | None = None) -> str:
+        """JSON text in the format raytatouille-result (ADR 0023)."""
+        return results.to_json(self, indent)
 
 
 def _real(a: npt.ArrayLike) -> FloatArray:

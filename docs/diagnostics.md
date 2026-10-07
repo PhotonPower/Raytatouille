@@ -7,15 +7,16 @@ Jede Diagnose (`rtt::model::Diagnostic`, in Python `rt.Diagnostic`) trägt einen
 **Registry:** `libs/rtt-diagnostics/include/rtt/diagnostics/codes.hpp` (Schicht Basis, header-only), in Python `rt.diagnostics.CODES`.
 - Ein Erzeuger kann nur registrierte Codes verwenden. Der Typ `DiagnosticCode` prüft das beim Kompilieren, ein Tippfehler ist ein Compile-Fehler.
 - Die Schwere einer Diagnose ist immer die ihres Registry-Eintrags.
-- Ein pytest gleicht diese Tabelle mit der Registry ab (Code und Schwere).
-- Ein Catch2-Test erzeugt jeden Code einmal an seinem Ort (`libs/rtt-compile/tests/test_diagnostic_codes.cpp`).
+- Ein pytest gleicht diese Tabelle mit der Registry ab (Code, Schwere und Erzeuger).
+- Catch2-Tests erzeugen jeden Code an seinem Ort: `libs/rtt-compile/tests/test_diagnostic_codes.cpp` die Codes von validate und compile (bei mehreren Erzeugungsorten jeden), `libs/rtt-analysis/tests/test_warnings.cpp` die der Analysen.
 
 **Ausgabe:** `to_string` und `rtt validate` schreiben `error [code] /pointer: Meldung`, z. B. `error [material.unknown] /root/children/1/material: …`.
 
 **Wer erzeugt:**
 - `validate`: `rtt::model::validate`, auch `rt.validate` und `rtt validate`.
 - `compile`: `rtt::compile::compile`, als `CompileError` bzw. Warnung in `CompiledSystem::diagnostics()`.
-- Warnungen gibt `compile()` in Python zusätzlich als `RaytatouilleWarning` mit `code` und `location` aus.
+- `analysis`: Spot, Strahlfächer, OPD-Karte und OPD-Fächer (`rtt-analysis`), als Warnung im Feld `warnings` des Ergebnisses (ADR 0023).
+- Warnungen von `compile()` und den Analysen gibt Python zusätzlich als `RaytatouilleWarning` mit `code` und `location` aus.
 
 Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; `…/s` für eine Fläche, z. B. `/root/children/1/surfaces/0`; `i`, `k` für Listenindizes.
 
@@ -67,13 +68,16 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `paths.unknown_surface` | Fehler | Ereignis an einer unbekannten Flächen-ID | validate | `/paths/i/events/k/surface` |
 | `phase.lines_per_mm_invalid` | Fehler | Liniendichte des Gitters nicht endlich oder ≤ 0 | validate | `…/s/phases/i/lines_per_mm` |
 | `phase.radius_invalid` | Fehler | Normierungsradius der Phase nicht endlich oder ≤ 0 mm | validate | `…/s/phases/i/normalization_radius` |
+| `rays.lost` | Warnung | mehr Strahlen verloren als die Schwelle `lost_warning_fraction` der Analyse (Standard 50 %; Vignettierung am Feldrand ist gewollt) | analysis | Fläche, an der die meisten verlorenen Strahlen enden (`…/s`), sonst leer |
 | `shape.asphere_without_coefficients` | Warnung | gerade Asphäre ohne Koeffizienten | validate | `…/s/shape/base/coefficients` |
 | `shape.radius_invalid` | Fehler | Radius null oder nicht endlich | validate | `…/s/shape/base/radius` |
 | `shape.zernike_radius_invalid` | Fehler | Zernike-Normierungsradius nicht endlich oder ≤ 0 mm | validate | `…/s/shape/terms/i/normalization_radius` |
 | `shape.zernike_unsupported` | Fehler | Zernike-Pfeilhöhenterme noch nicht unterstützt (M8) | compile | `…/s/shape/terms/i` |
 | `shape.zernike_without_coefficients` | Warnung | Zernike-Term ohne Koeffizienten | validate | `…/s/shape/terms/i/coefficients` |
 | `stop.aperture_missing` | Fehler | Blende ohne Apertur | validate | `…/el/surfaces/0/aperture` |
+| `stop.clips_beam` | Warnung | Strahlen der Abtastung enden an der Blende mit VIGNETTED: die Blendenöffnung beschneidet das Bündel, das die Systemapertur festlegt | analysis | Blendenfläche `…/s` |
 | `stop.multiple` | Fehler | mehr als ein Blendenelement | validate | `…/el` (zweite Blende) |
+| `stop.not_on_path` | Warnung | ein Pfad besucht das Blendenelement nicht; Zielen, Pupillen, Seidel-Summen und OPD werfen auf ihm `NoStopError` | compile | `/paths/i` |
 | `surface.id_duplicate` | Fehler | Flächen-ID doppelt | validate | `…/s/id` |
 | `surface.id_empty` | Fehler | leere Flächen-ID | validate | `…/s/id` |
 | `surface_aperture.half_width_invalid` | Fehler | halbe Breite der Rechteckapertur nicht endlich oder ≤ 0 mm | validate | `…/s/aperture` |
@@ -92,7 +96,7 @@ Nicht jede Ursache ist eine Diagnose. Diese Ausnahmen tragen den Ort als Daten (
 
 | Ausnahme | Daten | Bedeutung |
 | --- | --- | --- |
-| `rtt::compile::NoStopError` (`std::invalid_argument`); Python `NoStopError(ParaxialError, AnalysisError, ValueError)` | `path_name`, `location` (`/paths/i`) | Der Pfad hat keine Blende, gebraucht für Zielen, Pupillen, Seidel-Summen und OPD. Eine Prüfstelle: `rtt::compile::require_stop`. |
+| `rtt::compile::NoStopError` (`std::invalid_argument`); Python `NoStopError(ParaxialError, AnalysisError, ValueError)` | `path_name`, `location` (`/paths/i`) | Der Pfad hat keine Blende, gebraucht für Zielen, Pupillen, Seidel-Summen und OPD. Eine Prüfstelle: `rtt::compile::require_stop`, vor dem ersten Strahl; eigene Argumentprüfungen der Analyse (Pfad, Feld, Wellenlänge, Rotationssymmetrie, Feldpunkt außerhalb der Achse) dürfen vorher melden. |
 | `rtt::paraxial::ParaxialError` | `surface`, `location` (Fläche oder z. B. `/fields/points/i`, `/fields/type`) | Paraxiale Daten nicht definiert (nicht rotationssymmetrisch, Blende nicht kreisförmig, Feldangaben). |
 | `rtt::analysis::AnalysisError` | `surface`, `location`, `ray_status`, `field`, `wavelength` | Analyse ohne Ergebnis. Die Daten beschreiben den verlorenen Haupt- oder Zonenstrahl. `surface` ist die letzte erreichte Fläche: bei VIGNETTED, ABSORBED, TIR, EVENT_IMPOSSIBLE die Fläche, an der er endet; bei MISSED, NO_CONVERGENCE die davor. |
 | `rtt::io::ParseError`, `rtt::material::AgfError`, `rtt::coating::CoatingCatalogError` | Pointer bzw. Datei und Zeile | Lesefehler; ohne Code. |

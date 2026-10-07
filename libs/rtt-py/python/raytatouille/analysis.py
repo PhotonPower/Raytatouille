@@ -21,8 +21,11 @@ from __future__ import annotations
 
 import math
 import re
+import warnings
+from typing import TypeVar
 
 from . import _core
+from .errors import RaytatouilleWarning
 from ._core import (
     DistortionPoint,
     DistortionSweep,
@@ -148,6 +151,19 @@ def sampling(rays: str | PupilSampling) -> PupilSampling:
     raise ValueError(f"invalid ray sampling {rays!r}: {_SHORTHAND}")
 
 
+_R = TypeVar("_R", SpotDiagram, RayFan, OpdMap, OpdFan)
+
+
+def _warn(result: _R) -> _R:
+    """Issues the warnings of `result` as RaytatouilleWarning (ADR 0022, 0023): rays.lost when
+    more rays are lost than lost_warning_fraction (default one half; vignetting at the field
+    edge is intended), stop.clips_beam when rays end vignetted at the stop. They stay in
+    result.warnings, and result.losses has the counts in any case."""
+    for d in result.warnings:
+        warnings.warn(RaytatouilleWarning(d.message, d.code, d.location), stacklevel=3)
+    return result
+
+
 def spot(
     system: SystemLike,
     path: int | str = 0,
@@ -158,16 +174,22 @@ def spot(
     aiming: Aiming = Aiming.REAL,
     materials: MaterialLibrary | None = None,
     threads: int | None = None,
+    lost_warning_fraction: float = 0.5,
 ) -> SpotDiagram:
     """Spot diagram of ``field``. ``wavelength`` None gives a POLYCHROMATIC spot over all
     system wavelengths with the model's wavelength weights (unlike the other analyses, where
     None means the reference wavelength). ``rays`` is the pupil sampling per wavelength.
 
     Raises AnalysisError if the chief ray does not reach the image surface or no ray arrives.
+
+    ``lost_warning_fraction`` in [0, 1] (ValueError otherwise): above this fraction of lost
+    rays the result warns with rays.lost (ADR 0023); losses has the counts in any case.
+    Warnings stay in ``warnings`` and are also issued as RaytatouilleWarning.
     """
-    return _core.spot(
-        compiled(system, materials), path, field, wavelength, sampling(rays), aiming, threads
-    )
+    return _warn(_core.spot(
+        compiled(system, materials), path, field, wavelength, sampling(rays), aiming,
+        lost_warning_fraction, threads
+    ))
 
 
 def ray_fan(
@@ -180,12 +202,19 @@ def ray_fan(
     aiming: Aiming = Aiming.REAL,
     materials: MaterialLibrary | None = None,
     threads: int | None = None,
+    lost_warning_fraction: float = 0.5,
 ) -> RayFan:
     """Tangential and sagittal ray fans of ``field`` with ``points`` points on [-1, 1]:
-    transverse aberration relative to the chief ray of the reference wavelength, mm."""
-    return _core.ray_fan(
-        compiled(system, materials), path, field, wavelength, points, aiming, threads
-    )
+    transverse aberration relative to the chief ray of the reference wavelength, mm.
+
+    ``lost_warning_fraction`` in [0, 1] (ValueError otherwise): above this fraction of lost
+    rays the result warns with rays.lost (ADR 0023); losses has the counts in any case.
+    Warnings stay in ``warnings`` and are also issued as RaytatouilleWarning.
+    """
+    return _warn(_core.ray_fan(
+        compiled(system, materials), path, field, wavelength, points, aiming,
+        lost_warning_fraction, threads
+    ))
 
 
 def opd_map(
@@ -198,14 +227,21 @@ def opd_map(
     aiming: Aiming = Aiming.REAL,
     materials: MaterialLibrary | None = None,
     threads: int | None = None,
+    lost_warning_fraction: float = 0.5,
 ) -> OpdMap:
     """OPD map of ``field`` on a grid x grid pupil grid (points inside the unit circle), in
     waves at the reference wavelength, against the reference sphere centred on the chief ray.
 
-    Raises AnalysisError e.g. for a path without stop or an exit pupil at infinity."""
-    return _core.opd_map(
-        compiled(system, materials), path, field, wavelength, grid, aiming, threads
-    )
+    Raises AnalysisError e.g. for a path without stop or an exit pupil at infinity.
+
+    ``lost_warning_fraction`` in [0, 1] (ValueError otherwise): above this fraction of lost
+    rays the result warns with rays.lost (ADR 0023); losses has the counts in any case.
+    Warnings stay in ``warnings`` and are also issued as RaytatouilleWarning.
+    """
+    return _warn(_core.opd_map(
+        compiled(system, materials), path, field, wavelength, grid, aiming,
+        lost_warning_fraction, threads
+    ))
 
 
 def opd_fan(
@@ -218,11 +254,18 @@ def opd_fan(
     aiming: Aiming = Aiming.REAL,
     materials: MaterialLibrary | None = None,
     threads: int | None = None,
+    lost_warning_fraction: float = 0.5,
 ) -> OpdFan:
-    """Tangential (px = 0) and sagittal (py = 0) OPD fans of ``field``; as opd_map()."""
-    return _core.opd_fan(
-        compiled(system, materials), path, field, wavelength, points, aiming, threads
-    )
+    """Tangential (px = 0) and sagittal (py = 0) OPD fans of ``field``; as opd_map().
+
+    ``lost_warning_fraction`` in [0, 1] (ValueError otherwise): above this fraction of lost
+    rays the result warns with rays.lost (ADR 0023); losses has the counts in any case.
+    Warnings stay in ``warnings`` and are also issued as RaytatouilleWarning.
+    """
+    return _warn(_core.opd_fan(
+        compiled(system, materials), path, field, wavelength, points, aiming,
+        lost_warning_fraction, threads
+    ))
 
 
 def longitudinal_colour(

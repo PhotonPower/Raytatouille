@@ -49,13 +49,15 @@ def test_registry_lists_every_code_with_its_severity() -> None:
 
 
 def test_registry_and_documentation_agree(reference_dir: Path) -> None:
-    """docs/diagnostics.md lists exactly the registered codes, each with its severity."""
+    """docs/diagnostics.md lists exactly the registered codes, each with its severity and its
+    producer."""
     doc = (reference_dir.parent.parent / "docs" / "diagnostics.md").read_text(encoding="utf-8")
-    rows = re.findall(r"^\| `([a-z0-9_.]+)` \| (Fehler|Warnung) \|", doc, flags=re.MULTILINE)
+    rows = re.findall(r"^\| `([a-z0-9_.]+)` \| (Fehler|Warnung) \| [^|]* \| ([a-z]+) \|", doc,
+                      flags=re.MULTILINE)
     severity = {"Fehler": rt.Severity.ERROR, "Warnung": rt.Severity.WARNING}
-    documented = {code: severity[s] for code, s in rows}
+    documented = {code: (severity[s], producer) for code, s, producer in rows}
     assert len(documented) == len(rows), "a code is documented twice"
-    assert documented == {c: i.severity for c, i in rt.diagnostics.CODES.items()}
+    assert documented == {c: (i.severity, i.producer) for c, i in rt.diagnostics.CODES.items()}
 
 
 def test_compile_reports_warnings_as_data_and_as_python_warnings(

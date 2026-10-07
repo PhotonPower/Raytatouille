@@ -1,0 +1,73 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.0",
+ "type": "DistortionSweep",
+ "data": {
+  "fraction": {
+   "dtype": "float64",
+   "shape": [
+    3
+   ],
+   "values": [
+    0.0,
+    0.5,
+    1.0
+   ]
+  },
+  "field_x": {
+   "dtype": "float64",
+   "shape": [
+    3
+   ],
+   "values": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "field_y": {
+   "dtype": "float64",
+   "shape": [
+    3
+   ],
+   "values": [
+    0.0,
+    2.5,
+    5.0
+   ]
+  },
+  "real_height": {
+   "dtype": "float64",
+   "shape": [
+    3
+   ],
+   "values": [
+    0.0,
+    4.365479735617949,
+    8.74264266878194
+   ]
+  },
+  "paraxial_height": {
+   "dtype": "float64",
+   "shape": [
+    3
+   ],
+   "values": [
+    0.0,
+    4.366304023025953,
+    8.749286618084732
+   ]
+  },
+  "percent": {
+   "dtype": "float64",
+   "shape": [
+    3
+   ],
+   "values": [
+    0.0,
+    -0.018878378684966734,
+    -0.0759370402731856
+   ]
+  }
+ }
+}

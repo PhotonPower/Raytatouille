@@ -1,0 +1,11 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.0",
+ "type": "Diagnostic",
+ "data": {
+  "severity": "WARNING",
+  "code": "shape.asphere_without_coefficients",
+  "location": "/root/children/1/surfaces/0/shape/base/coefficients",
+  "message": "asphere without coefficients"
+ }
+}

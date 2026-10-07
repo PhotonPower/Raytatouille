@@ -55,6 +55,9 @@ struct OpdOptions {
   int grid = 33;        ///< map: GridPupil{grid}, points inside the unit circle
   int fan_points = 21;  ///< fans: points evenly spaced on [-1, 1]
   trace::Aiming aiming = trace::Aiming::Real;  ///< aiming of all rays, chief rays included
+  /// Warning "rays.lost" if more than this fraction of the launched rays is lost (ADR 0023);
+  /// in [0, 1]. Vignetting at the field edge is intended, hence the default of one half.
+  double lost_warning_fraction = 0.5;
 };
 
 /// OPD map over the pupil.
@@ -69,6 +72,12 @@ struct OpdMap {
   double pv = 0.0;            ///< max W - min W over the arrived points, waves
   std::size_t arrived = 0;    ///< points with status Alive (they define rms and pv)
   std::size_t vignetted = 0;  ///< points that did not arrive (arrived + vignetted = size)
+  /// Rays of the sampling by the final status of their points (a ray that misses the
+  /// reference sphere counts as Vignetted), worst loss surface (ADR 0023).
+  RayLosses losses;
+  /// Warnings with stable codes (ADR 0022, 0023): "rays.lost" above lost_warning_fraction,
+  /// "stop.clips_beam" if rays end Vignetted at the stop surface.
+  std::vector<model::Diagnostic> warnings;
 };
 
 /// Tangential (px = 0) and sagittal (py = 0) OPD fans.
@@ -78,11 +87,17 @@ struct OpdFan {
   ReferenceSphere sphere;
   std::vector<OpdPoint> tangential;
   std::vector<OpdPoint> sagittal;
+  /// Rays of the sampling by the final status of their points (a ray that misses the
+  /// reference sphere counts as Vignetted), worst loss surface (ADR 0023).
+  RayLosses losses;
+  /// Warnings with stable codes (ADR 0022, 0023): "rays.lost" above lost_warning_fraction,
+  /// "stop.clips_beam" if rays end Vignetted at the stop surface.
+  std::vector<model::Diagnostic> warnings;
 };
 
 /// OPD map of `field` at `wavelength`.
-/// @throws std::invalid_argument for an invalid path, field, wavelength, grid < 1 (and as
-///         rtt::trace::make_rays)
+/// @throws std::invalid_argument for an invalid path, field, wavelength, grid < 1 or
+///         options.lost_warning_fraction outside [0, 1] (and as rtt::trace::make_rays)
 /// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric or the stop
 ///         aperture is not circular (aiming and exit pupil)
 /// @throws rtt::compile::NoStopError (a std::invalid_argument) if the path has no stop; checked

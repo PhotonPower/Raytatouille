@@ -19,6 +19,7 @@
 ///   image surface; every other ray (vignetted, missed, TIR, aiming failed, ...) counts as
 ///   vignetted.
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -30,6 +31,7 @@
 
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/trace/ray_batch.hpp"
+#include "rtt/trace/sequential.hpp"
 #include "rtt/trace/sources.hpp"
 
 namespace rtt::analysis {
@@ -77,6 +79,26 @@ class AnalysisError : public std::runtime_error {
   std::optional<LostRay> ray_;
 };
 
+/// Where the rays of an analysis went (ADR 0023): the rays of its pupil sampling (not the
+/// chief ray) by final status, and the surface where most of the lost rays ended.
+struct RayLosses {
+  std::size_t launched = 0;  ///< rays traced
+  /// Rays per final RayStatus, indexed by its value. Alive counts the rays that arrived at the
+  /// image surface; a ray that ended Alive elsewhere counts as Vignetted.
+  std::array<std::size_t, trace::kRayStatusCount> by_status{};
+  /// Index into CompiledSystem::surfaces() of the surface that most lost rays reached last
+  /// (RayBatch::last_surface: the surface where a Vignetted, Absorbed, Tir or EventImpossible
+  /// ray stopped, the surface before the one a Missed or NoConvergence ray did not reach);
+  /// ties go to the lowest index. None if no lost ray reached a surface.
+  std::optional<std::uint32_t> worst_surface;
+  std::size_t worst_surface_count = 0;  ///< lost rays whose last surface is worst_surface
+
+  /// Number of rays that ended with status `s`.
+  [[nodiscard]] std::size_t count(trace::RayStatus s) const noexcept {
+    return by_status[static_cast<std::size_t>(s)];
+  }
+};
+
 /// Point in the local x, y plane of the image surface, mm.
 struct Point2 {
   double x = 0.0;
@@ -108,6 +130,9 @@ struct SpotStatistics {
 struct SpotOptions {
   trace::PupilSampling sampling = trace::HexapolarPupil{6};  ///< pupil sampling per wavelength
   trace::Aiming aiming = trace::Aiming::Real;  ///< aiming of all rays, chief ray included
+  /// Warning "rays.lost" if more than this fraction of the launched rays is lost (ADR 0023);
+  /// in [0, 1]. Vignetting at the field edge is intended, hence the default of one half.
+  double lost_warning_fraction = 0.5;
 };
 
 /// Spot diagram of one field at one wavelength or polychromatic.
@@ -121,6 +146,10 @@ struct SpotDiagram {
   std::size_t rays_launched = 0;    ///< rays started, over all wavelengths of the spot
   std::size_t rays_arrived = 0;     ///< rays that reached the image surface (= points.size())
   double vignetted_fraction = 0.0;  ///< (launched - arrived) / launched, unweighted
+  RayLosses losses;  ///< rays of the sampling by final status, worst loss surface (ADR 0023)
+  /// Warnings with stable codes (ADR 0022, 0023): "rays.lost" above lost_warning_fraction,
+  /// "stop.clips_beam" if rays end Vignetted at the stop surface.
+  std::vector<model::Diagnostic> warnings;
 };
 
 /// Spot diagram of `field`. Rays come from rtt::trace::make_rays and are traced with the
@@ -129,8 +158,8 @@ struct SpotDiagram {
 /// @param wavelength index of one system wavelength, or std::nullopt for all wavelengths with
 ///                   the model's wavelength weights
 /// @throws std::invalid_argument for an invalid path, field or wavelength, a wavelength weight
-///         that is negative or not finite, or weights that do not sum to a positive value (and
-///         as rtt::trace::make_rays)
+///         that is negative or not finite, weights that do not sum to a positive value, or
+///         options.lost_warning_fraction outside [0, 1] (and as rtt::trace::make_rays)
 /// @throws rtt::compile::NoStopError (a std::invalid_argument) if the path has no stop; checked
 ///         by rtt::compile::require_stop before any ray is traced (ADR 0022)
 /// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric (aiming)
@@ -146,6 +175,9 @@ struct SpotDiagram {
 struct FanOptions {
   int points = 21;                             ///< points per fan, evenly spaced on [-1, 1]
   trace::Aiming aiming = trace::Aiming::Real;  ///< aiming of all rays, chief ray included
+  /// Warning "rays.lost" if more than this fraction of the launched rays is lost (ADR 0023);
+  /// in [0, 1]. Vignetting at the field edge is intended, hence the default of one half.
+  double lost_warning_fraction = 0.5;
 };
 
 /// One point of a ray fan: transverse aberration relative to the chief ray.
@@ -166,11 +198,15 @@ struct RayFan {
   Point2 chief;                      ///< reference ray on the image surface, mm
   std::vector<FanPoint> tangential;  ///< epsilon_y(py) is the tangential aberration
   std::vector<FanPoint> sagittal;    ///< epsilon_x(px) is the sagittal aberration
+  RayLosses losses;  ///< rays of the sampling by final status, worst loss surface (ADR 0023)
+  /// Warnings with stable codes (ADR 0022, 0023): "rays.lost" above lost_warning_fraction,
+  /// "stop.clips_beam" if rays end Vignetted at the stop surface.
+  std::vector<model::Diagnostic> warnings;
 };
 
 /// Ray fans of `field` at `wavelength`, relative to the chief ray (see file comment).
-/// @throws std::invalid_argument for an invalid path, field, wavelength or points < 1 (and as
-///         rtt::trace::make_rays)
+/// @throws std::invalid_argument for an invalid path, field, wavelength, points < 1 or
+///         options.lost_warning_fraction outside [0, 1] (and as rtt::trace::make_rays)
 /// @throws rtt::compile::NoStopError (a std::invalid_argument) if the path has no stop; checked
 ///         by rtt::compile::require_stop before any ray is traced (ADR 0022)
 /// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric (aiming)

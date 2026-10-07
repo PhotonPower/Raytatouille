@@ -15,4 +15,5 @@ NB_MODULE(_core, m) {
   rtt::py::bind_analysis(m);
   rtt::py::bind_polar(m);
   rtt::py::bind_layout(m);
+  rtt::py::bind_result_methods(m);  // after all result classes
 }

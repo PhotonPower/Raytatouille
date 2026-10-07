@@ -1,0 +1,14 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.0",
+ "type": "CompiledElement",
+ "data": {
+  "name": "L1",
+  "first_surface": 1,
+  "surface_count": 2,
+  "media": [
+   1
+  ],
+  "segmented": true
+ }
+}

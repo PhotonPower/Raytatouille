@@ -1,10 +1,12 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
+#include <nanobind/stl/array.h>
 #include <nanobind/stl/optional.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/variant.h>
 #include <nanobind/stl/vector.h>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -105,6 +107,26 @@ void bind_analysis(nb::module_& m) {
   column<double>(points2, "x", [](const Point2& p) { return p.x; }, "Local x, mm (copy).");
   column<double>(points2, "y", [](const Point2& p) { return p.y; }, "Local y, mm (copy).");
 
+  nb::class_<RayLosses>(
+      m, "RayLosses",
+      "Where the rays of an analysis went (ADR 0023): the rays of its pupil sampling (not the "
+      "chief ray) by final status, and the surface where most of the lost rays ended.")
+      .def_ro("launched", &RayLosses::launched, "Rays traced.")
+      .def_ro("by_status", &RayLosses::by_status,
+              "Rays per final RayStatus, indexed by its value; ALIVE counts the rays that "
+              "arrived at the image surface.")
+      .def(
+          "count",
+          [](const RayLosses& l, trace::RayStatus s) {
+            return l.by_status[static_cast<std::size_t>(s)];
+          },
+          "status"_a, "Number of rays that ended with `status`.")
+      .def_ro("worst_surface", &RayLosses::worst_surface,
+              "Index into surface_ids of the surface that most lost rays reached last "
+              "(RayBatch.last_surface; ties: the lowest index), or None.")
+      .def_ro("worst_surface_count", &RayLosses::worst_surface_count,
+              "Lost rays whose last surface is worst_surface.");
+
   nb::class_<SpotStatistics>(m, "SpotStatistics", "Weighted statistics of a spot diagram, mm.")
       .def_ro("centroid", &SpotStatistics::centroid, "c = sum w r / sum w.")
       .def_ro("rms_centroid", &SpotStatistics::rms_centroid, "RMS radius about the centroid.")
@@ -127,6 +149,10 @@ void bind_analysis(nb::module_& m) {
       .def_ro("rays_arrived", &SpotDiagram::rays_arrived)
       .def_ro("vignetted_fraction", &SpotDiagram::vignetted_fraction,
               "(launched - arrived) / launched, unweighted.")
+      .def_ro("losses", &SpotDiagram::losses, "Rays by final status, worst loss surface.")
+      .def_ro("warnings", &SpotDiagram::warnings,
+              "Warnings with codes: rays.lost above lost_warning_fraction, stop.clips_beam "
+              "(ADR 0023); raytatouille.analysis also issues them as RaytatouilleWarning.")
       .def_prop_ro(
           "x",
           [](const SpotDiagram& s) {
@@ -180,7 +206,11 @@ void bind_analysis(nb::module_& m) {
           "px = 0, py in [-1, 1]; ey(py) is the tangential aberration.")
       .def_prop_ro(
           "sagittal", [](const RayFan& f) { return FanPoints{f.sagittal}; },
-          "py = 0, px in [-1, 1]; ex(px) is the sagittal aberration.");
+          "py = 0, px in [-1, 1]; ex(px) is the sagittal aberration.")
+      .def_ro("losses", &RayFan::losses, "Rays of both fans by final status, worst loss surface.")
+      .def_ro("warnings", &RayFan::warnings,
+              "Warnings with codes: rays.lost above lost_warning_fraction, stop.clips_beam "
+              "(ADR 0023); raytatouille.analysis also issues them as RaytatouilleWarning.");
 
   nb::class_<ReferenceSphere>(m, "ReferenceSphere", "Reference sphere in global coordinates.")
       .def_prop_ro(
@@ -215,14 +245,22 @@ void bind_analysis(nb::module_& m) {
       .def_ro("rms", &OpdMap::rms, "Standard deviation of W (piston removed), waves.")
       .def_ro("pv", &OpdMap::pv, "Max W - min W, waves.")
       .def_ro("arrived", &OpdMap::arrived)
-      .def_ro("vignetted", &OpdMap::vignetted);
+      .def_ro("vignetted", &OpdMap::vignetted)
+      .def_ro("losses", &OpdMap::losses, "Rays by final status, worst loss surface.")
+      .def_ro("warnings", &OpdMap::warnings,
+              "Warnings with codes: rays.lost above lost_warning_fraction, stop.clips_beam "
+              "(ADR 0023); raytatouille.analysis also issues them as RaytatouilleWarning.");
 
   nb::class_<OpdFan>(m, "OpdFan", "Tangential (px = 0) and sagittal (py = 0) OPD fans.")
       .def_ro("field", &OpdFan::field)
       .def_ro("wavelength", &OpdFan::wavelength)
       .def_ro("sphere", &OpdFan::sphere)
       .def_prop_ro("tangential", [](const OpdFan& o) { return OpdPoints{o.tangential}; })
-      .def_prop_ro("sagittal", [](const OpdFan& o) { return OpdPoints{o.sagittal}; });
+      .def_prop_ro("sagittal", [](const OpdFan& o) { return OpdPoints{o.sagittal}; })
+      .def_ro("losses", &OpdFan::losses, "Rays of both fans by final status, worst loss surface.")
+      .def_ro("warnings", &OpdFan::warnings,
+              "Warnings with codes: rays.lost above lost_warning_fraction, stop.clips_beam "
+              "(ADR 0023); raytatouille.analysis also issues them as RaytatouilleWarning.");
 
   auto foci = columns<Foci>(m, "Foci", "Focus positions per system wavelength.");
   column<std::uint16_t>(
@@ -483,58 +521,69 @@ void bind_analysis(nb::module_& m) {
       "spot",
       [](const compile::CompiledSystem& s, const PathArg& path, std::uint16_t field,
          std::optional<std::uint16_t> wavelength, const trace::PupilSampling& sampling,
-         trace::Aiming aiming, std::optional<int> threads) {
-        const SpotOptions options{sampling, aiming};
+         trace::Aiming aiming, double lost_warning_fraction, std::optional<int> threads) {
+        SpotOptions options;
+        options.sampling = sampling;
+        options.aiming = aiming;
+        options.lost_warning_fraction = lost_warning_fraction;
         return with_threads(threads, [&] {
           return analysis::spot(s, path_id(s, path), field, wavelength, options);
         });
       },
       "system"_a, "path"_a, "field"_a, "wavelength"_a.none(), "sampling"_a, "aiming"_a,
-      "threads"_a.none(), release,
+      "lost_warning_fraction"_a, "threads"_a.none(), release,
       "Spot diagram of `field`; wavelength None means polychromatic (model weights).");
   m.def(
       "ray_fan",
       [](const compile::CompiledSystem& s, const PathArg& path, std::uint16_t field,
          std::optional<std::uint16_t> wavelength, int points, trace::Aiming aiming,
-         std::optional<int> threads) {
-        const FanOptions options{points, aiming};
+         double lost_warning_fraction, std::optional<int> threads) {
+        FanOptions options;
+        options.points = points;
+        options.aiming = aiming;
+        options.lost_warning_fraction = lost_warning_fraction;
         return with_threads(threads, [&] {
           return analysis::ray_fan(s, path_id(s, path), field, wavelength_index(s, wavelength),
                                    options);
         });
       },
       "system"_a, "path"_a, "field"_a, "wavelength"_a.none(), "points"_a, "aiming"_a,
-      "threads"_a.none(), release, "Ray fans of `field`; wavelength None means the reference.");
+      "lost_warning_fraction"_a, "threads"_a.none(), release,
+      "Ray fans of `field`; wavelength None means the reference.");
   m.def(
       "opd_map",
       [](const compile::CompiledSystem& s, const PathArg& path, std::uint16_t field,
          std::optional<std::uint16_t> wavelength, int grid, trace::Aiming aiming,
-         std::optional<int> threads) {
+         double lost_warning_fraction, std::optional<int> threads) {
         OpdOptions options;
         options.grid = grid;
         options.aiming = aiming;
+        options.lost_warning_fraction = lost_warning_fraction;
         return with_threads(threads, [&] {
           return analysis::opd_map(s, path_id(s, path), field, wavelength_index(s, wavelength),
                                    options);
         });
       },
       "system"_a, "path"_a, "field"_a, "wavelength"_a.none(), "grid"_a, "aiming"_a,
-      "threads"_a.none(), release, "OPD map of `field`; wavelength None means the reference.");
+      "lost_warning_fraction"_a, "threads"_a.none(), release,
+      "OPD map of `field`; wavelength None means the reference.");
   m.def(
       "opd_fan",
       [](const compile::CompiledSystem& s, const PathArg& path, std::uint16_t field,
          std::optional<std::uint16_t> wavelength, int points, trace::Aiming aiming,
-         std::optional<int> threads) {
+         double lost_warning_fraction, std::optional<int> threads) {
         OpdOptions options;
         options.fan_points = points;
         options.aiming = aiming;
+        options.lost_warning_fraction = lost_warning_fraction;
         return with_threads(threads, [&] {
           return analysis::opd_fan(s, path_id(s, path), field, wavelength_index(s, wavelength),
                                    options);
         });
       },
       "system"_a, "path"_a, "field"_a, "wavelength"_a.none(), "points"_a, "aiming"_a,
-      "threads"_a.none(), release, "OPD fans of `field`; wavelength None means the reference.");
+      "lost_warning_fraction"_a, "threads"_a.none(), release,
+      "OPD fans of `field`; wavelength None means the reference.");
   m.def(
       "longitudinal_colour",
       [](const compile::CompiledSystem& s, const PathArg& path,

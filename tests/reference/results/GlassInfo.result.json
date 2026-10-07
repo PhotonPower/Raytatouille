@@ -1,0 +1,63 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.0",
+ "type": "GlassInfo",
+ "data": {
+  "reference": "SCHOTT:N-BK7",
+  "catalog": "SCHOTT",
+  "name": "N-BK7",
+  "line": 7,
+  "formula": 2,
+  "supported": true,
+  "unsupported_reason": null,
+  "coefficients": [
+   1.03961212,
+   0.00600069867,
+   0.231792344,
+   0.0200179144,
+   1.01046945,
+   103.560653,
+   0.0,
+   0.0
+  ],
+  "nd": 1.5168,
+  "vd": 64.17,
+  "status": 1,
+  "exclude_substitution": false,
+  "melt_frequency": null,
+  "comment": "",
+  "wavelength_range_um": [
+   0.3,
+   2.5
+  ],
+  "thermal": {
+   "d0": 1.86e-06,
+   "d1": 1.31e-08,
+   "d2": -1.37e-11,
+   "e0": 4.34e-07,
+   "e1": 6.27e-10,
+   "ltk_um": 0.17,
+   "reference_temperature_c": 20.0
+  },
+  "tce_m30_70": 7.1,
+  "tce_100_300": 8.3,
+  "density_g_per_cm3": 2.51,
+  "dpgf": -0.0009,
+  "ignore_thermal_expansion": false,
+  "mechanical": null,
+  "relative_cost": null,
+  "climate_resistance": null,
+  "stain_resistance": null,
+  "acid_resistance": null,
+  "alkali_resistance": null,
+  "phosphate_resistance": null,
+  "transmission": {
+   "dtype": "float64",
+   "shape": [
+    0,
+    3
+   ],
+   "values": []
+  }
+ }
+}

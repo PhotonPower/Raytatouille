@@ -16,7 +16,7 @@ Example::
     stats = rt.trace.trace(compiled, rays)
 """
 
-from . import analysis, diagnostics, errors, layout, materials, paraxial, plot, polar, trace
+from . import analysis, diagnostics, errors, layout, materials, paraxial, plot, polar, results, trace
 from ._core import (
     CoatingLibrary,
     CompiledMedium,
@@ -79,6 +79,7 @@ __all__ = [
     "paraxial",
     "plot",
     "polar",
+    "results",
     "save",
     "trace",
     "validate",

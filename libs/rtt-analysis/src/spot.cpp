@@ -115,9 +115,11 @@ SpotDiagram spot(const compile::CompiledSystem& system,
   d.wavelength = wavelength;
   d.image_surface = image_surface(system, path);
   d.chief = chief_point(system, path, field, options.aiming);
+  detail::LossCounter losses(system, path, options.lost_warning_fraction);
   for (std::size_t k = 0; k < wavelengths.size(); ++k) {
     const trace::RayBatch rays =
         trace_rays(system, path, field, wavelengths[k], options.sampling, options.aiming);
+    losses.add(rays, d.image_surface);
     d.rays_launched += rays.size();
     for (std::size_t i = 0; i < rays.size(); ++i) {
       if (!arrived(rays, i, d.image_surface)) continue;
@@ -126,6 +128,8 @@ SpotDiagram spot(const compile::CompiledSystem& system,
     }
   }
   d.rays_arrived = d.points.size();
+  d.losses = losses.result();
+  d.warnings = losses.warnings();
   d.vignetted_fraction = d.rays_launched == 0
                              ? 0.0
                              : static_cast<double>(d.rays_launched - d.rays_arrived) /
@@ -148,9 +152,11 @@ RayFan ray_fan(const compile::CompiledSystem& system,
   fan.image_surface = image_surface(system, path);
   fan.chief = chief_point(system, path, field, options.aiming);
 
+  detail::LossCounter losses(system, path, options.lost_warning_fraction);
   const auto make_fan = [&](const trace::PupilSampling& sampling, bool tangential) {
     const trace::RayBatch rays =
         trace_rays(system, path, field, wavelength, sampling, options.aiming);
+    losses.add(rays, fan.image_surface);
     std::vector<FanPoint> points;
     points.reserve(rays.size());
     for (std::size_t i = 0; i < rays.size(); ++i) {
@@ -172,6 +178,8 @@ RayFan ray_fan(const compile::CompiledSystem& system,
   };
   fan.tangential = make_fan(trace::FanYPupil{options.points}, true);
   fan.sagittal = make_fan(trace::FanXPupil{options.points}, false);
+  fan.losses = losses.result();
+  fan.warnings = losses.warnings();
   return fan;
 }
 

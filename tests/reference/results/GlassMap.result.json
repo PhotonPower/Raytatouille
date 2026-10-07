@@ -1,0 +1,41 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.0",
+ "type": "GlassMap",
+ "data": {
+  "reference": [
+   "SCHOTT:N-BK7",
+   "SCHOTT:F2"
+  ],
+  "nd": {
+   "dtype": "float64",
+   "shape": [
+    2
+   ],
+   "values": [
+    1.5168,
+    1.62004
+   ]
+  },
+  "vd": {
+   "dtype": "float64",
+   "shape": [
+    2
+   ],
+   "values": [
+    64.17,
+    36.37
+   ]
+  },
+  "status": {
+   "dtype": "int64",
+   "shape": [
+    2
+   ],
+   "values": [
+    1,
+    1
+   ]
+  }
+ }
+}

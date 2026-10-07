@@ -29,7 +29,7 @@ from typing import Any, NamedTuple
 import numpy as np
 import numpy.typing as npt
 
-from . import _core
+from . import _core, results
 from .errors import UnknownMaterial
 
 __all__ = [
@@ -123,6 +123,14 @@ class GlassInfo:
     transmission: npt.NDArray[np.float64]
     """Internal transmittance, shape (n, 3): wavelength in um, tau_i, thickness in mm (read-only)."""
 
+    def to_dict(self) -> dict[str, Any]:
+        """The data as plain Python values (ADR 0023, raytatouille.results)."""
+        return results.to_dict(self)
+
+    def to_json(self, indent: int | None = None) -> str:
+        """JSON text in the format raytatouille-result (ADR 0023)."""
+        return results.to_json(self, indent)
+
 
 class GlassMap(NamedTuple):
     """Data for a glass map (n_d over v_d): one entry per glass, from the NM records."""
@@ -132,6 +140,14 @@ class GlassMap(NamedTuple):
     vd: npt.NDArray[np.float64]
     status: npt.NDArray[np.int64]
     """Status as in GlassInfo, -1 if not given."""
+
+    def to_dict(self) -> dict[str, Any]:
+        """The data as plain Python values (ADR 0023, raytatouille.results)."""
+        return results.to_dict(self)
+
+    def to_json(self, indent: int | None = None) -> str:
+        """JSON text in the format raytatouille-result (ADR 0023)."""
+        return results.to_json(self, indent)
 
 
 def _not_available(value: float | None) -> float | None:

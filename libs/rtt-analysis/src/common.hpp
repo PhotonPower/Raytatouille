@@ -5,13 +5,18 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <iomanip>
+#include <map>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "rtt/analysis/spot.hpp"
 #include "rtt/compile/compiled_system.hpp"
+#include "rtt/diagnostics/codes.hpp"
 #include "rtt/trace/ray_batch.hpp"
 #include "rtt/trace/sequential.hpp"
 #include "rtt/trace/sources.hpp"
@@ -75,6 +80,109 @@ inline trace::RayBatch trace_aimed(const CompiledSystem& system,
 inline bool arrived(const trace::RayBatch& rays, std::size_t i, std::uint32_t image) {
   return rays.status()[i] == trace::RayStatus::Alive && rays.last_surface()[i] == image;
 }
+
+/// Accumulates RayLosses over the batches of one analysis and derives its warnings.
+class LossCounter {
+ public:
+  /// @throws std::invalid_argument if `lost_warning_fraction` is not in [0, 1]
+  LossCounter(const CompiledSystem& system, PathId path, double lost_warning_fraction)
+      : system_(&system), threshold_(lost_warning_fraction) {
+    if (!(lost_warning_fraction >= 0.0 && lost_warning_fraction <= 1.0)) {
+      throw std::invalid_argument("analysis: lost_warning_fraction must lie in [0, 1]");
+    }
+    for (const auto& event : system.path(path).events) {
+      if (system.surfaces()[event.surface].element_kind == model::ElementKind::Stop) {
+        stop_ = event.surface;
+        break;
+      }
+    }
+  }
+
+  /// Counts every ray of `rays`; a ray that ended Alive elsewhere than on `image` counts as
+  /// Vignetted (as in the fans).
+  void add(const trace::RayBatch& rays, std::uint32_t image) {
+    for (std::size_t i = 0; i < rays.size(); ++i) {
+      trace::RayStatus s = rays.status()[i];
+      if (s == trace::RayStatus::Alive && rays.last_surface()[i] != image) {
+        s = trace::RayStatus::Vignetted;
+      }
+      add_ray(s, rays.last_surface()[i]);
+    }
+  }
+
+  /// Counts one ray with its final status as the analysis sees it (e.g. Vignetted for an OPD
+  /// ray that misses the reference sphere) and its RayBatch::last_surface.
+  void add_ray(trace::RayStatus s, std::uint32_t last_surface) {
+    ++losses_.launched;
+    ++losses_.by_status[static_cast<std::size_t>(s)];
+    if (s != trace::RayStatus::Alive && last_surface != trace::kNoSurface) {
+      ++lost_at_[last_surface];
+    }
+    if (s == trace::RayStatus::Vignetted && stop_ && last_surface == *stop_) {
+      ++vignetted_at_stop_;
+    }
+  }
+
+  [[nodiscard]] RayLosses result() const {
+    RayLosses l = losses_;
+    for (const auto& [surface, n] : lost_at_) {  // ascending index: ties keep the lowest
+      if (n > l.worst_surface_count) {
+        l.worst_surface = surface;
+        l.worst_surface_count = n;
+      }
+    }
+    return l;
+  }
+
+  /// "rays.lost" if the lost fraction exceeds the threshold, at the worst loss surface;
+  /// "stop.clips_beam" if rays ended Vignetted at the stop, at the stop surface (ADR 0023).
+  [[nodiscard]] std::vector<model::Diagnostic> warnings() const {
+    std::vector<model::Diagnostic> out;
+    const RayLosses l = result();
+    const std::size_t lost = l.launched - l.count(trace::RayStatus::Alive);
+    const auto name = [&](std::uint32_t s) { return "'" + system_->surfaces()[s].id.str() + "'"; };
+    if (l.launched > 0 &&
+        static_cast<double>(lost) > threshold_ * static_cast<double>(l.launched)) {
+      std::string message = std::to_string(lost) + " of " + std::to_string(l.launched) +
+                            " rays lost, more than the threshold " + percent(threshold_);
+      std::string location;
+      if (l.worst_surface) {
+        message += "; the most (" + std::to_string(l.worst_surface_count) + ") ended at surface " +
+                   name(*l.worst_surface);
+        location = system_->surfaces()[*l.worst_surface].location;
+      }
+      add(out, "rays.lost", std::move(location), std::move(message));
+    }
+    if (stop_ && vignetted_at_stop_ > 0) {  // only counted with a stop
+      add(out, "stop.clips_beam", system_->surfaces()[*stop_].location,
+          std::to_string(vignetted_at_stop_) + " rays ended Vignetted at the stop " + name(*stop_) +
+              ": its aperture clips the beam that the system aperture defines");
+    }
+    return out;
+  }
+
+ private:
+  static void add(std::vector<model::Diagnostic>& out,
+                  diagnostics::DiagnosticCode code,
+                  std::string location,
+                  std::string message) {
+    out.push_back(
+        {code.severity(), std::move(location), std::move(message), std::string(code.str())});
+  }
+
+  static std::string percent(double fraction) {
+    std::ostringstream text;
+    text << std::setprecision(3) << fraction * 100.0 << " %";
+    return text.str();
+  }
+
+  const CompiledSystem* system_;
+  double threshold_;
+  std::optional<std::uint32_t> stop_;
+  std::size_t vignetted_at_stop_ = 0;
+  RayLosses losses_;
+  std::map<std::uint32_t, std::size_t> lost_at_;
+};
 
 /// AnalysisError for ray i that did not arrive, with its surface, status, field and wavelength.
 [[noreturn]] inline void throw_lost(const CompiledSystem& system,

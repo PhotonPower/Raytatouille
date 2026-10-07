@@ -1,0 +1,48 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.0",
+ "type": "LongitudinalColour",
+ "data": {
+  "pair": {
+   "first": 0,
+   "second": 2
+  },
+  "foci": {
+   "wavelength": {
+    "dtype": "uint16",
+    "shape": [
+     3
+    ],
+    "values": [
+     0,
+     1,
+     2
+    ]
+   },
+   "paraxial_z": {
+    "dtype": "float64",
+    "shape": [
+     3
+    ],
+    "values": [
+     106.44277620166267,
+     106.44215154779879,
+     106.44188755890669
+    ]
+   },
+   "real_z": {
+    "dtype": "float64",
+    "shape": [
+     3
+    ],
+    "values": [
+     105.34081568291646,
+     105.34019704423547,
+     105.3399355974391
+    ]
+   }
+  },
+  "paraxial": 0.0008886427559815502,
+  "real": 0.0008800854773625133
+ }
+}

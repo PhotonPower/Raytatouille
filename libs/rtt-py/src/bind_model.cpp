@@ -64,14 +64,15 @@ void bind_model(nb::module_& m) {
   m.def(
       "diagnostic_codes",
       [] {
-        std::vector<std::tuple<std::string, model::Severity, std::string>> codes;
+        std::vector<std::tuple<std::string, model::Severity, std::string, std::string>> codes;
         for (const diagnostics::CodeInfo& info : diagnostics::kCodes) {
-          codes.emplace_back(std::string(info.code), info.severity, std::string(info.summary));
+          codes.emplace_back(std::string(info.code), info.severity, std::string(info.producer),
+                             std::string(info.summary));
         }
         return codes;
       },
-      "Registry of the diagnostic codes as (code, severity, summary), sorted by code (use "
-      "raytatouille.diagnostics.CODES).");
+      "Registry of the diagnostic codes as (code, severity, producer, summary), sorted by code "
+      "(use raytatouille.diagnostics.CODES).");
 
   nb::class_<model::Environment>(m, "Environment", "Surroundings of the system.")
       .def(nb::init<>())
