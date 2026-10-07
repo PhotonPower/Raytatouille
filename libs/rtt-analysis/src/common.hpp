@@ -3,6 +3,7 @@
 /// @file common.hpp
 /// Internal helpers shared by the analyses of rtt-analysis (not installed, not public API).
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <iomanip>
@@ -113,8 +114,8 @@ class LossCounter {
   /// Counts one ray with its final status as the analysis sees it (e.g. Vignetted for an OPD
   /// ray that misses the reference sphere) and its RayBatch::last_surface.
   void add_ray(trace::RayStatus s, std::uint32_t last_surface) {
-    ++losses_.launched;
-    ++losses_.by_status[static_cast<std::size_t>(s)];
+    ++launched_;
+    ++by_status_[static_cast<std::size_t>(s)];
     if (s != trace::RayStatus::Alive && last_surface != trace::kNoSurface) {
       ++lost_at_[last_surface];
     }
@@ -124,13 +125,19 @@ class LossCounter {
   }
 
   [[nodiscard]] RayLosses result() const {
-    RayLosses l = losses_;
+    // Built field by field: copying a stored RayLosses with an empty optional made GCC 13 warn
+    // "may be used uninitialized" in Release (CI of #104).
+    RayLosses l;
+    l.launched = launched_;
+    l.by_status = by_status_;
+    std::uint32_t worst = 0;
     for (const auto& [surface, n] : lost_at_) {  // ascending index: ties keep the lowest
       if (n > l.worst_surface_count) {
-        l.worst_surface = surface;
+        worst = surface;
         l.worst_surface_count = n;
       }
     }
+    if (l.worst_surface_count > 0) l.worst_surface = worst;
     return l;
   }
 
@@ -180,7 +187,8 @@ class LossCounter {
   double threshold_;
   std::optional<std::uint32_t> stop_;
   std::size_t vignetted_at_stop_ = 0;
-  RayLosses losses_;
+  std::size_t launched_ = 0;
+  std::array<std::size_t, trace::kRayStatusCount> by_status_{};
   std::map<std::uint32_t, std::size_t> lost_at_;
 };
 
