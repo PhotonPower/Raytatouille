@@ -1,4 +1,4 @@
-"""Load a system, print its first-order data and trace a hexapolar bundle.
+"""Load a system, print its first-order and prescription data and trace a hexapolar bundle.
 
 Run from the repository root after building the package (pip install .):
 
@@ -29,6 +29,18 @@ def main(file: Path = REPO_ROOT / "tests" / "reference" / "m1" / "singlet_const.
     fo = rt.paraxial.first_order(compiled, path="main")
     print(f"{system.name}")
     print(f"  EFL {fo.efl:.6f} mm, BFL {fo.bfl:.6f} mm (absolute indices, AIR = Ciddor air)")
+
+    # Paraxial marginal and chief ray per surface, as in a prescription report.
+    p = rt.paraxial.prescription(compiled, path="main")
+    q = p.surfaces
+    print("  surface        z          y          u        i     y_bar      u_bar    i_bar")
+    for k in range(len(q)):
+        name = compiled.surface_ids[int(q.surface[k])]
+        print(f"  {name:8s} {q.z[k]:8.3f} {q.y[k]:10.5f} {q.u[k]:10.6f} {q.i[k]:8.5f}"
+              f" {q.y_bar[k]:9.5f} {q.u_bar[k]:10.6f} {q.i_bar[k]:8.5f}")
+    print(f"  total track {p.total_track:.3f} mm, paraxial working F/# "
+          f"{p.paraxial_working_f_number:.4f}, paraxial image NA {p.paraxial_image_na:.5f}, "
+          f"Lagrange invariant {p.lagrange_invariant:.6f} mm")
 
     for field in range(compiled.field_count):
         rays = rt.trace.make_rays(compiled, rt.trace.HexapolarPupil(rings=6), fields=[field])

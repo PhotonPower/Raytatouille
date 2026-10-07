@@ -22,6 +22,7 @@
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/io/json_io.hpp"
 #include "rtt/material/material.hpp"
+#include "rtt/paraxial/prescription.hpp"
 #include "rtt/paraxial/seidel.hpp"
 
 namespace rtt::py::reference {
@@ -33,6 +34,7 @@ using compile::CompiledSystem;
 using compile::PathId;
 
 constexpr std::uint64_t kNone = std::numeric_limits<std::uint64_t>::max();
+constexpr double kNan = std::numeric_limits<double>::quiet_NaN();  // None in float arrays
 
 /// Writes the arrays of one case as <out>/<case>.<name>.npy.
 class Writer {
@@ -180,6 +182,30 @@ void write_seidel(const Writer& w, const paraxial::Seidel& s) {
        {s.chromatic ? s.chromatic->first : kNone, s.chromatic ? s.chromatic->second : kNone});
 }
 
+void write_prescription(const Writer& w, const paraxial::Prescription& p) {
+  using paraxial::PrescriptionSurface;
+  w.u8_of("surface", p.surfaces, [](const PrescriptionSurface& q) { return q.surface; });
+  w.f8_of("z", p.surfaces, [](const PrescriptionSurface& q) { return q.z; });
+  w.f8_of("n", p.surfaces, [](const PrescriptionSurface& q) { return q.n; });
+  w.f8_of("y", p.surfaces,
+          [](const PrescriptionSurface& q) { return q.marginal ? q.marginal->y : kNan; });
+  w.f8_of("u", p.surfaces,
+          [](const PrescriptionSurface& q) { return q.marginal ? q.marginal->u : kNan; });
+  w.f8_of("i", p.surfaces,
+          [](const PrescriptionSurface& q) { return q.marginal ? q.marginal->i : kNan; });
+  w.f8_of("y_bar", p.surfaces,
+          [](const PrescriptionSurface& q) { return q.chief ? q.chief->y : kNan; });
+  w.f8_of("u_bar", p.surfaces,
+          [](const PrescriptionSurface& q) { return q.chief ? q.chief->u : kNan; });
+  w.f8_of("i_bar", p.surfaces,
+          [](const PrescriptionSurface& q) { return q.chief ? q.chief->i : kNan; });
+  w.f8_of("lagrange", p.surfaces,
+          [](const PrescriptionSurface& q) { return q.lagrange.value_or(kNan); });
+  w.f8("scalars",
+       {p.total_track, p.object_distance.value_or(kNan), p.paraxial_working_f_number.value_or(kNan),
+        p.paraxial_image_na.value_or(kNan), p.lagrange_invariant.value_or(kNan)});
+}
+
 /// Systems of the cases, as in systems() of test_bitwise_analysis.py.
 struct Systems {
   CompiledSystem singlet;
@@ -245,6 +271,8 @@ void run_analysis_cases(const fs::path& reference_dir,
                            s.achromat, path, {1.0, 3.0, 1.0}, ref(s.achromat), {11, 2e-3, real})));
     write_seidel(w("seidel"), paraxial::seidel(s.achromat, path, ref(s.achromat),
                                                paraxial::ChromaticPair{0, 2}));
+    write_prescription(w("prescription"),
+                       paraxial::prescription(s.achromat, path, ref(s.achromat)));
   });
 }
 

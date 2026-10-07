@@ -33,6 +33,16 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/); Versionen 
 - `rtt::compile::NoStopError` mit `path_name` und `location` und die einzige Prüfung
   `rtt::compile::require_stop` (`rtt/compile/errors.hpp`). Python: `rt.NoStopError(ParaxialError,
   AnalysisError, ValueError)` (#86).
+- `rtt-paraxial`: Prescription-Daten `prescription()` (`prescription.hpp`, G5).
+  - Je Event Rand- und Hauptstrahl mit Höhe, Steigung und paraxialem Einfallswinkel sowie die
+    Lagrange-Invariante.
+  - Systemdaten: Gesamtlänge (bei Spiegeln abgewickelt), Objektabstand, paraxiales Arbeits-F/#,
+    paraxiale bildseitige NA, Lagrange-Invariante und die First-Order-Daten.
+  - Dieselben Strahlen wie `seidel()`. Ohne Blende oder Pupille sind die betroffenen Werte leer,
+    ohne Fehler.
+  - Quelle Greivenkamp, OPTI-502 Sec. 9 „Stops and Pupils“, in `docs/quellen.md`.
+  - Python `rt.paraxial.prescription` mit NumPy-Arrays je Fläche (NaN für leere Werte), bitgleich
+    gegen C++; Tabelle im Beispiel `examples/python/singlet.py` (#84).
 
 ### Geändert
 - `rtt-material`: Die AGF-Datensätze NM-Extras, MD, OD und IT werden jetzt streng gelesen statt

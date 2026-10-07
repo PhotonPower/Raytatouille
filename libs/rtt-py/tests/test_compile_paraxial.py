@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 import raytatouille as rt
@@ -76,6 +77,59 @@ def test_first_order_path_and_wavelength_arguments(reference_dir: Path) -> None:
     by_index = rt.paraxial.first_order(cs, 0, cs.reference_wavelength)
     assert by_name.efl == by_index.efl
     assert rt.paraxial.first_order(cs).efl == by_name.efl
+
+
+def test_prescription_of_the_reference_singlet(reference_dir: Path) -> None:
+    # Values by hand as in libs/rtt-paraxial/tests/test_prescription.cpp: stop (r = 10) at
+    # z = 0, plano-convex lens n = 1.5168, R1 = 51.68 from z = 5 to 9, image at z = 106.363,
+    # EPD 20, maximum field 5 deg. i = u + y c (Sasian, OPTI 517 L4, p. 24); F/# = EFL / EPD =
+    # 1 / (2 n' |u'|) and NA = n' |u'| (Greivenkamp, OPTI-502 Sec. 9, p. 9-34, 9-35); Lagrange
+    # invariant n (u_bar y - u y_bar) = 10 tan 5 deg in the stop (p. 9-41).
+    cs = singlet(reference_dir)
+    p = rt.paraxial.prescription(cs, path="main")
+    q = p.surfaces
+    t = math.tan(math.radians(5.0))
+    c = 1.0 / 51.68
+    assert len(q) == 4
+    assert q.surface.tolist() == [0, 1, 2, 3]
+    assert q.z == pytest.approx([0.0, 5.0, 9.0, 106.363], rel=1e-12, abs=1e-12)
+    assert q.n.tolist() == [1.0, 1.5168, 1.0, 1.0]
+    assert q.y[1] == 10.0 and q.u[0] == 0.0
+    assert q.i[1] == pytest.approx(10.0 * c, rel=1e-12)
+    assert q.i_bar[1] == pytest.approx(t + 5.0 * t * c, rel=1e-12)
+    assert p.total_track == pytest.approx(106.363, rel=1e-12)
+    assert p.object_distance is None
+    assert p.paraxial_working_f_number == pytest.approx(5.0, rel=1e-12)
+    assert p.paraxial_image_na == pytest.approx(0.1, rel=1e-12)
+    assert p.lagrange_invariant == pytest.approx(10.0 * t, rel=1e-12)
+    assert q.lagrange == pytest.approx(np.full(4, 10.0 * t), rel=1e-12)
+    assert p.marginal_start is not None and p.marginal_start.y == 10.0
+    assert p.chief_start is not None and p.chief_start.u == pytest.approx(t, rel=1e-12)
+    assert p.first_order.efl == pytest.approx(100.0, rel=1e-12)
+    # The same rays as seidel() (one internal construction, #84).
+    s = rt.paraxial.seidel(cs)
+    assert q.y.tobytes() == s.surfaces.y.tobytes()
+    assert q.y_bar.tobytes() == s.surfaces.y_bar.tobytes()
+    assert not q.y.flags.writeable
+
+
+def test_prescription_without_a_stop_has_nan_and_none(reference_dir: Path) -> None:
+    # Paraboloid R = -200 without a stop, EPD 60 (tests/reference/m1/paraboloid_mirror):
+    # marginal ray only; F/# = EFL / EPD = 100 / 60, n' u' = -30 (n' - n) c with c = -1/200.
+    system = rt.load(reference_dir / "m1" / "paraboloid_mirror.rtt.json")
+    system.environment.medium = "VACUUM"
+    p = rt.paraxial.prescription(system)  # a System is compiled first
+    q = p.surfaces
+    assert q.n.tolist() == [-1.0, -1.0]
+    assert not np.isnan(q.y).any()
+    assert np.isnan(q.y_bar).all() and np.isnan(q.u_bar).all() and np.isnan(q.i_bar).all()
+    assert np.isnan(q.lagrange).all()
+    assert p.chief_start is None and p.lagrange_invariant is None
+    assert p.total_track == pytest.approx(100.0, rel=1e-12)
+    assert p.paraxial_working_f_number == pytest.approx(100.0 / 60.0, rel=1e-12)
+    assert p.paraxial_image_na == pytest.approx(0.3, rel=1e-12)
+    with pytest.raises(rt.ParaxialError):
+        rt.paraxial.prescription(system, wavelength=7)
 
 
 def test_first_order_in_air_is_absolute(reference_dir: Path) -> None:

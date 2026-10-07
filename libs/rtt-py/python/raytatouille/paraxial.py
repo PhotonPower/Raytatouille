@@ -1,4 +1,4 @@
-"""First-order (paraxial) data and Seidel sums of a compiled system (rtt-paraxial).
+"""First-order (paraxial) data, prescription data and Seidel sums (rtt-paraxial).
 
 Indices are absolute: in AIR (Ciddor air, n about 1.00027) EFL = 1/power is smaller by the
 factor n_air than in programs that compute relative to air.
@@ -11,6 +11,8 @@ from ._core import (
     ChromaticPair,
     FirstOrder,
     MaterialLibrary,
+    Prescription,
+    PrescriptionSurfaces,
     Pupil,
     RayStart,
     Seidel,
@@ -23,14 +25,44 @@ from ._util import SystemLike, chromatic_pair, compiled
 __all__ = [
     "ChromaticPair",
     "FirstOrder",
+    "Prescription",
+    "PrescriptionSurfaces",
     "Pupil",
     "RayStart",
     "Seidel",
     "SeidelSurfaces",
     "SeidelTerms",
     "first_order",
+    "prescription",
     "seidel",
 ]
+
+
+def prescription(
+    system: SystemLike,
+    path: int | str = 0,
+    wavelength: int | None = None,
+    *,
+    materials: MaterialLibrary | None = None,
+) -> Prescription:
+    """Paraxial prescription data of a path, as in a prescription report.
+
+    Per event of the path (``surfaces``, NumPy copies): vertex z, signed index n after the
+    event, marginal ray y, u, i and chief ray y_bar, u_bar, i_bar (i = u + y c with u before
+    the event, rad), and the Lagrange invariant after the event. System data: total_track
+    (unfolded with mirrors), object_distance, paraxial_working_f_number = 1 / (2 |n' u'|),
+    paraxial_image_na = |n' u'|, lagrange_invariant = n (u_bar y - u y_bar) and first_order
+    (lateral and angular magnification). The rays are those of seidel().
+
+    Without a stop or a usable entrance pupil the affected values are None, and NaN in the
+    arrays, without an error (as first_order()). ``system`` is a System (compiled with
+    ``materials``) or a CompiledSystem; ``path`` an index or a name, ``wavelength`` an index
+    (None: reference). Conventions in rtt/paraxial/prescription.hpp.
+
+    Raises ParaxialError if the path is not rotationally symmetric, the path or wavelength
+    does not exist, or the field definition is invalid for the chief ray.
+    """
+    return _core.prescription(compiled(system, materials), path, wavelength)
 
 
 def seidel(

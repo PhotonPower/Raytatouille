@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -18,6 +19,7 @@
 #include "rtt/analysis/opd.hpp"
 #include "rtt/analysis/spot.hpp"
 #include "rtt/model/system.hpp"
+#include "rtt/paraxial/prescription.hpp"
 #include "rtt/paraxial/seidel.hpp"
 #include "rtt/trace/sources.hpp"
 
@@ -49,6 +51,11 @@ struct FieldCurvatureSweep {
 struct SeidelSurfaces {
   std::vector<paraxial::SeidelSurface> points;
 };
+struct PrescriptionSurfaces {
+  std::vector<paraxial::PrescriptionSurface> points;
+};
+
+constexpr double kNan = std::numeric_limits<double>::quiet_NaN();  // None in float arrays
 
 /// Binds a list class; its attributes are read-only NumPy copies of the C++ result (ADR 0002:
 /// analysis results are small), one array per member of the point type.
@@ -391,6 +398,83 @@ void bind_analysis(nb::module_& m) {
       },
       "system"_a, "path"_a, "wavelength"_a.none(), "pair"_a.none(),
       "Seidel sums; wavelength None means the reference, pair None gives C_L = C_T = 0.");
+
+  using paraxial::Prescription;
+  using paraxial::PrescriptionSurface;
+  auto prescription_surfaces = columns<PrescriptionSurfaces>(
+      m, "PrescriptionSurfaces",
+      "Paraxial marginal and chief ray per event of the path, in path order; NaN where a ray "
+      "is not defined (conventions in rtt/paraxial/prescription.hpp).");
+  column<std::uint32_t>(
+      prescription_surfaces, "surface", [](const PrescriptionSurface& q) { return q.surface; },
+      "Index into surface_ids (copy).");
+  column<double>(
+      prescription_surfaces, "z", [](const PrescriptionSurface& q) { return q.z; },
+      "Global z of the surface vertex, mm (copy).");
+  column<double>(
+      prescription_surfaces, "n", [](const PrescriptionSurface& q) { return q.n; },
+      "Signed index after the event, negative while light travels towards -z (copy).");
+  column<double>(
+      prescription_surfaces, "y",
+      [](const PrescriptionSurface& q) { return q.marginal ? q.marginal->y : kNan; },
+      "Marginal ray height at the vertex plane, mm (copy).");
+  column<double>(
+      prescription_surfaces, "u",
+      [](const PrescriptionSurface& q) { return q.marginal ? q.marginal->u : kNan; },
+      "Marginal ray slope dy/dz after the event (copy).");
+  column<double>(
+      prescription_surfaces, "i",
+      [](const PrescriptionSurface& q) { return q.marginal ? q.marginal->i : kNan; },
+      "Paraxial angle of incidence of the marginal ray, i = u + y c with u before the "
+      "event, rad (copy).");
+  column<double>(
+      prescription_surfaces, "y_bar",
+      [](const PrescriptionSurface& q) { return q.chief ? q.chief->y : kNan; },
+      "Chief ray height at the vertex plane, mm (copy).");
+  column<double>(
+      prescription_surfaces, "u_bar",
+      [](const PrescriptionSurface& q) { return q.chief ? q.chief->u : kNan; },
+      "Chief ray slope dy/dz after the event (copy).");
+  column<double>(
+      prescription_surfaces, "i_bar",
+      [](const PrescriptionSurface& q) { return q.chief ? q.chief->i : kNan; },
+      "Paraxial angle of incidence of the chief ray, rad (copy).");
+  column<double>(
+      prescription_surfaces, "lagrange",
+      [](const PrescriptionSurface& q) { return q.lagrange.value_or(kNan); },
+      "Lagrange invariant n' (u_bar' y - u' y_bar) after the event, mm (copy).");
+  nb::class_<Prescription>(
+      m, "Prescription",
+      "Paraxial prescription data of a path: marginal and chief ray per event and system data "
+      "(conventions in rtt/paraxial/prescription.hpp). Lateral and angular magnification are "
+      "in first_order.")
+      .def_prop_ro("surfaces",
+                   [](const Prescription& p) { return PrescriptionSurfaces{p.surfaces}; })
+      .def_ro("total_track", &Prescription::total_track,
+              "Sum of |dz| between consecutive event vertices, mm (unfolded with mirrors).")
+      .def_ro("object_distance", &Prescription::object_distance,
+              "First event vertex minus object z, mm; None for an object at infinity.")
+      .def_ro("paraxial_working_f_number", &Prescription::paraxial_working_f_number,
+              "1 / (2 |n' u'|) of the marginal ray in image space (any cone of light, also "
+              "afocal with a finite object); None if u' = 0 (afocal, object at infinity) or "
+              "without a marginal ray.")
+      .def_ro("paraxial_image_na", &Prescription::paraxial_image_na,
+              "|n' u'| of the marginal ray in image space; None without a marginal ray.")
+      .def_ro("lagrange_invariant", &Prescription::lagrange_invariant,
+              "H = n (u_bar y - u y_bar) in object space, mm; None without both rays.")
+      .def_ro("marginal_start", &Prescription::marginal_start, nb::rv_policy::copy,
+              "Marginal ray in object space (a copy), or None.")
+      .def_ro("chief_start", &Prescription::chief_start, nb::rv_policy::copy,
+              "Chief ray in object space (a copy), or None.")
+      .def_ro("first_order", &Prescription::first_order, "First-order data of the path.");
+  m.def(
+      "prescription",
+      [](const compile::CompiledSystem& s, const PathArg& path,
+         std::optional<std::uint16_t> wavelength) {
+        return paraxial::prescription(s, path_id(s, path), wavelength_index(s, wavelength));
+      },
+      "system"_a, "path"_a, "wavelength"_a.none(),
+      "Paraxial prescription data; wavelength None means the reference.");
 
   // Analysis functions on a CompiledSystem; raytatouille.analysis wraps them (System or
   // CompiledSystem, sampling shorthand). The GIL is released, `threads` limits the workers.
