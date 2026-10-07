@@ -49,7 +49,7 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 | 0019 | Coating-Kataloge als eigene JSON-Dateien (`CATALOG:NAME`), Auflösung in `compile()`, Substrat = Inneres des Elements |
 | 0020 | Gemeinsamer strikter JSON-Parser `rtt-json` (header-only, Schicht Basis): doppelte Schlüssel und Zahlen-Overflow sind Fehler mit Pointer |
 | 0022 | Stabile Diagnosecodes in Punktnotation mit Registry `rtt-diagnostics` (header-only, Schicht Basis), Warnungen von `compile()` als Daten, Fehlerorte in `ParaxialError`/`AnalysisError`, eine Klasse `NoStopError` (angenommen) |
-| 0023 | Ergebnisformat `raytatouille-result` (JSON mit dtype/shape für Arrays, NaN als Zeichenkette, Roundtrip = Daten) und Strahlverluste als Daten (vorgeschlagen) |
+| 0023 | Ergebnisformat `raytatouille-result` (JSON mit dtype/shape für Arrays, NaN als Zeichenkette, Roundtrip = Daten) und Strahlverluste als Daten (angenommen) |
 
 **Konventionen (verbindlich für alle Bibliotheken)**
 
