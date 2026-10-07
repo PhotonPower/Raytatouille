@@ -1,0 +1,66 @@
+{
+  "schema_version": "0.2.0",
+  "name": "Object-space telecentric plano-convex singlet f = 128 mm, stop in the rear focal plane",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "object": {"at_infinity": false, "distance": 200.0},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "object_na", "value": 0.05},
+  "fields": {
+    "type": "object_height",
+    "points": [
+      {},
+      {"y": 1.0},
+      {"y": 2.0}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "lens",
+        "name": "L",
+        "material": "CONST:1.5",
+        "surfaces": [
+          {
+            "id": "L.S1",
+            "shape": {
+              "base": {"type": "conic", "radius": 64.0}
+            },
+            "aperture": {"type": "circular", "radius": 15.0}
+          },
+          {
+            "id": "L.S2",
+            "pose": {"position": [0.0, 0.0, 3.0]},
+            "aperture": {"type": "circular", "radius": 15.0}
+          }
+        ]
+      },
+      {
+        "type": "stop",
+        "name": "stop",
+        "pose": {"position": [0.0, 0.0, 129.0]},
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 10.0}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 356.55555555555554]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}
