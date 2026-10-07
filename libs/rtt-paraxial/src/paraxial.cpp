@@ -64,7 +64,7 @@ std::vector<Step> prepare(const CompiledSystem& cs, PathId path, std::uint16_t w
   for (const auto& event : events) {
     const compile::CompiledSurface& s = cs.surfaces()[event.surface];
     const auto fail = [&](const std::string& what) {
-      throw ParaxialError("paraxial: surface " + surface_name(cs, event.surface) + ": " + what);
+      throw ParaxialError("paraxial: surface " + surface_name(cs, event.surface) + ": " + what, s);
     };
     if (event.kind != EventKind::Refract && event.kind != EventKind::Reflect &&
         event.kind != EventKind::Transmit) {
@@ -272,7 +272,8 @@ FirstOrder first_order(const compile::CompiledSystem& system,
   }
   if (circle == nullptr) {
     throw ParaxialError("paraxial: the stop " + surface_name(system, steps[stop].surface) +
-                        " needs a circular aperture for the pupils");
+                            " needs a circular aperture for the pupils",
+                        stop_surface);
   }
   const double z_stop = steps[stop].z;
   // Object space -> stop plane, and stop plane -> image space (the stop itself only transmits).

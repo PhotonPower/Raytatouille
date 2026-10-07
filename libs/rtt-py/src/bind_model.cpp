@@ -2,13 +2,17 @@
 #include <nanobind/stl/filesystem.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/string_view.h>
+#include <nanobind/stl/tuple.h>
 #include <nanobind/stl/vector.h>
 
 #include <filesystem>
 #include <stdexcept>
 #include <string>
+#include <tuple>
+#include <vector>
 
 #include "bindings.hpp"
+#include "rtt/diagnostics/codes.hpp"
 #include "rtt/io/json_io.hpp"
 #include "rtt/model/system.hpp"
 #include "rtt/model/validate.hpp"
@@ -48,12 +52,26 @@ void bind_model(nb::module_& m) {
 
   nb::class_<model::Diagnostic>(m, "Diagnostic", "Result of a semantic check of a System.")
       .def_ro("severity", &model::Diagnostic::severity)
+      .def_ro("code", &model::Diagnostic::code,
+              "Stable code, e.g. \"material.unknown\" (docs/diagnostics.md, ADR 0022).")
       .def_ro("location", &model::Diagnostic::location,
               "JSON pointer into the system file, e.g. \"/root/children/0\".")
       .def_ro("message", &model::Diagnostic::message)
       .def("__str__", [](const model::Diagnostic& d) { return model::to_string(d); })
       .def("__repr__",
            [](const model::Diagnostic& d) { return "Diagnostic(" + model::to_string(d) + ")"; });
+
+  m.def(
+      "diagnostic_codes",
+      [] {
+        std::vector<std::tuple<std::string, model::Severity, std::string>> codes;
+        for (const diagnostics::CodeInfo& info : diagnostics::kCodes) {
+          codes.emplace_back(std::string(info.code), info.severity, std::string(info.summary));
+        }
+        return codes;
+      },
+      "Registry of the diagnostic codes as (code, severity, summary), sorted by code (use "
+      "raytatouille.diagnostics.CODES).");
 
   nb::class_<model::Environment>(m, "Environment", "Surroundings of the system.")
       .def(nb::init<>())

@@ -135,12 +135,13 @@ struct AimedRay {
 ///         field angle is not in (-90, 90) degree; no start plane exists before an unbounded
 ///         surface (no aperture and an unbounded shape domain, e.g. a paraboloid, or an
 ///         aperture of 1 km or more) that curves back against a steep field (object at
-///         infinity); a
-///         paraxial image height is requested without a finite paraxial image; the path has no
-///         stop; or the entrance pupil is not defined at the ray's wavelength (pupil at
-///         infinity, no diameter for this aperture type, pupil in the object plane) or, for
-///         paraxial image heights and angles with a finite object, at the reference wavelength
-///         (pupil at infinity or in the object plane)
+///         infinity); a paraxial image height is requested without a finite paraxial image; or
+///         the entrance pupil is not defined at the ray's wavelength (pupil at infinity, no
+///         diameter for this aperture type, pupil in the object plane) or, for paraxial image
+///         heights and angles with a finite object, at the reference wavelength (pupil at
+///         infinity or in the object plane)
+/// @throws rtt::compile::NoStopError (a std::invalid_argument) if the path has no stop; checked
+///         by rtt::compile::require_stop before any ray is traced (ADR 0022)
 /// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric or the stop
 ///         aperture is not circular
 [[nodiscard]] AimedRay aim_ray(const compile::CompiledSystem& system,

@@ -52,6 +52,8 @@ struct LongitudinalColour {
 /// Longitudinal colour of `path`.
 /// @throws std::invalid_argument for an invalid path, wavelength pair or zone (and as
 ///         rtt::trace::aim_ray)
+/// @throws rtt::compile::NoStopError (a std::invalid_argument) if the path has no stop; checked
+///         by rtt::compile::require_stop before any ray is traced (ADR 0022)
 /// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric
 /// @throws AnalysisError if a paraxial focus does not exist (afocal), a real ray does not reach
 ///         the image surface or does not cross the axis
@@ -68,6 +70,8 @@ struct LateralColour {
 
 /// Lateral colour of `field`.
 /// @throws std::invalid_argument for an invalid path or field (and as rtt::trace::aim_ray)
+/// @throws rtt::compile::NoStopError (a std::invalid_argument) if the path has no stop; checked
+///         by rtt::compile::require_stop before any ray is traced (ADR 0022)
 /// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric
 /// @throws AnalysisError if a chief ray does not reach the image surface
 [[nodiscard]] LateralColour lateral_colour(const compile::CompiledSystem& system,

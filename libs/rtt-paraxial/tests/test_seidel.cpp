@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "rtt/compile/compiled_system.hpp"
+#include "rtt/compile/errors.hpp"
 #include "rtt/io/json_io.hpp"
 #include "rtt/paraxial/seidel.hpp"
 
@@ -483,7 +484,7 @@ TEST_CASE("Seidel input errors", "[seidel]") {
   }
   SECTION("no stop on the path") {
     const CompiledSystem cs = compile(load("m1/paraboloid_mirror.rtt.json"));
-    REQUIRE_THROWS_AS(seidel(cs, PathId{0}, 0), ParaxialError);
+    REQUIRE_THROWS_AS(seidel(cs, PathId{0}, 0), rtt::compile::NoStopError);
   }
   SECTION("object height with the object at infinity") {
     System s = load("m1/singlet_const.rtt.json");

@@ -50,8 +50,9 @@ LongitudinalColour longitudinal_colour(const compile::CompiledSystem& system,
         trace::aim_ray(system, path, axis, wl, 0.0, options.zone, options.aiming);
     const trace::RayBatch rays = trace_aimed(system, path, aimed, wl);
     if (!arrived(rays, 0, image)) {
-      throw AnalysisError("analysis: the zone ray at wavelength " + std::to_string(wl) +
-                          " does not reach the image surface");
+      detail::throw_lost(system, rays, 0, std::nullopt,
+                         "analysis: the zone ray at wavelength " + std::to_string(wl) +
+                             " does not reach the image surface");
     }
     const double dy = rays.dir_y()[0];
     if (dy == 0.0) throw AnalysisError("analysis: the zone ray does not cross the axis");
@@ -78,8 +79,9 @@ LateralColour lateral_colour(const compile::CompiledSystem& system,
     const trace::AimedRay aimed = trace::aim_ray(system, path, field, wl, 0.0, 0.0, aiming);
     const trace::RayBatch rays = trace_aimed(system, path, aimed, wl);
     if (!arrived(rays, 0, image)) {
-      throw AnalysisError("analysis: the chief ray at wavelength " + std::to_string(wl) +
-                          " does not reach the image surface");
+      detail::throw_lost(system, rays, 0, field,
+                         "analysis: the chief ray at wavelength " + std::to_string(wl) +
+                             " does not reach the image surface");
     }
     lat.chief.push_back(local_point(system, rays, 0, image));
   }

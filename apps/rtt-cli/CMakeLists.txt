@@ -10,6 +10,15 @@ if(RTT_BUILD_TESTS)
     COMMAND rtt_cli validate ${RTT_REFERENCE_DIR}/m0/singlet.rtt.json)
   add_test(NAME cli.validate.missing COMMAND rtt_cli validate does-not-exist.rtt.json)
   set_tests_properties(cli.validate.missing PROPERTIES WILL_FAIL TRUE)
+  # Diagnostics are printed with their stable code (ADR 0022); the exit code stays 1.
+  add_test(NAME cli.validate.code
+    COMMAND rtt_cli validate ${CMAKE_CURRENT_SOURCE_DIR}/tests/two_references.rtt.json)
+  set_tests_properties(cli.validate.code PROPERTIES
+    PASS_REGULAR_EXPRESSION
+    "two_references\\.rtt\\.json: error \\[wavelengths\\.reference_count\\] /wavelengths: ")
+  add_test(NAME cli.validate.code.exit
+    COMMAND rtt_cli validate ${CMAKE_CURRENT_SOURCE_DIR}/tests/two_references.rtt.json)
+  set_tests_properties(cli.validate.code.exit PROPERTIES WILL_FAIL TRUE)
   add_test(NAME cli.format.check
     COMMAND rtt_cli format --check ${RTT_REFERENCE_DIR}/m0/michelson.rtt.json)
 endif()

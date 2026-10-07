@@ -29,8 +29,9 @@ Point2 chief_point(const CompiledSystem& system,
   const trace::RayBatch rays = trace_rays(system, path, field, system.reference_wavelength(),
                                           trace::SinglePupilPoint{0.0, 0.0}, aiming);
   if (!arrived(rays, 0, image)) {
-    throw AnalysisError("analysis: the chief ray of field " + std::to_string(field) +
-                        " does not reach the image surface");
+    detail::throw_lost(system, rays, 0, field,
+                       "analysis: the chief ray of field " + std::to_string(field) +
+                           " does not reach the image surface");
   }
   return local_point(system, rays, 0, image);
 }

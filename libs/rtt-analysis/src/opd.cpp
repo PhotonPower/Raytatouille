@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <cmath>
 #include <optional>
+#include <stdexcept>
 #include <string>
 
 #include "common.hpp"
+#include "rtt/compile/errors.hpp"
 #include "rtt/paraxial/paraxial.hpp"
 
 namespace rtt::analysis {
@@ -39,26 +41,28 @@ Reference make_reference(const CompiledSystem& system,
                          PathId path,
                          std::uint16_t field,
                          trace::Aiming aiming) {
+  compile::require_stop(system, path);  // before any ray is traced (ADR 0022)
   const std::uint16_t ref = system.reference_wavelength();
   const std::uint32_t image = image_surface(system, path);
   const trace::RayBatch chief =
       trace_rays(system, path, field, ref, trace::SinglePupilPoint{0.0, 0.0}, aiming);
   if (!arrived(chief, 0, image)) {
-    throw AnalysisError("analysis: the chief ray of field " + std::to_string(field) +
-                        " does not reach the image surface");
+    detail::throw_lost(system, chief, 0, field,
+                       "analysis: the chief ray of field " + std::to_string(field) +
+                           " does not reach the image surface");
   }
   const paraxial::FirstOrder fo = paraxial::first_order(system, path, ref);
-  if (!fo.exit_pupil) {
-    throw AnalysisError("analysis: the path has no stop, so the exit pupil is not defined");
-  }
-  if (!fo.exit_pupil->z) {
+  // With a stop on the path (require_stop above) first_order() always gives the exit pupil.
+  if (!fo.exit_pupil) throw std::logic_error("analysis: no exit pupil despite a stop");
+  const paraxial::Pupil& xp = *fo.exit_pupil;
+  if (!xp.z) {
     throw AnalysisError(
         "analysis: the exit pupil is at infinity (image-space telecentric); OPD against a "
         "reference sphere is not supported for it yet");
   }
   Reference r;
   r.sphere.centre = global_pos(chief, 0);
-  r.exit_pupil = math::Vec3(0.0, 0.0, *fo.exit_pupil->z);
+  r.exit_pupil = math::Vec3(0.0, 0.0, *xp.z);
   r.sphere.radius = (r.sphere.centre - r.exit_pupil).norm();
   if (!(r.sphere.radius > 0.0)) {
     throw AnalysisError("analysis: the exit pupil lies on the image surface");
@@ -107,9 +111,10 @@ std::vector<OpdPoint> opd_points(const CompiledSystem& system,
   const trace::RayBatch chief =
       trace_rays(system, path, field, wavelength, trace::SinglePupilPoint{0.0, 0.0}, aiming);
   if (!arrived(chief, 0, image)) {
-    throw AnalysisError("analysis: the chief ray of field " + std::to_string(field) +
-                        " does not reach the image surface at wavelength " +
-                        std::to_string(wavelength));
+    detail::throw_lost(system, chief, 0, field,
+                       "analysis: the chief ray of field " + std::to_string(field) +
+                           " does not reach the image surface at wavelength " +
+                           std::to_string(wavelength));
   }
   const std::optional<double> opl_chief = opl_to_sphere(chief, 0, ref, n_image);
   if (!opl_chief) throw AnalysisError("analysis: the chief ray misses the reference sphere");

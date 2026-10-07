@@ -54,6 +54,8 @@ struct DistortionPoint {
 /// Distortion over the field sweep at `wavelength`.
 /// @throws std::invalid_argument for an invalid path or wavelength, samples < 2, or a system
 ///         without off-axis field point (and as rtt::trace::aim_ray)
+/// @throws rtt::compile::NoStopError (a std::invalid_argument) if the path has no stop; checked
+///         by rtt::compile::require_stop before any ray is traced (ADR 0022)
 /// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric
 /// @throws AnalysisError if a chief ray does not reach the image surface
 [[nodiscard]] std::vector<DistortionPoint> distortion(const compile::CompiledSystem& system,
@@ -87,6 +89,8 @@ struct FieldCurvaturePoint {
 /// Field curvature over the field sweep at `wavelength`.
 /// @throws std::invalid_argument for an invalid path or wavelength, samples < 2, delta not in
 ///         (0, 1), or a system without off-axis field point (and as rtt::trace::aim_ray)
+/// @throws rtt::compile::NoStopError (a std::invalid_argument) if the path has no stop; checked
+///         by rtt::compile::require_stop before any ray is traced (ADR 0022)
 /// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric
 /// @throws AnalysisError if a ray does not reach the image surface or the neighbour rays are
 ///         parallel in image space (afocal)

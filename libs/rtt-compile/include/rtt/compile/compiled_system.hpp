@@ -72,6 +72,9 @@ struct CompiledSurface {
   /// from CompiledElement::media and CompiledElement::segmented.
   std::uint32_t medium_front = 0;
   std::uint32_t medium_back = 0;
+  /// JSON pointer of the surface in the system file, e.g. "/root/children/1/surfaces/0"
+  /// (ADR 0022: errors and the GUI point at the surface with it).
+  std::string location;
   /// Local surface coordinates -> global coordinates (assembly -> element -> surface poses
   /// chained, see rtt::math::Isometry3::from_pose for the convention).
   math::Isometry3 to_global;
@@ -146,8 +149,8 @@ class CompiledSystem;
 
 /// Compiles a model into an immutable CompiledSystem.
 ///
-/// - Runs model::validate; any error diagnostic throws CompileError. Warnings are not
-///   reported by compile(); call model::validate directly to see them.
+/// - Runs model::validate; any error diagnostic throws CompileError. Its warnings are kept in
+///   CompiledSystem::diagnostics() (ADR 0022).
 /// - Flattens the tree: the global transform of each surface is root pose * assembly poses *
 ///   element pose * surface pose. Pickups are not evaluated before M5; their value is used.
 /// - Resolves every material (environment medium, element materials in both forms: shorthand
@@ -255,6 +258,11 @@ class CompiledSystem {
   /// Id of the path with this name, if any.
   [[nodiscard]] std::optional<PathId> find_path(std::string_view name) const;
 
+  /// Warnings found while compiling (model::validate), with code and JSON pointer (ADR 0022).
+  [[nodiscard]] const std::vector<model::Diagnostic>& diagnostics() const noexcept {
+    return diagnostics_;
+  }
+
  private:
   friend CompiledSystem compile(const model::System&,
                                 const material::MaterialLibrary&,
@@ -273,6 +281,7 @@ class CompiledSystem {
   std::vector<CompiledMedium> media_;
   std::vector<CompiledCoating> coatings_;
   std::vector<CompiledPath> paths_;
+  std::vector<model::Diagnostic> diagnostics_;
 };
 
 }  // namespace rtt::compile

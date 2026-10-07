@@ -22,6 +22,8 @@
 #include <cstdint>
 #include <optional>
 #include <stdexcept>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "rtt/compile/compiled_system.hpp"
@@ -30,10 +32,28 @@ namespace rtt::paraxial {
 
 /// Thrown when paraxial data are requested for a path that is not rotationally symmetric about
 /// the global z axis (decentred or tilted surface, phase layers, diffraction or birefringent
-/// events) or for an invalid path id or wavelength index. The message names the surface.
+/// events) or for an invalid path id or wavelength index. The message names the surface; where
+/// the place in the system file is known, surface() and location() give it (ADR 0022).
 class ParaxialError : public std::runtime_error {
  public:
   using std::runtime_error::runtime_error;
+
+  /// Error at `surface`: surface() is its id, location() its JSON pointer.
+  ParaxialError(const std::string& message, const compile::CompiledSurface& surface)
+      : std::runtime_error(message), surface_(surface.id), location_(surface.location) {}
+
+  /// Error at a place in the system file that is not a surface, e.g. "/fields/points/3".
+  ParaxialError(const std::string& message, std::string location)
+      : std::runtime_error(message), location_(std::move(location)) {}
+
+  /// Id of the surface the error is about, if any.
+  [[nodiscard]] const std::optional<model::SurfaceId>& surface() const noexcept { return surface_; }
+  /// JSON pointer into the system file, e.g. "/root/children/1/surfaces/0", if known.
+  [[nodiscard]] const std::optional<std::string>& location() const noexcept { return location_; }
+
+ private:
+  std::optional<model::SurfaceId> surface_;
+  std::optional<std::string> location_;
 };
 
 /// Paraxial ray just after one event of a path.
