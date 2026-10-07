@@ -76,7 +76,8 @@ struct Prescription {
   /// F-number from a real marginal ray may follow later.
   std::optional<double> paraxial_working_f_number;
   /// Paraxial image-space NA |n'_K u'_K| of the marginal ray after the last event (Greivenkamp
-  /// p. 9-34, sin U ~ u); also for afocal systems (then about 0). None without a marginal ray.
+  /// p. 9-34, sin U ~ u); also for afocal systems (about 0 for an object at infinity). None
+  /// without a marginal ray.
   std::optional<double> paraxial_image_na;
   /// Lagrange invariant H = n (u_bar y - u y_bar) in object space, evaluated at the first
   /// event vertex with the slopes before it, mm (equal to Seidel::lagrange). None without both
@@ -107,9 +108,10 @@ struct Prescription {
 /// @param path       path to evaluate
 /// @param wavelength index into system.wavelengths_um() for the rays and n
 /// @throws ParaxialError if the path is not rotationally symmetric, the stop aperture is not
-///         circular, a path id or wavelength index does not exist, or the field definition is
-///         invalid for the chief ray (field angle not in (-90, 90) degree, object height for an
-///         object at infinity, paraxial image height without a finite paraxial image)
+///         circular, a path id or wavelength index does not exist, or, only when the chief
+///         ray is constructed (stop and usable entrance pupil), the field definition is invalid
+///         for it (field angle not in (-90, 90) degree, object height for an object at
+///         infinity, paraxial image height without a finite paraxial image)
 [[nodiscard]] Prescription prescription(const compile::CompiledSystem& system,
                                         compile::PathId path,
                                         std::uint16_t wavelength);

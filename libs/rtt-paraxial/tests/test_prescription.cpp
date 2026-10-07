@@ -336,7 +336,39 @@ TEST_CASE("Lagrange invariant constant after every event: two lenses, Cooke trip
           "[prescription]") {
   SECTION("two singlets with the stop between") {
     const CompiledSystem cs = compile(load_in_vacuum("m1/two_lenses_stop_between.rtt.json"));
-    require_lagrange_constant(prescription(cs, PathId{0}, 0));
+    const Prescription p = prescription(cs, PathId{0}, 0);
+    require_lagrange_constant(p);
+    // Consistency with the pupils of first_order() (Greivenkamp p. 9-41: the chief ray passes
+    // the centre of the stop and of both pupils, the marginal ray the rim of the EP):
+    // - the chief ray has y_bar = 0 at the stop event;
+    // - the marginal ray, transferred from its start to the EP plane, has height EPD / 2;
+    // - after the last event the chief ray crosses the axis in the exit pupil plane.
+    // Tolerance as above: 1e-12 relative to the size of the terms (1e-12 mm for y_bar = 0).
+    const auto& fo = p.first_order;
+    REQUIRE(fo.entrance_pupil.has_value());
+    REQUIRE(fo.exit_pupil.has_value());
+    REQUIRE(fo.entrance_pupil->z.has_value());
+    REQUIRE(fo.entrance_pupil->diameter.has_value());
+    REQUIRE(fo.exit_pupil->z.has_value());
+    const auto& events = cs.path(PathId{0}).events;
+    bool stop_seen = false;
+    for (std::size_t k = 0; k < events.size(); ++k) {
+      if (cs.surfaces()[events[k].surface].element_kind == ElementKind::Stop) {
+        REQUIRE(p.surfaces[k].chief.has_value());
+        REQUIRE_THAT(p.surfaces[k].chief->y, WithinAbs(0.0, kAbs));
+        stop_seen = true;
+        break;
+      }
+    }
+    REQUIRE(stop_seen);
+    REQUIRE(p.marginal_start.has_value());
+    const auto& m = *p.marginal_start;
+    require_near(m.y + (*fo.entrance_pupil->z - m.z) * m.u, 0.5 * *fo.entrance_pupil->diameter);
+    const PrescriptionSurface& last = p.surfaces.back();
+    REQUIRE(last.chief.has_value());
+    const double travel = (*fo.exit_pupil->z - last.z) * last.chief->u;
+    REQUIRE(std::abs(last.chief->y + travel) <=
+            kRel * (std::abs(last.chief->y) + std::abs(travel)));
   }
   SECTION("Cooke triplet with constant indices") {
     // tests/reference/m2/cooke_triplet.rtt.json; the SCHOTT glasses are replaced by their
@@ -359,6 +391,9 @@ TEST_CASE("Lagrange invariant constant after every event: two lenses, Cooke trip
     const Prescription p = prescription_of(s);
     REQUIRE(p.surfaces.size() == 3);
     REQUIRE(p.surfaces[1].n == -1.0);
+    // At the mirror (c = -1/200 in global orientation): i = u + y c = -0.05;
+    // n'u' = n u - y c (n' - n) = -10 (-1/200)(-2) = -0.1, so u' = -0.1 / n' = 0.1.
+    require_ray(p.surfaces[1].marginal, {10.0, 0.1, -0.05});
     require_lagrange_constant(p);
     // Unfolded length: 100 mm to the mirror and 100 mm back (the z span is 0).
     require_near(p.total_track, 200.0);
