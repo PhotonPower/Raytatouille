@@ -16,6 +16,7 @@ Jede Diagnose (`rtt::model::Diagnostic`, in Python `rt.Diagnostic`) trägt einen
 - `validate`: `rtt::model::validate`, auch `rt.validate` und `rtt validate`.
 - `compile`: `rtt::compile::compile`, als `CompileError` bzw. Warnung in `CompiledSystem::diagnostics()`.
 - `analysis`: Spot, Strahlfächer, OPD-Karte und OPD-Fächer (`rtt-analysis`), als Warnung im Feld `warnings` des Ergebnisses (ADR 0023).
+- `edit`: `rtt::io::apply_patch` (JSON Patch auf der Bearbeitungsform, ADR 0024), als `rtt::io::EditError` mit `code()`, `location()` (Pointer in die Bearbeitungsform) und `op_index()`. Fügt ein Patch Fehler von `validate` hinzu, trägt `EditError` deren Code und Ort (z. B. `surface.id_duplicate`).
 - `agf`: der AGF-Leser von `rtt-material` (`parse_agf`, `MaterialLibrary::add_catalog`, `add_catalog_text`), als `rtt::material::LoadWarning{code, file, line, message}` in `AgfCatalog::warnings` und `MaterialLibrary::load_warnings()` (#71); Ort ist Datei und Zeile.
 - Warnungen von `compile()`, den Analysen und dem AGF-Leser gibt Python zusätzlich als `RaytatouilleWarning` mit `code` und `location` aus (beim AGF-Leser `datei:zeile`).
 
@@ -38,6 +39,12 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `coating.thickness_invalid` | Fehler | Schichtdicke nicht berechenbar (z. B. QWOT mit Re n ≤ 0) | compile | `…/s/interaction/name` |
 | `coating.unknown` | Fehler | Beschichtungsreferenz nicht auflösbar | compile | `…/s/interaction/name` |
 | `coating.wavelength_out_of_range` | Fehler | Systemwellenlänge außerhalb des Bereichs eines Schichtmaterials | compile | `…/s/interaction/name` |
+| `edit.base_not_representable` | Fehler | das zu ändernde System ist in der Bearbeitungsform nicht darstellbar (nicht endliche Zahl, Material und Segmentliste zugleich, kein gültiges UTF-8) | edit | leer (ganzes Dokument) |
+| `edit.invalid_value` | Fehler | die geänderte Bearbeitungsform ist keine gültige Systemdatei (Typ, Schlüssel, Aufzählungswert); Ort vom strengen Leser | edit | z. B. `/name`, `…/s/shape/base/conic` |
+| `edit.patch_invalid` | Fehler | kein gültiges JSON-Patch-Dokument oder keine gültige Operation (RFC 6902): kein Array, unbekannte Operation, fehlendes Mitglied, ungültiger Pointer oder Array-Index (keine Ziffern, führende Null, `-` außerhalb eines Ziels), Verschieben in ein eigenes Kind, doppelte Schlüssel | edit | `path` bzw. `from` der Operation oder leer |
+| `edit.path_not_found` | Fehler | Ziel, Quelle oder Eltern-Wert einer Operation fehlt, ein Array-Index liegt außerhalb, oder der Eltern-Wert ist kein Objekt bzw. Array | edit | `path` bzw. `from` der Operation |
+| `edit.read_only` | Fehler | eine Operation außer `test` schreibt auf oder unter `/schema_version` oder `/units` oder auf das ganze Dokument | edit | `path` bzw. `from` der Operation |
+| `edit.test_failed` | Fehler | eine `test`-Operation des Patches ist fehlgeschlagen | edit | `path` der Operation |
 | `element.material_both` | Fehler | ein Material für alle Segmente und eine Segmentliste zugleich | validate | `…/el/material` |
 | `element.material_empty` | Fehler | leere Materialreferenz | validate | `…/el/material`, `…/el/material/i` |
 | `element.material_list_not_allowed` | Fehler | Spiegel mit Liste von Segmentmaterialien | validate | `…/el/material` |
