@@ -1,0 +1,11 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.1",
+ "type": "LoadWarning",
+ "data": {
+  "code": "agf.preamble_skipped",
+  "file": "z.agf",
+  "line": 1,
+  "message": "text before the first record skipped: 'Reproduced here by permission of RadiantZemax (www.radiantzemax.com).'"
+ }
+}

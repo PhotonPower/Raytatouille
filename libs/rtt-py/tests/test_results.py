@@ -63,6 +63,18 @@ def traced(cs: rt.CompiledSystem) -> tuple[rt.trace.RayBatch, rt.trace.TraceStat
     return rays, stats, paths
 
 
+def preamble_warning() -> rt.LoadWarning:
+    """The warning of a catalogue excerpt with the RadiantZemax header line (#71)."""
+    lib = rt.MaterialLibrary()
+    text = ("Reproduced here by permission of RadiantZemax (www.radiantzemax.com).\n"
+            "CC excerpt\nNM A 2 517642 1.5168 64.17\nCD 1.04 0.006 0.23 0.02 1.01 103.6\n")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        lib.add_catalog_text(text, "Z", "z.agf")
+    [w] = lib.load_warnings
+    return w
+
+
 PRODUCERS: dict[str, Callable[[rt.CompiledSystem, rt.MaterialLibrary], Any]] = {
     "SpotDiagram": lambda cs, lib: rt.analysis.spot(cs, field=1, rays="hexapolar:3"),
     "RayFan": lambda cs, lib: rt.analysis.ray_fan(cs, field=2, points=7),
@@ -89,6 +101,7 @@ PRODUCERS: dict[str, Callable[[rt.CompiledSystem, rt.MaterialLibrary], Any]] = {
     "GlassMap": lambda cs, lib: lib.glass_map(["SCHOTT"]),
     "SurfaceLayout": lambda cs, lib: rt.layout.surfaces(cs)[1],
     "CompiledElement": lambda cs, lib: rt.layout.elements(cs)[1],
+    "LoadWarning": lambda cs, lib: preamble_warning(),
     "Diagnostic": lambda cs, lib: rt.compile(
         rt.load(Path(__file__).parent / "data" / "bare_asphere.rtt.json")).diagnostics[0],
 }
@@ -111,10 +124,10 @@ def test_round_trip_is_bit_identical(name: str, singlet: rt.CompiledSystem,
     envelope = json.loads(text, parse_constant=no_constants)  # standard JSON only
     assert list(envelope) == ["format", "schema_version", "type", "data"]
     assert envelope["format"] == "raytatouille-result"
-    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.0"
+    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.1"
     assert envelope["type"] == name
     loaded = rt.results.load_json(text)
-    assert (loaded.type, loaded.schema_version) == (name, "0.1.0")
+    assert (loaded.type, loaded.schema_version) == (name, "0.1.1")
     same(loaded.data, data)
 
 

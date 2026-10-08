@@ -22,6 +22,7 @@
 
 #include "bindings.hpp"
 #include "rtt/material/agf.hpp"
+#include "rtt/material/load_warning.hpp"
 #include "rtt/material/material.hpp"
 
 namespace nb = nanobind;
@@ -58,6 +59,23 @@ nb::object optional_list(const std::optional<std::vector<std::optional<double>>>
   nb::list list;
   for (const auto& v : *values) list.append(optional_value(v));
   return list;
+}
+
+/// Calls `load` and issues the load warnings it added as raytatouille.errors.RaytatouilleWarning
+/// with location "file:line" (ADR 0022, #71); stacklevel 1 is the Python line of the call.
+template <typename Load>
+void load_and_warn(MaterialLibrary& lib, Load&& load) {
+  const std::size_t before = lib.load_warnings().size();
+  std::forward<Load>(load)();
+  const std::vector<material::LoadWarning> all = lib.load_warnings();
+  if (all.size() == before) return;
+  const nb::object category =
+      nb::module_::import_("raytatouille.errors").attr("RaytatouilleWarning");
+  const nb::object warn = nb::module_::import_("warnings").attr("warn");
+  for (std::size_t i = before; i < all.size(); ++i) {
+    const material::LoadWarning& w = all[i];
+    warn(category(w.message, w.code, w.file + ":" + std::to_string(w.line)), "stacklevel"_a = 1);
+  }
 }
 
 nb::object class_range(const std::optional<AgfClassRange>& r) {
@@ -116,6 +134,19 @@ nb::dict glass_record(const MaterialLibrary& lib, const std::string& catalog, co
 }  // namespace
 
 void bind_material(nb::module_& m) {
+  nb::class_<material::LoadWarning>(
+      m, "LoadWarning",
+      "A warning while reading a glass catalogue (ADR 0022, #71): stable code of the group agf.* "
+      "(docs/diagnostics.md), file and 1-based line (0: whole file), message.")
+      .def_ro("code", &material::LoadWarning::code)
+      .def_ro("file", &material::LoadWarning::file)
+      .def_ro("line", &material::LoadWarning::line)
+      .def_ro("message", &material::LoadWarning::message)
+      .def("__repr__", [](const material::LoadWarning& w) {
+        return "LoadWarning(" + w.code + " " + w.file + ":" + std::to_string(w.line) + ": " +
+               w.message + ")";
+      });
+
   nb::class_<MaterialLibrary>(
       m, "MaterialLibrary",
       "Resolves material references (\"VACUUM\", \"AIR\", \"CONST:<n>\", catalogue glasses).")
@@ -123,19 +154,26 @@ void bind_material(nb::module_& m) {
       .def(
           "add_catalog",
           [](MaterialLibrary& lib, const std::filesystem::path& path,
-             const std::optional<std::string>& name) { lib.add_catalog(path, name); },
+             const std::optional<std::string>& name) {
+            load_and_warn(lib, [&] { lib.add_catalog(path, name); });
+          },
           "path"_a, "name"_a = nb::none(),
           "Loads AGF glass catalogues: an .agf file, or a directory whose *.agf files are "
           "loaded in sorted order. The catalogue name is the file name without extension in "
           "upper case (schott.agf -> SCHOTT; glasses resolve as SCHOTT:N-BK7), or `name` for a "
           "single file (alias, e.g. \"SCHOTT_M2\" for a second schott.agf; case-sensitive, not "
           "empty, no ':' or whitespace, not CONST).\n\nRaises AgfError for malformed files and "
-          "ValueError for invalid or already used names.")
+          "ValueError for invalid or already used names.\n\nThe warnings of the reader "
+          "(load_warnings, "
+          "codes agf.*) are issued as RaytatouilleWarning after the catalogue is registered; "
+          "with warnings turned into errors the catalogue is loaded nevertheless.")
       .def(
           "add_catalog_text",
           [](MaterialLibrary& lib, const nb::bytes& data, const std::string& name,
              const std::string& source) {
-            lib.add_catalog_text(std::string_view(data.c_str(), data.size()), name, source);
+            load_and_warn(lib, [&] {
+              lib.add_catalog_text(std::string_view(data.c_str(), data.size()), name, source);
+            });
           },
           "data"_a, "name"_a, "source"_a = "<memory>",
           "Loads an AGF catalogue from memory under `name` (same rules as the alias of "
@@ -145,9 +183,14 @@ void bind_material(nb::module_& m) {
       .def(
           "add_catalog_text",
           [](MaterialLibrary& lib, const std::string& text, const std::string& name,
-             const std::string& source) { lib.add_catalog_text(text, name, source); },
+             const std::string& source) {
+            load_and_warn(lib, [&] { lib.add_catalog_text(text, name, source); });
+          },
           "data"_a, "name"_a, "source"_a = "<memory>",
           "As above, with the catalogue as text (str, encoded as UTF-8).")
+      .def_prop_ro("load_warnings", &MaterialLibrary::load_warnings,
+                   "Warnings of all loaded catalogues in loading order (LoadWarning); "
+                   "add_catalog and add_catalog_text also issue them as RaytatouilleWarning.")
       .def("catalogs", &MaterialLibrary::catalogs,
            "Names of the loaded catalogues in ascending order.")
       .def(

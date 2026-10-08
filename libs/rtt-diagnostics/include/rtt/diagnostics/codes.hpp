@@ -22,12 +22,18 @@ enum class Severity : std::uint8_t { Error, Warning };
 struct CodeInfo {
   std::string_view code;      ///< dotted name, e.g. "material.unknown"
   Severity severity;          ///< the severity every diagnostic with this code has
-  std::string_view producer;  ///< "validate", "compile" or "analysis" (docs/diagnostics.md)
+  std::string_view producer;  ///< "validate", "compile", "analysis" or "agf" (docs/diagnostics.md)
   std::string_view summary;   ///< one-line meaning, as in docs/diagnostics.md
 };
 
 /// All registered codes, sorted by code. Iterable at run time (documentation check, Python).
 inline constexpr std::array kCodes = std::to_array<CodeInfo>({
+    {"agf.duplicate_glass", Severity::Warning, "agf",
+     "glass repeated with identical data; the repetition is ignored"},
+    {"agf.duplicate_glass_conflict", Severity::Warning, "agf",
+     "glass defined twice with different data; it is ambiguous and cannot be resolved"},
+    {"agf.preamble_skipped", Severity::Warning, "agf", "text line before the first record skipped"},
+    {"agf.stray_line", Severity::Warning, "agf", "single word before the next NM record skipped"},
     {"aperture.na_not_physical", Severity::Warning, "validate", "object-space NA >= 1 in air"},
     {"aperture.stop_missing", Severity::Error, "validate",
      "aperture type stop_size without a stop element"},

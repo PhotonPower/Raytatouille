@@ -176,17 +176,16 @@ TEST_CASE("malformed AGF lines are errors with file and line", "[agf]") {
     std::size_t line;
   };
   const std::vector<Case> cases{
-      {"CC c\nCD 1 2 3\n", 2},                                         // data before the first NM
-      {"CC c\nNM A 2 1 1.5 60\nXX 1\nCD 1 2 3 4 5 6\n", 3},            // unknown mnemonic
-      {"CC c\nNM A 2 1 1.5 60\nCD 1 x 3 4 5 6\n", 3},                  // not a number
-      {"CC c\nNM A 2 1 1.5\nCD 1 2 3 4 5 6\n", 2},                     // NM without V(d)
-      {"CC c\nNM A 2.5 1 1.5 60\nCD 1 2 3 4 5 6\n", 2},                // formula not an integer
-      {"CC c\nNM A 2 1 1.5 60\nCD 1 2 3 4 5 6 7 8 9 10 11\n", 3},      // more than 10 coefficients
-      {"CC c\nNM A 2 1 1.5 60\nCD 1 2 3 4 5 6\nLD 0.3\n", 4},          // LD with one value
-      {"CC c\nNM A 2 1 1.5 60\nCD 1 2 3 4 5 6\nLD 2.5 0.3\n", 4},      // LD min >= max
-      {"CC c\nNM A 2 1 1.5 60\nCD 1 2 3 4 5 6\nCD 1 2 3 4 5 6\n", 4},  // second CD
-      {"CC c\nNM A 2 1 1.5 60\nLD 0.3 2.5\n", 2},                      // glass without CD
-      {"CC c\nNM A 2 1 1.5 60\nCD 1 2 3 4 5 6\nNM A 2 1 1.5 60\nCD 1 2 3 4 5 6\n", 4},  // twice
+      {"CC c\nCD 1 2 3\n", 2},                                          // data before the first NM
+      {"CC c\nNM A 2 1 1.5 60\nXX 1\nCD 1 2 3 4 5 6\n", 3},             // unknown mnemonic
+      {"CC c\nNM A 2 1 1.5 60\nCD 1 x 3 4 5 6\n", 3},                   // not a number
+      {"CC c\nNM A 2 1 1.5\nCD 1 2 3 4 5 6\n", 2},                      // NM without V(d)
+      {"CC c\nNM A 2.5 1 1.5 60\nCD 1 2 3 4 5 6\n", 2},                 // formula not an integer
+      {"CC c\nNM A 2 1 1.5 60\nCD 1 2 3 4 5 6 7 8 9 10 11\n", 3},       // more than 10 coefficients
+      {"CC c\nNM A 2 1 1.5 60\nCD 1 2 3 4 5 6\nLD 0.3\n", 4},           // LD with one value
+      {"CC c\nNM A 2 1 1.5 60\nCD 1 2 3 4 5 6\nLD 2.5 0.3\n", 4},       // LD min >= max
+      {"CC c\nNM A 2 1 1.5 60\nCD 1 2 3 4 5 6\nCD 1 2 3 4 5 6\n", 4},   // second CD
+      {"CC c\nNM A 2 1 1.5 60\nLD 0.3 2.5\n", 2},                       // glass without CD
       {"CC c\nNM A 2 1 1.5 60\nCD 1 2 3 4 5 6\nNM\n", 4},               // NM without name
       {"CC c\nNM A 2 1 1.5 60\nCD\n", 3},                               // CD without coefficients
       {"CC c\nNM A 2 1 1.5 60\nCD 1 2\nLD 0.3 2.5\nLD 0.4 2.0\n", 5},   // second LD

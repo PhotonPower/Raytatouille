@@ -6,11 +6,14 @@
 #include <cmath>
 #include <cstdint>
 #include <fstream>
-#include <set>
+#include <optional>
 #include <sstream>
+#include <string>
 #include <system_error>
 #include <utility>
+#include <vector>
 
+#include "rtt/diagnostics/codes.hpp"
 #include "rtt/material/air.hpp"
 
 namespace rtt::material {
@@ -55,7 +58,8 @@ std::vector<std::string_view> split(std::string_view line) {
 /// Reads one AGF file and turns it into an AgfCatalog.
 class Parser {
  public:
-  Parser(std::string name, std::string file) : catalog_{std::move(name), std::move(file), {}, {}} {}
+  Parser(std::string name, std::string file)
+      : catalog_{std::move(name), std::move(file), {}, {}, {}} {}
 
   AgfCatalog run(std::string_view text) {
     std::size_t line_no = 0;
@@ -69,13 +73,92 @@ class Parser {
       if (end == text.size()) break;
       pos = end + 1;
     }
+    if (stray_) fail(stray_->line, "unknown record '" + stray_->word + "'");  // last line
+    if (!seen_record_ && first_skipped_ > 0) {  // R3 only holds before a first record
+      fail(first_skipped_, "no CC or NM record: not an AGF catalogue");
+    }
     finish_glass();
+    merge_duplicates();
+    // Duplicates are found after the last line; keep all warnings in file order.
+    std::stable_sort(catalog_.warnings.begin(), catalog_.warnings.end(),
+                     [](const LoadWarning& x, const LoadWarning& y) { return x.line < y.line; });
     return std::move(catalog_);
   }
 
  private:
   [[noreturn]] void fail(std::size_t line, const std::string& message) const {
     throw AgfError(catalog_.file, line, message);
+  }
+
+  void warn(diagnostics::DiagnosticCode code, std::size_t line, std::string message) {
+    catalog_.warnings.push_back({std::string(code.str()), catalog_.file, line, std::move(message)});
+  }
+
+  static bool is_record(std::string_view m) {
+    static constexpr std::array<std::string_view, 11> kRecords = {
+        "CC", "NM", "CD", "LD", "TD", "ED", "GC", "MD", "OD", "IT", "BD"};
+    return std::find(kRecords.begin(), kRecords.end(), m) != kRecords.end();
+  }
+
+  static bool is_word(std::string_view m) {
+    return !m.empty() && std::all_of(m.begin(), m.end(), [](char c) {
+      return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+    });
+  }
+
+  /// R1/R2 (#71): a repeated glass with the same data (all records equal, line aside) is read
+  /// once; with other data both blocks stay and the glass is ambiguous.
+  void merge_duplicates() {
+    std::vector<AgfGlass> kept;
+    for (AgfGlass& g : catalog_.glasses) {
+      const AgfGlass* same = nullptr;
+      const AgfGlass* other = nullptr;
+      for (const AgfGlass& k : kept) {
+        if (k.name != g.name) continue;
+        AgfGlass a = k;
+        a.line = g.line;
+        if (a == g) {
+          same = &k;
+        } else if (other == nullptr) {
+          other = &k;
+        }
+      }
+      if (same != nullptr) {
+        warn("agf.duplicate_glass", g.line,
+             "glass " + g.name + " repeats the block at line " + std::to_string(same->line) +
+                 " with identical data; the repetition is ignored");
+        continue;
+      }
+      if (other != nullptr) {
+        warn("agf.duplicate_glass_conflict", g.line,
+             "glass " + g.name + " is defined again with different data (records " +
+                 differing_records(*other, g) + " differ from the block at line " +
+                 std::to_string(other->line) + "); the glass is ambiguous and cannot be resolved");
+      }
+      kept.push_back(std::move(g));
+    }
+    catalog_.glasses = std::move(kept);
+  }
+
+  /// Names of the records whose data differ, e.g. "NM, CD".
+  static std::string differing_records(const AgfGlass& a, const AgfGlass& b) {
+    std::vector<std::string> names;
+    if (a.formula != b.formula || a.nd != b.nd || a.vd != b.vd ||
+        a.exclude_substitution != b.exclude_substitution || a.status != b.status ||
+        a.melt_frequency != b.melt_frequency) {
+      names.emplace_back("NM");
+    }
+    if (a.comment != b.comment) names.emplace_back("GC");
+    if (a.extra != b.extra) names.emplace_back("ED");
+    if (a.coefficients != b.coefficients) names.emplace_back("CD");
+    if (a.thermal != b.thermal) names.emplace_back("TD");
+    if (a.mechanical != b.mechanical) names.emplace_back("MD");
+    if (a.other != b.other) names.emplace_back("OD");
+    if (a.range != b.range) names.emplace_back("LD");
+    if (a.transmission != b.transmission) names.emplace_back("IT");
+    std::string text;
+    for (const std::string& n : names) text += (text.empty() ? "" : ", ") + n;
+    return text;
   }
 
   double number(std::string_view text, std::size_t line) const {
@@ -211,6 +294,20 @@ class Parser {
 
   void parse_line(std::string_view line, std::size_t line_no) {
     const std::vector<std::string_view> items = split(line);
+    if (stray_) {
+      // R4 (#71, NIKON-HIKARI_201911.AGF line 10102): the next line that is not empty must be NM
+      // (the manufacturer separates the glass blocks with empty lines).
+      if (items.empty()) {
+        continuable_ = Continuable::kNone;
+        return;
+      }
+      if (items[0] != "NM") {
+        fail(stray_->line, "unknown record '" + stray_->word + "'");
+      }
+      warn("agf.stray_line", stray_->line,
+           "line '" + stray_->word + "' before the next NM record skipped");
+      stray_.reset();
+    }
     if (items.empty() || items[0].starts_with("!")) {  // empty or comment line
       continuable_ = Continuable::kNone;
       return;
@@ -221,6 +318,20 @@ class Parser {
     }
     continuable_ = Continuable::kNone;
     const std::string_view m = items[0];
+    if (!is_record(m)) {
+      if (!seen_record_) {  // R3 (#71): text before the first CC or NM, e.g. a header line
+        if (first_skipped_ == 0) first_skipped_ = line_no;
+        warn("agf.preamble_skipped", line_no,
+             "text before the first record skipped: '" + std::string(line) + "'");
+        return;
+      }
+      if (items.size() == 1 && is_word(m)) {  // R4: decided by the next line
+        stray_ = Stray{line_no, std::string(m)};
+        return;
+      }
+      fail(line_no, "unknown record '" + std::string(m) + "'");
+    }
+    if (m == "CC" || m == "NM") seen_record_ = true;
     if (m == "CC") {
       catalog_.comment = text_after(line, "CC");
     } else if (m == "NM") {
@@ -249,7 +360,6 @@ class Parser {
       if (items.size() > 7) g.status = nm_extra(items[7], "status", std::pair{0, 4}, line_no);
       if (items.size() > 8) g.melt_frequency = nm_extra(items[8], "melt freq", {}, line_no);
       g.line = line_no;
-      if (!names_.insert(g.name).second) fail(line_no, "glass " + g.name + " appears twice");
       glass_ = std::move(g);
     } else if (m == "CD") {
       AgfGlass& g = current(m, line_no);
@@ -312,6 +422,7 @@ class Parser {
     } else if (m == "BD") {
       (void)current(m, line_no);  // described in the format, not used by Raytatouille
     } else {
+      // Every name of is_record() needs a branch above; this keeps a forgotten one an error.
       fail(line_no, "unknown record '" + std::string(m) + "'");
     }
   }
@@ -330,7 +441,13 @@ class Parser {
   bool has_cd_ = false;
   bool has_gc_ = false;
   Continuable continuable_ = Continuable::kNone;
-  std::set<std::string, std::less<>> names_;
+  bool seen_record_ = false;       ///< a CC or NM record was read (R3)
+  std::size_t first_skipped_ = 0;  ///< first line skipped by R3, 0 if none
+  struct Stray {
+    std::size_t line = 0;
+    std::string word;
+  };
+  std::optional<Stray> stray_;  ///< R4 candidate, decided by the next line
 };
 
 std::string upper(std::string text) {
