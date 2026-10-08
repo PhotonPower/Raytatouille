@@ -1,0 +1,123 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.4",
+ "type": "GhostRanking",
+ "data": {
+  "base": 0,
+  "field": 0,
+  "wavelength": 1,
+  "base_power": 0.9175356115585495,
+  "base_rms_radius": 0.08284667211877102,
+  "resolution_radius": 0.005,
+  "entries": {
+   "path": {
+    "dtype": "uint32",
+    "shape": [
+     1
+    ],
+    "values": [
+     1
+    ]
+   },
+   "surface_j": {
+    "dtype": "uint32",
+    "shape": [
+     1
+    ],
+    "values": [
+     2
+    ]
+   },
+   "surface_i": {
+    "dtype": "uint32",
+    "shape": [
+     1
+    ],
+    "values": [
+     1
+    ]
+   },
+   "power": {
+    "dtype": "float64",
+    "shape": [
+     1
+    ],
+    "values": [
+     0.001625759018520259
+    ]
+   },
+   "relative_power": {
+    "dtype": "float64",
+    "shape": [
+     1
+    ],
+    "values": [
+     0.0017718756613257802
+    ]
+   },
+   "rms_radius": {
+    "dtype": "float64",
+    "shape": [
+     1
+    ],
+    "values": [
+     61.329249345113126
+    ]
+   },
+   "rays_arrived": {
+    "dtype": "uint64",
+    "shape": [
+     1
+    ],
+    "values": [
+     19
+    ]
+   },
+   "relative_irradiance": {
+    "dtype": "float64",
+    "shape": [
+     1
+    ],
+    "values": [
+     3.2450925379897627e-09
+    ]
+   },
+   "focus_offset": {
+    "dtype": "float64",
+    "shape": [
+     1
+    ],
+    "values": [
+     -85.55660891169092
+    ]
+   },
+   "paraxial_blur_radius": {
+    "dtype": "float64",
+    "shape": [
+     1
+    ],
+    "values": [
+     56.10991402095234
+    ]
+   },
+   "losses": [
+    {
+     "launched": 19,
+     "by_status": [
+      19,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     "worst_surface": null,
+     "worst_surface_count": 0
+    }
+   ]
+  },
+  "warnings": []
+ }
+}

@@ -100,3 +100,12 @@ def test_edit_undo_example(capsys: pytest.CaptureFixture[str]) -> None:
     out = capsys.readouterr().out
     assert "rejected: [surface.id_duplicate]" in out
     assert "after two commands: radius 50.0 mm" in out and "same system: True" in out
+
+
+def test_ghosts_example(capsys: pytest.CaptureFixture[str]) -> None:
+    namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "ghosts.py"))
+    assert namespace["main"]() == 0
+    out = capsys.readouterr().out
+    assert "15 ghosts of 'main'" in out and "main ghost " in out
+    assert "reference arm: transmission 0.250 (3 of 3 rays)" in out
+    assert "OPL(test arm) - OPL(reference arm) = 15.000000 mm" in out

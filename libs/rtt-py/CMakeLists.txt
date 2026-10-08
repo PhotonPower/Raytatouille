@@ -34,6 +34,7 @@ nanobind_add_module(_core NB_STATIC NB_SUPPRESS_WARNINGS
   src/bind_paraxial.cpp
   src/bind_trace.cpp
   src/bind_analysis.cpp
+  src/bind_paths.cpp
   src/bind_polar.cpp
   src/bind_results.cpp
   src/polar_batch.cpp
@@ -121,6 +122,7 @@ if(RTT_BUILD_TESTS)
   # Writes the C++ results of the cases in tests/test_bitwise*.py as .npy files.
   # src/polar_batch.cpp: the same polarization quantities as raytatouille.polar (#62).
   add_executable(rtt_py_reference tests/rtt_py_reference.cpp tests/analysis_cases.cpp
+    tests/paths_cases.cpp
     src/polar_batch.cpp)
   target_include_directories(rtt_py_reference PRIVATE src)
   target_link_libraries(rtt_py_reference PRIVATE

@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -23,6 +24,7 @@
 
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/model/system.hpp"
+#include "rtt/trace/ray_batch.hpp"
 #include "rtt/trace/run_control.hpp"
 
 namespace rtt::py {
@@ -90,6 +92,34 @@ ReadOnlyArray<T> read_only_array(const Items& items, Get get) {
   return ReadOnlyArray<T>(values, 1, shape, owner);
 }
 
+/// NaN for "none" in float arrays of analysis results (ADR 0023, as Prescription, #108).
+inline constexpr double kNan = std::numeric_limits<double>::quiet_NaN();
+
+/// Binds a list class (a struct with a member `points`); its attributes are read-only NumPy
+/// copies of the C++ result (ADR 0002: analysis results are small), one array per member of
+/// the point type.
+template <typename C>
+nanobind::class_<C> columns(nanobind::module_& m, const char* name, const char* doc) {
+  nanobind::class_<C> cls(m, name, doc);
+  cls.def("__len__", [](const C& c) { return c.points.size(); });
+  return cls;
+}
+
+/// Adds a read-only array attribute `name` with values get(point) of type T.
+template <typename T, typename C, typename Get>
+void column(nanobind::class_<C>& cls, const char* name, Get get, const char* doc) {
+  // reference: the NumPy array views the copy and keeps its capsule alive (move would copy
+  // again into a writable array; reference_internal needs an array without owner).
+  cls.def_prop_ro(
+      name, [get](const C& c) { return read_only_array<T>(c.points, get); },
+      nanobind::rv_policy::reference, doc);
+}
+
+/// RayStatus as the uint8 of the status columns.
+[[nodiscard]] inline std::uint8_t status_value(trace::RayStatus s) {
+  return static_cast<std::uint8_t>(s);
+}
+
 /// __eq__ with Python semantics: comparing with another type gives False, not TypeError.
 template <typename T>
 bool equal(const T& self, nanobind::handle other) {
@@ -119,6 +149,8 @@ void bind_compile(nanobind::module_& m);
 void bind_paraxial(nanobind::module_& m);
 void bind_trace(nanobind::module_& m);
 void bind_analysis(nanobind::module_& m);
+/// Path evaluation (#122) and ghost ranking (#124); after bind_analysis (RayLosses).
+void bind_paths(nanobind::module_& m);
 void bind_polar(nanobind::module_& m);
 void bind_layout(nanobind::module_& m);
 /// to_dict()/to_json() on the result classes (ADR 0023); call after all bind_* functions.

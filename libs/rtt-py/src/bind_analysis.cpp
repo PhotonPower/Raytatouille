@@ -9,7 +9,6 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -58,27 +57,6 @@ struct PrescriptionSurfaces {
   std::vector<paraxial::PrescriptionSurface> points;
 };
 
-constexpr double kNan = std::numeric_limits<double>::quiet_NaN();  // None in float arrays
-
-/// Binds a list class; its attributes are read-only NumPy copies of the C++ result (ADR 0002:
-/// analysis results are small), one array per member of the point type.
-template <typename C>
-nb::class_<C> columns(nb::module_& m, const char* name, const char* doc) {
-  nb::class_<C> cls(m, name, doc);
-  cls.def("__len__", [](const C& c) { return c.points.size(); });
-  return cls;
-}
-
-/// Adds a read-only array attribute `name` with values get(point) of type T.
-template <typename T, typename C, typename Get>
-void column(nb::class_<C>& cls, const char* name, Get get, const char* doc) {
-  // reference: the NumPy array views the copy and keeps its capsule alive (move would copy
-  // again into a writable array; reference_internal needs an array without owner).
-  cls.def_prop_ro(
-      name, [get](const C& c) { return read_only_array<T>(c.points, get); },
-      nb::rv_policy::reference, doc);
-}
-
 /// Element i with Python indexing (negative from the end).
 /// @throws std::out_of_range (IndexError) outside -size <= i < size
 template <typename T>
@@ -86,10 +64,6 @@ T at(const std::vector<T>& v, std::ptrdiff_t i) {
   const auto size = static_cast<std::ptrdiff_t>(v.size());
   if (i < -size || i >= size) throw std::out_of_range("index out of range");
   return v[static_cast<std::size_t>(i < 0 ? i + size : i)];
-}
-
-std::uint8_t status_value(trace::RayStatus s) {
-  return static_cast<std::uint8_t>(s);
 }
 
 }  // namespace
