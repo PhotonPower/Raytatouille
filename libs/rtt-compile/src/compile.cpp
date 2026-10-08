@@ -11,7 +11,9 @@
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "rtt/coating/catalog.hpp"
@@ -20,9 +22,44 @@
 #include "rtt/compile/errors.hpp"
 #include "rtt/diagnostics/codes.hpp"
 #include "rtt/material/uniaxial.hpp"
+#include "rtt/math/units.hpp"
 
 namespace rtt::compile {
 namespace {
+
+/// Phase layers of the model as phase functions of rtt-geom (ADR 0025, point 1): the same numbers
+/// (lines per mm; coefficients in rad, no factor 2 pi), only parameters turned into values and
+/// orientation_deg into rad. validate() guarantees lines_per_mm > 0 and normalization_radius > 0;
+/// non-finite coefficients or orientations (only possible through the API) make the rtt-geom
+/// constructors throw std::invalid_argument.
+template <class>
+inline constexpr bool kUnhandledPhase = false;
+
+std::vector<geom::PhaseFunction<double>> compile_phases(
+    const std::vector<model::PhaseLayer>& phases) {
+  std::vector<geom::PhaseFunction<double>> out;
+  out.reserve(phases.size());
+  for (const model::PhaseLayer& layer : phases) {
+    out.push_back(std::visit(
+        [](const auto& p) -> geom::PhaseFunction<double> {
+          using P = std::decay_t<decltype(p)>;
+          if constexpr (std::is_same_v<P, model::LinearGrating>) {
+            return geom::LinearGratingPhase<double>(p.lines_per_mm.value,
+                                                    math::deg_to_rad(p.orientation_deg));
+          } else if constexpr (std::is_same_v<P, model::RadialPhase>) {
+            std::vector<double> coefficients;
+            coefficients.reserve(p.coefficients.size());
+            for (const model::Param& c : p.coefficients) coefficients.push_back(c.value);
+            return geom::RadialPhasePolynomial<double>(p.normalization_radius.value,
+                                                       std::move(coefficients));
+          } else {
+            static_assert(kUnhandledPhase<P>, "compile_phases: unhandled phase layer");
+          }
+        },
+        layer));
+  }
+  return out;
+}
 
 std::string idx(const std::string& base, std::size_t i) {
   return base + "/" + std::to_string(i);
@@ -493,6 +530,7 @@ class Compiler {
       c.shape = compile_shape(s.shape, surface_location + "/shape");
       c.aperture = s.aperture;
       c.phases = s.phases;
+      c.phase_functions = compile_phases(s.phases);
       c.interaction = s.interaction;
       c.diffraction_efficiency = s.diffraction_efficiency;
       // Axes of ideal elements are given in element coordinates (ADR 0021).

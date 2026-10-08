@@ -14,6 +14,7 @@
 #include <string>
 #include <type_traits>
 
+#include "event_media.hpp"
 #include "rtt/compile/errors.hpp"
 #include "rtt/paraxial/paraxial.hpp"
 
@@ -459,15 +460,11 @@ std::optional<std::pair<double, double>> stop_hit(const Context& c, RayState ray
   for (std::size_t i = 0; i < c.stop_event; ++i) {
     const auto& e = events[i];
     const compile::CompiledSurface& s = system.surfaces()[e.surface];
-    // Orders and efficiencies follow in #127 (ADR 0025); until then a ray with an order != 0 or
-    // at a surface with diffraction_efficiency before the stop does not get there, as in the
-    // tracer. first_order() already rejects phase layers, so this only keeps stop_hit()
-    // consistent with trace().
-    if (e.order != 0 || s.diffraction_efficiency) return std::nullopt;
+    // The same event data as the tracer (event_media.hpp), with the diffraction order (ADR
+    // 0025); coating layers do not change the direction and are left out.
     const SurfaceHit hit = intersect_surface(ray, s);
-    ray = apply_event(ray, s, hit, e.surface, e.kind,
-                      system.media()[e.medium_before].index[c.wavelength].real(),
-                      system.media()[e.medium_after].index[c.wavelength].real());
+    ray = apply_event(ray, s, hit, e.surface, e.kind, e.order,
+                      detail::event_media(system, e, c.wavelength));
     if (ray.status != RayStatus::Alive) return std::nullopt;
   }
   const SurfaceHit hit = intersect_surface(ray, system.surfaces()[events[c.stop_event].surface]);

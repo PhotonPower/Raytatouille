@@ -239,12 +239,13 @@ TEST_CASE("trace stats count the rays per status", "[sequential]") {
   REQUIRE(rays.last_surface()[3] == rtt::trace::kNoSurface);
 }
 
-TEST_CASE("an event with order != 0 stops at its hit point with EventImpossible until #127",
-          "[sequential]") {
-  // ADR 0025: orders are traced from #127 on. Until then an order != 0 must not run silently as
-  // order 0; it behaves as the event kind Diffract did before schema 0.3. Order 0 at the same
-  // grating surface is the event without diffraction.
+TEST_CASE("an event with order != 0 is traced with the grating equation (#127)", "[sequential]") {
+  // ADR 0025: an order != 0 must not run silently as order 0 (replaces the stop until #127 of
+  // 1920d17). Thin grating 300/mm, grating vector x, vacuum: the order m = 1 keeps t_y and gets
+  // t'_x = t_x + m lambda0 G (Palmer, Eq. (2-1); Mansuripur, Eq. (7b), n1 = n2 = 1). The ray
+  // outside the aperture stays Vignetted; order 0 at the same surface passes unchanged. 1e-12.
   System s = bare_system();
+  s.environment.medium = "VACUUM";
   Surface grating = surface("G.S1");
   grating.phases.emplace_back(rtt::model::LinearGrating{Param(300.0), 0.0});
   grating.aperture = rtt::model::CircularAperture{5.0, 0.0};
@@ -269,23 +270,29 @@ TEST_CASE("an event with order != 0 stops at its hit point with EventImpossible 
   set_ray(rays, 1, Vec3(0.0, 6.0, 0.0), Vec3::UnitZ());  // outside the aperture
   RayBatch zero = rays;
   const auto stats = SequentialTracer().trace(cs, PathId{0}, rays);
-  REQUIRE(rays.status()[0] == RayStatus::EventImpossible);
-  REQUIRE(rays.last_surface()[0] == 0);
-  const double t = 10.0 / tilted.z();
-  REQUIRE((pos(rays, 0) - (Vec3(0.0, 1.0, 0.0) + t * tilted)).norm() <= 1e-12);
-  REQUIRE((dir(rays, 0) - tilted).norm() == 0.0);
+  REQUIRE(rays.status()[0] == RayStatus::Alive);
+  REQUIRE(rays.last_surface()[0] == 1);
+  const double tx = 0.5876e-3 * 300.0;
+  const Vec3 expected(tx, tilted.y(), std::sqrt(1.0 - tx * tx - tilted.y() * tilted.y()));
+  REQUIRE((dir(rays, 0) - expected).cwiseAbs().maxCoeff() <= 1e-12);
   REQUIRE(rays.status()[1] == RayStatus::Vignetted);
-  REQUIRE(stats.count(RayStatus::EventImpossible) == 1);
+  REQUIRE(stats.count(RayStatus::Alive) == 1);
 
   [[maybe_unused]] const auto zero_stats = SequentialTracer().trace(cs, PathId{1}, zero);
   REQUIRE(zero.status()[0] == RayStatus::Alive);
   REQUIRE(zero.last_surface()[0] == 1);
+  REQUIRE(dir(zero, 0) == tilted);
 }
 
-TEST_CASE("a surface with diffraction efficiencies stops every order until #127", "[sequential]") {
-  // ADR 0025, point 5: with the field present, orders not listed have efficiency 0, also order
-  // 0. Until #127 reads the efficiencies, order 0 must not pass there with full weight.
+TEST_CASE("a surface with diffraction efficiencies scales the weight of each order (#127)",
+          "[sequential]") {
+  // ADR 0025, point 5 (replaces the stop until #127 of 1920d17): with the field present, orders
+  // not listed have efficiency 0, also order 0, which then passes with weight 0 and status
+  // Alive; the listed order 1 keeps 0.8 of the power. Transmit at the thin grating and at the
+  // detector are dummy passages (weight 1 before): order 0 has weight 0 exactly, order 1
+  // 0.8 ||P_T||^2 / 2 with P = R(z -> k_1), which is 0.8 up to a few eps (R orthogonal).
   System s = bare_system();
+  s.environment.medium = "VACUUM";
   Surface grating = surface("G.S1");
   grating.phases.emplace_back(rtt::model::LinearGrating{Param(300.0), 0.0});
   grating.diffraction_efficiency = std::vector<rtt::model::DiffractionEfficiency>{{1, 0.8}};
@@ -296,16 +303,24 @@ TEST_CASE("a surface with diffraction efficiencies stops every order until #127"
   s.paths = {{"zero",
               false,
               {{SurfaceId("G.S1"), rtt::model::EventKind::Transmit, 0},
+               {SurfaceId("D"), rtt::model::EventKind::Transmit, 0}}},
+             {"first",
+              false,
+              {{SurfaceId("G.S1"), rtt::model::EventKind::Transmit, 1},
                {SurfaceId("D"), rtt::model::EventKind::Transmit, 0}}}};
   const MaterialLibrary lib;
   const CompiledSystem cs = compile(s, lib);
 
   RayBatch rays(1);
   set_ray(rays, 0, Vec3(0.0, 1.0, 0.0), Vec3::UnitZ());
+  RayBatch first = rays;
   [[maybe_unused]] const auto stats = SequentialTracer().trace(cs, PathId{0}, rays);
-  REQUIRE(rays.status()[0] == RayStatus::EventImpossible);
-  REQUIRE(rays.last_surface()[0] == 0);
-  REQUIRE((pos(rays, 0) - Vec3(0.0, 1.0, 10.0)).norm() <= 1e-12);
+  REQUIRE(rays.status()[0] == RayStatus::Alive);
+  REQUIRE(rays.last_surface()[0] == 1);
+  REQUIRE(rays.weight()[0] == 0.0);
+  [[maybe_unused]] const auto first_stats = SequentialTracer().trace(cs, PathId{1}, first);
+  REQUIRE(first.status()[0] == RayStatus::Alive);
+  REQUIRE(std::abs(first.weight()[0] - 0.8) <= 1e-15);
 }
 
 TEST_CASE("a crystal mode stops with EventImpossible until #132", "[sequential]") {
@@ -409,4 +424,16 @@ TEST_CASE("Evanescent is a ray status of its own, appended to the enum (#127)", 
   REQUIRE(rays.status()[1] == RayStatus::Evanescent);
   REQUIRE(rays.last_surface()[1] == 0);
   REQUIRE(pos(rays, 1) == Vec3(0.0, 2.0, -1.0));  // untouched
+}
+
+TEST_CASE("the first status value after Evanescent is invalid input (#127)", "[sequential]") {
+  // kRayStatusCount (8) is the smallest invalid value (hint from the review of #145).
+  System s = bare_system();
+  s.root.children.push_back(
+      {Element{"D", ElementKind::Detector, {}, std::nullopt, {surface("D")}}});
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+  RayBatch rays(1);
+  rays.status()[0] = static_cast<RayStatus>(rtt::trace::kRayStatusCount);
+  REQUIRE_THROWS_AS(SequentialTracer().trace(cs, PathId{0}, rays), std::invalid_argument);
 }

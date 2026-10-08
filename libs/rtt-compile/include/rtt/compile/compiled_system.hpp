@@ -21,6 +21,7 @@
 #include "rtt/compile/compiled_element.hpp"
 #include "rtt/geom/asphere.hpp"
 #include "rtt/geom/conic.hpp"
+#include "rtt/geom/phase.hpp"
 #include "rtt/geom/plane.hpp"
 #include "rtt/material/material.hpp"
 #include "rtt/math/isometry.hpp"
@@ -82,7 +83,11 @@ struct CompiledSurface {
   math::Isometry3 to_local;
   CompiledShape shape = geom::Plane<double>{};
   std::optional<model::Aperture> aperture;  ///< in local coordinates, mm; none = unbounded
-  std::vector<model::PhaseLayer> phases;    ///< copied as values; evaluated from M4 on
+  std::vector<model::PhaseLayer> phases;    ///< as in the model (export, display)
+  /// The phase layers resolved for the tracer (ADR 0025, point 1, #127), in the order of
+  /// `phases`: parameter values, orientation_deg in rad, coefficients in rad unchanged; phase in
+  /// rad over the local (x, y) in mm.
+  std::vector<geom::PhaseFunction<double>> phase_functions;
   model::Interaction interaction = model::Fresnel{};
   /// Efficiency per diffraction order as in the model (ADR 0025, point 5): absent = every order
   /// has efficiency 1; present = orders not listed have efficiency 0.
@@ -242,6 +247,9 @@ class CompiledSystem;
 ///
 /// The result holds no references or pointers into `system`, `materials` or `coatings`.
 /// @throws CompileError as described above
+/// @throws std::invalid_argument for a phase layer with a non-finite coefficient or orientation
+///         (only reachable through the API; validate() does not check them, like the
+///         coefficients of aspheres; rtt::geom phase constructors, #127)
 [[nodiscard]] CompiledSystem compile(const model::System& system,
                                      const material::MaterialLibrary& materials,
                                      const coating::CoatingLibrary& coatings);

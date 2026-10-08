@@ -28,8 +28,8 @@ enum class RayStatus : std::uint8_t {
   Absorbed,       ///< stopped by an absorbing surface
   /// The requested event cannot happen, e.g.: the interaction of the surface does not support
   /// the event kind (IdealMirror with Refract, a polarizer with Reflect), an event of a later
-  /// milestone (Ordinary, Extraordinary), a diffraction order or efficiency that is not traced
-  /// yet (until #127), or amplitudes that are not finite. A modelling problem, unlike Tir and
+  /// milestone (Ordinary, Extraordinary), an order != 0 without wavelength or at a surface
+  /// without phase layers, or amplitudes that are not finite. A modelling problem, unlike Tir and
   /// Evanescent (physical limits).
   EventImpossible,
   /// The diffraction order has no real direction (ADR 0025, point 7); the ray stays at its hit

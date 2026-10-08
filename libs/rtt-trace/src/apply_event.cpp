@@ -5,6 +5,7 @@
 #include <type_traits>
 #include <variant>
 
+#include "rtt/geom/phase.hpp"
 #include "rtt/math/units.hpp"
 #include "rtt/polar/ideal.hpp"
 #include "rtt/polar/interface.hpp"
@@ -142,6 +143,19 @@ std::optional<math::CMat3> interaction_prt(const compile::CompiledSurface& surfa
       surface.interaction);
 }
 
+/// 2 pi as in rtt::geom::LinearGratingPhase, so that g / (2 pi) is exact for 2^k lines/mm.
+constexpr double kTwoPi = 2.0 * std::numbers::pi;
+
+/// Power fraction of `order` at `surface` (ADR 0025, point 5): 1 without
+/// diffraction_efficiency, otherwise the listed value or 0 for an order not listed.
+double order_efficiency(const compile::CompiledSurface& surface, int order) noexcept {
+  if (!surface.diffraction_efficiency) return 1.0;
+  for (const model::DiffractionEfficiency& e : *surface.diffraction_efficiency) {
+    if (e.order == order) return e.efficiency;
+  }
+  return 0.0;
+}
+
 }  // namespace
 
 std::optional<math::Vec3> refract(const math::Vec3& d,
@@ -220,11 +234,87 @@ RayState move_to_hit(const RayState& ray,
   return move_to_hit(ray, surface, hit, surface_index, media);
 }
 
+math::Vec3 incident_tangential(const RayState& /*ray*/,
+                               const compile::CompiledSurface& /*surface*/,
+                               const SurfaceHit& hit,
+                               double n_before) noexcept {
+  const math::Vec3& d = hit.direction;
+  const math::Vec3& n = hit.normal;
+  return n_before * (d - n * n.dot(d));
+}
+
+math::Vec3 order_momentum(const compile::CompiledSurface& surface,
+                          const SurfaceHit& hit,
+                          int order,
+                          double wavelength_um) noexcept {
+  if (order == 0) return math::Vec3::Zero();
+  // ADR 0025, point 2: m lambda0 / (2 pi) g_par (Mansuripur, Eq. (7b), with F = phi / (2 pi)).
+  // lambda0 by division: exact for wavelengths 1000 * 2^-k um, unlike um_to_mm (* 1e-3).
+  const auto [gx, gy] =
+      geom::phase_grad<double>(surface.phase_functions, hit.point.x(), hit.point.y());
+  const math::Vec3 periods =
+      geom::tangential_gradient<double>({gx / kTwoPi, gy / kTwoPi}, hit.normal);
+  return (static_cast<double>(order) * (wavelength_um / 1000.0)) * periods;
+}
+
+std::optional<math::Vec3> order_direction(const math::Vec3& tau,
+                                          const math::Vec3& unit_normal,
+                                          double n_out,
+                                          double side) noexcept {
+  // |t'| = 1 with the tangential part tau / n_out (ADR 0025, point 2); equality is evanescent
+  // (point 7): the order would run along the surface.
+  const double tau2 = tau.squaredNorm();
+  const double n2 = n_out * n_out;
+  if (!(tau2 < n2)) return std::nullopt;
+  return (tau + (side * std::sqrt(n2 - tau2)) * unit_normal) / n_out;
+}
+
+double order_opl(const compile::CompiledSurface& surface,
+                 const SurfaceHit& hit,
+                 int order,
+                 double wavelength_um) noexcept {
+  if (order == 0) return 0.0;
+  // ADR 0025, point 3: the order carries the phase m phi (Mansuripur, Eq. (5)), i.e. the path
+  // m phi lambda0 / (2 pi) (Mansuripur, Sec. 2, before Eq. (3a): Phi = 2 pi OPD / lambda0).
+  const double phi = geom::phase<double>(surface.phase_functions, hit.point.x(), hit.point.y());
+  return (static_cast<double>(order) * (wavelength_um / 1000.0)) * (phi / kTwoPi);
+}
+
+math::Mat3 rotation_between(const math::Vec3& a, const math::Vec3& b) noexcept {
+  // Diebel (2006), Eqs. (183)-(187), transposed (active rotation, see the header): with
+  // c = cos(alpha) = a . b, v = a x b = sin(alpha) n, R = c I + [v]_x + (1 - c) n n^T. The unit
+  // axis n = v / |v| keeps the last term accurate also close to a . b = -1, where the form
+  // v v^T / (1 + c) would divide two small numbers.
+  if (a == b) return math::Mat3::Identity();
+  const math::Vec3 v = a.cross(b);
+  const double s = v.norm();
+  const double c = a.dot(b);
+  if (!(s > 0.0)) return math::Mat3::Identity();  // parallel within rounding (c > -1 by @pre)
+  // Element by element (Diebel, Eqs. (185)-(187) with the half-angle products written as
+  // cos(alpha) and 1 - cos(alpha), transposed): R_ij = c delta_ij + k n_i n_j + eps_ikj v_k,
+  // k = 1 - c. Scalar code instead of an Eigen expression with an outer product, which GCC
+  // flags with -Wnull-dereference at -O2 (a false positive inside Eigen).
+  const math::Vec3 n = v / s;
+  const double k = 1.0 - c;
+  math::Mat3 r;
+  r(0, 0) = c + k * n.x() * n.x();
+  r(0, 1) = k * n.x() * n.y() - v.z();
+  r(0, 2) = k * n.x() * n.z() + v.y();
+  r(1, 0) = k * n.y() * n.x() + v.z();
+  r(1, 1) = c + k * n.y() * n.y();
+  r(1, 2) = k * n.y() * n.z() - v.x();
+  r(2, 0) = k * n.z() * n.x() - v.y();
+  r(2, 1) = k * n.z() * n.y() + v.x();
+  r(2, 2) = c + k * n.z() * n.z();
+  return r;
+}
+
 RayState apply_event(const RayState& ray,
                      const compile::CompiledSurface& surface,
                      const SurfaceHit& hit,
                      std::uint32_t surface_index,
                      model::EventKind kind,
+                     int order,
                      const EventMedia& media) noexcept {
   const double n_before = media.before.real();
   const double n_after = media.after.real();
@@ -270,21 +360,55 @@ RayState apply_event(const RayState& ray,
       out.status = RayStatus::EventImpossible;  // M4
       return out;
   }
-  const math::Vec3 k_out = surface.to_global.apply_vector(local_dir);
+
+  // Diffraction order m != 0 (ADR 0025): order 0 exists (Tir was decided above, point 7); the
+  // order needs the wavelength and phase layers (validate allows orders only there).
+  math::Vec3 local_order = local_dir;
+  if (order != 0) {
+    if (!(media.wavelength_um > 0.0) || surface.phase_functions.empty()) {
+      out.status = RayStatus::EventImpossible;
+      return out;
+    }
+    const double n_out = kind == model::EventKind::Reflect ? n_before : n_after;
+    const math::Vec3 tau = incident_tangential(ray, surface, hit, n_before) +
+                           order_momentum(surface, hit, order, media.wavelength_um);
+    const double side = local_dir.dot(hit.normal) >= 0.0 ? 1.0 : -1.0;
+    const std::optional<math::Vec3> t = order_direction(tau, hit.normal, n_out, side);
+    if (!t) {
+      out.status = RayStatus::Evanescent;
+      return out;
+    }
+    local_order = *t;
+    out.opl += order_opl(surface, hit, order, media.wavelength_um);
+  }
+
+  const math::Vec3 k_zero = surface.to_global.apply_vector(local_dir);
   const math::Vec3 normal = surface.to_global.apply_vector(hit.normal);
   const std::optional<math::CMat3> p =
-      interaction_prt(surface, kind, ray.dir, k_out, normal, media);
+      interaction_prt(surface, kind, ray.dir, k_zero, normal, media);
   // Non-finite amplitudes (grazing incidence with q_i = 0, a coating layer with q = 0 exactly:
   // preconditions of rtt-polar and rtt-coating) stop the ray instead of spreading NaN.
   if (!p || !p->allFinite()) {
     out.status = RayStatus::EventImpossible;
     return out;
   }
-  // weight = s ||P_T||^2 / 2 (ADR 0021): the event multiplies ||P_T||^2 by new / old, s stays.
+  math::CMat3 p_event = *p;
+  math::Vec3 k_out = k_zero;
+  if (order != 0) {
+    // ADR 0025, point 6: interface as for order 0, then the thin layer turns k_0 into k_m
+    // without rotating the polarization about the direction.
+    k_out = surface.to_global.apply_vector(local_order);
+    p_event = rotation_between(k_zero, k_out).cast<math::Complex>() * p_event;
+  }
+  // weight = s ||P_T||^2 / 2 (ADR 0021): the event multiplies ||P_T||^2 by new / old, s stays;
+  // the efficiency of the order is a polarization-independent factor of s (ADR 0025, point 5).
   const double before = transverse_norm2(ray.prt, ray.dir);
-  out.prt = *p * ray.prt;
+  out.prt = p_event * ray.prt;
   if (before > 0.0) {
     out.weight *= transverse_norm2(out.prt, k_out) / before;
+  }
+  if (surface.diffraction_efficiency) {
+    out.weight *= order_efficiency(surface, order);
   }
   out.dir = k_out;
   return out;
@@ -301,13 +425,14 @@ RayState apply_event(const RayState& ray,
   media.before = n_before;
   media.after = n_after;
   media.beyond = n_after;
-  return apply_event(ray, surface, hit, surface_index, kind, media);
+  return apply_event(ray, surface, hit, surface_index, kind, 0, media);
 }
 
 RayState sequential_step(const RayState& ray,
                          const compile::CompiledSurface& surface,
                          std::uint32_t surface_index,
                          model::EventKind kind,
+                         int order,
                          const EventMedia& media) noexcept {
   if (ray.status != RayStatus::Alive) {
     return ray;
@@ -318,7 +443,7 @@ RayState sequential_step(const RayState& ray,
     out.status = RayStatus::Vignetted;
     return out;
   }
-  return apply_event(ray, surface, hit, surface_index, kind, media);
+  return apply_event(ray, surface, hit, surface_index, kind, order, media);
 }
 
 RayState sequential_step(const RayState& ray,
@@ -331,7 +456,7 @@ RayState sequential_step(const RayState& ray,
   media.before = n_before;
   media.after = n_after;
   media.beyond = n_after;
-  return sequential_step(ray, surface, surface_index, kind, media);
+  return sequential_step(ray, surface, surface_index, kind, 0, media);
 }
 
 }  // namespace rtt::trace

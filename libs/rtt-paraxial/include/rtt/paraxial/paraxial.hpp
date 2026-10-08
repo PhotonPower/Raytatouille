@@ -31,9 +31,10 @@
 namespace rtt::paraxial {
 
 /// Thrown when paraxial data are requested for a path that is not rotationally symmetric about
-/// the global z axis (decentred or tilted surface, phase layers, diffraction or birefringent
-/// events) or for an invalid path id or wavelength index. The message names the surface; where
-/// the place in the system file is known, surface() and location() give it (ADR 0022).
+/// the global z axis (decentred or tilted surface, a diffraction order other than 0 (ADR 0025;
+/// order 0 at a phase surface is the surface without phase layer), birefringent events) or for an
+/// invalid path id or wavelength index. The message names the surface; where the place in the
+/// system file is known, surface() and location() give it (ADR 0022).
 class ParaxialError : public std::runtime_error {
  public:
   using std::runtime_error::runtime_error;

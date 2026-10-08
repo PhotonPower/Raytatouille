@@ -48,7 +48,8 @@ struct EventMedia {
   /// Complex index on the other side of the surface (Fresnel and coating partner for Reflect;
   /// equal to after for Refract).
   math::Complex beyond{1.0};
-  /// Vacuum wavelength, um; must be > 0 if `before` absorbs (Im > 0) or `layers` is not empty.
+  /// Vacuum wavelength, um; must be > 0 if `before` absorbs (Im > 0), `layers` is not empty or
+  /// the event has a diffraction order != 0 (otherwise EventImpossible, ADR 0025).
   /// No default wavelength, so that a forgotten value cannot pass unnoticed.
   double wavelength_um = 0.0;
   /// Coating layers at this wavelength in the order seen by the ray: from the incident medium to
@@ -88,6 +89,57 @@ struct SurfaceHit {
 /// @param d      unit incident direction
 /// @param normal unit surface normal, either orientation
 [[nodiscard]] math::Vec3 reflect(const math::Vec3& d, const math::Vec3& normal) noexcept;
+
+// --------------------------------------------------------- diffraction orders (ADR 0025) -----
+// Building blocks of the local grating equation n' t'_par = n t_par + m lambda0 g_par / (2 pi)
+// (ADR 0025, point 2; M. Mansuripur, Proc. SPIE 6620, 66200N (2007), Eqs. (7b), (8); C. Palmer,
+// Diffraction Grating Handbook, 7th ed., Eq. (2-1); docs/quellen.md). All vectors in the local
+// coordinates of the surface; momenta in units of the vacuum wave number (n t, dimensionless).
+
+/// Tangential momentum n t_par = n_before (d - (d . N) N) of the incident ray at the hit, with
+/// d = hit.direction and N = hit.normal. `ray` and `surface` are part of the interface for
+/// crystals (#132, ADR 0026: there the wave normal times the mode index replaces n d).
+[[nodiscard]] math::Vec3 incident_tangential(const RayState& ray,
+                                             const compile::CompiledSurface& surface,
+                                             const SurfaceHit& hit,
+                                             double n_before) noexcept;
+
+/// Jump of the tangential momentum by diffraction order m: m lambda0 g_par / (2 pi), with g the
+/// gradient of the phase of CompiledSurface::phase_functions at the local hit point (rad/mm),
+/// g_par = (I - N N^T) g (rtt::geom::tangential_gradient) and lambda0 = wavelength_um / 1000 the
+/// vacuum wavelength in mm. Computed as (m lambda0) (g / (2 pi)), so that a grating of
+/// 2^k lines/mm at 2^-k mm gives exactly 1 per order. Tangential to N; exactly 0 for m = 0.
+[[nodiscard]] math::Vec3 order_momentum(const compile::CompiledSurface& surface,
+                                        const SurfaceHit& hit,
+                                        int order,
+                                        double wavelength_um) noexcept;
+
+/// Unit direction t' = (tau + side sqrt(n_out^2 - |tau|^2) N) / n_out of a diffraction order
+/// with tangential momentum tau (tangential to N) in a medium of real index n_out > 0 (ADR 0025,
+/// point 2). std::nullopt if |tau|^2 >= n_out^2: the order is evanescent, the grazing case
+/// included (ADR 0025, point 7).
+/// @param side +1 or -1: the side of N the order leaves to, that of order 0
+[[nodiscard]] std::optional<math::Vec3> order_direction(const math::Vec3& tau,
+                                                        const math::Vec3& unit_normal,
+                                                        double n_out,
+                                                        double side) noexcept;
+
+/// Optical path that diffraction order m adds, mm: m phi lambda0 / (2 pi) with phi the phase of
+/// CompiledSurface::phase_functions at the local hit point in rad (ADR 0025, point 3; a larger
+/// phase is a delay, i.e. a longer path). Exactly 0 for m = 0.
+[[nodiscard]] double order_opl(const compile::CompiledSurface& surface,
+                               const SurfaceHit& hit,
+                               int order,
+                               double wavelength_um) noexcept;
+
+/// Smallest rotation R with R a = b for unit vectors a, b with a . b > -1 (ADR 0025, point 6):
+/// the rotation about n = (a x b) / |a x b| by the angle alpha between a and b,
+/// R = cos(alpha) I + sin(alpha) [n]_x + (1 - cos(alpha)) n n^T. This is the transpose of
+/// R_a(alpha, n) in J. Diebel, Representing Attitude: Euler Angles, Unit Quaternions, and Rotation
+/// Vectors, Stanford (2006), Eqs. (183)-(187): those matrices are passive (Eq. (4), world ->
+/// body), the rotation of a vector is R_a^T (docs/quellen.md). Exactly the identity for a == b.
+/// @pre |a| = |b| = 1, a . b > -1
+[[nodiscard]] math::Mat3 rotation_between(const math::Vec3& a, const math::Vec3& b) noexcept;
 
 /// Intersects the ray with the surface in its local coordinates: analytic for plane and conic,
 /// Newton for the even asphere (rtt::geom::intersect). Status Missed or NoConvergence if there
@@ -159,9 +211,17 @@ inline constexpr double kApertureTolerance = 1e-9;
 /// - Any other combination of interaction and event kind, a CoatingRef surface without compiled
 ///   coating (CompiledSurface::coating empty), an ideal axis parallel to the ray and non-finite
 ///   amplitudes (grazing incidence, a coating layer exactly at q = 0) give EventImpossible.
-/// Phase layers are ignored here (order 0); orders follow in #127 (ADR 0025). Until then the
-/// sequential tracer stops an event with order != 0, or at a surface with
-/// diffraction_efficiency, with EventImpossible (sequential.hpp).
+/// Diffraction order `order` (ADR 0025) at a surface with phase layers: order 0 is the event
+/// above, unchanged (phase layers are not evaluated). For order m != 0, after the event of order
+/// 0 (Tir first, point 7), the direction follows from the local grating equation
+/// (incident_tangential + order_momentum, order_direction into Re(after) for Refract and
+/// Transmit, Re(before) for Reflect, on the side of order 0); no real direction gives Evanescent
+/// with the ray at the hit point. The OPL grows by order_opl; P becomes R(k_0 -> k_m) P_0 with
+/// P_0 the interaction above for the direction k_0 of order 0 and R = rotation_between (point 6).
+/// An order != 0 without wavelength (wavelength_um <= 0) or at a surface without phase layers
+/// gives EventImpossible. With CompiledSurface::diffraction_efficiency the weight is multiplied
+/// by the efficiency of the order (orders not listed, also order 0: 0, status stays Alive; point
+/// 5); P is not.
 ///
 /// Never throws; physical problems are status flags (ADR 0009).
 /// @param ray           incoming ray in global coordinates, |dir| = 1
@@ -169,15 +229,17 @@ inline constexpr double kApertureTolerance = 1e-9;
 /// @param hit           result of intersect_surface(ray, surface)
 /// @param surface_index index of `surface` in CompiledSystem::surfaces(), stored in last_surface
 /// @param kind          event at this surface
+/// @param order         diffraction order m, sign as in ADR 0025 (0 without phase layer)
 /// @param media         complex indices, wavelength and coating layers of this event
 [[nodiscard]] RayState apply_event(const RayState& ray,
                                    const compile::CompiledSurface& surface,
                                    const SurfaceHit& hit,
                                    std::uint32_t surface_index,
                                    model::EventKind kind,
+                                   int order,
                                    const EventMedia& media) noexcept;
 
-/// apply_event() with real indices and no coating layers (M1 form): before = n_before,
+/// apply_event() with real indices, no coating layers and order 0 (M1 form): before = n_before,
 /// after = beyond = n_after, no absorption. For Reflect pass n_after = the index beyond the
 /// surface; with n_after = n_before a Fresnel reflection at a non-mirror surface has r = 0
 /// (weight 0). A CoatingRef surface acts as a bare interface here (no layers).
@@ -195,9 +257,11 @@ inline constexpr double kApertureTolerance = 1e-9;
                                        const compile::CompiledSurface& surface,
                                        std::uint32_t surface_index,
                                        model::EventKind kind,
+                                       int order,
                                        const EventMedia& media) noexcept;
 
-/// sequential_step() with real indices and no coating layers (M1 form, as apply_event()).
+/// sequential_step() with real indices, no coating layers and order 0 (M1 form, as
+/// apply_event()).
 [[nodiscard]] RayState sequential_step(const RayState& ray,
                                        const compile::CompiledSurface& surface,
                                        std::uint32_t surface_index,

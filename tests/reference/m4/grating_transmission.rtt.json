@@ -1,0 +1,90 @@
+{
+  "schema_version": "0.3.0",
+  "name": "M4 acceptance: transmission grating 300 lines/mm in vacuum, orders -1, 0, +1 and +6 (evanescent at normal incidence)",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 5.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "grating bench",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 5.0}
+          }
+        ]
+      },
+      {
+        "type": "thin_element",
+        "name": "grating",
+        "pose": {"position": [0.0, 0.0, 10.0]},
+        "surfaces": [
+          {
+            "id": "G",
+            "aperture": {"type": "circular", "radius": 20.0},
+            "phases": [
+              {"type": "linear_grating", "lines_per_mm": 300.0}
+            ]
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "screen",
+        "pose": {"position": [0.0, 0.0, 60.0]},
+        "surfaces": [
+          {
+            "id": "SCR",
+            "aperture": {"type": "rectangular", "half_width_x": 40.0, "half_width_y": 40.0}
+          }
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {
+      "name": "order -1",
+      "events": [
+        {"surface": "STO", "kind": "transmit"},
+        {"surface": "G", "kind": "transmit", "order": -1},
+        {"surface": "SCR", "kind": "transmit"}
+      ]
+    },
+    {
+      "name": "order 0",
+      "events": [
+        {"surface": "STO", "kind": "transmit"},
+        {"surface": "G", "kind": "transmit"},
+        {"surface": "SCR", "kind": "transmit"}
+      ]
+    },
+    {
+      "name": "order +1",
+      "events": [
+        {"surface": "STO", "kind": "transmit"},
+        {"surface": "G", "kind": "transmit", "order": 1},
+        {"surface": "SCR", "kind": "transmit"}
+      ]
+    },
+    {
+      "name": "order +6",
+      "events": [
+        {"surface": "STO", "kind": "transmit"},
+        {"surface": "G", "kind": "transmit", "order": 6},
+        {"surface": "SCR", "kind": "transmit"}
+      ]
+    }
+  ]
+}
