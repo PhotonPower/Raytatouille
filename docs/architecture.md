@@ -350,7 +350,7 @@ Analysen liefern Datenobjekte, niemals Plots. Optimierung und Toleranzierung arb
 
 ## Python-API und CLI
 
-**Python (`rtt-py`, Paket `raytatouille`, ab M2):** dünne Spiegelung der C++-Typen, Ergebnisse als NumPy-Arrays, vollständige Typ-Stubs (`.pyi`). Plots in `raytatouille.plot`. Die spätere GUI (`raytatouille.gui`, PySide6) nutzt ausschließlich die öffentliche API; jede GUI-Aktion ist als Skriptbefehl reproduzierbar.
+**Python (`rtt-py`, Paket `raytatouille`, ab M2):** dünne Spiegelung der C++-Typen, Ergebnisse als NumPy-Arrays, vollständige Typ-Stubs (`.pyi`). Plots in `raytatouille.plot`. Der ganze Modellbaum ist als unveränderliche typisierte Kopien lesbar (`raytatouille.model`, `System.root`, `paths`, `fields`, `aperture`, `object_space`; ADR 0024). Ändern und Undo kommen über JSON Patch (ADR 0024, #82). Die spätere GUI (`raytatouille.gui`, PySide6) nutzt ausschließlich die öffentliche API; jede GUI-Aktion ist als Skriptbefehl reproduzierbar.
 
 ```python
 import raytatouille as rt

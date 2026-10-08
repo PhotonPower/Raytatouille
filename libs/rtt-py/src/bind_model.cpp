@@ -37,12 +37,6 @@ auto with_os_error(F&& f) {
   }
 }
 
-/// __eq__ with Python semantics: comparing with another type gives False, not TypeError.
-template <typename T>
-bool equal(const T& self, nb::handle other) {
-  return nb::isinstance<T>(other) && self == nb::cast<const T&>(other);
-}
-
 }  // namespace
 
 void bind_model(nb::module_& m) {
@@ -107,12 +101,20 @@ void bind_model(nb::module_& m) {
       .def_ro("um", &model::Wavelength::um, "Vacuum wavelength in um.")
       .def_ro("weight", &model::Wavelength::weight, "Weight, dimensionless.")
       .def_ro("reference", &model::Wavelength::reference,
-              "True for the reference wavelength (exactly one per system).");
+              "True for the reference wavelength (exactly one per system).")
+      .def("__eq__", &equal<model::Wavelength>, "other"_a)
+      .def("__hash__", [](const model::Wavelength& w) {
+        // Read-only, so hashable by value, consistent with __eq__ (ADR 0024).
+        return nb::hash(nb::make_tuple(w.um, w.weight, w.reference));
+      });
+
+  bind_model_tree(m);  // the tree types are needed by the properties of System
 
   nb::class_<model::System>(
       m, "System",
-      "Optical system as described by a system file (*.rtt.json). Only the name and the "
-      "environment can be changed from Python; editing the full model follows later.")
+      "Optical system as described by a system file (*.rtt.json). The whole tree is readable "
+      "as immutable copies (raytatouille.model); only the name and the environment can be "
+      "changed from Python.")
       .def(nb::init<>())
       .def_rw("name", &model::System::name)
       .def_ro("schema_version", &model::System::schema_version,
@@ -122,6 +124,19 @@ void bind_model(nb::module_& m) {
       .def_prop_ro(
           "wavelengths", [](const model::System& s) { return s.wavelengths; },
           "System wavelengths in model order (copies).")
+      .def_prop_ro(
+          "object_space", [](const model::System& s) { return s.object; },
+          "Position of the object (copy; file key \"object\").")
+      .def_prop_ro(
+          "aperture", [](const model::System& s) { return s.aperture; }, "System aperture (copy).")
+      .def_prop_ro(
+          "fields", [](const model::System& s) { return s.fields; }, "Field points (copy).")
+      .def_prop_ro(
+          "root", [](const model::System& s) { return s.root; },
+          "Root assembly of the element tree (copy). Each access copies the whole tree; keep "
+          "the result in a variable instead of reading it again in a loop.")
+      .def_prop_ro(
+          "paths", [](const model::System& s) { return s.paths; }, "Ray paths in order (copies).")
       .def("to_json", &io::to_json,
            "Canonical JSON text (2-space indent, LF, trailing newline, defaults omitted).")
       .def_static("from_json", &io::parse_system, "text"_a,
