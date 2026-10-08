@@ -130,9 +130,10 @@ if(RTT_BUILD_TESTS)
   add_test(NAME rtt_py_pytest
     COMMAND "${Python_EXECUTABLE}" -m pytest -q "${CMAKE_CURRENT_SOURCE_DIR}/tests"
             -p no:cacheprovider)
+  # MPLBACKEND=Agg: the examples plot without a display, whatever the test order (#35, #55).
   set_tests_properties(rtt_py_pytest PROPERTIES
     ENVIRONMENT
-      "PYTHONPATH=${RTT_PY_BUILD_DIR};RTT_PY_REFERENCE_EXE=$<TARGET_FILE:rtt_py_reference>;RTT_REFERENCE_DIR=${RTT_REFERENCE_DIR};RTT_CATALOG_DIR=${PROJECT_SOURCE_DIR}/tests/catalogs")
+      "MPLBACKEND=Agg;PYTHONPATH=${RTT_PY_BUILD_DIR};RTT_PY_REFERENCE_EXE=$<TARGET_FILE:rtt_py_reference>;RTT_REFERENCE_DIR=${RTT_REFERENCE_DIR};RTT_CATALOG_DIR=${PROJECT_SOURCE_DIR}/tests/catalogs")
   add_test(NAME rtt_py_mypy
     COMMAND "${Python_EXECUTABLE}" -m mypy --config-file "${PROJECT_SOURCE_DIR}/pyproject.toml"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests" "${RTT_PY_PACKAGE_DIR}")
