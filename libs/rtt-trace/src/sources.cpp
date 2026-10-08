@@ -1,5 +1,9 @@
 #include "rtt/trace/sources.hpp"
 
+#include <oneapi/tbb/blocked_range.h>
+#include <oneapi/tbb/parallel_for.h>
+#include <oneapi/tbb/partitioner.h>
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -623,10 +627,14 @@ AimedRay aim_ray(const compile::CompiledSystem& system,
 
 namespace {
 
-/// make_rays() with an optional control (run_control.hpp, #83). The aiming loop stays serial
-/// and computes every ray exactly as without a control; with an active control it reports the
-/// progress (stage "aim") and checks for cancellation before every block of
-/// control->block_size rays, leaves the loop on a stop and throws only after it.
+/// make_rays() with an optional control (run_control.hpp, #83). The rays are aimed in parallel
+/// (#119): every ray from its own paraxial start value, written only to its own slot, with no
+/// reduction over rays, so the result does not depend on the number of threads or on the
+/// partitioning (ADR 0004, addendum #119). The preparation (context, pupil points, field starts)
+/// stays serial and is the only part that throws. With an active control the rays are aimed in
+/// blocks of control->block_size: progress (stage "aim") after each block, no new block after a
+/// cancellation request or a failed callback, and the monitor throws only after the parallel
+/// part (rule 3), exactly as in SequentialTracer::trace().
 RayBatch make_rays_impl(const compile::CompiledSystem& system,
                         compile::PathId path,
                         std::span<const std::uint16_t> fields,
@@ -645,25 +653,13 @@ RayBatch make_rays_impl(const compile::CompiledSystem& system,
   starts.reserve(fields.size());
   for (const std::uint16_t f : fields) starts.push_back(make_field(c, field_point(c, f)));
 
+  // Ray i belongs to field i / P and pupil point i % P (fields as the outer loop).
   RayBatch rays(fields.size() * points.size());
-  std::optional<RunMonitor> monitor;
-  if (control != nullptr && control->active()) monitor.emplace(*control, rays.size(), "aim");
-  const std::size_t block = control != nullptr ? std::max<std::size_t>(control->block_size, 1) : 1;
-  std::size_t reported = 0;
-  bool stopped = false;
-  std::size_t i = 0;
-  for (std::size_t f = 0; f < fields.size() && !stopped; ++f) {
-    for (const PupilPoint& p : points) {
-      if (monitor && i % block == 0) {
-        if (i > reported) {
-          monitor->add(i - reported);
-          reported = i;
-        }
-        if (monitor->stop()) {
-          stopped = true;
-          break;
-        }
-      }
+  const std::size_t per_field = points.size();
+  const auto aim_range = [&](const oneapi::tbb::blocked_range<std::size_t>& range) {
+    for (std::size_t i = range.begin(); i != range.end(); ++i) {
+      const std::size_t f = i / per_field;
+      const PupilPoint& p = points[i % per_field];
       const AimedRay aimed = aim(c, starts[f], p.px, p.py, aiming);
       rays.pos_x()[i] = aimed.ray.pos.x();
       rays.pos_y()[i] = aimed.ray.pos.y();
@@ -676,13 +672,25 @@ RayBatch make_rays_impl(const compile::CompiledSystem& system,
       rays.pupil_x()[i] = p.px;
       rays.pupil_y()[i] = p.py;
       rays.status()[i] = aimed.ray.status;
-      ++i;
     }
+  };
+  if (control == nullptr || !control->active()) {
+    oneapi::tbb::parallel_for(oneapi::tbb::blocked_range<std::size_t>(0, rays.size()), aim_range,
+                              oneapi::tbb::static_partitioner());
+    return rays;
   }
-  if (monitor) {
-    if (!stopped && i > reported) monitor->add(i - reported);
-    monitor->finish();  // after the loop: Cancelled, the callback's exception, or done == total
-  }
+  RunMonitor monitor(*control, rays.size(), "aim");
+  const std::size_t grain = std::max<std::size_t>(control->block_size, 1);
+  oneapi::tbb::parallel_for(
+      oneapi::tbb::blocked_range<std::size_t>(0, rays.size(), grain),
+      [&](const oneapi::tbb::blocked_range<std::size_t>& range) {
+        if (monitor.stop()) return;
+        aim_range(range);
+        monitor.add(range.size());
+      },
+      oneapi::tbb::simple_partitioner());
+  monitor
+      .finish();  // after the parallel part: Cancelled, the callback's exception, or done == total
   return rays;
 }
 

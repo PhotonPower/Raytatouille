@@ -188,6 +188,8 @@ struct AimedRay {
 /// Rays for the given fields and one wavelength: for every field (outer loop) every pupil point
 /// (inner loop) of `sampling`, aimed with `aiming`. Sets pos, dir, wl, field, pupil_x, pupil_y,
 /// status (Alive or NoConvergence); OPL 0, weight 1, P = identity, last_surface = kNoSurface.
+/// The rays are aimed in parallel with oneTBB (#119), each from its own paraxial start value;
+/// the result is bitwise the same for every number of threads (ADR 0004, addendum #119).
 /// @throws as aim_ray()
 [[nodiscard]] RayBatch make_rays(const compile::CompiledSystem& system,
                                  compile::PathId path,
@@ -197,8 +199,9 @@ struct AimedRay {
                                  Aiming aiming = Aiming::Real);
 
 /// make_rays() with cancellation and progress (run_control.hpp, #83): stage "aim", one work
-/// item per ray, checked every control.block_size rays (the aiming loop stays serial). With an
-/// empty `control` it is make_rays() exactly; the rays never depend on the control.
+/// item per ray, in parallel blocks of control.block_size rays as in SequentialTracer::trace()
+/// (#119). With an empty `control` it is make_rays() exactly; the rays never depend on the
+/// control.
 /// @throws as make_rays(), Cancelled, or the exception of the progress callback
 [[nodiscard]] RayBatch make_rays(const compile::CompiledSystem& system,
                                  compile::PathId path,
