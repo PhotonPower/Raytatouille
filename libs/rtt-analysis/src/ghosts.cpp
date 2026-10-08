@@ -21,9 +21,9 @@ using compile::CompiledSystem;
 using compile::PathId;
 using trace::RayBatch;
 
-/// A ghost whose paraxial focus lies farther than this factor times |y| from its last surface
-/// (|u| <= kCollimatedSlopeRatio |y|) leaves collimated and has no focus offset; this keeps
-/// rounding residues of u from giving foci at 1e17 mm.
+/// A ghost whose paraxial focus lies farther than 1 / kCollimatedSlopeRatio = 1e12 mm from its
+/// last surface (|u| <= kCollimatedSlopeRatio |y|, in 1/mm) leaves collimated and has no focus
+/// offset; this keeps rounding residues of u from giving foci at 1e17 mm.
 constexpr double kCollimatedSlopeRatio = 1e-12;
 
 /// Transmitted power (as path_transmission, #122: mean final weight over the launched rays),
