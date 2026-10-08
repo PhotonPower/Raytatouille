@@ -204,7 +204,8 @@ TEST_CASE("polychromatic centroid with dispersion: sum of w S c over the wavelen
   // weight, all spots share the chief ray of the reference wavelength, hence
   //   c_poly = sum_k w_k S_k c_k / sum_k w_k S_k,  S_k = sum of the ray weights of spot k
   // (S_k differs per wavelength through the Fresnel losses of #61). Rounding of the sums over
-  // about 3 * 127 points of size 0.1 mm: far below 1e-12 mm.
+  // about 3 * 127 points at a height of about 6 mm (field 1, 3.5 deg, f ~ 100 mm):
+  // 381 * 2.2e-16 * 6 mm ~ 5e-13 mm, below 1e-12 mm.
   MaterialLibrary lib;
   lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/schott.agf");
   System s = load("m0/singlet.rtt.json");  // N-BK7, F, d, C

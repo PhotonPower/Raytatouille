@@ -1392,7 +1392,8 @@ namespace {
 /// Stop (r = 30 mm) at z = 0 as the first element, so the entrance pupil is the stop itself
 /// (z_EP = 0, magnification 1). Behind it a plano-convex lens, CONST:1.5, R1 = 64 mm at
 /// z = 1, plane S2 at z = 4: phi = (n - 1) / R1 = 1 / 128 exactly (the thickness term of the
-/// thick-lens power vanishes for a plane S2), EFL = 128 mm. Detector near the focus, VACUUM.
+/// thick-lens power vanishes for a plane S2), EFL = 128 mm. Detector at the focus z = 130 for
+/// the object at infinity and behind the image (z ~ 354) for the finite object, VACUUM.
 System stop_first_lens(rtt::model::SystemApertureType type, double value, bool finite_object) {
   System s;
   s.name = "stop first";

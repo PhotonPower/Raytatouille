@@ -79,10 +79,11 @@ TEST_CASE("paraboloid mirror focuses axial rays at R/2", "[sequential]") {
   // z = R/2 = -100 mm in front of the mirror (focal property of the paraboloid; reference case
   // of docs/architecture.md, Validierung). Issue #6: RMS spot < 1e-9 mm.
   // Derivation (#35, instead of a literature source): the conic sag z = c r^2 / (1 + phi),
-  // phi = sqrt(1 - (1 + k) c^2 r^2) (Forbes 2011, Eq. (2.1), docs/quellen.md) gives phi = 1 for
-  // k = -1, so z = r^2 / (2 R), i.e. r^2 = 2 R z. A mirror point P = (r, z) then has the
-  // distance |P - F|^2 = r^2 + (z - R/2)^2 = z^2 + R z + R^2 / 4 = (z + R/2)^2 from
-  // F = (0, R/2): as far from F as from the plane z = -R/2 (directrix). An axial ray from the
+  // phi = sqrt(1 - (1 + k) c^2 r^2) (Forbes 2011, Eq. (2.1) and the definition of phi right
+  // after it, docs/quellen.md) gives phi = 1 for k = -1, so z = r^2 / (2 R), i.e. r^2 = 2 R z.
+  // A mirror point P = (r, z) then has the distance
+  // |P - F|^2 = r^2 + (z - R/2)^2 = z^2 + R z + R^2 / 4 = (z + R/2)^2 from F = (0, R/2): as far
+  // from F as from the plane z = -R/2 (directrix). An axial ray from the
   // start plane z0 travels (z - z0) to P and |z + R/2| on to F, here z - z0 + (-R/2 - z) =
   // -R/2 - z0 for every r (z <= 0 < -R/2): the same optical path for all rays, so by Fermat's
   // principle the reflected rays meet in F.
