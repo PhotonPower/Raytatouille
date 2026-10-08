@@ -1,5 +1,6 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/filesystem.h>
+#include <nanobind/stl/optional.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/string_view.h>
 #include <nanobind/stl/tuple.h>
@@ -137,6 +138,26 @@ void bind_model(nb::module_& m) {
           "the result in a variable instead of reading it again in a loop.")
       .def_prop_ro(
           "paths", [](const model::System& s) { return s.paths; }, "Ray paths in order (copies).")
+      .def("to_dict", &edit_dict, nb::sig("def to_dict(self) -> dict[str, typing.Any]"),
+           "The edit form (ADR 0024) as Python objects: the system file with every value written "
+           "(defaults included) and every Param as {\"value\": ..., \"variable\": ...}, keys in "
+           "file order. Commands of raytatouille.Editor and raytatouille.apply_patch address it "
+           "with JSON pointers.")
+      .def("json_at", &json_at, "pointer"_a,
+           nb::sig("def json_at(self, pointer: str) -> typing.Any"),
+           "The value at a JSON pointer (RFC 6901) in the edit form, e.g. "
+           "\"/root/children/1/surfaces/0/shape/base/radius\".\n\nRaises KeyError if there is "
+           "no value there and ValueError for an invalid pointer or array index.")
+      .def("locate_surface", &locate_surface, "id"_a,
+           "Current JSON pointer of the surface with this id, e.g. "
+           "\"/root/children/1/surfaces/0\"; None if there is none. A stable anchor for "
+           "references that outlive structural changes (ADR 0024 point 2).")
+      .def("locate_node", &locate_node, "name"_a,
+           "Current JSON pointer of the assembly or element with this name; None if there is "
+           "none. Node names and surface ids are separate name spaces.")
+      .def("locate_path", &locate_path, "name"_a,
+           "Current JSON pointer of the path with this name, e.g. \"/paths/0\"; None if there "
+           "is none.")
       .def("to_json", &io::to_json,
            "Canonical JSON text (2-space indent, LF, trailing newline, defaults omitted).")
       .def_static("from_json", &io::parse_system, "text"_a,

@@ -21,6 +21,7 @@ __all__ = [
     "Cancelled",
     "CoatingCatalogError",
     "CompileError",
+    "EditError",
     "NoStopError",
     "ParaxialError",
     "ParseError",
@@ -56,6 +57,26 @@ class CompileError(RaytatouilleError, ValueError):
     def codes(self) -> list[str]:
         """The stable codes of ``diagnostics``, in the same order."""
         return [d.code for d in self.diagnostics]
+
+
+class EditError(RaytatouilleError, ValueError):
+    """A JSON Patch (raytatouille.apply_patch, Editor) that cannot be applied (ADR 0024).
+
+    ``code`` is a registered code: edit.patch_invalid, edit.path_not_found, edit.read_only,
+    edit.test_failed, edit.invalid_value, edit.base_not_representable, or the code of the
+    first error the patch would add to ``validate`` (e.g. surface.id_duplicate).
+    ``location`` is the JSON pointer into the edit form (empty for the whole patch or system),
+    ``op_index`` the index of the failing operation (None for errors found after applying),
+    ``diagnostics`` the added errors of ``validate``. The system or Editor is unchanged.
+    """
+
+    def __init__(self, message: str, code: str, location: str, op_index: int | None,
+                 diagnostics: list[Diagnostic]) -> None:
+        super().__init__(message)
+        self.code = code
+        self.location = location
+        self.op_index = op_index
+        self.diagnostics = diagnostics
 
 
 class ParaxialError(RaytatouilleError):

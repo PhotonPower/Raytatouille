@@ -28,6 +28,7 @@ nanobind_add_module(_core NB_STATIC NB_SUPPRESS_WARNINGS
   src/errors.cpp
   src/bind_model.cpp
   src/bind_model_tree.cpp
+  src/bind_edit.cpp
   src/bind_compile.cpp
   src/bind_material.cpp
   src/bind_paraxial.cpp
@@ -52,6 +53,7 @@ set(RTT_PY_SOURCES
   python/raytatouille/_util.py
   python/raytatouille/analysis.py
   python/raytatouille/diagnostics.py
+  python/raytatouille/edit.py
   python/raytatouille/errors.py
   python/raytatouille/layout.py
   python/raytatouille/materials.py

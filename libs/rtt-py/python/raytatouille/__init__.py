@@ -19,6 +19,7 @@ Example::
 from . import (
     analysis,
     diagnostics,
+    edit,
     errors,
     layout,
     materials,
@@ -45,6 +46,7 @@ from ._core import (
     save,
     validate,
 )
+from .edit import Editor, PatchResult, apply_patch, apply_patch_with_inverse
 from .materials import MaterialLibrary
 from .trace import CancelToken
 from .errors import (
@@ -53,6 +55,7 @@ from .errors import (
     Cancelled,
     CoatingCatalogError,
     CompileError,
+    EditError,
     NoStopError,
     ParaxialError,
     ParseError,
@@ -74,6 +77,8 @@ __all__ = [
     "CompiledMedium",
     "CompiledSystem",
     "Diagnostic",
+    "EditError",
+    "Editor",
     "Environment",
     "Field",
     "LoadWarning",
@@ -81,6 +86,7 @@ __all__ = [
     "NoStopError",
     "ParaxialError",
     "ParseError",
+    "PatchResult",
     "RaytatouilleError",
     "RaytatouilleWarning",
     "Severity",
@@ -88,8 +94,11 @@ __all__ = [
     "UnknownMaterial",
     "Wavelength",
     "analysis",
+    "apply_patch",
+    "apply_patch_with_inverse",
     "compile",
     "diagnostics",
+    "edit",
     "errors",
     "layout",
     "load",
