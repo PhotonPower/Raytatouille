@@ -7,7 +7,9 @@ records the path of every ray (RayPaths) for drawing rays in a layout.
 Long runs can be cancelled and report progress (#83): pass ``cancel=CancelToken()`` and call
 its cancel() from another thread (raises raytatouille.errors.Cancelled), and ``progress``, a
 callable ``progress(done, total, stage)`` (ProgressCallback) called with the GIL from any thread,
-at most every 50 ms and finally with done == total. Neither changes the result.
+at most every 50 ms and finally with done == total. Neither changes the result. ``progress``
+must not start a raytatouille computation: through work stealing it may be called again in the
+same thread.
 """
 
 from __future__ import annotations

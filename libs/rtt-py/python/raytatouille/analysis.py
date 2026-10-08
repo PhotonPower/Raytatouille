@@ -13,8 +13,9 @@ another thread raises raytatouille.errors.Cancelled after at most one block per 
 or one field point or wavelength for the sweeps) and ``progress(done, total, stage)``
 (called with the GIL from any thread, at most every 50 ms; stages "aim" and "trace" per ray
 bundle, "field" for the sweeps, "wavelength" for the colour analyses). Neither changes a
-result; an exception of ``progress`` ends the analysis and is raised. The single-point
-functions (``*_at``) and seidel() take neither: they are fast.
+result; an exception of ``progress`` ends the analysis and is raised. ``progress`` must not
+start a raytatouille computation: through work stealing it may be called again in the same
+thread. The single-point functions (``*_at``) and seidel() take neither: they are fast.
 
 Units and conventions as in C++ (rtt/analysis/*.hpp): coordinates on the image surface in mm
 in its local x, y (the surface of the last path event), relative to the chief ray of the
