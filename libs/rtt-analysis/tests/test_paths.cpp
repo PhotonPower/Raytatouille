@@ -10,7 +10,9 @@
 #include <vector>
 
 #include "rtt/analysis/paths.hpp"
+#include "rtt/coating/catalog.hpp"
 #include "rtt/compile/compiled_system.hpp"
+#include "rtt/compile/ghosts.hpp"
 #include "rtt/io/json_io.hpp"
 #include "rtt/material/material.hpp"
 #include "rtt/model/model.hpp"
@@ -351,4 +353,29 @@ TEST_CASE("path evaluation with a run control (#122)", "[paths][run_control]") {
                     rtt::trace::Cancelled);
   REQUIRE_THROWS_AS(rtt::analysis::opl_difference(cs, ref, test, start, options, control),
                     rtt::trace::Cancelled);
+}
+
+TEST_CASE("ghost of a plane plate: weight T R R T at normal incidence (#123)", "[paths][ghosts]") {
+  // tests/reference/m3/fresnel_bk7.rtt.json (plate CONST:1.5168, VACUUM), path "main" and its
+  // one ghost (ADR 0027): refraction into the plate, reflection at P.S2 and at P.S1 from inside,
+  // refraction out of it. The axis ray of the base aiming meets every surface at normal
+  // incidence: weight = T R R T with R = ((n - 1) / (n + 1))^2, T = 1 - R (Byrnes,
+  // arXiv:1603.02720v5, Eq. (6), T = 1 - R by Eqs. (21)-(23); docs/quellen.md). It leaves the
+  // plate along the axis and arrives at the image surface. 1e-12.
+  const MaterialLibrary lib;
+  const rtt::coating::CoatingLibrary coatings;
+  const auto g =
+      rtt::compile::compile_with_ghosts(load("m3/fresnel_bk7.rtt.json"), "main", lib, coatings);
+  REQUIRE(g.ghosts.size() == 1);
+  const std::vector<std::uint16_t> field{0};
+  const RayBatch start = rtt::trace::make_rays(g.system, g.ghosts[0].base, field, 0,
+                                               rtt::trace::SinglePupilPoint{0.0, 0.0});
+  const auto t = rtt::analysis::path_transmission(g.system, g.ghosts[0].path, start);
+  REQUIRE(t.rays_arrived == 1);
+  REQUIRE(t.rays.size() == 1);
+  const double n = 1.5168;
+  const double r = (n - 1.0) / (n + 1.0);
+  const double reflect = r * r;
+  const double transmit = 1.0 - reflect;
+  REQUIRE(std::abs(t.rays[0].weight - transmit * reflect * reflect * transmit) <= 1e-12);
 }
