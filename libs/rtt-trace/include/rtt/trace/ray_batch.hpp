@@ -27,6 +27,7 @@ enum class RayStatus : std::uint8_t {
   NoConvergence,    ///< iterative intersection did not converge
   Absorbed,         ///< stopped by an absorbing surface
   EventImpossible,  ///< the requested event cannot happen (e.g. evanescent order)
+  Evanescent,  // STUB for the red run of #127 PR A
 };
 
 /// Value of `last_surface` before a ray has hit any surface.

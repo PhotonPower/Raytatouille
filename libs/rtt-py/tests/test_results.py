@@ -335,3 +335,10 @@ def test_schema_lists_the_keys_of_every_type(reference_dir: Path, singlet: rt.Co
     assert schema["properties"]["type"]["enum"] == list(rt.results.TYPES)
     for name, make in PRODUCERS.items():
         assert required[name] == list(make(singlet, library).to_dict()), name
+
+
+def test_schema_version_has_the_evanescent_status() -> None:
+    """Status Evanescent (#127): the status arrays grow by one entry at the end, a compatible
+    addition (ADR 0023), hence patch version 0.1.3."""
+    assert rt.results.SCHEMA_VERSION == "0.1.3"
+

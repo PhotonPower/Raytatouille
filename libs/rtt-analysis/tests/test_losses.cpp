@@ -7,12 +7,15 @@
 #include <optional>
 #include <string>
 #include <variant>
+#include <vector>
 
 #include "rtt/analysis/opd.hpp"
+#include "rtt/analysis/paths.hpp"
 #include "rtt/analysis/spot.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/io/json_io.hpp"
 #include "rtt/material/material.hpp"
+#include "rtt/trace/sources.hpp"
 
 using rtt::analysis::RayLosses;
 using rtt::compile::CompiledSystem;
@@ -97,3 +100,22 @@ TEST_CASE("rays clipped by the lens aperture are counted at that surface", "[ana
     REQUIRE(opd_fan.losses.worst_surface == lens);
   }
 }
+
+TEST_CASE("an Evanescent ray counts as lost at the surface where it stopped (#127)",
+          "[analysis][losses]") {
+  // ADR 0025, point 7: Evanescent stops a ray at its surface like Tir (last_surface is that
+  // surface). The losses count it under its own status, index 7, and at that surface.
+  const CompiledSystem cs = singlet();
+  const std::vector<std::uint16_t> field{0};
+  rtt::trace::RayBatch start =
+      rtt::trace::make_rays(cs, PathId{0}, field, 0, rtt::trace::HexapolarPupil{1});
+  REQUIRE(start.size() == 7);
+  start.status()[1] = RayStatus::Evanescent;
+  start.last_surface()[1] = 1;  // L1.S1
+  const auto t = rtt::analysis::path_transmission(cs, PathId{0}, start);
+  REQUIRE(t.losses.by_status.size() == 8);
+  REQUIRE(count(t.losses, RayStatus::Evanescent) == 1);
+  REQUIRE(t.losses.worst_surface == std::optional<std::uint32_t>{1});
+  require_consistent(t.losses, 7, 6);
+}
+
