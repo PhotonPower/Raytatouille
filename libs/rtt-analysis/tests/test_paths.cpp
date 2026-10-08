@@ -5,6 +5,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -163,8 +164,9 @@ TEST_CASE("Michelson: the OPL difference of the arms is twice the arm difference
 }
 
 TEST_CASE("path transmission: lost rays count as launched with weight 0 (#122)", "[paths]") {
-  // Test mirror with radius 1 mm: the splitter maps the start ray at (x, y) to (x, y) on the
-  // mirror's local plane (45 deg fold), so the rays with x^2 + y^2 > 1 end Vignetted at M2.
+  // Test mirror with radius 1 mm: the splitter maps the start ray at (x, y) to (x, -y) on the
+  // mirror's local plane (45 deg fold, mirror rotated by -90 deg about x), so the rays with
+  // x^2 + y^2 > 1 end Vignetted at M2.
   System s = michelson();
   element(s, "test mirror").surfaces[0].aperture = rtt::model::CircularAperture{1.0, 0.0};
   const MaterialLibrary lib;
@@ -224,8 +226,9 @@ TEST_CASE("path transmission: start rays that are not Alive, start weight, wavel
 
 TEST_CASE("path transmission, convenience form: make_rays on a symmetric path (#122)", "[paths]") {
   // Singlet CONST:1.5168 in VACUUM: the axis ray meets both surfaces at normal incidence, so
-  // its weight is T^2 with T = 1 - ((n - 1) / (n + 1))^2 (Fresnel at normal incidence, Byrnes;
-  // docs/quellen.md). 1e-12.
+  // its weight is T^2 with T = 1 - ((n - 1) / (n + 1))^2: Byrnes, arXiv:1603.02720v5, Eq. (6)
+  // at normal incidence, T = 1 - R for a lossless interface by Eqs. (21)-(23) (docs/quellen.md).
+  // 1e-12.
   System s = load("m1/singlet_const.rtt.json");
   s.environment.medium = "VACUUM";
   const MaterialLibrary lib;

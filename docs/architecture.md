@@ -282,7 +282,7 @@ Prescription-Daten (#84, `rtt/paraxial/prescription.hpp`, Python `rt.paraxial.pr
 
 **Abbruch und Fortschritt (#83, `rtt/trace/run_control.hpp`):** Lange Rechnungen lassen sich aus einer GUI abbrechen und melden Fortschritt.
 - **Typen:** `CancelToken` (geteiltes Flag, `request_cancel()` aus jedem Thread), `RunControl` (Token, Callback `progress(Progress{done, total, stage})`, Mindestabstand der Meldungen, `block_size`) und die Exception `Cancelled`.
-- **Wo:** Überladungen mit `const RunControl&` als letztem Parameter: `SequentialTracer::trace`, `make_rays` und alle Bündel- und Verlaufsanalysen (`spot`, `ray_fan`, `opd_map`, `opd_fan`, `distortion`, `field_curvature`, `longitudinal_colour`, `lateral_colour`). Die alten Signaturen bleiben und rufen die neuen mit leerem Control.
+- **Wo:** Überladungen mit `const RunControl&` als letztem Parameter: `SequentialTracer::trace`, `make_rays` und alle Bündel- und Verlaufsanalysen (`spot`, `ray_fan`, `opd_map`, `opd_fan`, `distortion`, `field_curvature`, `longitudinal_colour`, `lateral_colour`) sowie die Pfadauswertung (`path_transmission`, `opl_difference`, #122). Die alten Signaturen bleiben und rufen die neuen mit leerem Control.
 - **Abbruch und Fortschritt sind Laufzeitsteuerung, nie Teil der Options** (sie gehören nicht zur Rechnung). Ein leerer Control rechnet exakt wie ohne; ein aktiver ändert kein Ergebnis, bitgleich und unabhängig von Blockgröße und Thread-Anzahl (ADR 0004, Nachtrag #83).
 - **Ablauf:** Mit aktivem Control wird in Blöcken von `block_size` Strahlen gerechnet (Standard 256).
   - Vor jedem Block wird das Token geprüft. Nach einer Abbruchanfrage beginnt kein neuer Block, und nach dem parallelen Teil kommt `Cancelled`, nie aus einem Worker (Regel 3). Die Rückkehr erfolgt nach höchstens einem Block je Worker. **Dokumentierte Abbruchzeit je Stufe:** `trace` deutlich unter 1 ms (256 Strahlen typischer Linsen), `aim` bei realer Zielung etwa 5 ms (256 × etwa 20 µs je Worker, Cooke-Triplett; seit #119 zielt `make_rays` parallel, ADR 0004), `field` und `wavelength` ein Feldpunkt bzw. eine Wellenlänge (eine Handvoll Strahlen). Der Test prüft mit Reserve < 1 s.
@@ -366,7 +366,7 @@ Analysen liefern Datenobjekte, niemals Plots. Optimierung und Toleranzierung arb
   - Jede Systemwellenlänge ist erlaubt, auch gemischt.
   - Startgewicht und Start-OPL werden mitgeführt.
 - **Transmission:** `mean` ist der Mittelwert der Endgewichte über alle gestarteten Strahlen, verlorene zählen 0. Das ist der übertragene Leistungsanteil bei gleichmäßig ausgeleuchteter Pupille und unpolarisierter Quelle (ADR 0021); bei Startgewichten ≠ 1 die apodisierte Leistung, kein Verhältnis zum Start. Dazu `min`, `max` und das Gewicht je Strahl, Verluste und Warnungen nach ADR 0023.
-- **OPL-Differenz** OPL_b − OPL_a je Strahl:
+- **OPL-Differenz** OPL_b − OPL_a je Startstrahl; die beiden Strahlen dürfen an verschiedenen Punkten der Bildfläche landen (im Michelson fallen sie zusammen):
   - **In mm, nicht in Wellen:** Es ist eine Weglänge auf der Bildfläche, keine Wellenfront; Wellen gehören zum Interferogramm.
   - **Nur für zwei Pfade mit derselben Bildfläche** (Fläche des letzten Events), sonst `invalid_argument`.
 - **Abbruch und Fortschritt:** Überladungen mit `RunControl` (#83), Stufen `aim` (Komfortform) und `trace` je Pfad.

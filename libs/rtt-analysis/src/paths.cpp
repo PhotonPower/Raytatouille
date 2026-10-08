@@ -43,6 +43,24 @@ void check_start(const RayBatch& start) {
   if (start.size() == 0) throw std::invalid_argument("analysis: no start rays");
 }
 
+void check_options(const PathOptions& options) {
+  if (!(options.lost_warning_fraction >= 0.0 && options.lost_warning_fraction <= 1.0)) {
+    throw std::invalid_argument("analysis: lost_warning_fraction must lie in [0, 1]");
+  }
+}
+
+/// Checks both paths of an OPL difference and returns their common image surface.
+std::uint32_t common_image(const CompiledSystem& system, PathId path_a, PathId path_b) {
+  detail::check_path(system, path_a);
+  detail::check_path(system, path_b);
+  const std::uint32_t image = detail::image_surface(system, path_a);
+  if (detail::image_surface(system, path_b) != image) {
+    throw std::invalid_argument(
+        "analysis: an OPL difference needs two paths that end on the same surface");
+  }
+  return image;
+}
+
 PathTransmission transmission(const CompiledSystem& system,
                               PathId path,
                               const RayBatch& start,
@@ -86,14 +104,8 @@ PathOplDifference difference(const CompiledSystem& system,
                              const RayBatch& start,
                              const PathOptions& options,
                              const trace::RunControl* control) {
-  detail::check_path(system, path_a);
-  detail::check_path(system, path_b);
+  const std::uint32_t image = common_image(system, path_a, path_b);
   check_start(start);
-  const std::uint32_t image = detail::image_surface(system, path_a);
-  if (detail::image_surface(system, path_b) != image) {
-    throw std::invalid_argument(
-        "analysis: an OPL difference needs two paths that end on the same surface");
-  }
   detail::LossCounter losses_a(system, path_a, options.lost_warning_fraction);
   detail::LossCounter losses_b(system, path_b, options.lost_warning_fraction);
   const RayBatch a = traced(system, path_a, start, control);
@@ -125,13 +137,15 @@ PathOplDifference difference(const CompiledSystem& system,
   return out;
 }
 
-/// Rays of trace::make_rays for the convenience forms.
+/// Rays of trace::make_rays for the convenience forms; the cheap checks of the options, the
+/// path and the wavelength come before the aiming.
 RayBatch start_rays(const CompiledSystem& system,
                     PathId path,
                     std::uint16_t field,
                     std::uint16_t wavelength,
                     const PathOptions& options,
                     const trace::RunControl* control) {
+  check_options(options);
   detail::check_path(system, path);
   detail::check_wavelength(system, wavelength);
   const std::uint16_t fields[] = {field};
@@ -173,6 +187,7 @@ PathOplDifference opl_difference(const compile::CompiledSystem& system,
                                  std::uint16_t field,
                                  std::uint16_t wavelength,
                                  const PathOptions& options) {
+  [[maybe_unused]] const std::uint32_t image = common_image(system, path_a, path_b);
   return difference(system, path_a, path_b,
                     start_rays(system, path_a, field, wavelength, options, nullptr), options,
                     nullptr);
@@ -212,6 +227,7 @@ PathOplDifference opl_difference(const compile::CompiledSystem& system,
                                  std::uint16_t wavelength,
                                  const PathOptions& options,
                                  const trace::RunControl& control) {
+  [[maybe_unused]] const std::uint32_t image = common_image(system, path_a, path_b);
   return difference(system, path_a, path_b,
                     start_rays(system, path_a, field, wavelength, options, &control), options,
                     &control);

@@ -20,10 +20,11 @@
 /// - Transmission: weight is the power for an unpolarized source (ADR 0021), so the mean of the
 ///   final weights over all launched rays (lost rays 0) is the transmitted power fraction of a
 ///   uniformly illuminated pupil. No wavelength weights: rays count equally.
-/// - Optical path difference in mm, not in waves: a path length at the image surface, not a
-///   wavefront; waves belong to the interferogram (not part of #122). It is only defined where
-///   both paths end on the same surface, so two paths with different image surfaces are an
-///   error.
+/// - Optical path difference in mm, not in waves: per start ray, the OPL on path b minus the
+///   OPL on path a at the image surface, where the two rays may land at different points (in a
+///   Michelson they coincide). A path length, not a wavefront; waves and the superposition at
+///   one point belong to the interferogram (not part of #122). It is only defined where both
+///   paths end on the same surface, so two paths with different image surfaces are an error.
 
 #include <cstddef>
 #include <cstdint>
@@ -61,18 +62,18 @@ struct PathRay {
 
 /// Transmission of one path for a set of start rays.
 struct PathTransmission {
-  compile::PathId path{0};
+  compile::PathId path{0};          ///< the evaluated path
   std::uint32_t image_surface = 0;  ///< surface of the path's last event, index into surfaces()
   std::vector<PathRay> rays;        ///< one entry per launched ray, in batch order
-  std::size_t rays_launched = 0;
-  std::size_t rays_arrived = 0;
+  std::size_t rays_launched = 0;    ///< rays of the start batch (= rays.size())
+  std::size_t rays_arrived = 0;     ///< rays that reached the image surface Alive
   /// Mean final weight over all launched rays, lost rays counted as 0: the transmitted power
   /// fraction for a uniformly illuminated pupil and an unpolarized source. With start weights
   /// other than 1 it is the mean of the final weights, i.e. the apodized transmitted power, not
-  /// a ratio to the start weights.
+  /// a ratio to the start weights. Dimensionless.
   double mean = 0.0;
-  double min = 0.0;  ///< smallest final weight of the arrived rays (0 if none arrived)
-  double max = 0.0;  ///< largest final weight of the arrived rays (0 if none arrived)
+  double min = 0.0;  ///< smallest final weight of the arrived rays (0 if none), dimensionless
+  double max = 0.0;  ///< largest final weight of the arrived rays (0 if none), dimensionless
   RayLosses losses;  ///< launched rays by final status, worst loss surface (ADR 0023)
   /// Warnings with stable codes (ADR 0022, 0023): "rays.lost" above lost_warning_fraction,
   /// "stop.clips_beam" if rays end Vignetted at the stop surface of the path.
@@ -91,8 +92,8 @@ struct OplDifferencePoint {
 
 /// Optical path difference OPL_b - OPL_a of two paths with the same image surface.
 struct PathOplDifference {
-  compile::PathId path_a{0};
-  compile::PathId path_b{0};
+  compile::PathId path_a{0};               ///< reference path (subtracted)
+  compile::PathId path_b{0};               ///< path whose OPL is taken positive
   std::uint32_t image_surface = 0;         ///< common surface of the last events
   std::vector<OplDifferencePoint> points;  ///< one entry per launched ray, in batch order
   /// delta of the first launched ray at pupil (0, 0) that arrived on both paths, mm; none if
@@ -115,9 +116,11 @@ struct PathOplDifference {
 
 /// Transmission of `path` for the rays of trace::make_rays (convenience form): `field` at
 /// `wavelength` with options.sampling and options.aiming.
-/// @throws as the main form; rtt::compile::NoStopError (a std::invalid_argument) if the path has
-///         no stop; rtt::paraxial::ParaxialError if the path is not rotationally symmetric (the
-///         paraxial aiming of make_rays; use the main form for folded or tilted paths)
+/// @throws as the main form, and std::invalid_argument for an invalid field or wavelength
+///         index (and as rtt::trace::make_rays); rtt::compile::NoStopError (a
+///         std::invalid_argument) if the path has no stop; rtt::paraxial::ParaxialError if the
+///         path is not rotationally symmetric (the paraxial aiming of make_rays; use the main
+///         form for folded or tilted paths). Options and paths are checked before the aiming.
 [[nodiscard]] PathTransmission path_transmission(const compile::CompiledSystem& system,
                                                  compile::PathId path,
                                                  std::uint16_t field,
