@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <fstream>
 #include <initializer_list>
 #include <nlohmann/json.hpp>
@@ -11,6 +12,7 @@
 #include <utility>
 
 #include "json_format.hpp"
+#include "json_tree.hpp"
 #include "rtt/json/strict.hpp"
 
 namespace rtt::io {
@@ -69,8 +71,9 @@ class Ctx {
  public:
   Ctx() = default;
   explicit Ctx(std::string pointer) : pointer_(std::move(pointer)) {}
+  /// The key as a reference token: "~" and "/" are masked (RFC 6901, Sec. 3).
   [[nodiscard]] Ctx at(std::string_view key) const {
-    return Ctx(pointer_ + "/" + std::string(key));
+    return Ctx(pointer_ + "/" + rtt::json::pointer_token(key));
   }
   [[nodiscard]] Ctx at(std::size_t i) const { return Ctx(pointer_ + "/" + std::to_string(i)); }
   [[noreturn]] void fail(const std::string& message) const { throw ParseError(pointer_, message); }
@@ -467,7 +470,7 @@ void migrate(const Json& j, const std::string& version, const Ctx& c) {
          " and migrates 0.1");
 }
 
-System read_system(const Json& j) {
+System read_system_tree(const Json& j) {
   const Ctx c;
   expect_object(j, c,
                 {"schema_version", "name", "units", "environment", "object", "wavelengths",
@@ -564,278 +567,296 @@ System read_system(const Json& j) {
 }
 
 // ===================================================================== writer =====
+//
+// Two forms (json_tree.hpp): the canonical form omits values equal to their defaults and writes
+// a plain Param as a number; the edit form (ADR 0024) writes every value and every Param as an
+// object. Optional members without a value (surface aperture, element material, pickup) are
+// missing in both.
 
 OJson num(double v) {
   if (!std::isfinite(v)) throw std::invalid_argument("cannot write non-finite number to JSON");
   return OJson(v);
 }
 
-OJson param(const Param& p) {
-  if (p.is_plain()) return num(p.value);
-  OJson o;
-  o["value"] = num(p.value);
-  if (p.variable) o["variable"] = true;
-  if (p.pickup) o["pickup"] = *p.pickup;
-  return o;
-}
+class Writer {
+ public:
+  explicit Writer(detail::Form form) : edit_(form == detail::Form::Edit) {}
 
-OJson param_list(const std::vector<Param>& v) {
-  OJson a = OJson::array();
-  for (const Param& p : v) a.push_back(param(p));
-  return a;
-}
+  OJson system(const System& s) const {
+    OJson o;
+    o["schema_version"] = std::string(kSchemaVersion);
+    if (edit_ || !s.name.empty()) o["name"] = s.name;
+    o["units"] = OJson{{"length", "mm"}, {"wavelength", "um"}};
 
-OJson param3(const std::array<Param, 3>& v) {
-  return OJson::array({param(v[0]), param(v[1]), param(v[2])});
-}
-
-OJson vec3(const std::array<double, 3>& v) {
-  return OJson::array({num(v[0]), num(v[1]), num(v[2])});
-}
-
-void put_pose(OJson& o, const Pose& p) {
-  if (p.is_identity()) return;
-  const Pose d;
-  OJson j;
-  if (p.position != d.position) j["position"] = param3(p.position);
-  if (p.rotation_deg != d.rotation_deg) j["rotation_deg"] = param3(p.rotation_deg);
-  if (p.pivot != d.pivot) j["pivot"] = vec3(p.pivot);
-  o["pose"] = std::move(j);
-}
-
-OJson base_shape(const BaseShape& b) {
-  OJson o;
-  if (std::holds_alternative<Plane>(b)) {
-    o["type"] = "plane";
-  } else if (const auto* c = std::get_if<Conic>(&b)) {
-    o["type"] = "conic";
-    o["radius"] = param(c->radius);
-    if (c->conic != Param{}) o["conic"] = param(c->conic);
-  } else if (const auto* a = std::get_if<EvenAsphere>(&b)) {
-    o["type"] = "even_asphere";
-    o["radius"] = param(a->radius);
-    if (a->conic != Param{}) o["conic"] = param(a->conic);
-    if (!a->coefficients.empty()) o["coefficients"] = param_list(a->coefficients);
-  }
-  return o;
-}
-
-OJson shape(const ShapeStack& s) {
-  OJson o;
-  if (!std::holds_alternative<Plane>(s.base)) o["base"] = base_shape(s.base);
-  if (!s.terms.empty()) {
-    OJson a = OJson::array();
-    for (const ShapeTerm& t : s.terms) {
-      const auto& z = std::get<ZernikeSag>(t);
-      OJson zo;
-      zo["type"] = "zernike_sag";
-      zo["normalization_radius"] = param(z.normalization_radius);
-      if (!z.coefficients.empty()) zo["coefficients"] = param_list(z.coefficients);
-      a.push_back(std::move(zo));
+    if (edit_ || s.environment != Environment{}) {
+      const Environment d;
+      OJson e;
+      if (edit_ || s.environment.temperature_c != d.temperature_c)
+        e["temperature_c"] = num(s.environment.temperature_c);
+      if (edit_ || s.environment.pressure_atm != d.pressure_atm)
+        e["pressure_atm"] = num(s.environment.pressure_atm);
+      if (edit_ || s.environment.medium != d.medium) e["medium"] = s.environment.medium;
+      o["environment"] = std::move(e);
     }
-    o["terms"] = std::move(a);
-  }
-  return o;
-}
 
-OJson aperture(const Aperture& a) {
-  OJson o;
-  if (const auto* c = std::get_if<CircularAperture>(&a)) {
-    o["type"] = "circular";
-    o["radius"] = num(c->radius);
-    if (c->inner_radius != 0.0) o["inner_radius"] = num(c->inner_radius);
-  } else if (const auto* r = std::get_if<RectangularAperture>(&a)) {
-    o["type"] = "rectangular";
-    o["half_width_x"] = num(r->half_width_x);
-    o["half_width_y"] = num(r->half_width_y);
-  } else if (const auto* e = std::get_if<EllipticalAperture>(&a)) {
-    o["type"] = "elliptical";
-    o["semi_axis_x"] = num(e->semi_axis_x);
-    o["semi_axis_y"] = num(e->semi_axis_y);
-  }
-  return o;
-}
+    if (edit_ || s.object != ObjectSpace{}) {
+      OJson ob;
+      ob["at_infinity"] = s.object.at_infinity;
+      if (edit_ || s.object.distance != Param{}) ob["distance"] = param(s.object.distance);
+      o["object"] = std::move(ob);
+    }
 
-OJson phase(const PhaseLayer& p) {
-  OJson o;
-  if (const auto* g = std::get_if<LinearGrating>(&p)) {
-    o["type"] = "linear_grating";
-    o["lines_per_mm"] = param(g->lines_per_mm);
-    if (g->orientation_deg != 0.0) o["orientation_deg"] = num(g->orientation_deg);
-  } else if (const auto* r = std::get_if<RadialPhase>(&p)) {
-    o["type"] = "radial_phase";
-    o["normalization_radius"] = param(r->normalization_radius);
-    if (!r->coefficients.empty()) o["coefficients"] = param_list(r->coefficients);
-  }
-  return o;
-}
+    OJson wl = OJson::array();
+    for (const Wavelength& w : s.wavelengths) {
+      OJson wo;
+      wo["um"] = num(w.um);
+      if (edit_ || w.weight != 1.0) wo["weight"] = num(w.weight);
+      if (edit_ || w.reference) wo["reference"] = w.reference;
+      wl.push_back(std::move(wo));
+    }
+    o["wavelengths"] = std::move(wl);
 
-OJson interaction(const Interaction& i) {
-  OJson o;
-  if (std::holds_alternative<Fresnel>(i)) {
-    o["type"] = "fresnel";
-  } else if (std::holds_alternative<IdealMirror>(i)) {
-    o["type"] = "ideal_mirror";
-  } else if (std::holds_alternative<IdealAntiReflection>(i)) {
-    o["type"] = "ideal_anti_reflection";
-  } else if (std::holds_alternative<Absorber>(i)) {
-    o["type"] = "absorber";
-  } else if (const auto* b = std::get_if<IdealBeamSplitter>(&i)) {
-    const IdealBeamSplitter d;
-    o["type"] = "ideal_beam_splitter";
-    if (b->reflectance_s != d.reflectance_s) o["reflectance_s"] = num(b->reflectance_s);
-    if (b->reflectance_p != d.reflectance_p) o["reflectance_p"] = num(b->reflectance_p);
-  } else if (const auto* c = std::get_if<CoatingRef>(&i)) {
-    o["type"] = "coating";
-    o["name"] = c->name;
-  } else if (const auto* p = std::get_if<IdealPolarizer>(&i)) {
-    const IdealPolarizer d;
-    o["type"] = "ideal_polarizer";
-    if (p->transmission_axis != d.transmission_axis)
-      o["transmission_axis"] = vec3(p->transmission_axis);
-    if (p->extinction_ratio != d.extinction_ratio) o["extinction_ratio"] = num(p->extinction_ratio);
-  } else if (const auto* r = std::get_if<IdealRetarder>(&i)) {
-    const IdealRetarder d;
-    o["type"] = "ideal_retarder";
-    if (r->fast_axis != d.fast_axis) o["fast_axis"] = vec3(r->fast_axis);
-    if (r->retardance_waves != d.retardance_waves) o["retardance_waves"] = num(r->retardance_waves);
-  }
-  return o;
-}
+    OJson ap;
+    ap["type"] = std::string(enum_name(s.aperture.type, kApertureTypes));
+    if (edit_ || s.aperture.type != SystemApertureType::StopSize || s.aperture.value != Param{}) {
+      ap["value"] = param(s.aperture.value);
+    }
+    o["aperture"] = std::move(ap);
 
-OJson surface(const Surface& s) {
-  OJson o;
-  o["id"] = s.id.str();
-  put_pose(o, s.pose);
-  if (s.shape != ShapeStack{}) o["shape"] = shape(s.shape);
-  if (s.aperture) o["aperture"] = aperture(*s.aperture);
-  if (!s.phases.empty()) {
-    OJson a = OJson::array();
-    for (const PhaseLayer& p : s.phases) a.push_back(phase(p));
-    o["phases"] = std::move(a);
-  }
-  if (!std::holds_alternative<Fresnel>(s.interaction))
-    o["interaction"] = interaction(s.interaction);
-  return o;
-}
+    OJson fields;
+    if (edit_ || s.fields.type != FieldType::AngleDeg)
+      fields["type"] = std::string(enum_name(s.fields.type, kFieldTypes));
+    OJson pts = OJson::array();
+    for (const Field& f : s.fields.points) {
+      OJson fo = OJson::object();
+      if (edit_ || f.x != 0.0) fo["x"] = num(f.x);
+      if (edit_ || f.y != 0.0) fo["y"] = num(f.y);
+      if (edit_ || f.weight != 1.0) fo["weight"] = num(f.weight);
+      pts.push_back(std::move(fo));
+    }
+    fields["points"] = std::move(pts);
+    o["fields"] = std::move(fields);
 
-OJson node(const Node& n);
+    o["root"] = assembly(s.root);
 
-OJson assembly(const Assembly& a) {
-  OJson o;
-  o["type"] = "assembly";
-  o["name"] = a.name;
-  put_pose(o, a.pose);
-  OJson children = OJson::array();
-  for (const Node& c : a.children) children.push_back(node(c));
-  o["children"] = std::move(children);
-  return o;
-}
-
-OJson node(const Node& n) {
-  if (const auto* a = std::get_if<Assembly>(&n.value)) return assembly(*a);
-  const auto& e = std::get<Element>(n.value);
-  OJson o;
-  o["type"] = std::string(enum_name(e.kind, kElementKinds));
-  o["name"] = e.name;
-  put_pose(o, e.pose);
-  if (e.material && !e.segment_materials.empty()) {
-    throw std::invalid_argument("element '" + e.name +
-                                "': material and segment_materials are both set");
-  }
-  if (e.material) {
-    o["material"] = *e.material;
-  } else if (!e.segment_materials.empty()) {
-    OJson a = OJson::array();
-    for (const std::string& m : e.segment_materials) a.push_back(m);
-    o["material"] = std::move(a);
-  }
-  OJson surfaces = OJson::array();
-  for (const Surface& s : e.surfaces) surfaces.push_back(surface(s));
-  o["surfaces"] = std::move(surfaces);
-  return o;
-}
-
-OJson path(const Path& p) {
-  OJson o;
-  o["name"] = p.name;
-  if (p.automatic) {
-    o["events"] = "auto";
+    OJson paths = OJson::array();
+    for (const Path& p : s.paths) paths.push_back(path(p));
+    o["paths"] = std::move(paths);
     return o;
   }
-  OJson events = OJson::array();
-  for (const Event& e : p.events) {
-    OJson eo;
-    eo["surface"] = e.surface.str();
-    if (e.kind != EventKind::Refract) eo["kind"] = std::string(enum_name(e.kind, kEventKinds));
-    if (e.order != 0) eo["order"] = e.order;
-    events.push_back(std::move(eo));
-  }
-  o["events"] = std::move(events);
-  return o;
-}
 
-OJson write_system(const System& s) {
-  OJson o;
-  o["schema_version"] = std::string(kSchemaVersion);
-  if (!s.name.empty()) o["name"] = s.name;
-  o["units"] = OJson{{"length", "mm"}, {"wavelength", "um"}};
-
-  if (s.environment != Environment{}) {
-    const Environment d;
-    OJson e;
-    if (s.environment.temperature_c != d.temperature_c)
-      e["temperature_c"] = num(s.environment.temperature_c);
-    if (s.environment.pressure_atm != d.pressure_atm)
-      e["pressure_atm"] = num(s.environment.pressure_atm);
-    if (s.environment.medium != d.medium) e["medium"] = s.environment.medium;
-    o["environment"] = std::move(e);
+ private:
+  OJson param(const Param& p) const {
+    if (!edit_ && p.is_plain()) return num(p.value);
+    OJson o;
+    o["value"] = num(p.value);
+    if (edit_ || p.variable) o["variable"] = p.variable;
+    if (p.pickup) o["pickup"] = *p.pickup;
+    return o;
   }
 
-  if (s.object != ObjectSpace{}) {
-    OJson ob;
-    ob["at_infinity"] = s.object.at_infinity;
-    if (s.object.distance != Param{}) ob["distance"] = param(s.object.distance);
-    o["object"] = std::move(ob);
+  OJson param_list(const std::vector<Param>& v) const {
+    OJson a = OJson::array();
+    for (const Param& p : v) a.push_back(param(p));
+    return a;
   }
 
-  OJson wl = OJson::array();
-  for (const Wavelength& w : s.wavelengths) {
-    OJson wo;
-    wo["um"] = num(w.um);
-    if (w.weight != 1.0) wo["weight"] = num(w.weight);
-    if (w.reference) wo["reference"] = true;
-    wl.push_back(std::move(wo));
+  OJson param3(const std::array<Param, 3>& v) const {
+    return OJson::array({param(v[0]), param(v[1]), param(v[2])});
   }
-  o["wavelengths"] = std::move(wl);
 
-  OJson ap;
-  ap["type"] = std::string(enum_name(s.aperture.type, kApertureTypes));
-  if (s.aperture.type != SystemApertureType::StopSize || s.aperture.value != Param{}) {
-    ap["value"] = param(s.aperture.value);
+  static OJson vec3(const std::array<double, 3>& v) {
+    return OJson::array({num(v[0]), num(v[1]), num(v[2])});
   }
-  o["aperture"] = std::move(ap);
 
-  OJson fields;
-  if (s.fields.type != FieldType::AngleDeg)
-    fields["type"] = std::string(enum_name(s.fields.type, kFieldTypes));
-  OJson pts = OJson::array();
-  for (const Field& f : s.fields.points) {
-    OJson fo = OJson::object();
-    if (f.x != 0.0) fo["x"] = num(f.x);
-    if (f.y != 0.0) fo["y"] = num(f.y);
-    if (f.weight != 1.0) fo["weight"] = num(f.weight);
-    pts.push_back(std::move(fo));
+  void put_pose(OJson& o, const Pose& p) const {
+    if (!edit_ && p.is_identity()) return;
+    const Pose d;
+    OJson j;
+    if (edit_ || p.position != d.position) j["position"] = param3(p.position);
+    if (edit_ || p.rotation_deg != d.rotation_deg) j["rotation_deg"] = param3(p.rotation_deg);
+    if (edit_ || p.pivot != d.pivot) j["pivot"] = vec3(p.pivot);
+    o["pose"] = std::move(j);
   }
-  fields["points"] = std::move(pts);
-  o["fields"] = std::move(fields);
 
-  o["root"] = assembly(s.root);
+  OJson base_shape(const BaseShape& b) const {
+    OJson o;
+    if (std::holds_alternative<Plane>(b)) {
+      o["type"] = "plane";
+    } else if (const auto* c = std::get_if<Conic>(&b)) {
+      o["type"] = "conic";
+      o["radius"] = param(c->radius);
+      if (edit_ || c->conic != Param{}) o["conic"] = param(c->conic);
+    } else if (const auto* a = std::get_if<EvenAsphere>(&b)) {
+      o["type"] = "even_asphere";
+      o["radius"] = param(a->radius);
+      if (edit_ || a->conic != Param{}) o["conic"] = param(a->conic);
+      if (edit_ || !a->coefficients.empty()) o["coefficients"] = param_list(a->coefficients);
+    }
+    return o;
+  }
 
-  OJson paths = OJson::array();
-  for (const Path& p : s.paths) paths.push_back(path(p));
-  o["paths"] = std::move(paths);
-  return o;
+  OJson shape(const ShapeStack& s) const {
+    OJson o;
+    if (edit_ || !std::holds_alternative<Plane>(s.base)) o["base"] = base_shape(s.base);
+    if (edit_ || !s.terms.empty()) {
+      OJson a = OJson::array();
+      for (const ShapeTerm& t : s.terms) {
+        const auto& z = std::get<ZernikeSag>(t);
+        OJson zo;
+        zo["type"] = "zernike_sag";
+        zo["normalization_radius"] = param(z.normalization_radius);
+        if (edit_ || !z.coefficients.empty()) zo["coefficients"] = param_list(z.coefficients);
+        a.push_back(std::move(zo));
+      }
+      o["terms"] = std::move(a);
+    }
+    return o;
+  }
+
+  OJson aperture(const Aperture& a) const {
+    OJson o;
+    if (const auto* c = std::get_if<CircularAperture>(&a)) {
+      o["type"] = "circular";
+      o["radius"] = num(c->radius);
+      if (edit_ || c->inner_radius != 0.0) o["inner_radius"] = num(c->inner_radius);
+    } else if (const auto* r = std::get_if<RectangularAperture>(&a)) {
+      o["type"] = "rectangular";
+      o["half_width_x"] = num(r->half_width_x);
+      o["half_width_y"] = num(r->half_width_y);
+    } else if (const auto* e = std::get_if<EllipticalAperture>(&a)) {
+      o["type"] = "elliptical";
+      o["semi_axis_x"] = num(e->semi_axis_x);
+      o["semi_axis_y"] = num(e->semi_axis_y);
+    }
+    return o;
+  }
+
+  OJson phase(const PhaseLayer& p) const {
+    OJson o;
+    if (const auto* g = std::get_if<LinearGrating>(&p)) {
+      o["type"] = "linear_grating";
+      o["lines_per_mm"] = param(g->lines_per_mm);
+      if (edit_ || g->orientation_deg != 0.0) o["orientation_deg"] = num(g->orientation_deg);
+    } else if (const auto* r = std::get_if<RadialPhase>(&p)) {
+      o["type"] = "radial_phase";
+      o["normalization_radius"] = param(r->normalization_radius);
+      if (edit_ || !r->coefficients.empty()) o["coefficients"] = param_list(r->coefficients);
+    }
+    return o;
+  }
+
+  OJson interaction(const Interaction& i) const {
+    OJson o;
+    if (std::holds_alternative<Fresnel>(i)) {
+      o["type"] = "fresnel";
+    } else if (std::holds_alternative<IdealMirror>(i)) {
+      o["type"] = "ideal_mirror";
+    } else if (std::holds_alternative<IdealAntiReflection>(i)) {
+      o["type"] = "ideal_anti_reflection";
+    } else if (std::holds_alternative<Absorber>(i)) {
+      o["type"] = "absorber";
+    } else if (const auto* b = std::get_if<IdealBeamSplitter>(&i)) {
+      const IdealBeamSplitter d;
+      o["type"] = "ideal_beam_splitter";
+      if (edit_ || b->reflectance_s != d.reflectance_s) o["reflectance_s"] = num(b->reflectance_s);
+      if (edit_ || b->reflectance_p != d.reflectance_p) o["reflectance_p"] = num(b->reflectance_p);
+    } else if (const auto* c = std::get_if<CoatingRef>(&i)) {
+      o["type"] = "coating";
+      o["name"] = c->name;
+    } else if (const auto* p = std::get_if<IdealPolarizer>(&i)) {
+      const IdealPolarizer d;
+      o["type"] = "ideal_polarizer";
+      if (edit_ || p->transmission_axis != d.transmission_axis)
+        o["transmission_axis"] = vec3(p->transmission_axis);
+      if (edit_ || p->extinction_ratio != d.extinction_ratio)
+        o["extinction_ratio"] = num(p->extinction_ratio);
+    } else if (const auto* r = std::get_if<IdealRetarder>(&i)) {
+      const IdealRetarder d;
+      o["type"] = "ideal_retarder";
+      if (edit_ || r->fast_axis != d.fast_axis) o["fast_axis"] = vec3(r->fast_axis);
+      if (edit_ || r->retardance_waves != d.retardance_waves)
+        o["retardance_waves"] = num(r->retardance_waves);
+    }
+    return o;
+  }
+
+  OJson surface(const Surface& s) const {
+    OJson o;
+    o["id"] = s.id.str();
+    put_pose(o, s.pose);
+    if (edit_ || s.shape != ShapeStack{}) o["shape"] = shape(s.shape);
+    if (s.aperture) o["aperture"] = aperture(*s.aperture);
+    if (edit_ || !s.phases.empty()) {
+      OJson a = OJson::array();
+      for (const PhaseLayer& p : s.phases) a.push_back(phase(p));
+      o["phases"] = std::move(a);
+    }
+    if (edit_ || !std::holds_alternative<Fresnel>(s.interaction))
+      o["interaction"] = interaction(s.interaction);
+    return o;
+  }
+
+  OJson assembly(const Assembly& a) const {
+    OJson o;
+    o["type"] = "assembly";
+    o["name"] = a.name;
+    put_pose(o, a.pose);
+    OJson children = OJson::array();
+    for (const Node& c : a.children) children.push_back(node(c));
+    o["children"] = std::move(children);
+    return o;
+  }
+
+  OJson node(const Node& n) const {
+    if (const auto* a = std::get_if<Assembly>(&n.value)) return assembly(*a);
+    const auto& e = std::get<Element>(n.value);
+    OJson o;
+    o["type"] = std::string(enum_name(e.kind, kElementKinds));
+    o["name"] = e.name;
+    put_pose(o, e.pose);
+    if (e.material && !e.segment_materials.empty()) {
+      throw std::invalid_argument("element '" + e.name +
+                                  "': material and segment_materials are both set");
+    }
+    if (e.material) {
+      o["material"] = *e.material;
+    } else if (!e.segment_materials.empty()) {
+      OJson a = OJson::array();
+      for (const std::string& m : e.segment_materials) a.push_back(m);
+      o["material"] = std::move(a);
+    }
+    OJson surfaces = OJson::array();
+    for (const Surface& s : e.surfaces) surfaces.push_back(surface(s));
+    o["surfaces"] = std::move(surfaces);
+    return o;
+  }
+
+  OJson path(const Path& p) const {
+    OJson o;
+    o["name"] = p.name;
+    if (p.automatic) {
+      o["events"] = "auto";
+      return o;
+    }
+    OJson events = OJson::array();
+    for (const Event& e : p.events) {
+      OJson eo;
+      eo["surface"] = e.surface.str();
+      if (edit_ || e.kind != EventKind::Refract)
+        eo["kind"] = std::string(enum_name(e.kind, kEventKinds));
+      if (edit_ || e.order != 0) eo["order"] = e.order;
+      events.push_back(std::move(eo));
+    }
+    o["events"] = std::move(events);
+    return o;
+  }
+
+  bool edit_;
+};
+
+OJson write_tree(const System& s, detail::Form form) {
+  return Writer(form).system(s);
 }
 
 }  // namespace
@@ -848,7 +869,7 @@ model::System parse_system(std::string_view json_text) {
   } catch (const rtt::json::StrictParseError& e) {
     throw ParseError(e.pointer(), e.message());
   }
-  return read_system(j);
+  return read_system_tree(j);
 }
 
 model::System load_system(const std::filesystem::path& file) {
@@ -860,7 +881,42 @@ model::System load_system(const std::filesystem::path& file) {
 }
 
 std::string to_json(const model::System& system) {
-  return detail::format_canonical(write_system(system));
+  return detail::format_canonical(write_tree(system, detail::Form::Canonical));
+}
+
+model::System detail::read_system(const nlohmann::json& j) {
+  return read_system_tree(j);
+}
+
+nlohmann::ordered_json detail::write_system(const model::System& s, Form form) {
+  return write_tree(s, form);
+}
+
+nlohmann::json detail::plain(const nlohmann::ordered_json& j) {
+  switch (j.type()) {
+    case nlohmann::ordered_json::value_t::object: {
+      Json o = Json::object();
+      for (const auto& item : j.items()) o[item.key()] = plain(item.value());
+      return o;
+    }
+    case nlohmann::ordered_json::value_t::array: {
+      Json a = Json::array();
+      for (const auto& v : j) a.push_back(plain(v));
+      return a;
+    }
+    case nlohmann::ordered_json::value_t::string:
+      return j.get<std::string>();
+    case nlohmann::ordered_json::value_t::boolean:
+      return j.get<bool>();
+    case nlohmann::ordered_json::value_t::number_integer:
+      return j.get<std::int64_t>();
+    case nlohmann::ordered_json::value_t::number_unsigned:
+      return j.get<std::uint64_t>();
+    case nlohmann::ordered_json::value_t::number_float:
+      return j.get<double>();
+    default:
+      return nullptr;
+  }
 }
 
 void save_system(const model::System& system, const std::filesystem::path& file) {

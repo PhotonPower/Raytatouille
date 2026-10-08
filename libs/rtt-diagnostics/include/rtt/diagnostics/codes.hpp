@@ -22,7 +22,8 @@ enum class Severity : std::uint8_t { Error, Warning };
 struct CodeInfo {
   std::string_view code;      ///< dotted name, e.g. "material.unknown"
   Severity severity;          ///< the severity every diagnostic with this code has
-  std::string_view producer;  ///< "validate", "compile", "analysis" or "agf" (docs/diagnostics.md)
+  std::string_view producer;  ///< "validate", "compile", "analysis", "agf" or "edit"
+                              ///< (docs/diagnostics.md)
   std::string_view summary;   ///< one-line meaning, as in docs/diagnostics.md
 };
 
@@ -53,6 +54,18 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
     {"coating.unknown", Severity::Error, "compile", "coating reference cannot be resolved"},
     {"coating.wavelength_out_of_range", Severity::Error, "compile",
      "system wavelength outside the valid range of a layer material"},
+    {"edit.base_not_representable", Severity::Error, "edit",
+     "the system to patch cannot be written in the edit form (non-finite number, material and "
+     "segment list both set, invalid UTF-8)"},
+    {"edit.invalid_value", Severity::Error, "edit",
+     "the patched edit form is not a valid system file (type, key, enum value)"},
+    {"edit.patch_invalid", Severity::Error, "edit",
+     "not a valid JSON Patch document or operation (RFC 6902)"},
+    {"edit.path_not_found", Severity::Error, "edit",
+     "patch target, source or parent missing, or the parent is no object or array"},
+    {"edit.read_only", Severity::Error, "edit",
+     "patch writes to /schema_version, /units or the whole document"},
+    {"edit.test_failed", Severity::Error, "edit", "a test operation of the patch failed"},
     {"element.material_both", Severity::Error, "validate",
      "one material for all segments and a segment list at the same time"},
     {"element.material_empty", Severity::Error, "validate", "empty material reference"},
