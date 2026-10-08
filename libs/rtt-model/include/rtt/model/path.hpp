@@ -17,13 +17,14 @@ enum class EventKind : std::uint8_t {
   Transmit,       ///< pass without refraction (thin element, detector)
   Ordinary,       ///< ordinary ray in a uniaxial crystal
   Extraordinary,  ///< extraordinary ray in a uniaxial crystal
-  Diffract,       ///< diffraction into `order`
 };
 
 struct Event {
   SurfaceId surface;
   EventKind kind = EventKind::Refract;
-  int order = 0;  ///< diffraction order, only meaningful for Diffract
+  /// Diffraction order (ADR 0025): any event at a surface with a phase layer may diffract into
+  /// this order; order 0 is the event without diffraction. Non-zero only at such a surface.
+  int order = 0;
   bool operator==(const Event&) const = default;
 };
 

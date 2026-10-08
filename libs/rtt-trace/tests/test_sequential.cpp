@@ -238,6 +238,49 @@ TEST_CASE("trace stats count the rays per status", "[sequential]") {
   REQUIRE(rays.last_surface()[3] == rtt::trace::kNoSurface);
 }
 
+TEST_CASE("an event with order != 0 stops at its hit point with EventImpossible until #127",
+          "[sequential]") {
+  // ADR 0025: orders are traced from #127 on. Until then an order != 0 must not run silently as
+  // order 0; it behaves as the event kind Diffract did before schema 0.3. Order 0 at the same
+  // grating surface is the event without diffraction.
+  System s = bare_system();
+  Surface grating = surface("G.S1");
+  grating.phases.push_back(rtt::model::LinearGrating{Param(300.0), 0.0});
+  grating.aperture = rtt::model::CircularAperture{5.0, 0.0};
+  s.root.children.push_back(
+      {Element{"G", ElementKind::ThinElement, Pose::along_z(10.0), std::nullopt, {grating}}});
+  s.root.children.push_back(
+      {Element{"D", ElementKind::Detector, Pose::along_z(40.0), std::nullopt, {surface("D")}}});
+  s.paths = {{"first",
+              false,
+              {{SurfaceId("G.S1"), rtt::model::EventKind::Transmit, 1},
+               {SurfaceId("D"), rtt::model::EventKind::Transmit, 0}}},
+             {"zero",
+              false,
+              {{SurfaceId("G.S1"), rtt::model::EventKind::Transmit, 0},
+               {SurfaceId("D"), rtt::model::EventKind::Transmit, 0}}}};
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+
+  RayBatch rays(2);
+  const Vec3 tilted = Vec3(0.0, 0.1, 1.0).normalized();
+  set_ray(rays, 0, Vec3(0.0, 1.0, 0.0), tilted);
+  set_ray(rays, 1, Vec3(0.0, 6.0, 0.0), Vec3::UnitZ());  // outside the aperture
+  RayBatch zero = rays;
+  const auto stats = SequentialTracer().trace(cs, PathId{0}, rays);
+  REQUIRE(rays.status()[0] == RayStatus::EventImpossible);
+  REQUIRE(rays.last_surface()[0] == 0);
+  const double t = 10.0 / tilted.z();
+  REQUIRE((pos(rays, 0) - (Vec3(0.0, 1.0, 0.0) + t * tilted)).norm() <= 1e-12);
+  REQUIRE((dir(rays, 0) - tilted).norm() == 0.0);
+  REQUIRE(rays.status()[1] == RayStatus::Vignetted);
+  REQUIRE(stats.count(RayStatus::EventImpossible) == 1);
+
+  [[maybe_unused]] const auto zero_stats = SequentialTracer().trace(cs, PathId{1}, zero);
+  REQUIRE(zero.status()[0] == RayStatus::Alive);
+  REQUIRE(zero.last_surface()[0] == 1);
+}
+
 TEST_CASE("invalid trace input throws before tracing", "[sequential]") {
   System s = bare_system();
   s.root.children.push_back(

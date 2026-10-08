@@ -11,6 +11,7 @@ if(RTT_BUILD_TESTS)
   rtt_add_test(rtt_compile_tests
     SOURCES tests/test_compile.cpp tests/test_media.cpp tests/test_coatings.cpp tests/test_layout.cpp
             tests/test_diagnostic_codes.cpp tests/test_errors.cpp tests/test_ghosts.cpp
+            tests/test_migration.cpp
     LIBS rtt::compile rtt::io)
   target_include_directories(rtt_compile_tests PRIVATE ${PROJECT_SOURCE_DIR}/libs/rtt-model/tests)
   target_compile_definitions(rtt_compile_tests PRIVATE

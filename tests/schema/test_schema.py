@@ -65,7 +65,7 @@ def _lens(doc):
 
 def _with_order(order):
     doc = copy.deepcopy(load(ROOT / "tests" / "reference" / "m0" / "singlet.rtt.json"))
-    doc["paths"] = [{"name": "main", "events": [{"surface": "L1.S1", "kind": "diffract",
+    doc["paths"] = [{"name": "main", "events": [{"surface": "L1.S1", "kind": "transmit",
                                                   "order": order}]}]
     return doc
 
@@ -112,3 +112,63 @@ def test_achromat_reference_uses_a_material_list():
     doc = load(ROOT / "tests" / "reference" / "m2" / "achromat.rtt.json")
     assert _lens(doc)["material"] == ["SCHOTT:N-BK7", "SCHOTT:F2"]
     VALIDATOR.validate(doc)
+
+
+CALCITE = {"ordinary": "BIREFRINGENT:CALCITE", "extraordinary": "BIREFRINGENT:CALCITE-E"}
+
+
+def _first_surface(doc):
+    return _lens(doc)["surfaces"][0]
+
+
+def _event(doc, **event):
+    doc["paths"] = [{"name": "main", "events": [{"surface": "L1.S1", **event}]}]
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda d: _lens(d).update(material=CALCITE, optic_axis=[0.0, 1.0, 1.0]),
+        lambda d: _first_surface(d).update(
+            phases=[{"type": "linear_grating", "lines_per_mm": 300.0}],
+            diffraction_efficiency=[{"order": 1, "efficiency": 0.8},
+                                    {"order": -1, "efficiency": 0.1}]),
+        # Values and duplicates are semantics, checked by rtt validate like in the parser.
+        lambda d: _first_surface(d).update(diffraction_efficiency=[]),
+        lambda d: _first_surface(d).update(
+            diffraction_efficiency=[{"order": 1, "efficiency": 1.5}]),
+        lambda d: _event(d, kind="reflect", order=1),
+        lambda d: _event(d, kind="ordinary", order=-2),
+    ],
+    ids=["crystal", "efficiency", "efficiency-empty", "efficiency-above-1", "reflect-order",
+         "ordinary-order"],
+)
+def test_schema_0_3_keys_are_accepted(mutate):
+    # ADR 0025, ADR 0026.
+    VALIDATOR.validate(_broken(mutate))
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda d: _event(d, kind="diffract", order=1),
+        lambda d: _lens(d).update(material={"ordinary": "BIREFRINGENT:CALCITE"}),
+        lambda d: _lens(d).update(material={**CALCITE, "axis": [0.0, 0.0, 1.0]}),
+        lambda d: _lens(d).update(material={**CALCITE, "extraordinary": 1}),
+        lambda d: _lens(d).update(optic_axis=[0.0, 1.0]),
+        lambda d: _lens(d).update(optic_axis="z"),
+        lambda d: _first_surface(d).update(diffraction_efficiency=[{"order": 1}]),
+        lambda d: _first_surface(d).update(
+            diffraction_efficiency=[{"order": 1.5, "efficiency": 0.5}]),
+        lambda d: _first_surface(d).update(
+            diffraction_efficiency=[{"order": 1, "efficiency": 0.5, "phase": 0.0}]),
+        lambda d: _first_surface(d).update(diffraction_efficiency={"order": 1, "efficiency": 0.5}),
+        lambda d: d.update(schema_version="0.2.0"),
+    ],
+    ids=["diffract", "crystal-missing-extraordinary", "crystal-extra-key",
+         "crystal-not-a-string", "axis-length", "axis-type", "efficiency-missing",
+         "efficiency-order-float", "efficiency-extra-key", "efficiency-not-a-list",
+         "version-0.2"],
+)
+def test_schema_0_3_errors_are_rejected(mutate):
+    assert not VALIDATOR.is_valid(_broken(mutate))

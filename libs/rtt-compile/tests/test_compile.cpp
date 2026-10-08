@@ -310,15 +310,18 @@ TEST_CASE("automatic path chooses the event from the element kind", "[compile]")
 
 TEST_CASE("media along explicit paths follow the inside/outside rule", "[compile]") {
   // Rule decided for #5: start in the environment; Refract/Ordinary/Extraordinary at an element
-  // with a material toggle inside <-> environment; Reflect, Transmit, Diffract and events at
-  // elements without material keep the medium.
+  // with a material toggle inside <-> environment; Reflect, Transmit (with any order, ADR 0025)
+  // and events at elements without material keep the medium.
   System s = bare_system();
   s.environment.medium = "CONST:1.333";
+  // A phase layer at P.S2, so that the Transmit with order 1 below is valid (ADR 0025).
+  Surface grating = plane_surface("P.S2", 5.0);
+  grating.phases.push_back(rtt::model::LinearGrating{Param(100.0), 0.0});
   s.root.children.push_back({Element{"P",
                                      ElementKind::Plate,
                                      Pose::along_z(10.0),
                                      "CONST:1.5",
-                                     {plane_surface("P.S1"), plane_surface("P.S2", 5.0)}}});
+                                     {plane_surface("P.S1"), grating}}});
   // Mangin mirror: refracting front, reflecting back inside a substrate.
   Surface back = plane_surface("M.S2", 3.0);
   back.interaction = rtt::model::IdealMirror{};
@@ -329,7 +332,7 @@ TEST_CASE("media along explicit paths follow the inside/outside rule", "[compile
   s.paths = {{"explicit",
               false,
               {{SurfaceId("P.S1"), EventKind::Ordinary, 0},
-               {SurfaceId("P.S2"), EventKind::Diffract, 1},
+               {SurfaceId("P.S2"), EventKind::Transmit, 1},
                {SurfaceId("P.S2"), EventKind::Extraordinary, 0},
                {SurfaceId("M.S1"), EventKind::Refract, 0},
                {SurfaceId("M.S2"), EventKind::Reflect, 0},
@@ -343,7 +346,7 @@ TEST_CASE("media along explicit paths follow the inside/outside rule", "[compile
   REQUIRE(cs.media()[cs.environment_medium()].reference == "CONST:1.333");
   require_events(cs, "explicit",
                  {{"P.S1", EventKind::Ordinary, "CONST:1.333", "CONST:1.5"},
-                  {"P.S2", EventKind::Diffract, "CONST:1.5", "CONST:1.5"},
+                  {"P.S2", EventKind::Transmit, "CONST:1.5", "CONST:1.5"},
                   {"P.S2", EventKind::Extraordinary, "CONST:1.5", "CONST:1.333"},
                   {"M.S1", EventKind::Refract, "CONST:1.333", "CONST:1.6"},
                   {"M.S2", EventKind::Reflect, "CONST:1.6", "CONST:1.6"},

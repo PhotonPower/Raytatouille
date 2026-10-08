@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.2.0",
+  "schema_version": "0.3.0",
   "name": "Glasplatte unter dem Brewster-Winkel (56,6°): p-Licht geht verlustfrei durch",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [

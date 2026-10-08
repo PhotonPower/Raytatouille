@@ -71,8 +71,7 @@ void bind_model_tree(nb::module_& m) {
              "pass without refraction (thin element, detector)")
       .value("ORDINARY", model::EventKind::Ordinary, "ordinary ray in a uniaxial crystal")
       .value("EXTRAORDINARY", model::EventKind::Extraordinary,
-             "extraordinary ray in a uniaxial crystal")
-      .value("DIFFRACT", model::EventKind::Diffract, "diffraction into the event's order");
+             "extraordinary ray in a uniaxial crystal");
 
   nb::enum_<model::FieldType>(m, "FieldType", "Meaning of the field values x and y.")
       .value("ANGLE_DEG", model::FieldType::AngleDeg, "field angle in degree")
@@ -228,6 +227,13 @@ void bind_model_tree(nb::module_& m) {
               "Retardance in waves (0.25 for a quarter-wave plate).");
 
   // -------------------------------------------------------------- surface -----
+  read_only_class<model::DiffractionEfficiency>(
+      m, "DiffractionEfficiency",
+      "Power fraction of one diffraction order at a surface with phase layers (ADR 0025; "
+      "read-only copy).")
+      .def_ro("order", &model::DiffractionEfficiency::order, "Diffraction order.")
+      .def_ro("efficiency", &model::DiffractionEfficiency::efficiency,
+              "Power fraction of the order, 0 ... 1, dimensionless.");
   read_only_class<model::Surface>(m, "Surface",
                                   "Surface with its layer stack (read-only copy): shape, "
                                   "aperture, phases, interaction.")
@@ -240,6 +246,9 @@ void bind_model_tree(nb::module_& m) {
               "Clear aperture (CircularAperture, RectangularAperture, EllipticalAperture); None "
               "for an unlimited surface.")
       .def_ro("phases", &model::Surface::phases, "Phase layers (LinearGrating, RadialPhase).")
+      .def_ro("diffraction_efficiency", &model::Surface::diffraction_efficiency,
+              "Efficiency per diffraction order (DiffractionEfficiency); None: every order has "
+              "efficiency 1. If given, orders not listed have efficiency 0.")
       .def_ro("interaction", &model::Surface::interaction,
               "Interaction (Fresnel, IdealMirror, IdealAntiReflection, IdealBeamSplitter, "
               "CoatingRef, IdealPolarizer, IdealRetarder, Absorber).")
@@ -247,6 +256,14 @@ void bind_model_tree(nb::module_& m) {
            [](const model::Surface& s) { return nb::str("Surface(id={!r})").format(s.id.str()); });
 
   // -------------------------------------------------------------- element -----
+  read_only_class<model::CrystalMaterial>(
+      m, "CrystalMaterial",
+      "Uniaxial crystal (ADR 0026): catalog references for the principal indices n_O and n_E "
+      "(read-only copy).")
+      .def_ro("ordinary", &model::CrystalMaterial::ordinary,
+              "Catalog reference for n_O, e.g. \"BIREFRINGENT:CALCITE\".")
+      .def_ro("extraordinary", &model::CrystalMaterial::extraordinary,
+              "Catalog reference for n_E, e.g. \"BIREFRINGENT:CALCITE-E\".");
   read_only_class<model::Element>(
       m, "Element",
       "A physical body (read-only copy). An element with N surfaces has N - 1 segments; segment i "
@@ -261,11 +278,17 @@ void bind_model_tree(nb::module_& m) {
       .def_ro("segment_materials", &model::Element::segment_materials,
               "Catalog reference per segment; empty if `material` is used or the element has no "
               "material.")
+      .def_ro("crystal", &model::Element::crystal,
+              "Uniaxial crystal for all segments (CrystalMaterial); None for an isotropic "
+              "material or none. Then `material` and `segment_materials` are empty.")
+      .def_ro("optic_axis", &model::Element::optic_axis,
+              "Optic axis x, y, z of the crystal in element coordinates, dimensionless, not "
+              "normalised; None without crystal.")
       .def_ro("surfaces", &model::Element::surfaces, "Surfaces in order.")
       .def("segment_material", &model::Element::segment_material, "segment"_a,
            "Material of segment `segment` (between surfaces `segment` and `segment + 1`): the "
-           "list entry or the shorthand `material`. None if the element has no material or the "
-           "segment does not exist.")
+           "list entry or the shorthand `material`. None if the element has no isotropic "
+           "material (none, or a crystal) or the segment does not exist.")
       .def("__repr__", [](const model::Element& e) {
         return nb::str("Element(name={!r}, kind={})").format(e.name, nb::cast(e.kind));
       });
@@ -287,7 +310,7 @@ void bind_model_tree(nb::module_& m) {
           "surface", [](const model::Event& e) { return e.surface.str(); }, "Id of the surface.")
       .def_ro("kind", &model::Event::kind, "What the ray does at the surface.")
       .def_ro("order", &model::Event::order,
-              "Diffraction order; only meaningful for EventKind.DIFFRACT.");
+              "Diffraction order (ADR 0025); non-zero only at a surface with a phase layer.");
 
   read_only_class<model::Path>(
       m, "Path",

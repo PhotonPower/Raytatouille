@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.2.0",
+  "schema_version": "0.3.0",
   "name": "Feature tour: every model element of schema 0.1",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"temperature_c": 22.0, "pressure_atm": 0.95},
@@ -180,7 +180,7 @@
         {"surface": "STO", "kind": "transmit"},
         {"surface": "A.S1"},
         {"surface": "A.S2"},
-        {"surface": "G.S1", "kind": "diffract", "order": 1},
+        {"surface": "G.S1", "kind": "transmit", "order": 1},
         {"surface": "G.S2"},
         {"surface": "IMG", "kind": "transmit"}
       ]
@@ -193,11 +193,11 @@
         {"surface": "STO", "kind": "transmit"},
         {"surface": "A.S1"},
         {"surface": "A.S2"},
-        {"surface": "G.S1", "kind": "diffract", "order": 1},
+        {"surface": "G.S1", "kind": "transmit", "order": 1},
         {"surface": "G.S2", "kind": "reflect"},
-        {"surface": "G.S1", "kind": "diffract", "order": -1},
+        {"surface": "G.S1", "kind": "transmit", "order": -1},
         {"surface": "A.S2", "kind": "reflect"},
-        {"surface": "G.S1", "kind": "diffract", "order": 1},
+        {"surface": "G.S1", "kind": "transmit", "order": 1},
         {"surface": "G.S2"},
         {"surface": "IMG", "kind": "transmit"}
       ]

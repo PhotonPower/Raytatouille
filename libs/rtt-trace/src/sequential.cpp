@@ -11,12 +11,45 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "rtt/trace/apply_event.hpp"
 
 namespace rtt::trace {
 namespace {
+
+/// Diffraction orders are traced from #127 on (ADR 0025). Until then an event with order != 0
+/// ends the ray at its hit point with EventImpossible, as the event kind Diffract did before
+/// schema 0.3; a miss, vignetting and an absorber keep their status, as in sequential_step().
+RayState stop_at_order(const RayState& ray,
+                       const compile::CompiledSurface& surface,
+                       std::uint32_t surface_index,
+                       const EventMedia& media) noexcept {
+  if (ray.status != RayStatus::Alive) return ray;
+  const SurfaceHit hit = intersect_surface(ray, surface);
+  RayState out = ray;
+  switch (hit.status) {
+    case geom::HitStatus::Hit:
+      break;
+    case geom::HitStatus::Missed:
+      out.status = RayStatus::Missed;
+      return out;
+    case geom::HitStatus::NoConvergence:
+      out.status = RayStatus::NoConvergence;
+      return out;
+  }
+  out = move_to_hit(ray, surface, hit, surface_index, media);
+  if (!inside_aperture(surface, hit)) {
+    out.status = RayStatus::Vignetted;
+  } else if (std::holds_alternative<model::Absorber>(surface.interaction)) {
+    out.status = RayStatus::Absorbed;
+    out.weight = 0.0;
+  } else {
+    out.status = RayStatus::EventImpossible;
+  }
+  return out;
+}
 
 /// Recorder policy of trace_rays() without recording: every call is an empty inline function,
 /// so the ray loop of a plain trace is the same as before #80 (results bitwise unchanged).
@@ -143,8 +176,10 @@ TraceStats trace_rays(const compile::CompiledSystem& system,
       std::size_t steps = 0;
       for (; steps < events.events.size() && ray.status == RayStatus::Alive; ++steps) {
         const compile::CompiledEvent& event = events.events[steps];
-        ray = sequential_step(ray, system.surfaces()[event.surface], event.surface, event.kind,
-                              event_media(event, wl));
+        const compile::CompiledSurface& surface = system.surfaces()[event.surface];
+        ray = event.order == 0
+                  ? sequential_step(ray, surface, event.surface, event.kind, event_media(event, wl))
+                  : stop_at_order(ray, surface, event.surface, event_media(event, wl));
         recorder.after(i, steps, ray);
       }
       recorder.finish(i, steps, ray);

@@ -1,6 +1,7 @@
 // Every registered diagnostic code (ADR 0022) with one case that produces it at the expected
 // JSON pointer, from model::validate or from compile().
 
+#include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <functional>
@@ -26,7 +27,9 @@ using rtt::coating::PhysicalThickness;
 using rtt::coating::QuarterWaves;
 using rtt::compile::CompileError;
 using rtt::material::MaterialLibrary;
+using rtt::model::CrystalMaterial;
 using rtt::model::Diagnostic;
+using rtt::model::DiffractionEfficiency;
 using rtt::model::Element;
 using rtt::model::ElementKind;
 using rtt::model::EventKind;
@@ -264,7 +267,41 @@ std::vector<Case> cases() {
        [](System& s) { s.paths = {{"x", false, {{SurfaceId("NOPE"), EventKind::Transmit, 0}}}}; }},
       {"paths.order_not_allowed", "/paths/0/events/0/order",
        [](System& s) { s.paths = {{"x", false, {{SurfaceId("STO"), EventKind::Transmit, 1}}}}; }},
+      {"surface.efficiency_invalid", "/root/children/1/surfaces/0/diffraction_efficiency",
+       [](System& s) {
+         element(s, 1).surfaces[0].diffraction_efficiency =
+             std::vector<DiffractionEfficiency>{{1, 0.5}};
+       }},
+      {"crystal.kind_not_allowed", "/root/children/2/material",
+       [](System& s) {
+         element(s, 2).crystal = CrystalMaterial{"CONST:1.66", "CONST:1.49"};
+         element(s, 2).optic_axis = std::array<double, 3>{0.0, 0.0, 1.0};
+       }},
+      {"crystal.material_conflict", "/root/children/1/material",
+       [](System& s) {
+         element(s, 1).crystal = CrystalMaterial{"CONST:1.66", "CONST:1.49"};
+         element(s, 1).optic_axis = std::array<double, 3>{0.0, 0.0, 1.0};
+       }},
+      {"crystal.optic_axis_missing", "/root/children/1/optic_axis",
+       [](System& s) {
+         element(s, 1).material.reset();
+         element(s, 1).crystal = CrystalMaterial{"CONST:1.66", "CONST:1.49"};
+       }},
+      {"crystal.optic_axis_invalid", "/root/children/1/optic_axis",
+       [](System& s) {
+         element(s, 1).material.reset();
+         element(s, 1).crystal = CrystalMaterial{"CONST:1.66", "CONST:1.49"};
+         element(s, 1).optic_axis = std::array<double, 3>{0.0, 0.0, 0.0};
+       }},
+      {"crystal.optic_axis_not_allowed", "/root/children/1/optic_axis",
+       [](System& s) { element(s, 1).optic_axis = std::array<double, 3>{0.0, 0.0, 1.0}; }},
       // --- compile()
+      {"crystal.unsupported", "/root/children/1/material",
+       [](System& s) {
+         element(s, 1).material.reset();
+         element(s, 1).crystal = CrystalMaterial{"CONST:1.66", "CONST:1.49"};
+         element(s, 1).optic_axis = std::array<double, 3>{0.0, 1.0, 1.0};
+       }},
       {"wavelengths.too_many", "/wavelengths",
        [](System& s) {
          s.wavelengths.assign(65536, {0.5876, 1.0, false});

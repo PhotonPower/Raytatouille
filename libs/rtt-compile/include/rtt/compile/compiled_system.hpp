@@ -84,6 +84,9 @@ struct CompiledSurface {
   std::optional<model::Aperture> aperture;  ///< in local coordinates, mm; none = unbounded
   std::vector<model::PhaseLayer> phases;    ///< copied as values; evaluated from M4 on
   model::Interaction interaction = model::Fresnel{};
+  /// Efficiency per diffraction order as in the model (ADR 0025, point 5): absent = every order
+  /// has efficiency 1; present = orders not listed have efficiency 0.
+  std::optional<std::vector<model::DiffractionEfficiency>> diffraction_efficiency;
   /// Set for a CoatingRef interaction: the resolved coating and its substrate side.
   std::optional<SurfaceCoating> coating;
   /// Set for IdealPolarizer (transmission axis) and IdealRetarder (fast axis): the axis of the
@@ -105,7 +108,7 @@ struct CompiledMedium {
 struct CompiledEvent {
   std::uint32_t surface = 0;  ///< index into CompiledSystem::surfaces()
   model::EventKind kind = model::EventKind::Refract;
-  int order = 0;                    ///< diffraction order (Diffract only)
+  int order = 0;  ///< diffraction order (ADR 0025); 0 at a surface without phase layer
   std::uint32_t medium_before = 0;  ///< index into CompiledSystem::media()
   std::uint32_t medium_after = 0;   ///< index into CompiledSystem::media()
   /// Index into CompiledSystem::media() of the medium on the other side of the surface: the
@@ -159,9 +162,9 @@ class CompiledSystem;
 /// - Builds every path. An automatic path visits all surfaces in tree order with Refract for
 ///   Lens and Plate, Reflect for Mirror and Transmit for Stop, Detector and ThinElement.
 /// - Media along a path (docs/architecture.md, "Medien entlang eines Pfads"): the ray starts in
-///   the environment medium. Reflect, Transmit and Diffract keep the medium, and so does every
-///   event at an element without material. The rule for Refract, Ordinary and Extraordinary
-///   depends only on the element, never on the kind of path (decided for #27):
+///   the environment medium. Reflect and Transmit keep the medium, with any order (ADR 0025),
+///   and so does every event at an element without material. The rule for Refract, Ordinary
+///   and Extraordinary depends only on the element, never on the kind of path (decided for #27):
 ///   | element                                  | automatic path         | explicit path |
 ///   | Lens, one material or several            | segment rule           | segment rule  |
 ///   | Plate, one material (shorthand or equal) | 2 surfaces: toggle,    | toggle        |
@@ -182,7 +185,8 @@ class CompiledSystem;
 ///   goes to the environment. A cemented group is one element with one material per segment;
 ///   two separate elements always meet through the environment.
 ///
-/// Not supported yet (CompileError): Zernike sag terms (M8).
+/// Not supported yet (CompileError): Zernike sag terms (M8); crystal elements (ADR 0026,
+/// code crystal.unsupported until #131).
 /// Also a CompileError: a Mirror with substrate material and more than one surface on an
 /// automatic path (Mangin mirror; its front surface refracts, so it needs an explicit path
 /// Refract, Reflect, Refract); a Plate of one material with more than 2 surfaces on an

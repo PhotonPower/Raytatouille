@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.2.0",
+  "schema_version": "0.3.0",
   "name": "Hohlspiegel R = −200 mm, Kugel (f/2,5)",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [

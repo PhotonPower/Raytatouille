@@ -265,7 +265,6 @@ RayState apply_event(const RayState& ray,
       break;
     case model::EventKind::Transmit:
       break;
-    case model::EventKind::Diffract:
     case model::EventKind::Ordinary:
     case model::EventKind::Extraordinary:
       out.status = RayStatus::EventImpossible;  // M4

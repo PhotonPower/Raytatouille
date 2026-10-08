@@ -272,8 +272,7 @@ TEST_CASE("aperture rims include the aiming tolerance", "[apply_event]") {
 
 TEST_CASE("events of later milestones are EventImpossible", "[apply_event]") {
   const CompiledSurface plane = plane_surface();
-  for (const EventKind kind :
-       {EventKind::Diffract, EventKind::Ordinary, EventKind::Extraordinary}) {
+  for (const EventKind kind : {EventKind::Ordinary, EventKind::Extraordinary}) {
     const RayState out = rtt::trace::sequential_step(ray_at_angle(0.1), plane, 2, kind, 1.0, 1.5);
     REQUIRE(out.status == RayStatus::EventImpossible);
     REQUIRE(near(out.pos, Vec3::Zero(), 1e-12));

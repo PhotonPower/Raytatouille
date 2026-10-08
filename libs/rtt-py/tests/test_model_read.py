@@ -64,8 +64,7 @@ ENUM_NAMES: dict[type, dict[str, str]] = {
     model.ElementKind: {"lens": "LENS", "mirror": "MIRROR", "plate": "PLATE",
                         "thin_element": "THIN_ELEMENT", "stop": "STOP", "detector": "DETECTOR"},
     model.EventKind: {"refract": "REFRACT", "reflect": "REFLECT", "transmit": "TRANSMIT",
-                      "ordinary": "ORDINARY", "extraordinary": "EXTRAORDINARY",
-                      "diffract": "DIFFRACT"},
+                      "ordinary": "ORDINARY", "extraordinary": "EXTRAORDINARY"},
     model.FieldType: {"angle_deg": "ANGLE_DEG", "object_height": "OBJECT_HEIGHT",
                       "paraxial_image_height": "PARAXIAL_IMAGE_HEIGHT"},
     model.SystemApertureType: {"epd": "ENTRANCE_PUPIL_DIAMETER",
@@ -374,6 +373,44 @@ def test_element_segment_material() -> None:
     singlet = element("m0/singlet.rtt.json", "L1")
     assert singlet.segment_material(0) == singlet.material == "SCHOTT:N-BK7"
     assert singlet.segment_material(1) is None
+
+
+def test_crystal_optic_axis_and_diffraction_efficiency() -> None:
+    # Schema 0.3 (ADR 0025, ADR 0026); no reference system has them yet (crystals compile from
+    # #131 on), so they are checked on a changed copy of the defaults system.
+    data = json.loads(DEFAULTS_TEXT)
+    data["schema_version"] = "0.3.0"
+    lens = data["root"]["children"][0]
+    lens["material"] = {"ordinary": "BIREFRINGENT:CALCITE",
+                        "extraordinary": "BIREFRINGENT:CALCITE-E"}
+    lens["optic_axis"] = [0.0, 1.0, 1.0]
+    lens["surfaces"][3]["diffraction_efficiency"] = [{"order": 1, "efficiency": 0.8},
+                                                     {"order": -1, "efficiency": 0.1}]
+    system = rt.System.from_json(json.dumps(data))
+    element = system.root.children[0]
+    assert isinstance(element, model.Element)
+    assert element.material is None and element.segment_materials == []
+    crystal = element.crystal
+    assert isinstance(crystal, model.CrystalMaterial)
+    assert (crystal.ordinary, crystal.extraordinary) == ("BIREFRINGENT:CALCITE",
+                                                         "BIREFRINGENT:CALCITE-E")
+    assert element.optic_axis == [0.0, 1.0, 1.0]
+    assert element.segment_material(0) is None  # no isotropic material
+    efficiency = element.surfaces[3].diffraction_efficiency
+    assert efficiency is not None
+    assert [(e.order, e.efficiency) for e in efficiency] == [(1, 0.8), (-1, 0.1)]
+    # Defaults: no crystal, no axis, no efficiency list.
+    assert DEFAULTS[model.Element].crystal is None
+    assert DEFAULTS[model.Element].optic_axis is None
+    assert DEFAULTS[model.Surface].diffraction_efficiency is None
+    for obj in (crystal, efficiency[0]):
+        for name in attributes(obj):
+            with pytest.raises(AttributeError):
+                setattr(obj, name, getattr(obj, name))
+        with pytest.raises(TypeError):
+            type(obj)()
+        with pytest.raises(TypeError):
+            hash(obj)
 
 
 def test_wavelength_equality_and_hash() -> None:

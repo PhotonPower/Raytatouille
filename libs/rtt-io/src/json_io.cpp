@@ -41,7 +41,6 @@ const EnumTable<EventKind> kEventKinds = {
     {"transmit", EventKind::Transmit},
     {"ordinary", EventKind::Ordinary},
     {"extraordinary", EventKind::Extraordinary},
-    {"diffract", EventKind::Diffract},
 };
 
 const EnumTable<FieldType> kFieldTypes = {
@@ -353,8 +352,24 @@ Interaction read_interaction(const Json& j, const Ctx& c) {
   c.at("type").fail("unknown interaction type '" + type + "'");
 }
 
+/// Efficiency per diffraction order (ADR 0025): [{"order": m, "efficiency": eta}, ...]. Values
+/// and duplicates are checked by validate.
+std::vector<DiffractionEfficiency> read_efficiency(const Json& j, const Ctx& c) {
+  const Json& a = read_array(j, c);
+  std::vector<DiffractionEfficiency> out;
+  out.reserve(a.size());
+  for (std::size_t i = 0; i < a.size(); ++i) {
+    const Ctx ci = c.at(i);
+    expect_object(a[i], ci, {"order", "efficiency"});
+    out.push_back({read_int(require(a[i], "order", ci), ci.at("order")),
+                   read_number(require(a[i], "efficiency", ci), ci.at("efficiency"))});
+  }
+  return out;
+}
+
 Surface read_surface(const Json& j, const Ctx& c) {
-  expect_object(j, c, {"id", "pose", "shape", "aperture", "phases", "interaction"});
+  expect_object(
+      j, c, {"id", "pose", "shape", "aperture", "phases", "diffraction_efficiency", "interaction"});
   Surface s;
   s.id = SurfaceId(read_string(require(j, "id", c), c.at("id")));
   read_opt(j, "pose", c, s.pose, read_pose);
@@ -366,19 +381,30 @@ Surface read_surface(const Json& j, const Ctx& c) {
     for (std::size_t i = 0; i < a.size(); ++i)
       s.phases.push_back(read_phase(a[i], c.at("phases").at(i)));
   }
+  if (const Json* d = find(j, "diffraction_efficiency")) {
+    s.diffraction_efficiency = read_efficiency(*d, c.at("diffraction_efficiency"));
+  }
   read_opt(j, "interaction", c, s.interaction, read_interaction);
   return s;
 }
 
-/// Element material: a string (shorthand, one material for all segments) or a non-empty
-/// array of strings (one material per segment, ADR 0017).
+/// Element material: a string (shorthand, one material for all segments), a non-empty
+/// array of strings (one material per segment, ADR 0017) or a crystal object
+/// {"ordinary": ..., "extraordinary": ...} (ADR 0026).
 void read_material(const Json& j, const Ctx& c, Element& e) {
   if (j.is_string()) {
     e.material = j.get<std::string>();
     return;
   }
+  if (j.is_object()) {
+    expect_object(j, c, {"ordinary", "extraordinary"});
+    e.crystal = CrystalMaterial{read_string(require(j, "ordinary", c), c.at("ordinary")),
+                                read_string(require(j, "extraordinary", c), c.at("extraordinary"))};
+    return;
+  }
   if (!j.is_array()) {
-    c.fail("expected a string or an array of strings, got " + std::string(type_name(j)));
+    c.fail("expected a string, an array of strings or a crystal object, got " +
+           std::string(type_name(j)));
   }
   if (j.empty()) c.fail("expected at least one material");
   e.segment_materials.reserve(j.size());
@@ -405,12 +431,13 @@ Assembly read_assembly_body(const Json& j, const Ctx& c) {
 Node read_node(const Json& j, const Ctx& c) {
   const std::string type = read_type(j, c);
   if (type == "assembly") return Node{read_assembly_body(j, c)};
-  expect_object(j, c, {"type", "name", "pose", "material", "surfaces"});
+  expect_object(j, c, {"type", "name", "pose", "material", "optic_axis", "surfaces"});
   Element e;
   e.kind = read_enum(require(j, "type", c), c.at("type"), kElementKinds);
   e.name = read_string(require(j, "name", c), c.at("name"));
   read_opt(j, "pose", c, e.pose, read_pose);
   if (const Json* m = find(j, "material")) read_material(*m, c.at("material"), e);
+  if (const Json* a = find(j, "optic_axis")) e.optic_axis = read_vec3(*a, c.at("optic_axis"));
   const Json& surfaces = require_array(j, "surfaces", c);
   e.surfaces.reserve(surfaces.size());
   for (std::size_t i = 0; i < surfaces.size(); ++i) {
@@ -419,7 +446,8 @@ Node read_node(const Json& j, const Ctx& c) {
   return Node{std::move(e)};
 }
 
-Path read_path(const Json& j, const Ctx& c) {
+/// `before_0_3`: the file predates schema 0.3, where the event kind "diffract" existed.
+Path read_path(const Json& j, const Ctx& c, bool before_0_3) {
   expect_object(j, c, {"name", "events"});
   Path p;
   p.name = read_string(require(j, "name", c), c.at("name"));
@@ -436,7 +464,15 @@ Path read_path(const Json& j, const Ctx& c) {
     expect_object(a[i], c2, {"surface", "kind", "order"});
     Event e;
     e.surface = SurfaceId(read_string(require(a[i], "surface", c2), c2.at("surface")));
-    if (const Json* k = find(a[i], "kind")) e.kind = read_enum(*k, c2.at("kind"), kEventKinds);
+    if (const Json* k = find(a[i], "kind")) {
+      // Migration to 0.3 (ADR 0025, point 4): "diffract" kept the medium like "transmit" and is
+      // read as "transmit" with the same order; the media of the path stay the same.
+      if (before_0_3 && k->is_string() && k->get<std::string>() == "diffract") {
+        e.kind = EventKind::Transmit;
+      } else {
+        e.kind = read_enum(*k, c2.at("kind"), kEventKinds);
+      }
+    }
     read_opt(a[i], "order", c2, e.order, read_int);
     p.events.push_back(std::move(e));
   }
@@ -451,34 +487,43 @@ std::string major_minor(const std::string& version) {
   return version.substr(0, version.rfind('.'));
 }
 
-/// Migration 0.1 -> 0.2 (ADR 0017). 0.2 only adds the array form of "material"; every 0.1 file
-/// is a 0.2 file with the same meaning. An array material in a file that claims 0.1 is an error.
-void check_no_material_lists(const Json& node, const Ctx& c) {
+/// Material forms newer than the file: 0.2 adds the array form of "material" (ADR 0017), 0.3
+/// the crystal object (ADR 0026). Such a form in a file that claims an older version is an
+/// error, so that a version is never silently upgraded.
+void check_material_forms(const Json& node, const Ctx& c, bool lists_allowed) {
   if (!node.is_object()) return;  // structural errors are reported by the reader
-  if (const Json* m = find(node, "material"); m != nullptr && m->is_array()) {
-    c.at("material").fail("material lists need schema_version 0.2 or later");
+  if (const Json* m = find(node, "material")) {
+    if (m->is_array() && !lists_allowed) {
+      c.at("material").fail("material lists need schema_version 0.2 or later");
+    }
+    if (m->is_object()) c.at("material").fail("crystal materials need schema_version 0.3 or later");
   }
   if (const Json* children = find(node, "children"); children != nullptr && children->is_array()) {
     for (std::size_t i = 0; i < children->size(); ++i) {
-      check_no_material_lists((*children)[i], c.at("children").at(i));
+      check_material_forms((*children)[i], c.at("children").at(i), lists_allowed);
     }
   }
 }
 
-/// Checks the schema version of `j` and migrates supported older versions to the current one.
-/// Pre-1.0 rule: major and minor must match a supported version, patch may differ. The reader
-/// then reads `j` as a current file and the writer writes kSchemaVersion.
-void migrate(const Json& j, const std::string& version, const Ctx& c) {
+/// Checks the schema version of `j` and migrates supported older versions to the current one;
+/// returns true for a file before 0.3. Pre-1.0 rule: major and minor must match a supported
+/// version, patch may differ. The reader then reads `j` as a current file and the writer writes
+/// kSchemaVersion.
+/// - 0.1 -> 0.2 (ADR 0017): content unchanged, only material lists are new.
+/// - 0.2 -> 0.3 (ADR 0025, 0026): the event kind "diffract" is read as "transmit" (read_path);
+///   crystals, the optic axis and diffraction efficiencies are new.
+bool migrate(const Json& j, const std::string& version, const Ctx& c) {
   const std::string ours(kSchemaVersion);
   const std::string mm = major_minor(version);
-  if (!mm.empty() && mm == major_minor(ours)) return;
-  if (mm == "0.1") {
-    // 0.1 -> 0.2: content unchanged, only lists are new.
-    if (const Json* root = find(j, "root")) check_no_material_lists(*root, Ctx().at("root"));
-    return;
+  if (!mm.empty() && mm == major_minor(ours)) return false;
+  if (mm == "0.1" || mm == "0.2") {
+    if (const Json* root = find(j, "root")) {
+      check_material_forms(*root, Ctx().at("root"), mm == "0.2");
+    }
+    return true;
   }
   c.fail("incompatible schema_version '" + version + "', this build reads " + ours +
-         " and migrates 0.1");
+         " and migrates 0.1 and 0.2");
 }
 
 System read_system_tree(const Json& j) {
@@ -488,7 +533,7 @@ System read_system_tree(const Json& j) {
                  "aperture", "fields", "root", "paths"});
   System s;
   s.schema_version = read_string(require(j, "schema_version", c), c.at("schema_version"));
-  migrate(j, s.schema_version, c.at("schema_version"));
+  const bool before_0_3 = migrate(j, s.schema_version, c.at("schema_version"));
   s.schema_version = std::string(kSchemaVersion);
   read_opt(j, "name", c, s.name, read_string);
 
@@ -572,7 +617,9 @@ System read_system_tree(const Json& j) {
   {
     const Ctx pc = c.at("paths");
     const Json& a = require_array(j, "paths", c);
-    for (std::size_t i = 0; i < a.size(); ++i) s.paths.push_back(read_path(a[i], pc.at(i)));
+    for (std::size_t i = 0; i < a.size(); ++i) {
+      s.paths.push_back(read_path(a[i], pc.at(i), before_0_3));
+    }
   }
   return s;
 }
@@ -581,8 +628,8 @@ System read_system_tree(const Json& j) {
 //
 // Two forms (json_tree.hpp): the canonical form omits values equal to their defaults and writes
 // a plain Param as a number; the edit form (ADR 0024) writes every value and every Param as an
-// object. Optional members without a value (surface aperture, element material, pickup) are
-// missing in both.
+// object. Optional members without a value (surface aperture, diffraction efficiency, element
+// material, optic axis, pickup) are missing in both.
 
 OJson num(double v) {
   if (!std::isfinite(v)) throw std::invalid_argument("cannot write non-finite number to JSON");
@@ -803,6 +850,16 @@ class Writer {
       for (const PhaseLayer& p : s.phases) a.push_back(phase(p));
       o["phases"] = std::move(a);
     }
+    if (s.diffraction_efficiency) {
+      OJson a = OJson::array();
+      for (const DiffractionEfficiency& d : *s.diffraction_efficiency) {
+        OJson eo;
+        eo["order"] = d.order;
+        eo["efficiency"] = num(d.efficiency);
+        a.push_back(std::move(eo));
+      }
+      o["diffraction_efficiency"] = std::move(a);
+    }
     if (edit_ || !std::holds_alternative<Fresnel>(s.interaction))
       o["interaction"] = interaction(s.interaction);
     return o;
@@ -830,13 +887,23 @@ class Writer {
       throw std::invalid_argument("element '" + e.name +
                                   "': material and segment_materials are both set");
     }
+    if (e.crystal && (e.material || !e.segment_materials.empty())) {
+      throw std::invalid_argument("element '" + e.name +
+                                  "': crystal and isotropic material are both set");
+    }
     if (e.material) {
       o["material"] = *e.material;
     } else if (!e.segment_materials.empty()) {
       OJson a = OJson::array();
       for (const std::string& m : e.segment_materials) a.push_back(m);
       o["material"] = std::move(a);
+    } else if (e.crystal) {
+      OJson m;
+      m["ordinary"] = e.crystal->ordinary;
+      m["extraordinary"] = e.crystal->extraordinary;
+      o["material"] = std::move(m);
     }
+    if (e.optic_axis) o["optic_axis"] = vec3(*e.optic_axis);
     OJson surfaces = OJson::array();
     for (const Surface& s : e.surfaces) surfaces.push_back(surface(s));
     o["surfaces"] = std::move(surfaces);

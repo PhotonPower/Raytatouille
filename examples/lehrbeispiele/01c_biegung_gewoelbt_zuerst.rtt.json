@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.2.0",
+  "schema_version": "0.3.0",
   "name": "Plankonvex-Linse f = 100 mm, gewölbte Seite zuerst",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [

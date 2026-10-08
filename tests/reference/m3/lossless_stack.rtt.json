@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.2.0",
+  "schema_version": "0.3.0",
   "name": "M3 acceptance: lossless five-layer stack M3:HL5 on 1.52, R + T = 1 at 0, 30 and 60 deg",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},
