@@ -171,7 +171,7 @@ void node_keys(const json& n, const std::string& where) {
       node_keys(n["children"][i], where + "/children/" + std::to_string(i));
     }
   } else {
-    has_keys(n, {"type", "name", "pose", "surfaces"}, {"material"}, where);
+    has_keys(n, {"type", "name", "pose", "surfaces"}, {"material", "optic_axis"}, where);
     for (std::size_t i = 0; i < n["surfaces"].size(); ++i) {
       surface_keys(n["surfaces"][i], where + "/surfaces/" + std::to_string(i));
     }
