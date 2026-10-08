@@ -17,6 +17,7 @@
 #include "rtt/io/json_io.hpp"
 #include "rtt/material/material.hpp"
 #include "rtt/model/model.hpp"
+#include "rtt/paraxial/paraxial.hpp"
 #include "rtt/trace/run_control.hpp"
 #include "rtt/trace/sources.hpp"
 
@@ -259,6 +260,34 @@ TEST_CASE("ghost ranking of the reference plate: rho = R^2 (#124)", "[ghosts][ra
   const double r = ((n - 1.0) / (n + 1.0)) * ((n - 1.0) / (n + 1.0));
   REQUIRE(close(ranking.entries[0].relative_irradiance, r * r, 1e-10));
   REQUIRE_FALSE(ranking.entries[0].focus_offset.has_value());
+}
+
+TEST_CASE("ghost ranking without a finite entrance pupil: no diagnostics, ranking runs (#124)",
+          "[ghosts][ranking]") {
+  // tests/reference/m2/telecentric_4f.rtt.json: object-side telecentric (stop in the back focal
+  // plane of L1, entrance pupil at infinity), 4 Refract events, so 6 ghosts. There is no
+  // finite marginal ray start, so focus_offset and paraxial_blur_radius stay empty (ADR 0027,
+  // addendum #124) while the ranking itself is computed.
+  const MaterialLibrary lib;
+  const rtt::coating::CoatingLibrary coatings;
+  const GhostSystem g = rtt::compile::compile_with_ghosts(
+      rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m2/telecentric_4f.rtt.json"), "main",
+      lib, coatings);
+  const auto fo = rtt::paraxial::first_order(g.system, g.ghosts.front().base, 0);
+  REQUIRE(fo.entrance_pupil.has_value());
+  REQUIRE_FALSE(fo.entrance_pupil->z.has_value());  // precondition: pupil at infinity
+  const auto ranking = rtt::analysis::ghost_ranking(g, 0, 0);
+  REQUIRE(ranking.base_power > 0.0);
+  REQUIRE(ranking.entries.size() == 6);
+  bool any = false;
+  for (const auto& e : ranking.entries) {
+    REQUIRE_FALSE(e.focus_offset.has_value());
+    REQUIRE_FALSE(e.paraxial_blur_radius.has_value());
+    REQUIRE(std::isfinite(e.relative_irradiance));
+    REQUIRE(e.relative_irradiance >= 0.0);
+    any = any || e.relative_irradiance > 0.0;
+  }
+  REQUIRE(any);
 }
 
 TEST_CASE("ghost ranking: lost ghost rays do not warn (#124)", "[ghosts][ranking]") {
