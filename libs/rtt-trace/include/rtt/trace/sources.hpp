@@ -28,6 +28,7 @@
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/trace/apply_event.hpp"
 #include "rtt/trace/ray_batch.hpp"
+#include "rtt/trace/run_control.hpp"
 
 namespace rtt::trace {
 
@@ -194,5 +195,17 @@ struct AimedRay {
                                  std::uint16_t wavelength,
                                  const PupilSampling& sampling,
                                  Aiming aiming = Aiming::Real);
+
+/// make_rays() with cancellation and progress (run_control.hpp, #83): stage "aim", one work
+/// item per ray, checked every control.block_size rays (the aiming loop stays serial). With an
+/// empty `control` it is make_rays() exactly; the rays never depend on the control.
+/// @throws as make_rays(), Cancelled, or the exception of the progress callback
+[[nodiscard]] RayBatch make_rays(const compile::CompiledSystem& system,
+                                 compile::PathId path,
+                                 std::span<const std::uint16_t> fields,
+                                 std::uint16_t wavelength,
+                                 const PupilSampling& sampling,
+                                 Aiming aiming,
+                                 const RunControl& control);
 
 }  // namespace rtt::trace
