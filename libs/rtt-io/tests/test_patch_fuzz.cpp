@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "json_patch.hpp"
+#include "rtt/json/strict.hpp"
 
 using nlohmann::json;
 using rtt::io::detail::apply_json_patch;
@@ -46,12 +47,13 @@ class Fuzz {
     }
     if (chance(50)) {
       json o = json::object();
-      std::string keys = "abc";
-      const std::size_t count = below(4);
+      // "a/~b" needs masking in every pointer (RFC 6901 Sec. 3), also in the inverse.
+      std::vector<std::string> keys = {"a", "b", "c", "a/~b"};
+      const std::size_t count = below(5);
       for (std::size_t i = 0; i < count; ++i) {
         const std::size_t k = below(keys.size());
-        o[std::string(1, keys[k])] = document(depth + 1);
-        keys.erase(k, 1);
+        o[keys[k]] = document(depth + 1);
+        keys.erase(keys.begin() + static_cast<std::ptrdiff_t>(k));
       }
       return o;
     }
@@ -67,7 +69,7 @@ class Fuzz {
     const std::string p = pointers[below(pointers.size())];
     const std::string q = pointers[below(pointers.size())];
     static const std::vector<std::string> kOps = {"add", "remove", "replace", "move", "copy"};
-    static const std::vector<std::string> kLast = {"a", "b", "0", "1", "-"};
+    static const std::vector<std::string> kLast = {"a", "b", "a~1~0b", "0", "1", "-"};
     const std::string op = kOps[below(kOps.size())];
     const std::string target = chance(50) ? p + "/" + kLast[below(kLast.size())] : p;
     json o = {{"op", op}};
@@ -81,7 +83,9 @@ class Fuzz {
   static void collect(const json& d, const std::string& pointer, std::vector<std::string>& out) {
     out.push_back(pointer);
     if (d.is_object()) {
-      for (const auto& item : d.items()) collect(item.value(), pointer + "/" + item.key(), out);
+      for (const auto& item : d.items()) {
+        collect(item.value(), pointer + "/" + rtt::json::pointer_token(item.key()), out);
+      }
     } else if (d.is_array()) {
       for (std::size_t i = 0; i < d.size(); ++i)
         collect(d[i], pointer + "/" + std::to_string(i), out);
@@ -129,8 +133,8 @@ TEST_CASE("every accepted patch is undone by its inverse (fuzz, fixed seed)", "[
   const double seconds =
       std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
   // The sequence is deterministic, so the number of accepted patches is fixed: a change of it
-  // means a changed behaviour of the engine (13 670 of 30 000, 46 %). The run time is reported,
+  // means a changed behaviour of the engine (13 910 of 30 000, 46 %). The run time is reported,
   // not checked, so that slow sanitizer builds do not fail on it.
   INFO(accepted << " of " << kPatches << " patches accepted in " << seconds << " s");
-  CHECK(accepted == 13670);
+  CHECK(accepted == 13910);
 }
