@@ -231,7 +231,8 @@ def test_prescription_without_stop(reference_dir: Path) -> None:
     cs = rt.compile(rt.load(reference_dir / "m1" / "paraboloid_mirror.rtt.json"))
     p = rt.paraxial.prescription(cs)
     data = p.to_dict()
-    assert data["chief_start"] is None or isinstance(data["chief_start"], dict)
+    assert data["chief_start"] is None
+    assert data["lagrange_invariant"] is None
     assert np.isnan(data["surfaces"]["y_bar"]).all()
     text = p.to_json()
     assert '"NaN"' in text
