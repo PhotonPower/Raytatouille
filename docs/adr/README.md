@@ -30,6 +30,7 @@ Neue Entscheidungen bekommen die nächste Nummer. Bestehende ADRs werden nicht u
 | [0024](0024.md) | Modell lesen und ändern, Undo über JSON Patch | angenommen |
 | [0025](0025.md) | Gitter als Phasenschicht (Ordnung, Effizienz, Evaneszenz) | angenommen |
 | [0026](0026.md) | Kristallmodell (einachsig, optische Achse, Strahlzustand) | angenommen |
+| [0027](0027.md) | Ghost-Generator (Zweifachreflexions-Pfade als erzeugte explizite Pfade) | angenommen |
 
 ## Vorlage
 
