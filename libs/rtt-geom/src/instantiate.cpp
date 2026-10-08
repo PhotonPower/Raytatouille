@@ -5,6 +5,7 @@
 #include "rtt/geom/asphere.hpp"
 #include "rtt/geom/conic.hpp"
 #include "rtt/geom/intersect.hpp"
+#include "rtt/geom/phase.hpp"
 #include "rtt/geom/plane.hpp"
 #include "rtt/geom/shape.hpp"
 
@@ -15,6 +16,14 @@ template class Plane<double>;
 template class Conic<double>;
 template class EvenAsphere<double>;
 template struct Intersection<double>;
+template class LinearGratingPhase<double>;
+template class RadialPhasePolynomial<double>;
+template double phase<double>(std::span<const PhaseFunction<double>>, double, double) noexcept;
+template std::pair<double, double> phase_grad<double>(std::span<const PhaseFunction<double>>,
+                                                      double,
+                                                      double) noexcept;
+template math::Vec3T<double> tangential_gradient<double>(std::pair<double, double>,
+                                                         const math::Vec3T<double>&) noexcept;
 
 template Intersection<double> intersect_conic<double>(
     double, double, const math::Vec3T<double>&, const math::Vec3T<double>&, double);
