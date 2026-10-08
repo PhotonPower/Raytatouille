@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 __all__ = [
     "AgfError",
     "AnalysisError",
+    "Cancelled",
     "CoatingCatalogError",
     "CompileError",
     "NoStopError",
@@ -154,3 +155,8 @@ class AgfError(RaytatouilleError, ValueError):
         super().__init__(message)
         self.file = file
         self.line = line
+
+
+class Cancelled(RaytatouilleError):
+    """A run was cancelled through its CancelToken (#83); the run's outputs (e.g. a partly
+    traced RayBatch) are undefined."""

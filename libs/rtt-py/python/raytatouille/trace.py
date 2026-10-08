@@ -3,10 +3,18 @@
 ``make_rays`` creates a RayBatch for a pupil sampling, ``trace`` traces it in place. The
 columns of a RayBatch are NumPy views without a copy. ``trace(..., record_path=True)`` also
 records the path of every ray (RayPaths) for drawing rays in a layout.
+
+Long runs can be cancelled and report progress (#83): pass ``cancel=CancelToken()`` and call
+its cancel() from another thread (raises raytatouille.errors.Cancelled), and ``progress``, a
+callable ``progress(done, total, stage)`` (ProgressCallback) called with the GIL from any thread,
+at most every 50 ms and finally with done == total. Neither changes the result. ``progress``
+must not start a raytatouille computation: through work stealing it may be called again in the
+same thread.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Literal, Union, overload
 
 import numpy as np
@@ -17,6 +25,7 @@ from ._core import (
     DEFAULT_MAX_RECORDED_RAYS,
     NO_SURFACE,
     Aiming,
+    CancelToken,
     CompiledSystem,
     FanXPupil,
     FanYPupil,
@@ -31,6 +40,9 @@ from ._core import (
     make_rays,
 )
 
+#: progress(done, total, stage) of a cancellable run (#83); stage is "aim" or "trace" here.
+ProgressCallback = Callable[[int, int, str], None]
+
 #: Any of the pupil samplings accepted by make_rays.
 PupilSampling = Union[
     SinglePupilPoint, HexapolarPupil, GridPupil, FanXPupil, FanYPupil, RandomPupil
@@ -40,10 +52,12 @@ __all__ = [
     "DEFAULT_MAX_RECORDED_RAYS",
     "NO_SURFACE",
     "Aiming",
+    "CancelToken",
     "FanXPupil",
     "FanYPupil",
     "GridPupil",
     "HexapolarPupil",
+    "ProgressCallback",
     "PupilSampling",
     "RandomPupil",
     "RayBatch",
@@ -60,14 +74,19 @@ __all__ = [
 def trace(system: CompiledSystem, rays: RayBatch, *, path: int | str = 0,
           threads: int | None = None, record_path: Literal[False] = False,
           record_rays: npt.ArrayLike | None = None,
-          max_recorded_rays: int = DEFAULT_MAX_RECORDED_RAYS) -> TraceStats: ...
+          max_recorded_rays: int = DEFAULT_MAX_RECORDED_RAYS,
+          cancel: CancelToken | None = None,
+          progress: ProgressCallback | None = None) -> TraceStats: ...
 
 
 @overload
 def trace(system: CompiledSystem, rays: RayBatch, *, path: int | str = 0,
           threads: int | None = None, record_path: Literal[True],
           record_rays: npt.ArrayLike | None = None,
-          max_recorded_rays: int = DEFAULT_MAX_RECORDED_RAYS) -> tuple[TraceStats, RayPaths]: ...
+          max_recorded_rays: int = DEFAULT_MAX_RECORDED_RAYS,
+          cancel: CancelToken | None = None,
+          progress: ProgressCallback | None = None,
+          ) -> tuple[TraceStats, RayPaths]: ...
 
 
 @overload
@@ -75,6 +94,8 @@ def trace(system: CompiledSystem, rays: RayBatch, *, path: int | str = 0,
           threads: int | None = None, record_path: bool = False,
           record_rays: npt.ArrayLike | None = None,
           max_recorded_rays: int = DEFAULT_MAX_RECORDED_RAYS,
+          cancel: CancelToken | None = None,
+          progress: ProgressCallback | None = None,
           ) -> TraceStats | tuple[TraceStats, RayPaths]: ...
 
 
@@ -82,6 +103,8 @@ def trace(system: CompiledSystem, rays: RayBatch, *, path: int | str = 0,
           threads: int | None = None, record_path: bool = False,
           record_rays: npt.ArrayLike | None = None,
           max_recorded_rays: int = DEFAULT_MAX_RECORDED_RAYS,
+          cancel: CancelToken | None = None,
+          progress: ProgressCallback | None = None,
           ) -> TraceStats | tuple[TraceStats, RayPaths]:
     """Traces ``rays`` in place along ``path`` (index or name) with the sequential tracer and
     returns the counts per status. ``threads`` limits the worker threads (None: all); the result
@@ -96,14 +119,22 @@ def trace(system: CompiledSystem, rays: RayBatch, *, path: int | str = 0,
     (e.g. every k-th ray) rather than the first rays: those are only the inner rings of a
     hexapolar bundle.
 
+    ``cancel`` and ``progress`` (stage "trace") control a long trace, see the module
+    documentation; they are not available with ``record_path`` (recording is meant for the few
+    rays of a drawing).
+
     Raises ValueError for an unknown path name, a wavelength index that is not a system
-    wavelength, an invalid status or an invalid selection, IndexError for an unknown path
-    index."""
+    wavelength, an invalid status or an invalid selection, or cancel/progress with
+    record_path, IndexError for an unknown path index, raytatouille.errors.Cancelled after a
+    cancellation and the exception of ``progress``."""
     if not record_path:
         if record_rays is not None:
             raise ValueError("record_rays needs record_path=True")
-        stats: TraceStats = _core.trace(system, rays, path=path, threads=threads)
+        stats: TraceStats = _core.trace(system, rays, path=path, threads=threads,
+                                        cancel=cancel, progress=progress)
         return stats
+    if cancel is not None or progress is not None:
+        raise ValueError("cancel and progress are not available with record_path=True")
     selection = None
     if record_rays is not None:
         indices = np.asarray(record_rays)

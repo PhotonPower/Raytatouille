@@ -46,9 +46,11 @@ from ._core import (
     validate,
 )
 from .materials import MaterialLibrary
+from .trace import CancelToken
 from .errors import (
     AgfError,
     AnalysisError,
+    Cancelled,
     CoatingCatalogError,
     CompileError,
     NoStopError,
@@ -64,6 +66,8 @@ __version__ = "0.4.0"
 __all__ = [
     "AgfError",
     "AnalysisError",
+    "CancelToken",
+    "Cancelled",
     "CoatingCatalogError",
     "CoatingLibrary",
     "CompileError",

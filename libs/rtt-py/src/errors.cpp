@@ -17,6 +17,7 @@
 #include "rtt/material/agf.hpp"
 #include "rtt/material/material.hpp"
 #include "rtt/paraxial/paraxial.hpp"
+#include "rtt/trace/run_control.hpp"
 
 namespace nb = nanobind;
 
@@ -70,6 +71,8 @@ void register_errors(nb::module_& /*m*/) {
             optional(e.ray_status()), optional(e.field()), optional(e.wavelength()));
     } catch (const coating::CoatingCatalogError& e) {
       raise("CoatingCatalogError", e.what(), e.file(), e.pointer());
+    } catch (const trace::Cancelled& e) {
+      raise("Cancelled", e.what());
     }
   });
 }

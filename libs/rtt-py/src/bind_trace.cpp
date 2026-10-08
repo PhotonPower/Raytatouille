@@ -25,6 +25,7 @@
 #include "rtt/math/types.hpp"
 #include "rtt/trace/ray_batch.hpp"
 #include "rtt/trace/ray_paths.hpp"
+#include "rtt/trace/run_control.hpp"
 #include "rtt/trace/sequential.hpp"
 #include "rtt/trace/sources.hpp"
 
@@ -108,13 +109,31 @@ std::tuple<trace::TraceStats, trace::RayPaths> run_trace_recorded(
 trace::TraceStats run_trace(const compile::CompiledSystem& system,
                             RayBatch& rays,
                             const PathArg& path,
-                            std::optional<int> threads) {
+                            std::optional<int> threads,
+                            const std::optional<trace::CancelToken>& cancel,
+                            const std::optional<nb::callable>& progress) {
   const compile::PathId id = path_id(system, path);
   const trace::SequentialTracer tracer;
-  return with_threads(threads, [&] { return tracer.trace(system, id, rays); });
+  const trace::RunControl control = run_control(cancel, progress);
+  return released(threads, [&] { return tracer.trace(system, id, rays, control); });
 }
 
 }  // namespace
+
+trace::RunControl run_control(const std::optional<trace::CancelToken>& cancel,
+                              const std::optional<nb::callable>& progress) {
+  trace::RunControl control;
+  control.cancel = cancel;
+  if (progress) {
+    // By pointer: copying the callable in a worker would change its reference count without
+    // the GIL. The temporaries of the call are destroyed before the GIL is released again.
+    control.progress = [callable = &*progress](const trace::Progress& p) {
+      const nb::gil_scoped_acquire acquire;
+      (*callable)(p.done, p.total, nb::str(p.stage.data(), p.stage.size()));
+    };
+  }
+  return control;
+}
 
 void bind_trace(nb::module_& m) {
   nb::enum_<RayStatus>(m, "RayStatus", nb::is_arithmetic(),
@@ -367,6 +386,17 @@ void bind_trace(nb::module_& m) {
           "Index of the event at which each ray stopped, (N,) int32; -1 if it passed all events "
           "or did not start. The surface is event_surfaces[lost_at].");
 
+  nb::class_<trace::CancelToken>(
+      m, "CancelToken",
+      "Cancellation request for a running trace, make_rays or analysis (#83). Pass it as "
+      "`cancel=`; cancel() from any thread (e.g. a GUI) makes the run stop after at most one "
+      "block of rays per worker and raise raytatouille.errors.Cancelled.")
+      .def(nb::init<>())
+      .def("cancel", &trace::CancelToken::request_cancel,
+           "Requests cancellation; idempotent, never blocks.")
+      .def_prop_ro("cancelled", &trace::CancelToken::cancelled,
+                   "Whether cancellation was requested.");
+
   m.attr("DEFAULT_MAX_RECORDED_RAYS") = trace::kDefaultMaxRecordedRays;
   m.def("trace_recorded", &run_trace_recorded, "system"_a, "rays"_a, nb::kw_only(), "path"_a = 0,
         "threads"_a.none() = nb::none(), "record_rays"_a.none() = nb::none(),
@@ -387,32 +417,42 @@ void bind_trace(nb::module_& m) {
       "make_rays",
       [](const compile::CompiledSystem& system, const trace::PupilSampling& sampling,
          const PathArg& path, std::optional<std::vector<std::uint16_t>> fields,
-         std::optional<std::uint16_t> wavelength, trace::Aiming aiming) {
+         std::optional<std::uint16_t> wavelength, trace::Aiming aiming,
+         const std::optional<trace::CancelToken>& cancel,
+         const std::optional<nb::callable>& progress) {
         std::vector<std::uint16_t> all;
         if (!fields) {
           all.resize(system.fields().points.size());
           std::iota(all.begin(), all.end(), std::uint16_t{0});
         }
         const std::vector<std::uint16_t>& selected = fields ? *fields : all;
-        return trace::make_rays(system, path_id(system, path), selected,
-                                wavelength_index(system, wavelength), sampling, aiming);
+        const trace::RunControl control = run_control(cancel, progress);
+        return released(std::nullopt, [&] {
+          return trace::make_rays(system, path_id(system, path), selected,
+                                  wavelength_index(system, wavelength), sampling, aiming, control);
+        });
       },
       "system"_a, "sampling"_a, nb::kw_only(), "path"_a = 0, "fields"_a.none() = nb::none(),
       "wavelength"_a.none() = nb::none(), "aiming"_a = trace::Aiming::Real,
-      nb::call_guard<nb::gil_scoped_release>(),
+      "cancel"_a.none() = nb::none(), "progress"_a.none() = nb::none(),
       "Rays for the field indices `fields` (None: all fields) at wavelength index "
       "`wavelength` (None: reference): for every field every pupil point of `sampling`, aimed "
-      "with `aiming`.\n\nRaises ValueError for unknown paths, fields or wavelengths and "
-      "ParaxialError for paths without paraxial data.");
+      "with `aiming`. `cancel` (CancelToken) and `progress(done, total, stage)` (stage "
+      "'aim', called from any thread with the GIL) control the run; neither changes the "
+      "rays.\n\nRaises ValueError for unknown paths, fields or wavelengths, ParaxialError for "
+      "paths without paraxial data, raytatouille.errors.Cancelled after a cancellation and the "
+      "exception of `progress`.");
   m.def("trace", &run_trace, "system"_a, "rays"_a, nb::kw_only(), "path"_a = 0,
-        "threads"_a.none() = nb::none(), nb::call_guard<nb::gil_scoped_release>(),
+        "threads"_a.none() = nb::none(), "cancel"_a.none() = nb::none(),
+        "progress"_a.none() = nb::none(),
         "Traces `rays` in place along `path` (index or name) with the sequential tracer and "
         "returns the counts per status. `threads` limits the worker threads (None: all); the "
         "result is bitwise the same for every number of threads. The GIL is released; do not "
-        "read or change the columns of `rays` from another thread meanwhile.\n\nRaises ValueError "
-        "for "
-        "an unknown path name, a wavelength index that is not a system wavelength or an invalid "
-        "status, IndexError for an unknown path index.");
+        "read or change the columns of `rays` from another thread meanwhile. `cancel` and "
+        "`progress` as in make_rays (stage 'trace'); neither changes the result.\n\nRaises "
+        "ValueError for an unknown path name, a wavelength index that is not a system "
+        "wavelength or an invalid status, IndexError for an unknown path index, "
+        "raytatouille.errors.Cancelled after a cancellation and the exception of `progress`.");
 }
 
 }  // namespace rtt::py

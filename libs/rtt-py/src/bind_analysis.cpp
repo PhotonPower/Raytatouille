@@ -23,6 +23,7 @@
 #include "rtt/model/system.hpp"
 #include "rtt/paraxial/prescription.hpp"
 #include "rtt/paraxial/seidel.hpp"
+#include "rtt/trace/run_control.hpp"
 #include "rtt/trace/sources.hpp"
 
 namespace nb = nanobind;
@@ -517,107 +518,132 @@ void bind_analysis(nb::module_& m) {
 
   // Analysis functions on a CompiledSystem; raytatouille.analysis wraps them (System or
   // CompiledSystem, sampling shorthand). The GIL is released, `threads` limits the workers.
+  // The bundle and sweep analyses take `cancel` and `progress` (#83); they build the control
+  // with the GIL held and release it only for the computation (released()).
   const auto release = nb::call_guard<nb::gil_scoped_release>();
   m.def(
       "spot",
       [](const compile::CompiledSystem& s, const PathArg& path, std::uint16_t field,
          std::optional<std::uint16_t> wavelength, const trace::PupilSampling& sampling,
-         trace::Aiming aiming, double lost_warning_fraction, std::optional<int> threads) {
+         trace::Aiming aiming, double lost_warning_fraction, std::optional<int> threads,
+         const std::optional<trace::CancelToken>& cancel,
+         const std::optional<nb::callable>& progress) {
+        const trace::RunControl control = run_control(cancel, progress);
         SpotOptions options;
         options.sampling = sampling;
         options.aiming = aiming;
         options.lost_warning_fraction = lost_warning_fraction;
-        return with_threads(threads, [&] {
-          return analysis::spot(s, path_id(s, path), field, wavelength, options);
+        return released(threads, [&] {
+          return analysis::spot(s, path_id(s, path), field, wavelength, options, control);
         });
       },
       "system"_a, "path"_a, "field"_a, "wavelength"_a.none(), "sampling"_a, "aiming"_a,
-      "lost_warning_fraction"_a, "threads"_a.none(), release,
+      "lost_warning_fraction"_a, "threads"_a.none(), "cancel"_a.none(), "progress"_a.none(),
       "Spot diagram of `field`; wavelength None means polychromatic (model weights).");
   m.def(
       "ray_fan",
       [](const compile::CompiledSystem& s, const PathArg& path, std::uint16_t field,
          std::optional<std::uint16_t> wavelength, int points, trace::Aiming aiming,
-         double lost_warning_fraction, std::optional<int> threads) {
+         double lost_warning_fraction, std::optional<int> threads,
+         const std::optional<trace::CancelToken>& cancel,
+         const std::optional<nb::callable>& progress) {
+        const trace::RunControl control = run_control(cancel, progress);
         FanOptions options;
         options.points = points;
         options.aiming = aiming;
         options.lost_warning_fraction = lost_warning_fraction;
-        return with_threads(threads, [&] {
+        return released(threads, [&] {
           return analysis::ray_fan(s, path_id(s, path), field, wavelength_index(s, wavelength),
-                                   options);
+                                   options, control);
         });
       },
       "system"_a, "path"_a, "field"_a, "wavelength"_a.none(), "points"_a, "aiming"_a,
-      "lost_warning_fraction"_a, "threads"_a.none(), release,
+      "lost_warning_fraction"_a, "threads"_a.none(), "cancel"_a.none(), "progress"_a.none(),
       "Ray fans of `field`; wavelength None means the reference.");
   m.def(
       "opd_map",
       [](const compile::CompiledSystem& s, const PathArg& path, std::uint16_t field,
          std::optional<std::uint16_t> wavelength, int grid, trace::Aiming aiming,
-         double lost_warning_fraction, std::optional<int> threads) {
+         double lost_warning_fraction, std::optional<int> threads,
+         const std::optional<trace::CancelToken>& cancel,
+         const std::optional<nb::callable>& progress) {
+        const trace::RunControl control = run_control(cancel, progress);
         OpdOptions options;
         options.grid = grid;
         options.aiming = aiming;
         options.lost_warning_fraction = lost_warning_fraction;
-        return with_threads(threads, [&] {
+        return released(threads, [&] {
           return analysis::opd_map(s, path_id(s, path), field, wavelength_index(s, wavelength),
-                                   options);
+                                   options, control);
         });
       },
       "system"_a, "path"_a, "field"_a, "wavelength"_a.none(), "grid"_a, "aiming"_a,
-      "lost_warning_fraction"_a, "threads"_a.none(), release,
+      "lost_warning_fraction"_a, "threads"_a.none(), "cancel"_a.none(), "progress"_a.none(),
       "OPD map of `field`; wavelength None means the reference.");
   m.def(
       "opd_fan",
       [](const compile::CompiledSystem& s, const PathArg& path, std::uint16_t field,
          std::optional<std::uint16_t> wavelength, int points, trace::Aiming aiming,
-         double lost_warning_fraction, std::optional<int> threads) {
+         double lost_warning_fraction, std::optional<int> threads,
+         const std::optional<trace::CancelToken>& cancel,
+         const std::optional<nb::callable>& progress) {
+        const trace::RunControl control = run_control(cancel, progress);
         OpdOptions options;
         options.fan_points = points;
         options.aiming = aiming;
         options.lost_warning_fraction = lost_warning_fraction;
-        return with_threads(threads, [&] {
+        return released(threads, [&] {
           return analysis::opd_fan(s, path_id(s, path), field, wavelength_index(s, wavelength),
-                                   options);
+                                   options, control);
         });
       },
       "system"_a, "path"_a, "field"_a, "wavelength"_a.none(), "points"_a, "aiming"_a,
-      "lost_warning_fraction"_a, "threads"_a.none(), release,
+      "lost_warning_fraction"_a, "threads"_a.none(), "cancel"_a.none(), "progress"_a.none(),
       "OPD fans of `field`; wavelength None means the reference.");
   m.def(
       "longitudinal_colour",
       [](const compile::CompiledSystem& s, const PathArg& path,
          std::optional<paraxial::ChromaticPair> pair, double zone, trace::Aiming aiming,
-         std::optional<int> threads) {
+         std::optional<int> threads, const std::optional<trace::CancelToken>& cancel,
+         const std::optional<nb::callable>& progress) {
+        const trace::RunControl control = run_control(cancel, progress);
         const ChromaticOptions options{pair, zone, aiming};
-        return with_threads(
-            threads, [&] { return analysis::longitudinal_colour(s, path_id(s, path), options); });
+        return released(threads, [&] {
+          return analysis::longitudinal_colour(s, path_id(s, path), options, control);
+        });
       },
-      "system"_a, "path"_a, "pair"_a.none(), "zone"_a, "aiming"_a, "threads"_a.none(), release,
+      "system"_a, "path"_a, "pair"_a.none(), "zone"_a, "aiming"_a, "threads"_a.none(),
+      "cancel"_a.none(), "progress"_a.none(),
       "Longitudinal colour; pair None means first and last system wavelength.");
   m.def(
       "lateral_colour",
       [](const compile::CompiledSystem& s, const PathArg& path, std::uint16_t field,
-         trace::Aiming aiming, std::optional<int> threads) {
-        return with_threads(
-            threads, [&] { return analysis::lateral_colour(s, path_id(s, path), field, aiming); });
+         trace::Aiming aiming, std::optional<int> threads,
+         const std::optional<trace::CancelToken>& cancel,
+         const std::optional<nb::callable>& progress) {
+        const trace::RunControl control = run_control(cancel, progress);
+        return released(threads, [&] {
+          return analysis::lateral_colour(s, path_id(s, path), field, aiming, control);
+        });
       },
-      "system"_a, "path"_a, "field"_a, "aiming"_a, "threads"_a.none(), release,
-      "Lateral colour of `field`.");
+      "system"_a, "path"_a, "field"_a, "aiming"_a, "threads"_a.none(), "cancel"_a.none(),
+      "progress"_a.none(), "Lateral colour of `field`.");
   m.def(
       "distortion",
       [](const compile::CompiledSystem& s, const PathArg& path,
          std::optional<std::uint16_t> wavelength, int samples, trace::Aiming aiming,
-         std::optional<int> threads) {
+         std::optional<int> threads, const std::optional<trace::CancelToken>& cancel,
+         const std::optional<nb::callable>& progress) {
+        const trace::RunControl control = run_control(cancel, progress);
         const FieldSweepOptions options{samples, aiming};
-        return with_threads(threads, [&] {
-          return DistortionSweep{
-              analysis::distortion(s, path_id(s, path), wavelength_index(s, wavelength), options)};
+        return released(threads, [&] {
+          return DistortionSweep{analysis::distortion(
+              s, path_id(s, path), wavelength_index(s, wavelength), options, control)};
         });
       },
       "system"_a, "path"_a, "wavelength"_a.none(), "samples"_a, "aiming"_a, "threads"_a.none(),
-      release, "Distortion over the field sweep; wavelength None means the reference.");
+      "cancel"_a.none(), "progress"_a.none(),
+      "Distortion over the field sweep; wavelength None means the reference.");
   m.def(
       "distortion_at",
       [](const compile::CompiledSystem& s, const PathArg& path, const model::Field& field,
@@ -634,15 +660,17 @@ void bind_analysis(nb::module_& m) {
       "field_curvature",
       [](const compile::CompiledSystem& s, const PathArg& path,
          std::optional<std::uint16_t> wavelength, int samples, double delta, trace::Aiming aiming,
-         std::optional<int> threads) {
+         std::optional<int> threads, const std::optional<trace::CancelToken>& cancel,
+         const std::optional<nb::callable>& progress) {
+        const trace::RunControl control = run_control(cancel, progress);
         const FieldCurvatureOptions options{samples, delta, aiming};
-        return with_threads(threads, [&] {
+        return released(threads, [&] {
           return FieldCurvatureSweep{analysis::field_curvature(
-              s, path_id(s, path), wavelength_index(s, wavelength), options)};
+              s, path_id(s, path), wavelength_index(s, wavelength), options, control)};
         });
       },
       "system"_a, "path"_a, "wavelength"_a.none(), "samples"_a, "delta"_a, "aiming"_a,
-      "threads"_a.none(), release,
+      "threads"_a.none(), "cancel"_a.none(), "progress"_a.none(),
       "Field curvature over the field sweep; wavelength None means the reference.");
   m.def(
       "field_curvature_at",
