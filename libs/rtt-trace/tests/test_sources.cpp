@@ -1386,3 +1386,89 @@ TEST_CASE("without a change of the EP side over the wavelengths: rays as before 
     }
   }
 }
+
+namespace {
+
+/// Stop (r = 30 mm) at z = 0 as the first element, so the entrance pupil is the stop itself
+/// (z_EP = 0, magnification 1). Behind it a plano-convex lens, CONST:1.5, R1 = 64 mm at
+/// z = 1, plane S2 at z = 4: phi = (n - 1) / R1 = 1 / 128 exactly (the thickness term of the
+/// thick-lens power vanishes for a plane S2), EFL = 128 mm. Detector near the focus, VACUUM.
+System stop_first_lens(rtt::model::SystemApertureType type, double value, bool finite_object) {
+  System s;
+  s.name = "stop first";
+  s.environment.medium = "VACUUM";
+  s.wavelengths = {{0.5876, 1.0, true}};
+  s.aperture = {type, Param(value)};
+  if (finite_object) {
+    s.object.at_infinity = false;
+    s.object.distance = Param(200.0);
+    s.fields = {FieldType::ObjectHeight, {{0.0, 0.0, 1.0}, {0.0, 5.0, 1.0}}};
+  } else {
+    s.fields = {FieldType::AngleDeg, {{0.0, 0.0, 1.0}, {0.0, 3.0, 1.0}}};
+  }
+  s.root.name = "root";
+  Surface stop = surface("STO");
+  stop.aperture = rtt::model::CircularAperture{30.0, 0.0};
+  s.root.children = {{Element{"stop", ElementKind::Stop, Pose::along_z(0.0), std::nullopt, {stop}}},
+                     {Element{"L",
+                              ElementKind::Lens,
+                              Pose::along_z(1.0),
+                              "CONST:1.5",
+                              {surface("L.S1", 0.0, 64.0), surface("L.S2", 3.0)}}},
+                     {Element{"D",
+                              ElementKind::Detector,
+                              Pose::along_z(finite_object ? 400.0 : 130.0),
+                              std::nullopt,
+                              {surface("IMG")}}}};
+  s.paths = {{"main", true, {}}};
+  return s;
+}
+
+/// Checks the aimed fan rays of every field against the stop radius r_s: the straight object
+/// space ray meets the stop plane z = 0 at (0, py r_s) within kAimTolerance (plus rounding of
+/// the intersection), and every ray reaches the detector.
+void require_fan_at_stop(const CompiledSystem& cs, double r_s) {
+  const std::vector<std::uint16_t> fields{0, 1};
+  rtt::trace::RayBatch rays =
+      rtt::trace::make_rays(cs, PathId{0}, fields, 0, rtt::trace::FanYPupil{5}, Aiming::Real);
+  for (std::size_t i = 0; i < rays.size(); ++i) {
+    INFO("ray " << i);
+    REQUIRE(rays.status()[i] == RayStatus::Alive);
+    REQUIRE(rays.pos_z()[i] < 0.0);
+    const double t = -rays.pos_z()[i] / rays.dir_z()[i];
+    const double x = rays.pos_x()[i] + t * rays.dir_x()[i];
+    const double y = rays.pos_y()[i] + t * rays.dir_y()[i];
+    REQUIRE(std::abs(x) <= rtt::trace::kAimTolerance + 1e-12);
+    REQUIRE(std::abs(y - rays.pupil_y()[i] * r_s) <= rtt::trace::kAimTolerance + 1e-12);
+  }
+  const auto stats = rtt::trace::SequentialTracer().trace(cs, PathId{0}, rays);
+  REQUIRE(stats.count(RayStatus::Alive) == rays.size());
+}
+
+}  // namespace
+
+TEST_CASE("aperture types image_fnumber and object_na end to end (#35, from #38)",
+          "[sources][aiming]") {
+  // From the aperture value to the aimed and traced rays: with the stop as the first element
+  // the entrance pupil is the stop, so the real marginal ray meets the stop at r_s = EPD / 2.
+  const MaterialLibrary lib;
+  SECTION("image_fnumber: EPD = EFL / F# (at infinite conjugates, #7)") {
+    // F# = 4: EPD = 128 / 4 = 32 mm, r_s = 16 mm.
+    const CompiledSystem cs = compile(
+        stop_first_lens(rtt::model::SystemApertureType::ImageSpaceFNumber, 4.0, false), lib);
+    require_fan_at_stop(cs, 16.0);
+  }
+  SECTION("object_na: paraxial reading, tan U = NA / n (as in first_order)") {
+    // NA = 0.05 in VACUUM, axial object point at z = -200: r_s = 0.05 * 200 = 10 mm. The real
+    // marginal ray from the axial object point therefore has tan U = 0.05, i.e.
+    // sin U = 0.05 / sqrt(1 + 0.05^2), not NA: the model's NA is read paraxially.
+    const CompiledSystem cs =
+        compile(stop_first_lens(rtt::model::SystemApertureType::ObjectSpaceNA, 0.05, true), lib);
+    require_fan_at_stop(cs, 10.0);
+    const std::vector<std::uint16_t> axis{0};
+    const rtt::trace::RayBatch marginal = rtt::trace::make_rays(
+        cs, PathId{0}, axis, 0, rtt::trace::SinglePupilPoint{0.0, 1.0}, Aiming::Real);
+    // dir_y = sin U; the aiming error 1e-9 mm at the stop changes it by about 1e-9 / 200.
+    REQUIRE(std::abs(marginal.dir_y()[0] - 0.05 / std::sqrt(1.0 + 0.05 * 0.05)) <= 1e-11);
+  }
+}
