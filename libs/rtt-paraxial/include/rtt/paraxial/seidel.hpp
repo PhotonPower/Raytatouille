@@ -150,8 +150,8 @@ struct Seidel {
 /// @throws ParaxialError if the path is not rotationally symmetric, the stop aperture is not
 ///         circular, the entrance pupil is at infinity or has no diameter, an object height is
 ///         given for an object at infinity, a field angle is not in (-90, 90) degree, a paraxial
-///         image height is given without a finite paraxial image, the field conversion at the
-///         reference wavelength needs an entrance pupil there that is at infinity or in the
+///         image height is given without a finite paraxial image, the field conversion needs
+///         the entrance pupil at the reference wavelength and it lies at infinity or in the
 ///         object plane, or a path id or wavelength index does not exist
 [[nodiscard]] Seidel seidel(const compile::CompiledSystem& system,
                             compile::PathId path,

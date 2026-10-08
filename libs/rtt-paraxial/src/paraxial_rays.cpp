@@ -45,6 +45,23 @@ RayStart marginal_start(bool object_at_infinity, double z_obj, double z_ep, doub
                             : RayStart{z_obj, 0.0, r_ep / (z_ep - z_obj)};
 }
 
+bool reference_pupil_usable(const CompiledSystem& system,
+                            PathId path,
+                            std::uint16_t wavelength,
+                            double z_obj) {
+  if (wavelength == system.reference_wavelength()) return true;
+  const model::FieldType type = system.fields().type;
+  const bool infinite = system.object().at_infinity;
+  const bool image_height = type == model::FieldType::ParaxialImageHeight;
+  if (!image_height && !(type == model::FieldType::AngleDeg && !infinite)) return true;
+  const FirstOrder fo_ref = first_order(system, path, system.reference_wavelength());
+  const auto& ep = fo_ref.entrance_pupil;
+  if (!ep) return false;
+  // At infinity only a paraxial image height with a finite object works (parallel chief ray).
+  if (!ep->z) return image_height && !infinite;
+  return infinite || *ep->z != z_obj;
+}
+
 RayStart chief_start(const CompiledSystem& system,
                      PathId path,
                      std::uint16_t wavelength,
@@ -134,6 +151,10 @@ RayStart chief_start(const CompiledSystem& system,
       if (at_ref) {
         r_ref = unit_ray(infinite, z_ep);
       } else if (fo_ref.entrance_pupil && fo_ref.entrance_pupil->z) {
+        if (!infinite && *fo_ref.entrance_pupil->z == z_obj) {
+          throw ParaxialError(field_error(
+              caller, "the entrance pupil at the reference wavelength lies in the object plane"));
+        }
         r_ref = unit_ray(infinite, *fo_ref.entrance_pupil->z);
       } else if (!infinite) {
         // Entrance pupil at infinity at the reference wavelength: the chief ray of unit object

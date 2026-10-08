@@ -41,6 +41,16 @@ struct ShapeData {
 ///         object at infinity, a paraxial image height without a finite paraxial image, or an
 ///         entrance pupil at the reference wavelength at infinity or in the object plane where
 ///         the field conversion needs it
+/// Whether the field conversion of chief_start() at `wavelength` finds a usable entrance
+/// pupil at the reference wavelength (#35): true at the reference wavelength itself and for
+/// field types that need no conversion there; otherwise the reference pupil must exist, lie at
+/// a finite position not in the object plane, or at infinity for a paraxial image height with a
+/// finite object. For prescription(), which leaves the chief ray empty instead of throwing.
+[[nodiscard]] bool reference_pupil_usable(const compile::CompiledSystem& system,
+                                          compile::PathId path,
+                                          std::uint16_t wavelength,
+                                          double z_obj);
+
 [[nodiscard]] RayStart chief_start(const compile::CompiledSystem& system,
                                    compile::PathId path,
                                    std::uint16_t wavelength,

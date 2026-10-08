@@ -67,7 +67,10 @@ Prescription prescription(const compile::CompiledSystem& system,
   } else if (r_ep && ep_usable) {
     out.marginal_start = detail::marginal_start(false, z_obj, *z_ep, *r_ep);
   }
-  if (fo.entrance_pupil && ep_usable) {
+  // The field conversion at the reference wavelength (#35) needs a usable pupil there as well;
+  // without one the chief ray is none, as for an unusable pupil at `wavelength`.
+  if (fo.entrance_pupil && ep_usable &&
+      detail::reference_pupil_usable(system, path, wavelength, z_obj)) {
     out.chief_start =
         detail::chief_start(system, path, wavelength, fo, *z_ep, z_obj, "prescription");
   }
