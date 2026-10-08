@@ -1,0 +1,88 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.4",
+ "type": "PathOplDifference",
+ "data": {
+  "path_a": 0,
+  "path_b": 0,
+  "image_surface": 3,
+  "points": {
+   "px": {
+    "dtype": "float64",
+    "shape": [
+     3
+    ],
+    "values": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "py": {
+    "dtype": "float64",
+    "shape": [
+     3
+    ],
+    "values": [
+     -1.0,
+     0.0,
+     1.0
+    ]
+   },
+   "delta": {
+    "dtype": "float64",
+    "shape": [
+     3
+    ],
+    "values": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "status": {
+    "dtype": "uint8",
+    "shape": [
+     3
+    ],
+    "values": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  "chief": 0.0,
+  "losses_a": {
+   "launched": 3,
+   "by_status": [
+    3,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "worst_surface": null,
+   "worst_surface_count": 0
+  },
+  "losses_b": {
+   "launched": 3,
+   "by_status": [
+    3,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "worst_surface": null,
+   "worst_surface_count": 0
+  },
+  "warnings": []
+ }
+}

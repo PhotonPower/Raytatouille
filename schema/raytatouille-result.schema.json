@@ -31,6 +31,9 @@
         "DistortionPoint",
         "FieldCurvatureSweep",
         "FieldCurvaturePoint",
+        "PathTransmission",
+        "PathOplDifference",
+        "GhostRanking",
         "FirstOrder",
         "Seidel",
         "Prescription",
@@ -201,6 +204,83 @@
               "tangential",
               "sagittal",
               "astigmatism"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "PathTransmission"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "path",
+              "image_surface",
+              "rays",
+              "rays_launched",
+              "rays_arrived",
+              "mean",
+              "min",
+              "max",
+              "losses",
+              "warnings"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "PathOplDifference"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "path_a",
+              "path_b",
+              "image_surface",
+              "points",
+              "chief",
+              "losses_a",
+              "losses_b",
+              "warnings"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "GhostRanking"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "base",
+              "field",
+              "wavelength",
+              "base_power",
+              "base_rms_radius",
+              "resolution_radius",
+              "entries",
+              "warnings"
             ]
           }
         }

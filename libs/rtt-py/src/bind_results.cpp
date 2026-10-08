@@ -14,11 +14,28 @@ namespace rtt::py {
 
 void bind_result_methods(nb::module_& m) {
   // Top-level result types and the nested types that appear inside their data.
-  for (const char* name :
-       {"SpotDiagram", "RayFan", "OpdMap", "OpdFan", "LongitudinalColour", "LateralColour",
-        "DistortionSweep", "DistortionPoint", "FieldCurvatureSweep", "FieldCurvaturePoint",
-        "FirstOrder", "Seidel", "Prescription", "TraceStats", "RayBatch", "RayPaths",
-        "CompiledElement", "Diagnostic", "LoadWarning"}) {
+  for (const char* name : {"SpotDiagram",
+                           "RayFan",
+                           "OpdMap",
+                           "OpdFan",
+                           "LongitudinalColour",
+                           "LateralColour",
+                           "DistortionSweep",
+                           "DistortionPoint",
+                           "FieldCurvatureSweep",
+                           "FieldCurvaturePoint",
+                           "PathTransmission",
+                           "PathOplDifference",
+                           "GhostRanking",
+                           "FirstOrder",
+                           "Seidel",
+                           "Prescription",
+                           "TraceStats",
+                           "RayBatch",
+                           "RayPaths",
+                           "CompiledElement",
+                           "Diagnostic",
+                           "LoadWarning"}) {
     const nb::object cls = m.attr(name);
     cls.attr("to_dict") = nb::cpp_function(
         [](nb::handle self) {

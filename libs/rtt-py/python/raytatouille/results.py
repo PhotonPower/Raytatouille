@@ -54,8 +54,9 @@ __all__ = [
 ]
 
 FORMAT = "raytatouille-result"
-SCHEMA_VERSION = "0.1.3"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
-# 0.1.3: status Evanescent, status arrays one entry longer (#127)
+SCHEMA_VERSION = "0.1.4"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
+# 0.1.3: status Evanescent, status arrays one entry longer (#127); 0.1.4: PathTransmission,
+# PathOplDifference, GhostRanking (#133)
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a
@@ -88,6 +89,18 @@ _FIELDS: dict[str, tuple[str, ...]] = {
     "FieldCurvaturePoint": ("fraction", "field", "tangential", "sagittal", "astigmatism"),
     "FieldCurvatureSweep": ("fraction", "field_x", "field_y", "tangential", "sagittal",
                             "astigmatism"),
+    # path evaluation and ghosts (#122 to #124, Python #133)
+    "PathRays": ("px", "py", "weight", "status"),
+    "PathTransmission": ("path", "image_surface", "rays", "rays_launched", "rays_arrived", "mean",
+                         "min", "max", "losses", "warnings"),
+    "OplDifferencePoints": ("px", "py", "delta", "status"),
+    "PathOplDifference": ("path_a", "path_b", "image_surface", "points", "chief", "losses_a",
+                          "losses_b", "warnings"),
+    "GhostEntries": ("path", "surface_j", "surface_i", "power", "relative_power", "rms_radius",
+                     "rays_arrived", "relative_irradiance", "focus_offset",
+                     "paraxial_blur_radius", "losses"),
+    "GhostRanking": ("base", "field", "wavelength", "base_power", "base_rms_radius",
+                     "resolution_radius", "entries", "warnings"),
     # paraxial
     "ChromaticPair": ("first", "second"),
     "Pupil": ("z", "diameter"),
@@ -124,6 +137,7 @@ _FIELDS: dict[str, tuple[str, ...]] = {
 TYPES: tuple[str, ...] = (
     "SpotDiagram", "RayFan", "OpdMap", "OpdFan", "LongitudinalColour", "LateralColour",
     "DistortionSweep", "DistortionPoint", "FieldCurvatureSweep", "FieldCurvaturePoint",
+    "PathTransmission", "PathOplDifference", "GhostRanking",
     "FirstOrder", "Seidel", "Prescription", "TraceStats", "RayBatch", "RayPaths",
     "Diattenuation", "Diattenuations", "Retardance", "Retardances",
     "GlassInfo", "GlassMap", "SurfaceLayout", "CompiledElement", "Diagnostic", "LoadWarning",
