@@ -6,6 +6,8 @@ Neue Einträge stehen bis zum nächsten Release als Fragmente in [`changelog.d/`
 
 ## [Unreleased]
 
+## [0.5.0] – GUI-Grundlagen
+
 ### Hinzugefügt
 - `rtt-material`: Materialbibliothek für eine GUI (#85, G9): `MaterialLibrary::catalogs()` und
   `catalog(name)` listen die geladenen AGF-Kataloge so, wie sie in der Datei stehen (NM-Extras
@@ -62,6 +64,98 @@ Neue Einträge stehen bis zum nächsten Release als Fragmente in [`changelog.d/`
   - `surface_profile` in Schnittebenen parallel zur lokalen z-Achse, begrenzt durch die Apertur (der Ring ergibt zwei Stücke) und den Formbereich.
   - `element_outlines`: geschlossene Polygone der Glassegmente von Linsen und segmentierten Platten, Randkanten als Stufe (#81).
 - `rtt-py`: Modul `rt.layout` mit `surfaces`, `elements`, `sag` und `normal` mit Broadcasting, `profile` und `outlines` (Schnittebene `"yz"`, `"xz"` oder Punkt und Normale); Beispiel `examples/python/layout.py` (Achromat) (#81).
+- Tests aus dem Aufräumen: Der Trace lässt Feld, Pupillenkoordinaten und Wellenlänge jedes
+  Strahls unverändert, auch bei verlorenen Strahlen. Die Aperturtypen `image_fnumber` und
+  `object_na` sind von der Systemangabe bis zum gezielten und verfolgten Strahl geprüft (`object_na`
+  paraxial gelesen, tan U = NA/n). Der Schwerpunkt des polychromatischen Spots ist mit
+  dispersivem Glas als Σ w·S·c über die Wellenlängen geprüft. Der Brennpunkt der Parabel ist im
+  Test hergeleitet (#35).
+- `rtt-py`-Tests: Jeder Test läuft unter einem Watchdog (`faulthandler`, Standard 300 s,
+  einstellbar mit `RTT_PY_TEST_TIMEOUT`, 0 schaltet ihn ab). Hängt ein Test, gibt der Watchdog die
+  Tracebacks aller Threads aus und beendet den Lauf mit Status 1, auch wenn das GIL in C-Code
+  gehalten wird, statt die CI bis zum Job-Limit zu blockieren. `rtt_py_pytest` setzt `MPLBACKEND=Agg` (#35).
+- Lade-Warnungen der Glaskataloge (ADR 0022, Nachtrag ADR 0008):
+  `rtt::material::LoadWarning{code, file, line, message}` in `AgfCatalog::warnings` und
+  `MaterialLibrary::load_warnings()`; in Python `MaterialLibrary.load_warnings` und
+  `RaytatouilleWarning` beim Laden; Codes `agf.duplicate_glass`, `agf.duplicate_glass_conflict`,
+  `agf.preamble_skipped`, `agf.stray_line` (Erzeuger `agf`). `LoadWarning` hat `to_dict()` und
+  `to_json()`; das Ergebnisformat `raytatouille-result` wird damit 0.1.1 (ADR 0023) (#71).
+- Python liest den ganzen Modellbaum (ADR 0024): `System.root`, `paths`, `fields`, `aperture`
+  und `object_space` liefern unveränderliche typisierte Kopien aus dem neuen Modul
+  `raytatouille.model` (`Assembly`, `Element`, `Surface`, `Param`, `Pose`, Formen, Aperturen,
+  Phasen, Interaktionen, `Path`, `Event` und die Aufzählungen). `Wavelength` hat `__eq__` und
+  `__hash__`. Beispiel `examples/python/model_tree.py` (#82).
+- `rtt-io`: Systeme mit JSON Patch (RFC 6902) ändern, mit inversen Patches für Undo (ADR 0024):
+  `rtt::io::apply_patch(system, patch_json, EditCheck)` auf der Bearbeitungsform
+  (`rtt::io::to_edit_json`: alle Werte geschrieben, jedes `Param` als Objekt). Die Operationen
+  wendet `rtt-io` selbst an (`nlohmann::json::patch` weicht von RFC 6902 ab). Ein Patch gilt ganz
+  oder gar nicht; abgelehnt wird er, wenn er Fehler von `validate()` hinzufügt (`NoNewErrors`).
+  Fehler als `rtt::io::EditError` mit Code, Pointer und Operation; neue Codes `edit.*` mit
+  Erzeuger `edit` (#82).
+- Python ändert Systeme mit JSON Patch und Undo (ADR 0024):
+  - `rt.Editor` mit `apply`, `set`, `insert`, `remove`, `move`, `undo` und `redo`; die History
+    lässt sich als JSON exportieren und mit `Editor.from_history` wieder abspielen;
+  - `rt.apply_patch` und `rt.apply_patch_with_inverse` als Skriptbefehle;
+  - `rt.EditError` mit Code, Pointer, Operation und Diagnosen;
+  - `System.to_dict()` (Bearbeitungsform), `json_at`, `locate_surface`, `locate_node`,
+    `locate_path`;
+  - Beispiel `examples/python/edit_undo.py` (#82).
+- `rtt-trace`: Abbruch und Fortschritt für lange Rechnungen (`rtt/trace/run_control.hpp`):
+  `CancelToken`, `RunControl` (Callback `progress`, Mindestabstand, Blockgröße), Exception
+  `Cancelled`. Überladungen von `SequentialTracer::trace` und `make_rays` mit `RunControl`;
+  Abbruch nach höchstens einem Block je Worker, Exceptions nur nach dem parallelen Teil.
+  Ergebnisse bitgleich und unabhängig von Blockgröße und Threads (ADR 0004, Nachtrag) (#83).
+- `rtt-analysis`: Überladungen mit `RunControl` für `spot`, `ray_fan`, `opd_map`, `opd_fan`,
+  `distortion`, `field_curvature`, `longitudinal_colour` und `lateral_colour`; die alten
+  Signaturen bleiben (#83).
+- Benchmark `apps/rtt-bench` (Spot des Cooke-Tripletts mit 1027 Strahlen); in der CI mit
+  Zeiten in der Job-Summary und einer Warnung über 30 ms, nie ein Fehler (#83).
+- `rtt-py`: Abbruch und Fortschritt aus Python: `rt.CancelToken`, Schlüsselwortargumente
+  `cancel=` und `progress=` (`progress(done, total, stage)`, Typ `rt.trace.ProgressCallback`)
+  an `rt.trace.trace`, `rt.trace.make_rays` und den Analysen `spot`, `ray_fan`, `opd_map`,
+  `opd_fan`, `distortion`, `field_curvature`, `longitudinal_colour` und `lateral_colour`;
+  neue Exception `rt.errors.Cancelled`. Die Rechnung läuft ohne GIL, der Callback holt es
+  sich; seine Exception wird weitergereicht (#83).
+- Ergebnisformat `raytatouille-result` 0.1.0 (ADR 0023):
+  - Alle Ergebnisobjekte der Python-API, auch die Geometrie (`SurfaceLayout`, `CompiledElement`),
+    haben `to_dict()` und `to_json()`; `rt.results.load_json` liest die Daten bitgleich zurück
+    (Arrays mit dtype und shape, NaN/±∞ als Zeichenketten, standardkonformes JSON). Die
+    C++-Objekte werden nicht rekonstruiert.
+  - JSON-Schema `schema/raytatouille-result.schema.json`, Beispiele je Typ unter
+    `tests/reference/results/`, Beispielskript `examples/python/results.py` (#86).
+- Strahlverluste als Daten: `SpotDiagram`, `RayFan`, `OpdMap` und `OpdFan` haben `losses`
+  (`RayLosses`): gestartete Strahlen, Zählung je `RayStatus` und die Fläche, an der die meisten
+  verlorenen Strahlen enden (#86).
+- Warnungen der Analysen (ADR 0023): Feld `warnings` in denselben vier Ergebnissen, in Python
+  zusätzlich als `RaytatouilleWarning`. `rays.lost`, wenn mehr Strahlen verloren gehen als
+  `lost_warning_fraction` (Option, Standard 0,5); `stop.clips_beam`, wenn Strahlen an der Blende
+  vignettiert werden. Neue compile-Warnung `stop.not_on_path`, wenn ein Pfad das Blendenelement
+  nicht besucht (#86).
+- Diagnose-Registry: `CodeInfo::producer` (validate, compile, analysis), in Python
+  `rt.diagnostics.CODES[...].producer` (#86).
+- Ergebnisformat `raytatouille-result` 0.1.2: `Prescription` (paraxiale Prescription-Daten, #84)
+  hat `to_dict()` und `to_json()` wie die übrigen Ergebnistypen (ADR 0023) (#86).
+- `rtt-trace`: Objektseitig telezentrische Systeme mit endlichem Objekt (Eintrittspupille im
+  Unendlichen) lassen sich tracen.
+  - Pupillenkoordinaten sind dann Objektraum-Steigungen, d ∝ (px·u_m, py·u_m, 1); der
+    paraxiale Hauptstrahl läuft parallel zur Achse.
+  - Beispiel `tests/reference/m1/telecentric_singlet.rtt.json`.
+  - u_m = NA/n bei `object_na`, r_Blende/|s| bei `stop_size`; `entrance_pupil_diameter`,
+    `image_fnumber` und Feldwinkel ergeben dort einen klaren Fehler.
+  - Paraxiale Bildhöhen werden über den achsparallelen Hauptstrahl umgerechnet.
+  - `rtt-analysis`: Verzeichnung und Bildfeldwölbung rechnen mit diesem Hauptstrahl; Spot,
+    Fans und OPD laufen, solange die Austrittspupille endlich ist.
+  - Reale Zielung: Die Schrittweite der Jacobi-Matrix hat eine Untergrenze von 1e−10 des
+    Pupillenradius in Pupilleneinheiten (Nachtrag zu ADR 0007). So konvergiert sie auch bei
+    sehr weit entfernter EP; bestehende Ergebnisse bleiben bitgleich (#96).
+- `rtt-analysis`: OPD bei Austrittspupille im Unendlichen (bild- bzw. beidseitig
+  telezentrisch): Referenz ist der Grenzfall R → ∞ der Referenzsphäre um den
+  Hauptstrahl-Bildpunkt, `ReferenceSphere::radius` = +∞; OPD-Fächer und -Karte laufen,
+  stetig zum endlichen Fall. Referenzsystem `tests/reference/m2/telecentric_4f.rtt.json`
+  (4f-Relais aus zwei Descartes-Linsen) (#102).
+- `rtt-py`: `rt.trace.make_rays(..., threads=)` begrenzt die Worker-Threads der jetzt parallelen
+  Strahlzielung wie bei `rt.trace.trace`. Die Strahlen sind für jede Thread-Anzahl bitgleich
+  (#119).
 
 ### Geändert
 - `rtt-material`: Die AGF-Datensätze NM-Extras, MD, OD und IT werden jetzt streng gelesen statt
@@ -79,6 +173,34 @@ Neue Einträge stehen bis zum nächsten Release als Fragmente in [`changelog.d/`
   `std::invalid_argument`. In Python fangen bestehende `except ParaxialError`, `AnalysisError` und
   `ValueError` den Fall weiter, weil `NoStopError` von allen dreien erbt (#86).
 - `compile()` verwirft die Warnungen von `validate()` nicht mehr (#86).
+- `rtt-polar`: `prt_matrix()` und `geometric_transform()` bilden die Außenprodukte elementweise
+  statt als Eigen-Lazy-Ausdruck, mit bitgleichen Ergebnissen. Die falsche GCC-Warnung
+  `-Wnull-dereference` bei `-O2` tritt damit nicht mehr auf, und die Unterdrückung in `rtt-py`
+  (Hilfsdatei `polar_matrix`) ist entfernt (#35).
+- `rtt-material`: NIKON-HIKARI_201911 und die älteren Kataloge des Pakets ZemaxGlass laden jetzt,
+  mit Lade-Warnung statt `AgfError`: identische doppelte Gläser werden zusammengelegt, verschiedene
+  machen das Glas mehrdeutig (`UnknownMaterial` mit Alias-Hinweis), Textzeilen vor dem ersten
+  Datensatz und ein einzelnes Wort vor dem nächsten NM werden übersprungen. Echte Datenfehler
+  alter Kopien bleiben `AgfError` (#71).
+- **C++:** `rtt::diagnostics::CodeInfo` hat das neue Feld `producer` zwischen `severity` und
+  `summary`; eine Brace-Initialisierung von `CodeInfo` außerhalb der Registry muss angepasst
+  werden (ADR 0023, #86).
+- `compile()` gibt die neue Warnung `stop.not_on_path` aus; Spot, Fächer und OPD haben die
+  Option `lost_warning_fraction` (in Python der Parameter gleichen Namens) (#86).
+- `rtt-trace`: Pupillenkoordinaten sind an der Referenzwellenlänge orientiert (präzisiert
+  #93). Liegt bei endlichem Objekt die EP einer Wellenlänge auf der anderen Seite des Objekts als
+  die der Referenzwellenlänge, wird (px, py) gespiegelt verwendet, sodass ein Pupillenpunkt für
+  jede Wellenlänge dieselbe Blendenseite meint; Fächer und OPD-Karten bleiben über λ
+  vergleichbar. Betrifft nur Systeme mit Seitenwechsel der EP über λ (seit #93 möglich); sonst
+  bitgleich (#96).
+- `rtt-analysis`: Die OPL bis zur Referenzsphäre wird auslöschungsfrei gerechnet (der
+  gemeinsame Term |n′|R entfällt). Bei sehr weit entfernter Austrittspupille war die OPD
+  vorher durch Rundung unbrauchbar; bei bestehenden Systemen ändern sich die Werte nur in der
+  Rundung (#102).
+- `rtt-trace`: `make_rays` zielt die Strahlen parallel (oneTBB), mit denselben
+  Zerlegungsregeln wie der Tracer, auch mit Abbruch und Fortschritt. Die Ergebnisse bleiben
+  bitgleich und hängen nicht von der Thread-Anzahl ab. Ein Spot des Cooke-Tripletts mit 1027
+  Strahlen dauert mit 12 Threads etwa 5 ms statt 20 ms (ADR 0004, Nachtrag) (#119).
 
 ### Behoben
 - `rtt-trace`: Bei endlichem Objekt und virtueller Eintrittspupille hinter dem Objekt
@@ -91,6 +213,20 @@ Neue Einträge stehen bis zum nächsten Release als Fragmente in [`changelog.d/`
   - Damit gilt auch die Feldwinkel-Konvention aus #8 (Hauptstrahl steigt bei θ_y > 0 in +y)
     für diesen Fall.
   - Für z_EP > z_Objekt sind die Startrichtungen bitgleich zu vorher (#93).
+- `rtt-paraxial`: `seidel()` und `prescription()` rechnen paraxiale Bildhöhen und Feldwinkel bei
+  endlichem Objekt jetzt wie `rtt-trace` bei der Referenzwellenlänge in den Hauptstrahl um, statt
+  bei der übergebenen Wellenlänge. Bei einer anderen Wellenlänge als der Referenz stimmt der
+  Hauptstrahl damit mit dem paraxial gezielten Strahl von `make_rays` überein; bei der
+  Referenzwellenlänge ändert sich nichts (#35).
+- `rtt-io`: Eine ganze Zahl außerhalb von `int` (z. B. `order` = 4294967296) ist ein
+  `ParseError` mit Pointer statt still abgeschnitten (ADR 0008); das JSON-Schema nennt die
+  Grenzen bei `order` (#35).
+- Doku: `object_na` wird paraxial gelesen, die Randstrahlsteigung vom axialen Objektpunkt ist
+  u = NA / n (Greivenkamp, OPTI-502, S. 9-34), in `system.hpp`, `docs/dateiformat.md` und im
+  Python-Docstring von `SystemApertureType`; `docs/dateiformat.md` nennt jetzt Bedeutung und
+  Einheit aller Aperturtypen (#35).
+- `rtt-io`: Der JSON-Pointer eines `ParseError` maskiert `~` und `/` in Schlüsseln nach RFC 6901
+  (`~0`, `~1`), z. B. bei einem unbekannten Schlüssel `a/b` (#82).
 
 ## [0.4.0] – M3 Polarisation
 
