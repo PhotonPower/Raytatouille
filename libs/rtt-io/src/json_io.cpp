@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <fstream>
 #include <initializer_list>
+#include <limits>
 #include <nlohmann/json.hpp>
 #include <sstream>
 #include <stdexcept>
@@ -114,6 +115,16 @@ double read_number(const Json& j, const Ctx& c) {
 
 int read_int(const Json& j, const Ctx& c) {
   if (!j.is_number_integer()) c.fail("expected an integer, got " + std::string(type_name(j)));
+  // Strict (ADR 0008): a value outside int is an error, not cut off by get<int>() (#35).
+  constexpr auto kMin = std::numeric_limits<int>::min();
+  constexpr auto kMax = std::numeric_limits<int>::max();
+  const bool in_range = j.is_number_unsigned()
+                            ? j.get<std::uint64_t>() <= static_cast<std::uint64_t>(kMax)
+                            : j.get<std::int64_t>() >= kMin && j.get<std::int64_t>() <= kMax;
+  if (!in_range) {
+    c.fail("integer " + j.dump() + " out of range (" + std::to_string(kMin) + " ... " +
+           std::to_string(kMax) + ")");
+  }
   return j.get<int>();
 }
 

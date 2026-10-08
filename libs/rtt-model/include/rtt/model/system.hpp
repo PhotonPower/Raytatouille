@@ -40,11 +40,22 @@ struct FieldSet {
   bool operator==(const FieldSet&) const = default;
 };
 
+/// What SystemAperture::value means.
 enum class SystemApertureType : std::uint8_t {
   EntrancePupilDiameter,  ///< mm
-  ImageSpaceFNumber,      ///< dimensionless
-  ObjectSpaceNA,          ///< dimensionless
-  StopSize,               ///< use the stop aperture as defined
+  /// Dimensionless F-number at infinite conjugates: EPD = |EFL| / F#, also for a finite object.
+  ImageSpaceFNumber,
+  /// Object-space numerical aperture NA, dimensionless, finite objects only, read paraxially:
+  /// the paraxial marginal slope from the axial object point is u = NA / n, n the refractive
+  /// index of object space (first_order, ray aiming of object-space telecentric systems). With
+  /// paraxial aiming the marginal ray has tan U = NA / n; with real aiming it hits the paraxial
+  /// stop edge R_s, and its tan U differs from NA / n by the pupil aberration.
+  /// Greivenkamp, OPTI-502, Sec. 9, p. 9-34:
+  /// NA = n sin U ≈ n u; a real marginal ray with n sin U = NA differs for a large NA
+  /// (docs/quellen.md). With an object-space telecentric system only ObjectSpaceNA and
+  /// StopSize define the bundle.
+  ObjectSpaceNA,
+  StopSize,  ///< use the stop aperture as defined; the value is not used
 };
 
 struct SystemAperture {
