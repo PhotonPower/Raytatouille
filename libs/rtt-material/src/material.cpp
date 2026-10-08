@@ -197,7 +197,34 @@ void MaterialLibrary::register_catalogs(std::vector<AgfCatalog> catalogs, const 
                                     catalogs[j].file + ", " + cat.file + ")");
       }
     }
+    // Lines of the blocks per name; a name with several blocks is ambiguous (R2, #71).
+    std::map<std::string, std::vector<std::size_t>, std::less<>> lines;
+    for (const AgfGlass& glass : cat.glasses) lines[glass.name].push_back(glass.line);
     for (const AgfGlass& glass : cat.glasses) {
+      const std::vector<std::size_t>& at = lines[glass.name];
+      if (at.size() > 1) {
+        if (glass.line != at.front()) continue;  // one entry per name
+        std::string where;
+        for (std::size_t k = 0; k < at.size(); ++k) {
+          where += (k == 0 ? "" : (k + 1 == at.size() ? " and " : ", ")) + std::to_string(at[k]);
+        }
+        const std::string reference = cat.name + ":" + glass.name;
+        std::string message = "ambiguous material reference '";
+        message += reference;
+        message += "': glass ";
+        message += glass.name;
+        message += " is defined with different data at lines ";
+        message += where;
+        message += " of ";
+        message += cat.file;
+        message +=
+            " (agf.duplicate_glass_conflict). To use one of the blocks, load it as a catalogue of "
+            "its own under an alias, e.g. add_catalog_text(block, \"";
+        message += cat.name;
+        message += "_ALT\")";
+        entries.push_back({reference, nullptr, std::move(message)});
+        continue;
+      }
       Entry entry{cat.name + ":" + glass.name, nullptr, {}};
       try {
         (void)agf_formula(glass, cat.file + ":" + std::to_string(glass.line));
@@ -222,6 +249,8 @@ void MaterialLibrary::register_catalogs(std::vector<AgfCatalog> catalogs, const 
     }
   }
   for (AgfCatalog& cat : catalogs) {
+    // Warnings in loading order (#71); only after all checks, so a failed call adds none.
+    load_warnings_.insert(load_warnings_.end(), cat.warnings.begin(), cat.warnings.end());
     std::string key = cat.name;
     catalogs_.emplace(std::move(key), std::make_shared<const AgfCatalog>(std::move(cat)));
   }
@@ -240,6 +269,11 @@ std::vector<std::string> MaterialLibrary::catalogs() const {
   names.reserve(catalogs_.size());
   for (const auto& [name, cat] : catalogs_) names.push_back(name);
   return names;  // std::map keeps them in ascending order
+}
+
+std::vector<LoadWarning> MaterialLibrary::load_warnings() const {
+  const std::scoped_lock lock(mutex_);
+  return load_warnings_;
 }
 
 std::shared_ptr<const AgfCatalog> MaterialLibrary::catalog(std::string_view name) const {

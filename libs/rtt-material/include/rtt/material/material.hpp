@@ -23,6 +23,7 @@
 #include <string_view>
 #include <vector>
 
+#include "rtt/material/load_warning.hpp"
 #include "rtt/math/types.hpp"
 
 namespace rtt::material {
@@ -100,10 +101,11 @@ class UnknownMaterial : public std::runtime_error {
 /// Matching is case-sensitive. Further materials are registered with add(); glass catalogues
 /// in the AGF format are loaded with add_catalog() and resolved as `KATALOG:NAME`.
 ///
-/// resolve, add, add_catalog, add_catalog_text, catalogs and catalog are thread-safe; resolve
-/// returns the same object for identical reference strings for the lifetime of the library. Object
-/// identity does not mean "same medium": different strings such as `CONST:1.5` and `CONST:1.50`
-/// give distinct objects with equal indices. The cache holds every resolved or added reference
+/// resolve, add, add_catalog, add_catalog_text, catalogs, catalog and load_warnings are
+/// thread-safe; resolve returns the same object for identical reference strings for the
+/// lifetime of the library. Object identity does not mean "same medium": different strings
+/// such as `CONST:1.5` and `CONST:1.50` give distinct objects with equal indices. The cache
+/// holds every resolved or added reference
 /// until the library is destroyed.
 class MaterialLibrary {
  public:
@@ -126,7 +128,10 @@ class MaterialLibrary {
   /// Loads AGF glass catalogues (rtt/material/agf.hpp). Each file becomes the catalogue named
   /// after the file name without extension in upper case (`schott.agf` -> `SCHOTT`); its glasses
   /// resolve as `SCHOTT:N-BK7`. Glasses with an unsupported dispersion formula are listed and
-  /// make resolve() throw UnknownMaterial with formula, glass, file and line (#42).
+  /// make resolve() throw UnknownMaterial with formula, glass, file and line (#42). A glass
+  /// defined twice with different data is ambiguous: resolve() throws UnknownMaterial with both
+  /// lines and how to use one of the blocks anyway (#71). The warnings of the reader are
+  /// collected in load_warnings().
   /// Manufacturer catalogues are not shipped with Raytatouille; the user provides them.
   /// @param path an .agf file, or a directory whose *.agf files (case-insensitive, not
   ///             recursive) are loaded in sorted order
@@ -160,6 +165,11 @@ class MaterialLibrary {
   /// @throws UnknownMaterial if no catalogue of that name is loaded
   [[nodiscard]] std::shared_ptr<const AgfCatalog> catalog(std::string_view name) const;
 
+  /// Warnings of all successfully loaded catalogues in loading order, each with a stable code
+  /// of the group agf.* (ADR 0022, docs/diagnostics.md). A call of add_catalog or
+  /// add_catalog_text that throws adds none.
+  [[nodiscard]] std::vector<LoadWarning> load_warnings() const;
+
  private:
   /// Registers parsed catalogues and their glasses, all or nothing.
   /// @param function name of the public function for error messages
@@ -171,6 +181,7 @@ class MaterialLibrary {
   std::map<std::string, std::shared_ptr<const AgfCatalog>, std::less<>> catalogs_;
   /// Catalogue glasses that exist but cannot be evaluated: reference -> message.
   std::map<std::string, std::string, std::less<>> unsupported_;
+  std::vector<LoadWarning> load_warnings_;
 };
 
 }  // namespace rtt::material

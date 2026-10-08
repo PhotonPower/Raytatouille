@@ -41,6 +41,7 @@
 #include <vector>
 
 #include "rtt/material/dispersion.hpp"
+#include "rtt/material/load_warning.hpp"
 #include "rtt/material/material.hpp"
 #include "rtt/material/thermal.hpp"
 
@@ -86,6 +87,7 @@ struct AgfTransmission {
   double wavelength_um = 0.0;  ///< wavelength in um (as LD; checked against SCHOTT, quellen.md)
   double transmittance = 0.0;  ///< internal transmittance tau_i, 0..1
   double thickness_mm = 0.0;   ///< sample thickness in mm
+  bool operator==(const AgfTransmission&) const = default;
 };
 
 /// One glass of an AGF catalogue as read from the file (no unit conversion). Units of the data
@@ -123,6 +125,8 @@ struct AgfGlass {
   std::optional<AgfOtherData> other;
   std::vector<AgfTransmission> transmission;  ///< IT records in file order
   std::size_t line = 0;                       ///< line of the NM record
+  /// Equal data and line (parse_agf compares duplicates with the line set equal, #71).
+  bool operator==(const AgfGlass&) const = default;
 };
 
 /// A parsed AGF catalogue.
@@ -130,7 +134,10 @@ struct AgfCatalog {
   std::string name;     ///< catalogue name (see MaterialLibrary::add_catalog)
   std::string file;     ///< file name for messages
   std::string comment;  ///< CC header text
+  /// All glasses in file order. A name occurs twice only if the blocks differ: such a glass is
+  /// ambiguous (rule R2 of the ADR 0008 addendum, #71) and MaterialLibrary does not resolve it.
   std::vector<AgfGlass> glasses;
+  std::vector<LoadWarning> warnings;  ///< warnings of the reader, in file (line) order (#71)
 };
 
 /// Converts raw file bytes to UTF-8 text: UTF-16LE with byte order mark is converted, a UTF-8
@@ -142,12 +149,22 @@ struct AgfCatalog {
 [[nodiscard]] std::string decode_agf_text(std::string_view bytes, const std::string& file);
 
 /// Parses AGF text (UTF-8, LF or CRLF line ends).
+///
+/// Narrow exceptions to the strict reading (ADR 0008 addendum, #71), each with a LoadWarning in
+/// AgfCatalog::warnings (in file order):
+/// - a glass repeated with the same values in all records that are read is read once
+///   (agf.duplicate_glass); with other values both blocks are kept and the glass is ambiguous
+///   (agf.duplicate_glass_conflict);
+/// - lines before the first CC or NM record whose first word is neither a number nor a record
+///   name are skipped (agf.preamble_skipped);
+/// - a line of exactly one alphabetic word that is no record name is skipped if the next
+///   line that is not empty is an NM record (agf.stray_line).
 /// @param text text of the file, see decode_agf_text
 /// @param name catalogue name stored in the result
 /// @param file file name for error messages
 /// @throws AgfError with file and line for malformed or unknown records, records before the
-///         first NM, missing or empty CD, duplicate CD/LD/TD/ED records of a glass, duplicate
-///         glass names, invalid numbers, a continuation line that does not follow CD or TD
+///         first NM, missing or empty CD, duplicate CD/LD/TD/ED records of a glass, invalid
+///         numbers, a continuation line that does not follow CD or TD
 ///         (or follows an empty or comment line), more than 10 CD or (with continuation
 ///         lines) 7 TD values; MD, OD and IT with another number of values than 5, 6 and 3, a
 ///         second GC, MD or OD record, and NM extras that are not "_"/"-" or in range

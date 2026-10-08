@@ -226,6 +226,9 @@ class MaterialLibrary(_core.MaterialLibrary):
     def glass(self, reference: str) -> GlassInfo:
         """The glass ``CATALOG:NAME`` of a loaded catalogue.
 
+        For an ambiguous glass (two blocks with different data, #71) this is the first block, with
+        ``supported`` False; ``glasses(catalog)`` lists all blocks.
+
         Raises UnknownMaterial if the catalogue is not loaded or has no such glass.
         """
         catalog, sep, name = reference.partition(":")

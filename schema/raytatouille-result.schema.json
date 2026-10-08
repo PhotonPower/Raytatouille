@@ -44,7 +44,8 @@
         "GlassMap",
         "SurfaceLayout",
         "CompiledElement",
-        "Diagnostic"
+        "Diagnostic",
+        "LoadWarning"
       ]
     },
     "data": {
@@ -344,6 +345,27 @@
               "field",
               "chief",
               "offset"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "LoadWarning"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "code",
+              "file",
+              "line",
+              "message"
             ]
           }
         }

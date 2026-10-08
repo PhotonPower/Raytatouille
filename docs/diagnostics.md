@@ -16,12 +16,17 @@ Jede Diagnose (`rtt::model::Diagnostic`, in Python `rt.Diagnostic`) trägt einen
 - `validate`: `rtt::model::validate`, auch `rt.validate` und `rtt validate`.
 - `compile`: `rtt::compile::compile`, als `CompileError` bzw. Warnung in `CompiledSystem::diagnostics()`.
 - `analysis`: Spot, Strahlfächer, OPD-Karte und OPD-Fächer (`rtt-analysis`), als Warnung im Feld `warnings` des Ergebnisses (ADR 0023).
-- Warnungen von `compile()` und den Analysen gibt Python zusätzlich als `RaytatouilleWarning` mit `code` und `location` aus.
+- `agf`: der AGF-Leser von `rtt-material` (`parse_agf`, `MaterialLibrary::add_catalog`, `add_catalog_text`), als `rtt::material::LoadWarning{code, file, line, message}` in `AgfCatalog::warnings` und `MaterialLibrary::load_warnings()` (#71); Ort ist Datei und Zeile.
+- Warnungen von `compile()`, den Analysen und dem AGF-Leser gibt Python zusätzlich als `RaytatouilleWarning` mit `code` und `location` aus (beim AGF-Leser `datei:zeile`).
 
 Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; `…/s` für eine Fläche, z. B. `/root/children/1/surfaces/0`; `i`, `k` für Listenindizes.
 
 | Code | Schwere | Bedeutung | Erzeuger | Ort |
 | --- | --- | --- | --- | --- |
+| `agf.duplicate_glass` | Warnung | Glas mit gleichen Werten aller gelesenen Datensätze wiederholt; die Wiederholung wird übergangen | agf | Datei:Zeile der Wiederholung |
+| `agf.duplicate_glass_conflict` | Warnung | Glas zweimal mit verschiedenen Daten; es ist mehrdeutig und nicht auflösbar (`UnknownMaterial` mit beiden Zeilen und Alias-Hinweis), beide Blöcke stehen im Listing | agf | Datei:Zeile des zweiten Blocks |
+| `agf.preamble_skipped` | Warnung | Textzeile vor dem ersten Datensatz (CC/NM) übersprungen, z. B. die RadiantZemax-Kopfzeile | agf | Datei:Zeile |
+| `agf.stray_line` | Warnung | einzelnes Wort vor dem nächsten NM-Datensatz übersprungen, nur Leerzeilen dazwischen (NIKON-HIKARI_201911 Z. 10102) | agf | Datei:Zeile |
 | `aperture.na_not_physical` | Warnung | objektseitige NA ≥ 1 in Luft | validate | `/aperture/value` |
 | `aperture.stop_missing` | Fehler | Aperturtyp `stop_size` ohne Blendenelement | validate | `/aperture/type` |
 | `aperture.value_invalid` | Fehler | Wert der Systemapertur nicht endlich oder ≤ 0 | validate | `/aperture/value` |
@@ -101,6 +106,6 @@ Nicht jede Ursache ist eine Diagnose. Diese Ausnahmen tragen den Ort als Daten (
 | `rtt::analysis::AnalysisError` | `surface`, `location`, `ray_status`, `field`, `wavelength` | Analyse ohne Ergebnis. Die Daten beschreiben den verlorenen Haupt- oder Zonenstrahl. `surface` ist die letzte erreichte Fläche: bei VIGNETTED, ABSORBED, TIR, EVENT_IMPOSSIBLE die Fläche, an der er endet; bei MISSED, NO_CONVERGENCE die davor. |
 | `rtt::io::ParseError`, `rtt::material::AgfError`, `rtt::coating::CoatingCatalogError` | Pointer bzw. Datei und Zeile | Lesefehler; ohne Code. |
 
-## Geplante Gruppe `agf.*`
+## Gruppe `agf.*`
 
-Lade-Warnungen der Glaskataloge (z. B. doppelte Glasnamen, #71) bekommen Codes der Gruppe `agf.*` aus derselben Registry. Weil `rtt-material` unter `rtt-model` liegt, tragen sie einen eigenen Typ `rtt::material::LoadWarning{code, file, line, message}`. In Python erscheinen sie als dieselbe `RaytatouilleWarning`. Gebaut wird der Kanal mit dem ersten Erzeuger in #71 (ADR 0022).
+Lade-Warnungen der Glaskataloge (#71) tragen einen eigenen Typ `rtt::material::LoadWarning{code, file, line, message}`, weil `rtt-material` unter `rtt-model` liegt; die Codes stehen in derselben Registry (Erzeuger `agf`). Die Regeln (Nachtrag ADR 0008) und Belege stehen in `docs/quellen.md`.

@@ -54,7 +54,7 @@ __all__ = [
 ]
 
 FORMAT = "raytatouille-result"
-SCHEMA_VERSION = "0.1.0"
+SCHEMA_VERSION = "0.1.1"  # 0.1.1: LoadWarning (#71); load_json reads every 0.1.x
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a
@@ -110,6 +110,8 @@ _FIELDS: dict[str, tuple[str, ...]] = {
     # model
     "Field": ("x", "y", "weight"),
     "Diagnostic": ("severity", "code", "location", "message"),
+    # material (#71)
+    "LoadWarning": ("code", "file", "line", "message"),
 }
 
 #: Types that to_json writes and load_json accepts as "type".
@@ -118,7 +120,7 @@ TYPES: tuple[str, ...] = (
     "DistortionSweep", "DistortionPoint", "FieldCurvatureSweep", "FieldCurvaturePoint",
     "FirstOrder", "Seidel", "TraceStats", "RayBatch", "RayPaths",
     "Diattenuation", "Diattenuations", "Retardance", "Retardances",
-    "GlassInfo", "GlassMap", "SurfaceLayout", "CompiledElement", "Diagnostic",
+    "GlassInfo", "GlassMap", "SurfaceLayout", "CompiledElement", "Diagnostic", "LoadWarning",
 )
 
 _DTYPES = frozenset({"bool", "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32",
