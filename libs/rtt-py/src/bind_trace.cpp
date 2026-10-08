@@ -417,7 +417,7 @@ void bind_trace(nb::module_& m) {
       "make_rays",
       [](const compile::CompiledSystem& system, const trace::PupilSampling& sampling,
          const PathArg& path, std::optional<std::vector<std::uint16_t>> fields,
-         std::optional<std::uint16_t> wavelength, trace::Aiming aiming,
+         std::optional<std::uint16_t> wavelength, trace::Aiming aiming, std::optional<int> threads,
          const std::optional<trace::CancelToken>& cancel,
          const std::optional<nb::callable>& progress) {
         std::vector<std::uint16_t> all;
@@ -427,21 +427,24 @@ void bind_trace(nb::module_& m) {
         }
         const std::vector<std::uint16_t>& selected = fields ? *fields : all;
         const trace::RunControl control = run_control(cancel, progress);
-        return released(std::nullopt, [&] {
+        return released(threads, [&] {
           return trace::make_rays(system, path_id(system, path), selected,
                                   wavelength_index(system, wavelength), sampling, aiming, control);
         });
       },
       "system"_a, "sampling"_a, nb::kw_only(), "path"_a = 0, "fields"_a.none() = nb::none(),
       "wavelength"_a.none() = nb::none(), "aiming"_a = trace::Aiming::Real,
-      "cancel"_a.none() = nb::none(), "progress"_a.none() = nb::none(),
+      "threads"_a.none() = nb::none(), "cancel"_a.none() = nb::none(),
+      "progress"_a.none() = nb::none(),
       "Rays for the field indices `fields` (None: all fields) at wavelength index "
       "`wavelength` (None: reference): for every field every pupil point of `sampling`, aimed "
-      "with `aiming`. `cancel` (CancelToken) and `progress(done, total, stage)` (stage "
+      "with `aiming`, in parallel (#119). `threads` limits the worker threads (None: all); the "
+      "rays are bitwise the same for every number of threads. `cancel` (CancelToken) and "
+      "`progress(done, total, stage)` (stage "
       "'aim', called from any thread with the GIL) control the run; neither changes the "
       "rays.\n\nRaises ValueError for unknown paths, fields or wavelengths, ParaxialError for "
-      "paths without paraxial data, raytatouille.errors.Cancelled after a cancellation and the "
-      "exception of `progress`.");
+      "paths without paraxial data, ValueError for threads < 1, raytatouille.errors.Cancelled "
+      "after a cancellation and the exception of `progress`.");
   m.def("trace", &run_trace, "system"_a, "rays"_a, nb::kw_only(), "path"_a = 0,
         "threads"_a.none() = nb::none(), "cancel"_a.none() = nb::none(),
         "progress"_a.none() = nb::none(),
