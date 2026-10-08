@@ -171,6 +171,24 @@ TEST_CASE("R3: lines before the first record are skipped with a warning", "[agf]
   REQUIRE(agf_error(block("A") + header + "\n").line() == 4);
 }
 
+TEST_CASE("R3: a file without any CC or NM record is not an AGF catalogue", "[agf][load]") {
+  // R3 only skips lines before a first record. Prose and a renamed JSON file have none and stay
+  // an error at the first skipped line, as before #71.
+  const AgfError prose = agf_error("This is not a glass catalogue.\nJust prose.\n");
+  REQUIRE(prose.line() == 1);
+  REQUIRE_THAT(std::string(prose.what()), ContainsSubstring("no CC or NM record"));
+  const std::string json = "\n{\n  \"name\": \"N-BK7\",\n  \"nd\": \"1.5168\"\n}\n";
+  REQUIRE(agf_error(json).line() == 2);
+  MaterialLibrary lib;
+  REQUIRE_THROWS_AS(lib.add_catalog_text(json, "J", "j.agf"), AgfError);
+  REQUIRE(lib.load_warnings().empty());
+  // Unchanged: a file without any text line is an empty catalogue.
+  const AgfCatalog empty = parse_agf("", "T", "t.agf");
+  REQUIRE((empty.glasses.empty() && empty.warnings.empty()));
+  const AgfCatalog comments = parse_agf("! comment\n\n", "T", "t.agf");
+  REQUIRE((comments.glasses.empty() && comments.warnings.empty()));
+}
+
 TEST_CASE("R4: a single word before the next NM is skipped with a warning", "[agf][load]") {
   // NIKON-HIKARI_201911.AGF lines 10101-10104 verbatim: empty line, "E", empty line,
   // "NM E-LAKH1"; only empty lines may come between the word and the NM.

@@ -156,7 +156,8 @@ struct AgfCatalog {
 ///   (agf.duplicate_glass); with other values both blocks are kept and the glass is ambiguous
 ///   (agf.duplicate_glass_conflict);
 /// - lines before the first CC or NM record whose first word is neither a number nor a record
-///   name are skipped (agf.preamble_skipped);
+///   name are skipped (agf.preamble_skipped); a file with such lines but without any CC or NM
+///   record is no catalogue and throws AgfError at the first skipped line;
 /// - a line of exactly one alphabetic word that is no record name is skipped if the next
 ///   line that is not empty is an NM record (agf.stray_line).
 /// @param text text of the file, see decode_agf_text

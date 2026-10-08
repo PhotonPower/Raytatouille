@@ -74,6 +74,9 @@ class Parser {
       pos = end + 1;
     }
     if (stray_) fail(stray_->line, "unknown record '" + stray_->word + "'");  // last line
+    if (!seen_record_ && first_skipped_ > 0) {  // R3 only holds before a first record
+      fail(first_skipped_, "no CC or NM record: not an AGF catalogue");
+    }
     finish_glass();
     merge_duplicates();
     // Duplicates are found after the last line; keep all warnings in file order.
@@ -317,6 +320,7 @@ class Parser {
     const std::string_view m = items[0];
     if (!is_record(m)) {
       if (!seen_record_) {  // R3 (#71): text before the first CC or NM, e.g. a header line
+        if (first_skipped_ == 0) first_skipped_ = line_no;
         warn("agf.preamble_skipped", line_no,
              "text before the first record skipped: '" + std::string(line) + "'");
         return;
@@ -437,7 +441,8 @@ class Parser {
   bool has_cd_ = false;
   bool has_gc_ = false;
   Continuable continuable_ = Continuable::kNone;
-  bool seen_record_ = false;  ///< a CC or NM record was read (R3)
+  bool seen_record_ = false;       ///< a CC or NM record was read (R3)
+  std::size_t first_skipped_ = 0;  ///< first line skipped by R3, 0 if none
   struct Stray {
     std::size_t line = 0;
     std::string word;
