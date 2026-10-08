@@ -1,12 +1,3 @@
-// GCC (13 in CI, 16 locally) reports a false -Wnull-dereference inside Eigen's SSE code
-// (emmintrin.h, BinaryFunctors.h) for the fixed-size SVD and eigen solvers at -O2/-O3 in Release.
-// The warning is attributed to the Eigen headers, so the suppression has to cover the includes;
-// it is limited to this translation unit and to GCC (cf. the GCC 13 workaround in agf.cpp, #24).
-#if defined(__GNUC__) && !defined(__clang__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wnull-dereference"
-#endif
-
 // 3D polarization ray tracing matrix (#57). Source: W.-S. T. Lam, "Anisotropic ray trace",
 // dissertation, University of Arizona, Eqs. (3.1)-(3.9), (4.3)-(4.6), Sec. 4.5.2
 // (docs/quellen.md); conventions in rtt/polar/prt.hpp and docs/architecture.md.
@@ -241,7 +232,13 @@ TEST_CASE("ideal mirror: no diattenuation, no retardance, E_r = -(I - 2 N N^T) E
     if (std::abs(k.dot(n)) < 0.05) continue;
     const Vec3 k_out = reflect(k, n);
     const CMat3 p = rtt::polar::prt_matrix(k, k_out, n, Cx(-1.0), Cx(1.0));
-    const Mat3 mirror = -(Mat3::Identity() - 2.0 * n * n.transpose());
+    // n n^T written out here, independent of rtt-polar: an Eigen lazy outer product made GCC -O2
+    // report a false -Wnull-dereference in this file (#35). Same values as 2.0 * n * n^T.
+    Mat3 nn;
+    for (int row = 0; row < 3; ++row) {
+      for (int col = 0; col < 3; ++col) nn(row, col) = n(row) * n(col);
+    }
+    const Mat3 mirror = -(Mat3::Identity() - 2.0 * nn);
     const CVec3 e = random_transverse(u, k);
     REQUIRE((p * e - mirror.cast<Cx>() * e).norm() <= 1e-14);
     REQUIRE(rtt::polar::diattenuation(p, k, k_out).value <= 1e-12);
@@ -382,7 +379,3 @@ TEST_CASE("golden: three prisms of Lam, Fig. 4.9 and Table 4.3", "[prt]") {
   REQUIRE(std::abs(d.maximum - 0.845) <= 0.075);
   REQUIRE(std::abs(d.minimum - 0.792) <= 0.075);
 }
-
-#if defined(__GNUC__) && !defined(__clang__)
-#pragma GCC diagnostic pop
-#endif
