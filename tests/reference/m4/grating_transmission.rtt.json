@@ -1,6 +1,6 @@
 {
   "schema_version": "0.3.0",
-  "name": "M4 acceptance: transmission grating 300 lines/mm in vacuum, orders -1, 0 and +1",
+  "name": "M4 acceptance: transmission grating 300 lines/mm in vacuum, orders -1, 0, +1 and +6 (evanescent at normal incidence)",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},
   "wavelengths": [
@@ -75,6 +75,14 @@
       "events": [
         {"surface": "STO", "kind": "transmit"},
         {"surface": "G", "kind": "transmit", "order": 1},
+        {"surface": "SCR", "kind": "transmit"}
+      ]
+    },
+    {
+      "name": "order +6",
+      "events": [
+        {"surface": "STO", "kind": "transmit"},
+        {"surface": "G", "kind": "transmit", "order": 6},
         {"surface": "SCR", "kind": "transmit"}
       ]
     }

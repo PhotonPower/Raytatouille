@@ -608,7 +608,7 @@ TEST_CASE("compile resolves the phase layers for the tracer (#127)", "[diffracti
   REQUIRE(r->coefficients() == std::vector<double>{2.0, -1.0});
 }
 
-TEST_CASE("reference file m4/grating_transmission: orders -1, 0, +1 by Palmer (2-1) (#127)",
+TEST_CASE("reference file m4/grating_transmission: orders by Palmer (2-1), +6 evanescent (#127)",
           "[diffraction]") {
   // tests/reference/m4/grating_transmission.rtt.json: thin grating, 300 lines/mm, grooves along
   // y, vacuum, lambda = 0.5876 um, screen 50 mm behind it. A ray at alpha = 10 deg in the x-z
@@ -637,6 +637,17 @@ TEST_CASE("reference file m4/grating_transmission: orders -1, 0, +1 by Palmer (2
     REQUIRE(std::abs(rays.dir_x()[0] - sin_beta) <= 1e-12);
     REQUIRE(std::abs(rays.dir_z()[0] - std::sqrt(1.0 - sin_beta * sin_beta)) <= 1e-12);
   }
+  // Order +6 at normal incidence: tau = 6 lambda0 G = 6 * 0.17628 = 1.058 > n' = 1, evanescent
+  // (ADR 0025, point 7; Palmer's |m lambda / d| < 2 bound alone would allow it): the ray stays
+  // at the grating (surface index 1, z = 10 mm) with status Evanescent.
+  const auto six = cs.find_path("order +6");
+  REQUIRE(six.has_value());
+  rtt::trace::RayBatch normal(1);
+  normal.pos_z()[0] = -1.0;
+  [[maybe_unused]] const auto six_stats = rtt::trace::SequentialTracer().trace(cs, *six, normal);
+  REQUIRE(normal.status()[0] == RayStatus::Evanescent);
+  REQUIRE(normal.last_surface()[0] == 1);
+  REQUIRE(std::abs(normal.pos_z()[0] - 10.0) <= 1e-12);
 }
 
 TEST_CASE("ray aiming through a phase surface of order 0 before the stop (#127)", "[diffraction]") {
