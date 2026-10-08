@@ -8,5 +8,6 @@ rtt_target_defaults(rtt_polar LIBRARY)
 if(RTT_BUILD_TESTS)
   rtt_add_test(rtt_polar_tests
     SOURCES tests/test_fresnel.cpp tests/test_prt.cpp tests/test_ideal.cpp tests/test_interface.cpp
+            tests/test_birefringence.cpp
     LIBS rtt::polar)
 endif()
