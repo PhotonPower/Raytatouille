@@ -230,11 +230,16 @@ def test_the_comparison_detects_differences() -> None:
 
 
 def test_keys_missing_in_the_reference_files() -> None:
-    # No reference file sets fast_axis or retardance_waves; check them on a changed copy of
-    # the defaults system.
+    # No reference file sets fast_axis or retardance_waves, the event kinds ordinary and
+    # extraordinary, the field type paraxial_image_height or the aperture type image_fnumber;
+    # check them on a changed copy of the defaults system.
     data = json.loads(DEFAULTS_TEXT)
     retarder = data["root"]["children"][0]["surfaces"][6]["interaction"]
     retarder.update(fast_axis=[0.0, 1.0, 0.0], retardance_waves=0.5)
+    data["paths"][0]["events"] = [{"surface": "S0", "kind": "ordinary"},
+                                  {"surface": "S1", "kind": "extraordinary"}]
+    data["fields"]["type"] = "paraxial_image_height"
+    data["aperture"] = {"type": "image_fnumber", "value": 4.0}
     system = rt.System.from_json(json.dumps(data))
     check(data, system, "")
     lens = system.root.children[0]
@@ -242,6 +247,11 @@ def test_keys_missing_in_the_reference_files() -> None:
     interaction = lens.surfaces[6].interaction
     assert isinstance(interaction, model.IdealRetarder)
     assert interaction.fast_axis == [0.0, 1.0, 0.0] and interaction.retardance_waves == 0.5
+    kinds = [e.kind for e in system.paths[0].events]
+    assert kinds == [model.EventKind.ORDINARY, model.EventKind.EXTRAORDINARY]
+    assert system.fields.type == model.FieldType.PARAXIAL_IMAGE_HEIGHT
+    assert system.aperture.type == model.SystemApertureType.IMAGE_SPACE_F_NUMBER
+    assert system.aperture.value.value == 4.0
 
 
 def json_objects(value: Any, pointer: str = "") -> list[tuple[str, dict[str, Any]]]:

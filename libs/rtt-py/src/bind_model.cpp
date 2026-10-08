@@ -133,7 +133,8 @@ void bind_model(nb::module_& m) {
           "fields", [](const model::System& s) { return s.fields; }, "Field points (copy).")
       .def_prop_ro(
           "root", [](const model::System& s) { return s.root; },
-          "Root assembly of the element tree (copy).")
+          "Root assembly of the element tree (copy). Each access copies the whole tree; keep "
+          "the result in a variable instead of reading it again in a loop.")
       .def_prop_ro(
           "paths", [](const model::System& s) { return s.paths; }, "Ray paths in order (copies).")
       .def("to_json", &io::to_json,

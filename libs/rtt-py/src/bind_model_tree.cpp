@@ -267,7 +267,9 @@ void bind_model_tree(nb::module_& m) {
       m, "Assembly", "Group of nodes moved and toleranced as one rigid body (read-only copy).")
       .def_ro("name", &model::Assembly::name, "Name, unique among assemblies and elements.")
       .def_ro("pose", &model::Assembly::pose, "Placement in the parent assembly.")
-      .def_prop_ro("children", &children, "Child nodes in order: Assembly or Element.")
+      .def_prop_ro("children", &children,
+                   "Child nodes in order: Assembly or Element. Each access copies the subtrees; "
+                   "keep the list in a variable instead of reading it again in a loop.")
       .def("__repr__", [](const model::Assembly& a) {
         return nb::str("Assembly(name={!r}, children={})").format(a.name, a.children.size());
       });
