@@ -85,9 +85,14 @@ void bind_model_tree(nb::module_& m) {
       .value("ENTRANCE_PUPIL_DIAMETER", model::SystemApertureType::EntrancePupilDiameter,
              "entrance pupil diameter in mm (file: \"epd\")")
       .value("IMAGE_SPACE_F_NUMBER", model::SystemApertureType::ImageSpaceFNumber,
-             "image-space F-number, dimensionless (file: \"image_fnumber\")")
+             "image-space F-number at infinite conjugates, EPD = |EFL| / F#, also for a finite "
+             "object; dimensionless (file: \"image_fnumber\")")
       .value("OBJECT_SPACE_NA", model::SystemApertureType::ObjectSpaceNA,
-             "object-space numerical aperture, dimensionless (file: \"object_na\")")
+             "object-space numerical aperture NA, dimensionless, finite objects only, read "
+             "paraxially: the paraxial marginal slope from the axial object point is u = NA / n, "
+             "n the index of object space, so the launched marginal ray has tan U = NA / n "
+             "(Greivenkamp, OPTI-502, Sec. 9, p. 9-34: NA = n sin U ~ n u); "
+             "file: \"object_na\"")
       .value("STOP_SIZE", model::SystemApertureType::StopSize,
              "the stop aperture as defined; the value is not used (file: \"stop_size\")");
 
