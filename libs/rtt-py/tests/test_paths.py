@@ -65,9 +65,9 @@ def test_the_forms_do_not_mix(michelson: rt.CompiledSystem) -> None:
     for extra in ({"field": 0}, {"wavelength": 0}, {"rays": "hexapolar:2"},
                   {"aiming": Aiming.REAL}):
         with pytest.raises(ValueError, match="only apply without start rays"):
-            an.path_transmission(michelson, 0, start=start, **extra)  # type: ignore[arg-type]
+            an.path_transmission(michelson, 0, start=start, **extra)
         with pytest.raises(ValueError, match="only apply without start rays"):
-            an.opl_difference(michelson, 0, 1, start=start, **extra)  # type: ignore[arg-type]
+            an.opl_difference(michelson, 0, 1, start=start, **extra)
 
 
 def test_convenience_form_and_its_limits(reference_dir: Path,
