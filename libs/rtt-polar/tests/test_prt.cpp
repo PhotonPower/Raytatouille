@@ -1,7 +1,8 @@
-// GCC (13 in CI, 16 locally) reports a false -Wnull-dereference inside Eigen's SSE code
-// (emmintrin.h, BinaryFunctors.h) for the fixed-size SVD and eigen solvers at -O2/-O3 in Release.
-// The warning is attributed to the Eigen headers, so the suppression has to cover the includes;
-// it is limited to this translation unit and to GCC (cf. the GCC 13 workaround in agf.cpp, #24).
+// GCC (13 in CI, 16 locally) reports a false -Wnull-dereference inside Eigen (Householder.h) for
+// the JacobiSVD with QR preconditioning reached through Quaternion::FromTwoVectors, at -O2/-O3
+// with -DNDEBUG (Release); found again in the review of #35. The warning is attributed to the
+// Eigen headers, so the suppression has to cover the includes; it is limited to this translation
+// unit and to GCC (cf. the GCC 13 workaround in agf.cpp, #24).
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wnull-dereference"
@@ -241,7 +242,14 @@ TEST_CASE("ideal mirror: no diattenuation, no retardance, E_r = -(I - 2 N N^T) E
     if (std::abs(k.dot(n)) < 0.05) continue;
     const Vec3 k_out = reflect(k, n);
     const CMat3 p = rtt::polar::prt_matrix(k, k_out, n, Cx(-1.0), Cx(1.0));
-    const Mat3 mirror = -(Mat3::Identity() - 2.0 * n * n.transpose());
+    // n n^T written out here, independent of rtt-polar (#35): in a GCC -O2 build without
+    // NDEBUG the scaled lazy outer product 2.0 * n * n.transpose() reported a false
+    // -Wnull-dereference. Same values as 2.0 * n * n^T.
+    Mat3 nn;
+    for (int row = 0; row < 3; ++row) {
+      for (int col = 0; col < 3; ++col) nn(row, col) = n(row) * n(col);
+    }
+    const Mat3 mirror = -(Mat3::Identity() - 2.0 * nn);
     const CVec3 e = random_transverse(u, k);
     REQUIRE((p * e - mirror.cast<Cx>() * e).norm() <= 1e-14);
     REQUIRE(rtt::polar::diattenuation(p, k, k_out).value <= 1e-12);

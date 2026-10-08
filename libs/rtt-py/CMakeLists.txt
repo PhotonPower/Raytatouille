@@ -36,7 +36,6 @@ nanobind_add_module(_core NB_STATIC NB_SUPPRESS_WARNINGS
   src/bind_polar.cpp
   src/bind_results.cpp
   src/polar_batch.cpp
-  src/polar_matrix.cpp
   src/bind_layout.cpp)
 target_link_libraries(_core PRIVATE
   rtt::io rtt::diagnostics rtt::model rtt::material rtt::coating rtt::compile rtt::paraxial

@@ -51,6 +51,22 @@ using CMat3T = Eigen::Matrix<std::complex<T>, 3, 3>;
 /// follows the axis rule of the file comment (decided for #57).
 inline constexpr double kNormalIncidence = 1e-12;
 
+namespace detail {
+
+/// Outer product u v^T, evaluated element by element (m_ij = u_i v_j). Eigen's lazy outer product
+/// gives the same values, but GCC -O2 reports a false -Wnull-dereference inside Eigen for every
+/// translation unit that instantiates it (#35).
+template <math::Real T>
+[[nodiscard]] math::Mat3T<T> outer(const math::Vec3T<T>& u, const math::Vec3T<T>& v) noexcept {
+  math::Mat3T<T> m;
+  for (int i = 0; i < 3; ++i) {
+    for (int j = 0; j < 3; ++j) m(i, j) = u(i) * v(j);
+  }
+  return m;
+}
+
+}  // namespace detail
+
 /// Right-handed basis (s, p, k) of a ray at an intercept, unit vectors in global coordinates.
 template <math::Real T>
 struct PrtBasis {
@@ -103,9 +119,9 @@ template <math::Real T>
                                    std::complex<T> a_p) noexcept {
   const PrtBasis<T> in = prt_basis(k_in, normal);
   const math::Vec3T<T> p_out = k_out.cross(in.s);
-  const CMat3T<T> ss = (in.s * in.s.transpose()).template cast<std::complex<T>>();
-  const CMat3T<T> pp = (p_out * in.p.transpose()).template cast<std::complex<T>>();
-  const CMat3T<T> kk = (k_out * k_in.transpose()).template cast<std::complex<T>>();
+  const CMat3T<T> ss = detail::outer(in.s, in.s).template cast<std::complex<T>>();
+  const CMat3T<T> pp = detail::outer(p_out, in.p).template cast<std::complex<T>>();
+  const CMat3T<T> kk = detail::outer(k_out, k_in).template cast<std::complex<T>>();
   return a_s * ss + a_p * pp + kk;
 }
 
@@ -124,7 +140,8 @@ template <math::Real T>
   const PrtBasis<T> in = prt_basis(k_in, normal);
   const math::Vec3T<T> p_out = k_out.cross(in.s);
   const T sign = reflection ? T(-1) : T(1);
-  return in.s * in.s.transpose() + sign * p_out * in.p.transpose() + k_out * k_in.transpose();
+  const math::Vec3T<T> signed_p_out = sign * p_out;
+  return detail::outer(in.s, in.s) + detail::outer(signed_p_out, in.p) + detail::outer(k_out, k_in);
 }
 
 }  // namespace rtt::polar
