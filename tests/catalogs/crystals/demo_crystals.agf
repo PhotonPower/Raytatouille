@@ -1,0 +1,15 @@
+CC Raytatouille test catalogue: one uniaxial crystal as the pair X / X-E (#129, ADR 0026)
+! Synthetic data, chosen for the tests; not a real crystal and not from any manufacturer or
+! Zemax catalogue. DEMO holds n_O, DEMO-E holds n_E (the convention of birefringent.agf).
+! Formula 2 (Sellmeier 1): n^2 - 1 = sum K_i lambda^2 / (lambda^2 - L_i), lambda in um.
+! N(d) and V(d) in the NM records are computed from these coefficients.
+NM DEMO 2 0 1.609521 27.009 0 0
+ED 0.000000 0.000000 0.000000 0.000000 0
+CD 1.2 0.012 0.3 0.05 1.0 100.0 0 0 0 0
+TD 0 0 0 0 0 0 20.0
+LD 0.4 2.0
+NM DEMO-E 2 0 1.482132 38.501 0 0
+ED 0.000000 0.000000 0.000000 0.000000 0
+CD 1.0 0.010 0.15 0.04 0.8 100.0 0 0 0 0
+TD 0 0 0 0 0 0 20.0
+LD 0.35 1.5

@@ -78,7 +78,8 @@ class Material {
                                                     double temperature_c,
                                                     double pressure_atm);
 
-struct AgfCatalog;  // rtt/material/agf.hpp
+struct AgfCatalog;       // rtt/material/agf.hpp
+class UniaxialMaterial;  // rtt/material/uniaxial.hpp
 
 /// Thrown by MaterialLibrary::resolve for references that are unknown or malformed.
 class UnknownMaterial : public std::runtime_error {
@@ -116,6 +117,15 @@ class MaterialLibrary {
   /// @return the material; never null and kept alive independently of the library
   /// @throws UnknownMaterial if the reference is unknown or malformed
   [[nodiscard]] std::shared_ptr<const Material> resolve(std::string_view reference) const;
+
+  /// Uniaxial crystal from two references (ADR 0026, point 1): each part through resolve(), so
+  /// with the same cache and the same objects. Include rtt/material/uniaxial.hpp to call it.
+  /// @param ordinary      reference of the ordinary principal index n_O, e.g. "KAT:X"
+  /// @param extraordinary reference of the extraordinary principal index n_E, e.g. "KAT:X-E"
+  /// @throws UnknownMaterial as resolve(), with the message prefixed by "ordinary: " or
+  ///         "extraordinary: " for the part that failed (ordinary first)
+  [[nodiscard]] UniaxialMaterial resolve_uniaxial(std::string_view ordinary,
+                                                  std::string_view extraordinary) const;
 
   /// Registers a material under a name; resolve(name) then returns exactly this object.
   /// @param name     reference string, e.g. "SCHOTT:N-BK7"; not empty, not VACUUM, AIR or
