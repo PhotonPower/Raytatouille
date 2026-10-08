@@ -4,8 +4,9 @@ ctest sets RTT_REFERENCE_DIR, RTT_CATALOG_DIR and RTT_PY_REFERENCE_EXE; without 
 against an installed package from a source checkout) the directories of the repository are
 used and the bitwise comparison with C++ is skipped.
 
-Every test runs under a watchdog (#35): a test that takes longer than RTT_PY_TEST_TIMEOUT
-seconds (default 300) prints the tracebacks of all threads and ends the process with status 1.
+Every test runs under a watchdog (#35): if a test takes longer than RTT_PY_TEST_TIMEOUT
+seconds (default 300; 0 or less switches the watchdog off), the watchdog prints the tracebacks
+of all threads and ends the process with status 1.
 """
 
 from __future__ import annotations
@@ -48,8 +49,12 @@ def watchdog(request: pytest.FixtureRequest) -> Iterator[None]:
     faulthandler's watchdog is a C thread: it fires also while another thread holds the GIL in
     C code, e.g. a binding that waits for a worker which waits for the GIL (#83). pytest-timeout
     would not: its timer thread and its SIGALRM handler both run Python code, which needs the
-    GIL.
+    GIL. As a function-scoped fixture it covers the test and its function-scoped fixtures, not
+    imports, collection or fixtures of a wider scope.
     """
+    if TEST_TIMEOUT <= 0:
+        yield
+        return
     faulthandler.dump_traceback_later(
         TEST_TIMEOUT, exit=True, file=request.config.stash[_WATCHDOG_FD]
     )
