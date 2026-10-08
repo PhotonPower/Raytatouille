@@ -48,9 +48,17 @@ class PatchResult:
 def _text(patch: Patch) -> str:
     if isinstance(patch, str):
         return patch
+    if isinstance(patch, Mapping) or not isinstance(patch, Sequence):
+        raise TypeError("patch must be a list of operations (or its JSON text), not "
+                        f"{type(patch).__name__}; wrap a single operation in a list")
+    ops: list[dict[str, Any]] = []
+    for op in patch:
+        if not isinstance(op, Mapping):
+            raise TypeError(f"each operation of a patch must be a dict, not {type(op).__name__}")
+        ops.append(dict(op))
     # allow_nan=True: NaN and infinity become invalid JSON that the C++ parser reports as
     # edit.patch_invalid, the only error path for a bad patch (ADR 0024 addendum).
-    return json.dumps([dict(op) for op in patch], allow_nan=True)
+    return json.dumps(ops, allow_nan=True)
 
 
 def apply_patch_with_inverse(system: System, patch: Patch, *,
@@ -63,7 +71,12 @@ def apply_patch_with_inverse(system: System, patch: Patch, *,
     and is meant for the inverse of an accepted patch (undo, redo): it skips the check of
     ``validate``.
 
-    Raises EditError if the patch cannot be applied, ValueError for an unknown ``check``.
+    ``patch`` is a LIST of operations (dicts) whose values are JSON values: int, float, str,
+    bool, None, list, dict. Convert NumPy scalars with ``.item()`` first. It may also be the
+    JSON text of such a list.
+
+    Raises EditError if the patch cannot be applied, TypeError if ``patch`` is not a list (e.g.
+    a single operation), ValueError for an unknown ``check``.
     """
     if check not in ("no_new_errors", "structure_only"):
         raise ValueError(f"check must be 'no_new_errors' or 'structure_only', got {check!r}")
@@ -114,7 +127,8 @@ class Editor:
 
     @property
     def system(self) -> System:
-        """A copy of the current system."""
+        """A copy of the current system. The copy goes through the canonical JSON text, so a
+        value of -0.0 that equals its default (0.0) comes back as +0.0 (physically the same)."""
         return System.from_json(self._system.to_json())
 
     @property
@@ -139,9 +153,10 @@ class Editor:
         return copy.deepcopy([patch for patch, _ in self._undo])
 
     def apply(self, patch: Patch) -> None:
-        """Applies an RFC 6902 patch as one undo step; drops the redo entries.
+        """Applies an RFC 6902 patch as one undo step; drops the redo entries. ``patch`` is a
+        list of operations with JSON values (see apply_patch_with_inverse) or its JSON text.
 
-        Raises EditError (the Editor is unchanged)."""
+        Raises EditError, or TypeError if ``patch`` is not a list (the Editor is unchanged)."""
         # The text goes to the strict C++ parser unchanged (duplicate keys, invalid JSON and
         # NaN are edit.patch_invalid); the history keeps what was applied, as plain JSON.
         text = _text(patch)
@@ -218,13 +233,18 @@ class Editor:
 
         Raises ValueError if the base has another schema major.minor than this build (the
         pointers of the patches belong to that version), EditError if a patch fails."""
-        base = str(data["base"])
-        version = str(json.loads(base)["schema_version"])
+        try:
+            base = str(data["base"])
+            version = str(json.loads(base)["schema_version"])
+            patches = list(data["patches"])
+        except (KeyError, TypeError, ValueError) as e:
+            raise ValueError("not an exported Editor history: needs \"base\" (system JSON text "
+                             f"with a schema_version) and \"patches\" ({e})") from e
         ours = System().schema_version
         if _major_minor(version) != _major_minor(ours):
             raise ValueError(f"history of schema version {version}; this build edits {ours} "
                              "(the patches address the edit form of their version)")
         editor = cls(System.from_json(base))
-        for patch in data["patches"]:
+        for patch in patches:
             editor.apply(patch)
         return editor

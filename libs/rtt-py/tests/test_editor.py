@@ -70,6 +70,11 @@ def test_edit_error() -> None:
     assert nan.value.code == "edit.patch_invalid"
     with pytest.raises(ValueError):
         rt.apply_patch(s, [], check="sometimes")  # type: ignore[arg-type]
+    # A single operation instead of a list is a clear TypeError.
+    with pytest.raises(TypeError, match="list of operations"):
+        rt.apply_patch(s, {"op": "remove", "path": "/name"})  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="list of operations"):
+        rt.Editor(s).apply({"op": "remove", "path": "/name"})  # type: ignore[arg-type]
 
 
 # --------------------------------------------------------------------- Editor -----
@@ -126,9 +131,13 @@ def test_editor_on_every_reference_system(file: Path) -> None:
     ed.insert("/fields/points/-", {"y": 0.5})
     ed.remove("/root/pose")
     ed.move("/wavelengths/0", "/wavelengths/-")
+    after = canonical(ed.system)
     for _ in range(4):
         ed.undo()
     assert canonical(ed.system) == canonical(s)
+    for _ in range(4):
+        ed.redo()
+    assert canonical(ed.system) == after
 
 
 def test_set_on_a_param_keeps_variable_and_pickup() -> None:
@@ -288,6 +297,13 @@ def test_replay_uses_the_full_check() -> None:
     with pytest.raises(rt.EditError) as info:
         rt.Editor.from_history(data)
     assert info.value.code == "surface.id_duplicate"
+
+
+def test_replay_rejects_data_that_is_no_history() -> None:
+    for data in ({}, {"base": "not json", "patches": []}, {"base": "{}", "patches": []},
+                 {"base": rt.System().to_json()}):
+        with pytest.raises(ValueError, match="not an exported Editor history"):
+            rt.Editor.from_history(data)
 
 
 def test_replay_rejects_another_format_version() -> None:
