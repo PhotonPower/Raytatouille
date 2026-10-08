@@ -1,0 +1,121 @@
+{
+  "schema_version": "0.2.0",
+  "name": "M4 acceptance: Michelson interferometer, test arm 7.5 mm longer, both output ports",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [
+    {"um": 0.6328, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 5.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "interferometer",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "pose": {"position": [0.0, 0.0, 10.0]},
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 5.0}
+          }
+        ]
+      },
+      {
+        "type": "thin_element",
+        "name": "beam splitter",
+        "pose": {"position": [0.0, 0.0, 50.0], "rotation_deg": [45.0, 0.0, 0.0]},
+        "surfaces": [
+          {
+            "id": "BS",
+            "aperture": {"type": "circular", "radius": 12.5},
+            "interaction": {"type": "ideal_beam_splitter"}
+          }
+        ]
+      },
+      {
+        "type": "mirror",
+        "name": "reference mirror",
+        "pose": {"position": [0.0, 0.0, 100.0]},
+        "surfaces": [
+          {
+            "id": "M1",
+            "aperture": {"type": "circular", "radius": 12.5},
+            "interaction": {"type": "ideal_mirror"}
+          }
+        ]
+      },
+      {
+        "type": "mirror",
+        "name": "test mirror",
+        "pose": {"position": [0.0, 57.5, 50.0], "rotation_deg": [-90.0, 0.0, 0.0]},
+        "surfaces": [
+          {
+            "id": "M2",
+            "aperture": {"type": "circular", "radius": 12.5},
+            "interaction": {"type": "ideal_mirror"}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "camera",
+        "pose": {"position": [0.0, -50.0, 50.0], "rotation_deg": [-90.0, 0.0, 0.0]},
+        "surfaces": [
+          {
+            "id": "DET",
+            "aperture": {"type": "rectangular", "half_width_x": 4.0, "half_width_y": 3.0}
+          }
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {
+      "name": "reference arm",
+      "events": [
+        {"surface": "STO", "kind": "transmit"},
+        {"surface": "BS", "kind": "transmit"},
+        {"surface": "M1", "kind": "reflect"},
+        {"surface": "BS", "kind": "reflect"},
+        {"surface": "DET", "kind": "transmit"}
+      ]
+    },
+    {
+      "name": "test arm",
+      "events": [
+        {"surface": "STO", "kind": "transmit"},
+        {"surface": "BS", "kind": "reflect"},
+        {"surface": "M2", "kind": "reflect"},
+        {"surface": "BS", "kind": "transmit"},
+        {"surface": "DET", "kind": "transmit"}
+      ]
+    },
+    {
+      "name": "reference arm, return",
+      "events": [
+        {"surface": "STO", "kind": "transmit"},
+        {"surface": "BS", "kind": "transmit"},
+        {"surface": "M1", "kind": "reflect"},
+        {"surface": "BS", "kind": "transmit"},
+        {"surface": "STO", "kind": "transmit"}
+      ]
+    },
+    {
+      "name": "test arm, return",
+      "events": [
+        {"surface": "STO", "kind": "transmit"},
+        {"surface": "BS", "kind": "reflect"},
+        {"surface": "M2", "kind": "reflect"},
+        {"surface": "BS", "kind": "reflect"},
+        {"surface": "STO", "kind": "transmit"}
+      ]
+    }
+  ]
+}
