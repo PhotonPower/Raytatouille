@@ -102,7 +102,8 @@ std::vector<OpdPoint> opd_points(const CompiledSystem& system,
                                  std::uint16_t wavelength,
                                  const trace::PupilSampling& sampling,
                                  trace::Aiming aiming,
-                                 const Reference& ref) {
+                                 const Reference& ref,
+                                 detail::LossCounter& losses) {
   const std::uint32_t image = image_surface(system, path);
   const auto& last = system.path(path).events.back();
   const double n_image = std::abs(system.media()[last.medium_after].index[wavelength].real());
@@ -135,6 +136,9 @@ std::vector<OpdPoint> opd_points(const CompiledSystem& system,
       q.status = rays.status()[i] == trace::RayStatus::Alive ? trace::RayStatus::Vignetted
                                                              : rays.status()[i];
     }
+    // Counted with the status of the point, so that losses agree with arrived and vignetted
+    // (a ray on the image surface that misses the reference sphere is Vignetted there).
+    losses.add_ray(q.status, rays.last_surface()[i]);
     points.push_back(q);
   }
   return points;
@@ -155,8 +159,11 @@ OpdMap opd_map(const compile::CompiledSystem& system,
   map.wavelength = wavelength;
   const Reference ref = make_reference(system, path, field, options.aiming);
   map.sphere = ref.sphere;
+  detail::LossCounter losses(system, path, options.lost_warning_fraction);
   map.points = opd_points(system, path, field, wavelength, trace::GridPupil{options.grid},
-                          options.aiming, ref);
+                          options.aiming, ref, losses);
+  map.losses = losses.result();
+  map.warnings = losses.warnings();
 
   // Statistics over the arrived points, serial in grid order: mean, standard deviation
   // (piston removed, tilt kept), peak to valley.
@@ -197,10 +204,13 @@ OpdFan opd_fan(const compile::CompiledSystem& system,
   fan.wavelength = wavelength;
   const Reference ref = make_reference(system, path, field, options.aiming);
   fan.sphere = ref.sphere;
+  detail::LossCounter losses(system, path, options.lost_warning_fraction);
   fan.tangential = opd_points(system, path, field, wavelength, trace::FanYPupil{options.fan_points},
-                              options.aiming, ref);
+                              options.aiming, ref, losses);
   fan.sagittal = opd_points(system, path, field, wavelength, trace::FanXPupil{options.fan_points},
-                            options.aiming, ref);
+                            options.aiming, ref, losses);
+  fan.losses = losses.result();
+  fan.warnings = losses.warnings();
   return fan;
 }
 

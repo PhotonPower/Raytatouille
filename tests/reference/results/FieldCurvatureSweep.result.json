@@ -1,0 +1,73 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.0",
+ "type": "FieldCurvatureSweep",
+ "data": {
+  "fraction": {
+   "dtype": "float64",
+   "shape": [
+    3
+   ],
+   "values": [
+    0.0,
+    0.5,
+    1.0
+   ]
+  },
+  "field_x": {
+   "dtype": "float64",
+   "shape": [
+    3
+   ],
+   "values": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "field_y": {
+   "dtype": "float64",
+   "shape": [
+    3
+   ],
+   "values": [
+    0.0,
+    2.5,
+    5.0
+   ]
+  },
+  "tangential": {
+   "dtype": "float64",
+   "shape": [
+    3
+   ],
+   "values": [
+    0.07915045856248071,
+    -0.2745232878958177,
+    -1.328409352265382
+   ]
+  },
+  "sagittal": {
+   "dtype": "float64",
+   "shape": [
+    3
+   ],
+   "values": [
+    0.07915045856248071,
+    -0.08071022816413631,
+    -0.5589283606064726
+   ]
+  },
+  "astigmatism": {
+   "dtype": "float64",
+   "shape": [
+    3
+   ],
+   "values": [
+    0.0,
+    -0.1938130597316814,
+    -0.7694809916589094
+   ]
+  }
+ }
+}

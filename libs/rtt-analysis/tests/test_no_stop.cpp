@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <string>
 
+#include "rtt/analysis/chromatic.hpp"
+#include "rtt/analysis/field.hpp"
 #include "rtt/analysis/opd.hpp"
 #include "rtt/analysis/spot.hpp"
 #include "rtt/compile/compiled_system.hpp"
@@ -65,4 +67,16 @@ TEST_CASE("NoStopError names the path and points at it", "[analysis][no-stop]") 
     REQUIRE(e.path_name() == cs.path(PathId{1}).name);
     REQUIRE(e.location() == "/paths/1");
   }
+}
+
+TEST_CASE("the colour and field analyses throw NoStopError as well", "[analysis][no-stop]") {
+  // Second review of #98 (H2): they aim through rtt::trace::aim_ray. Argument checks of their
+  // own (e.g. an on-axis field for distortion) may report first; no ray is traced before
+  // require_stop.
+  const CompiledSystem cs = compiled("m1/paraboloid_mirror.rtt.json");
+  const rtt::model::Field off_axis{0.0, 0.1, 1.0};
+  REQUIRE_THROWS_AS(rtt::analysis::distortion_at(cs, PathId{0}, off_axis, 0), NoStopError);
+  REQUIRE_THROWS_AS(rtt::analysis::field_curvature_at(cs, PathId{0}, off_axis, 0), NoStopError);
+  REQUIRE_THROWS_AS(rtt::analysis::lateral_colour(cs, PathId{0}, 0), NoStopError);
+  REQUIRE_THROWS_AS(rtt::analysis::longitudinal_colour(cs, PathId{0}), NoStopError);
 }

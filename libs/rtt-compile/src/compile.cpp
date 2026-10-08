@@ -71,6 +71,7 @@ class Compiler {
     for (std::size_t p = 0; p < system_.paths.size(); ++p) {
       paths_.push_back(build_path(system_.paths[p], idx("/paths", p)));
     }
+    check_stop_on_paths();
     check_wavelength_ranges();
   }
 
@@ -91,6 +92,28 @@ class Compiler {
     auto& list = code.severity() == model::Severity::Error ? errors_ : warnings_;
     list.push_back(
         {code.severity(), std::move(location), std::move(message), std::string(code.str())});
+  }
+
+  /// Warning for every path that does not visit the stop element of a system that has one
+  /// (ADR 0023): aiming, pupils, Seidel sums and OPD on such a path throw NoStopError.
+  void check_stop_on_paths() {
+    const auto is_stop = [&](std::uint32_t surface) {
+      return surfaces_[surface].element_kind == model::ElementKind::Stop;
+    };
+    const auto stop = std::find_if(
+        surfaces_.begin(), surfaces_.end(),
+        [](const CompiledSurface& s) { return s.element_kind == model::ElementKind::Stop; });
+    if (stop == surfaces_.end()) return;
+    for (std::size_t p = 0; p < paths_.size(); ++p) {
+      const auto& events = paths_[p].events;
+      if (std::any_of(events.begin(), events.end(),
+                      [&](const CompiledEvent& e) { return is_stop(e.surface); })) {
+        continue;
+      }
+      report("stop.not_on_path", idx("/paths", p),
+             "path '" + paths_[p].name + "' does not visit the stop '" + stop->element_name +
+                 "': aiming, pupils, Seidel sums and OPD on it need a stop (NoStopError)");
+    }
   }
 
   /// Index of the medium for `reference`, resolving and evaluating it on first use.

@@ -1,0 +1,30 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.0",
+ "type": "Diattenuation",
+ "data": {
+  "value": 0.6,
+  "maximum": 1.0,
+  "minimum": 0.5,
+  "axis": {
+   "dtype": "complex128",
+   "shape": [
+    3
+   ],
+   "values": [
+    [
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0
+    ]
+   ]
+  }
+ }
+}

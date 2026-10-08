@@ -51,3 +51,13 @@ TEST_CASE("find_code returns the registry entry or nullptr", "[diagnostics]") {
   REQUIRE(find_code("") == nullptr);
   REQUIRE(find_code("PATHS.UNKNOWN_SURFACE") == nullptr);  // case-sensitive
 }
+
+TEST_CASE("every code names its producer", "[diagnostics]") {
+  for (const CodeInfo& info : kCodes) {
+    INFO(info.code);
+    REQUIRE(
+        (info.producer == "validate" || info.producer == "compile" || info.producer == "analysis"));
+  }
+  REQUIRE(find_code("stop.not_on_path")->producer == "compile");
+  REQUIRE(find_code("rays.lost")->producer == "analysis");
+}

@@ -29,8 +29,10 @@ class NoStopError : public std::invalid_argument {
 };
 
 /// The one check for "the path has a stop" (ADR 0022): a path has a stop if one of its events
-/// is at a surface of a Stop element. Called first by everything that needs the stop (aimed ray
-/// sources, Seidel sums, OPD), so that all of them throw the same error.
+/// is at a surface of a Stop element. Called by everything that needs the stop (aimed ray
+/// sources, Seidel sums, OPD) before any ray is traced, so that all of them throw the same
+/// error. Their own argument checks (path, field, wavelength, rotational symmetry, an off-axis
+/// field for distortion) may report first.
 /// @throws NoStopError if the path has no stop
 /// @throws std::out_of_range if `path` does not belong to `system`
 void require_stop(const CompiledSystem& system, PathId path);

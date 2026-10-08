@@ -1,0 +1,901 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/PhotonPower/Raytatouille/schema/raytatouille-result.schema.json",
+  "title": "Raytatouille result",
+  "description": "Result of an analysis, a paraxial calculation, a trace or a catalogue query, written by to_json() of the Python package (ADR 0023). The reference is raytatouille.results.load_json; this schema is for external tools. Not expressible here: an array has exactly prod(shape) values.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "schema_version",
+    "type",
+    "data"
+  ],
+  "properties": {
+    "format": {
+      "const": "raytatouille-result"
+    },
+    "schema_version": {
+      "type": "string",
+      "pattern": "^0\\.1\\.[0-9]+$"
+    },
+    "type": {
+      "enum": [
+        "SpotDiagram",
+        "RayFan",
+        "OpdMap",
+        "OpdFan",
+        "LongitudinalColour",
+        "LateralColour",
+        "DistortionSweep",
+        "DistortionPoint",
+        "FieldCurvatureSweep",
+        "FieldCurvaturePoint",
+        "FirstOrder",
+        "Seidel",
+        "TraceStats",
+        "RayBatch",
+        "RayPaths",
+        "Diattenuation",
+        "Diattenuations",
+        "Retardance",
+        "Retardances",
+        "GlassInfo",
+        "GlassMap",
+        "SurfaceLayout",
+        "CompiledElement",
+        "Diagnostic"
+      ]
+    },
+    "data": {
+      "$ref": "#/$defs/object"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "CompiledElement"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "name",
+              "first_surface",
+              "surface_count",
+              "media",
+              "segmented"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "Diagnostic"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "severity",
+              "code",
+              "location",
+              "message"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "Diattenuation"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "value",
+              "maximum",
+              "minimum",
+              "axis"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "Diattenuations"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "value",
+              "maximum",
+              "minimum",
+              "axis"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "DistortionPoint"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "fraction",
+              "field",
+              "real_height",
+              "paraxial_height",
+              "percent"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "DistortionSweep"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "fraction",
+              "field_x",
+              "field_y",
+              "real_height",
+              "paraxial_height",
+              "percent"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "FieldCurvaturePoint"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "fraction",
+              "field",
+              "tangential",
+              "sagittal",
+              "astigmatism"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "FieldCurvatureSweep"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "fraction",
+              "field_x",
+              "field_y",
+              "tangential",
+              "sagittal",
+              "astigmatism"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "FirstOrder"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "object_index",
+              "image_index",
+              "image_direction",
+              "power",
+              "efl",
+              "front_focal_length",
+              "rear_focal_length",
+              "ffl",
+              "bfl",
+              "front_focal_z",
+              "rear_focal_z",
+              "front_principal_z",
+              "rear_principal_z",
+              "image_z",
+              "lateral_magnification",
+              "angular_magnification",
+              "entrance_pupil",
+              "exit_pupil"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "GlassInfo"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "reference",
+              "catalog",
+              "name",
+              "line",
+              "formula",
+              "supported",
+              "unsupported_reason",
+              "coefficients",
+              "nd",
+              "vd",
+              "status",
+              "exclude_substitution",
+              "melt_frequency",
+              "comment",
+              "wavelength_range_um",
+              "thermal",
+              "tce_m30_70",
+              "tce_100_300",
+              "density_g_per_cm3",
+              "dpgf",
+              "ignore_thermal_expansion",
+              "mechanical",
+              "relative_cost",
+              "climate_resistance",
+              "stain_resistance",
+              "acid_resistance",
+              "alkali_resistance",
+              "phosphate_resistance",
+              "transmission"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "GlassMap"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "reference",
+              "nd",
+              "vd",
+              "status"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "LateralColour"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "field",
+              "chief",
+              "offset"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "LongitudinalColour"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "pair",
+              "foci",
+              "paraxial",
+              "real"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "OpdFan"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "field",
+              "wavelength",
+              "sphere",
+              "tangential",
+              "sagittal",
+              "losses",
+              "warnings"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "OpdMap"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "field",
+              "wavelength",
+              "sphere",
+              "points",
+              "rms",
+              "pv",
+              "arrived",
+              "vignetted",
+              "losses",
+              "warnings"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RayBatch"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "pos_x",
+              "pos_y",
+              "pos_z",
+              "dir_x",
+              "dir_y",
+              "dir_z",
+              "wl",
+              "opl",
+              "weight",
+              "field",
+              "pupil_x",
+              "pupil_y",
+              "last_surface",
+              "status",
+              "prt"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RayFan"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "field",
+              "wavelength",
+              "image_surface",
+              "chief",
+              "tangential",
+              "sagittal",
+              "losses",
+              "warnings"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RayPaths"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "slots",
+              "n_events",
+              "ray_count",
+              "ray_indices",
+              "event_surfaces",
+              "position",
+              "direction",
+              "opl",
+              "weight",
+              "status",
+              "count",
+              "lost_at"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "Retardance"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "value",
+              "fast_axis"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "Retardances"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "value",
+              "fast_axis"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "Seidel"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "surfaces",
+              "sum",
+              "lagrange",
+              "marginal",
+              "chief",
+              "chromatic"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "SpotDiagram"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "field",
+              "wavelength",
+              "image_surface",
+              "chief",
+              "stats",
+              "rays_launched",
+              "rays_arrived",
+              "vignetted_fraction",
+              "losses",
+              "warnings",
+              "x",
+              "y",
+              "wavelengths",
+              "weight"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "SurfaceLayout"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "id",
+              "element",
+              "kind",
+              "rotation",
+              "translation",
+              "shape",
+              "curvature",
+              "conic_constant",
+              "coefficients",
+              "max_radius",
+              "aperture",
+              "medium_front",
+              "medium_back"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "TraceStats"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "rays"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "value": {
+      "anyOf": [
+        {
+          "type": [
+            "null",
+            "boolean",
+            "number",
+            "string"
+          ]
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/value"
+          }
+        },
+        {
+          "$ref": "#/$defs/ndarray"
+        },
+        {
+          "$ref": "#/$defs/special_float"
+        },
+        {
+          "$ref": "#/$defs/complex"
+        },
+        {
+          "$ref": "#/$defs/object"
+        }
+      ]
+    },
+    "object": {
+      "description": "Nested result or data object; the keys dtype, float and complex are reserved for the encodings below.",
+      "type": "object",
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "dtype"
+            ]
+          },
+          {
+            "required": [
+              "float"
+            ]
+          },
+          {
+            "required": [
+              "complex"
+            ]
+          }
+        ]
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/value"
+      }
+    },
+    "special_float": {
+      "description": "A float scalar NaN or +-infinity.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "float"
+      ],
+      "properties": {
+        "float": {
+          "enum": [
+            "NaN",
+            "Infinity",
+            "-Infinity"
+          ]
+        }
+      }
+    },
+    "complex": {
+      "description": "A complex scalar [re, im].",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "complex"
+      ],
+      "properties": {
+        "complex": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "enum": [
+                  "NaN",
+                  "Infinity",
+                  "-Infinity"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    "ndarray": {
+      "description": "NumPy array, values in C order; floats may be NaN, Infinity, -Infinity as strings; complex values as [re, im].",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dtype",
+        "shape",
+        "values"
+      ],
+      "properties": {
+        "dtype": {
+          "enum": [
+            "bool",
+            "int8",
+            "int16",
+            "int32",
+            "int64",
+            "uint8",
+            "uint16",
+            "uint32",
+            "uint64",
+            "float32",
+            "float64",
+            "complex64",
+            "complex128"
+          ]
+        },
+        "shape": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "values": {
+          "type": "array"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "dtype": {
+                "enum": [
+                  "float32",
+                  "float64"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "values": {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "enum": [
+                        "NaN",
+                        "Infinity",
+                        "-Infinity"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "dtype": {
+                "enum": [
+                  "complex64",
+                  "complex128"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "values": {
+                "items": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "enum": [
+                          "NaN",
+                          "Infinity",
+                          "-Infinity"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "dtype": {
+                "const": "bool"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "values": {
+                "items": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "dtype": {
+                "pattern": "^u?int"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "values": {
+                "items": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

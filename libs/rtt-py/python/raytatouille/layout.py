@@ -17,12 +17,12 @@ shape (e.g. the hemisphere of a sphere): give lens surfaces apertures for drawin
 
 from __future__ import annotations
 
-from typing import NamedTuple, Union
+from typing import Any, NamedTuple, Union
 
 import numpy as np
 import numpy.typing as npt
 
-from . import _core
+from . import _core, results
 from ._core import CompiledElement, CompiledSystem
 
 __all__ = [
@@ -75,6 +75,14 @@ class SurfaceLayout(NamedTuple):
     aperture: tuple[str, dict[str, float]] | None
     medium_front: int
     medium_back: int
+
+    def to_dict(self) -> dict[str, Any]:
+        """The data as plain Python values (ADR 0023, raytatouille.results)."""
+        return results.to_dict(self)
+
+    def to_json(self, indent: int | None = None) -> str:
+        """JSON text in the format raytatouille-result (ADR 0023)."""
+        return results.to_json(self, indent)
 
     @property
     def to_global(self) -> FloatArray:

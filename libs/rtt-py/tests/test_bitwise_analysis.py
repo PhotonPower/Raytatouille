@@ -199,6 +199,9 @@ def compiled_systems() -> dict[str, rt.CompiledSystem]:
     return systems()
 
 
+# vignetted on purpose: the rays.lost warning is expected
+@pytest.mark.filterwarnings(
+    r"ignore:warning \[rays\.lost\]:raytatouille.errors.RaytatouilleWarning")
 @pytest.mark.parametrize("threads", [1, 4], ids=lambda t: f"py{t}threads")
 @pytest.mark.parametrize("name", list(CASES))
 def test_analysis_equals_cpp_bitwise(name: str, threads: int, cpp_dir: Path,
@@ -213,6 +216,9 @@ def test_analysis_equals_cpp_bitwise(name: str, threads: int, cpp_dir: Path,
         assert actual.tobytes() == expected.tobytes(), array
 
 
+# vignetted on purpose: the rays.lost warning is expected
+@pytest.mark.filterwarnings(
+    r"ignore:warning \[rays\.lost\]:raytatouille.errors.RaytatouilleWarning")
 def test_vignetting_cases_separate_status(compiled_systems: dict[str, rt.CompiledSystem]) -> None:
     # The comparison must see rays that do not arrive (lesson of #51).
     spot = CASES["spot_vignetted"](compiled_systems, 1)

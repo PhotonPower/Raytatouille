@@ -33,6 +33,15 @@ def test_materials_example(capsys: pytest.CaptureFixture[str]) -> None:
     assert "Catalogues: SCHOTT, SCHOTT_M2" in out and "SCHOTT_M2:N-LAK9" in out
 
 
+def test_results_example(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    # main() returns 1 if the JSON round trip changes the data.
+    namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "results.py"))
+    assert namespace["main"](str(tmp_path)) == 0
+    out = capsys.readouterr().out
+    assert "SpotDiagram written to" in out and "EFL " in out and "arrived" in out
+    assert (tmp_path / "spot.result.json").is_file()
+
+
 def test_ray_paths_example(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     # main() returns 1 if a last recorded slot differs from the final ray state.
     namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "ray_paths.py"))

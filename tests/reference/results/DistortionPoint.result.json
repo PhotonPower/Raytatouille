@@ -1,0 +1,16 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.0",
+ "type": "DistortionPoint",
+ "data": {
+  "fraction": 0.8,
+  "field": {
+   "x": 0.0,
+   "y": 4.0,
+   "weight": 1.0
+  },
+  "real_height": 6.989627631350508,
+  "paraxial_height": 6.99301709873984,
+  "percent": -0.04846931362348279
+ }
+}

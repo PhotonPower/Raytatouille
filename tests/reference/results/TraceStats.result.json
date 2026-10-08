@@ -1,0 +1,16 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.0",
+ "type": "TraceStats",
+ "data": {
+  "rays": [
+   18,
+   0,
+   1,
+   0,
+   0,
+   0,
+   0
+  ]
+ }
+}

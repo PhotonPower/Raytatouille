@@ -1,0 +1,31 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.0",
+ "type": "FirstOrder",
+ "data": {
+  "object_index": 1.0002724328435049,
+  "image_index": 1.0002724328435049,
+  "image_direction": 1,
+  "power": 0.009994728466650447,
+  "efl": 100.05274313721621,
+  "front_focal_length": 100.08000079052954,
+  "rear_focal_length": 100.08000079052954,
+  "ffl": 100.08000079052954,
+  "bfl": 97.44215154779879,
+  "front_focal_z": -95.08000079052954,
+  "rear_focal_z": 106.44215154779879,
+  "front_principal_z": 5.0,
+  "rear_principal_z": 6.362150757269248,
+  "image_z": 106.44215154779879,
+  "lateral_magnification": null,
+  "angular_magnification": 0.9500399684202127,
+  "entrance_pupil": {
+   "z": 0.0,
+   "diameter": 20.0
+  },
+  "exit_pupil": {
+   "z": 1.0992142849076316,
+   "diameter": 21.0517458894464
+  }
+ }
+}

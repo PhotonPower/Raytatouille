@@ -1,0 +1,56 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.0",
+ "type": "LateralColour",
+ "data": {
+  "field": 2,
+  "chief": {
+   "x": {
+    "dtype": "float64",
+    "shape": [
+     3
+    ],
+    "values": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "y": {
+    "dtype": "float64",
+    "shape": [
+     3
+    ],
+    "values": [
+     8.742645926433417,
+     8.74264266878194,
+     8.742641292033696
+    ]
+   }
+  },
+  "offset": {
+   "x": {
+    "dtype": "float64",
+    "shape": [
+     3
+    ],
+    "values": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "y": {
+    "dtype": "float64",
+    "shape": [
+     3
+    ],
+    "values": [
+     3.257651476573642e-06,
+     0.0,
+     -1.3767482442972323e-06
+    ]
+   }
+  }
+ }
+}

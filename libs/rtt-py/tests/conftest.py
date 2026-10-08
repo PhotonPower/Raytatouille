@@ -16,6 +16,12 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    # A RaytatouilleWarning that a test does not expect (pytest.warns) or filter on purpose
+    # (filterwarnings mark) fails the test, so that a new, unexpected warning shows (#86).
+    config.addinivalue_line("filterwarnings", "error::raytatouille.errors.RaytatouilleWarning")
+
+
 def _directory(variable: str, default: Path) -> Path:
     value = os.environ.get(variable)
     return Path(value) if value else default

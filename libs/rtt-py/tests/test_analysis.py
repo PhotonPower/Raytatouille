@@ -151,6 +151,9 @@ def test_analysis_error(reference_dir: Path) -> None:
     assert "chief ray" in str(info.value)
 
 
+# vignetted on purpose: the rays.lost warning is expected
+@pytest.mark.filterwarnings(
+    r"ignore:warning \[rays\.lost\]:raytatouille.errors.RaytatouilleWarning")
 def test_vignetted_rays_keep_their_status(reference_dir: Path) -> None:
     data = json.loads(rt.load(reference_dir / "m2" / "paraboloid_stop.rtt.json").to_json())
     data["root"]["children"][1]["surfaces"][0]["aperture"] = {"type": "circular", "radius": 21.0}

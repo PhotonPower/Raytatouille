@@ -117,12 +117,13 @@ void make_doublet(System& s) {
   lens.segment_materials = {"CONST:1.5", "CONST:1.7"};
 }
 
-/// All diagnostics of `s`: validate() and, if it found no error, the errors of compile().
+/// All diagnostics of `s`: validate() and, if it found no error, the errors of compile() or,
+/// if it succeeds, its warnings (CompiledSystem::diagnostics(), validate's warnings included).
 std::vector<Diagnostic> diagnose(const System& s) {
   std::vector<Diagnostic> d = rtt::model::validate(s);
   if (rtt::model::has_errors(d)) return d;
   try {
-    (void)rtt::compile::compile(s, materials(), coatings());
+    return rtt::compile::compile(s, materials(), coatings()).diagnostics();
   } catch (const CompileError& e) {
     d.insert(d.end(), e.diagnostics().begin(), e.diagnostics().end());
   }
@@ -314,6 +315,50 @@ std::vector<Case> cases() {
          make_doublet(s);
          s.paths = {{"x", false, {{SurfaceId("L1.S2"), EventKind::Refract, 0}}}};
        }},
+      // Second producing sites of codes with several (second review of #98, H1).
+      {"element.surface_count", "/root/children/1/surfaces",
+       [](System& s) {
+         element(s, 1).kind = ElementKind::Plate;
+         element(s, 1).surfaces.pop_back();
+       }},
+      {"element.surface_count", "/root/children/1/surfaces",
+       [](System& s) {
+         element(s, 1).kind = ElementKind::Mirror;
+         element(s, 1).surfaces.clear();
+       }},
+      {"element.surface_count", "/root/children/0/surfaces",
+       [](System& s) { element(s, 0).surfaces.push_back(element(s, 0).surfaces[0]); }},
+      {"element.material_empty", "/root/children/1/material/0",
+       [](System& s) {
+         element(s, 1).material.reset();
+         element(s, 1).segment_materials = {""};
+       }},
+      {"interaction.axis_invalid", "/root/children/1/surfaces/0/interaction/fast_axis",
+       [](System& s) {
+         element(s, 1).surfaces[0].interaction = IdealRetarder{{0.0, 0.0, 0.0}, 0.25};
+       }},
+      {"node.name_empty", "/root/name", [](System& s) { s.root.name.clear(); }},
+      // coating.no_substrate for a lens or plate is not reachable after validate(): both need a
+      // material (element.material_missing), and an unresolved one keeps a placeholder medium.
+      {"stop.not_on_path", "/paths/1",
+       [](System& s) {
+         // The stop inside an assembly is found as well (review of #86 B).
+         rtt::model::Assembly group;
+         group.name = "front";
+         group.children.push_back(s.root.children[0]);
+         s.root.children[0] = {group};
+         s.paths.push_back({"lens only",
+                            false,
+                            {{SurfaceId("L1.S1"), EventKind::Refract, 0},
+                             {SurfaceId("L1.S2"), EventKind::Refract, 0}}});
+       }},
+      {"stop.not_on_path", "/paths/1",
+       [](System& s) {
+         s.paths.push_back({"lens only",
+                            false,
+                            {{SurfaceId("L1.S1"), EventKind::Refract, 0},
+                             {SurfaceId("L1.S2"), EventKind::Refract, 0}}});
+       }},
   };
 }
 
@@ -345,6 +390,7 @@ TEST_CASE("every registered code has a case that produces it at its location", "
     covered.insert(c.code);
   }
   for (const rtt::diagnostics::CodeInfo& info : rtt::diagnostics::kCodes) {
+    if (info.producer != "validate" && info.producer != "compile") continue;  // see rtt-analysis
     INFO("no case for " << info.code);
     REQUIRE(covered.contains(std::string(info.code)));
   }

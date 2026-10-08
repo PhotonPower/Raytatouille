@@ -29,10 +29,13 @@ class CodeInfo(NamedTuple):
 
     code: str
     severity: Severity
+    producer: str
+    """Where the code arises: "validate", "compile" or "analysis"."""
     summary: str
 
 
 #: All registered codes, sorted by code.
 CODES: dict[str, CodeInfo] = {
-    code: CodeInfo(code, severity, summary) for code, severity, summary in _core.diagnostic_codes()
+    code: CodeInfo(code, severity, producer, summary)
+    for code, severity, producer, summary in _core.diagnostic_codes()
 }

@@ -33,6 +33,7 @@ nanobind_add_module(_core NB_STATIC NB_SUPPRESS_WARNINGS
   src/bind_trace.cpp
   src/bind_analysis.cpp
   src/bind_polar.cpp
+  src/bind_results.cpp
   src/polar_batch.cpp
   src/polar_matrix.cpp
   src/bind_layout.cpp)
@@ -57,6 +58,7 @@ set(RTT_PY_SOURCES
   python/raytatouille/paraxial.py
   python/raytatouille/plot.py
   python/raytatouille/polar.py
+  python/raytatouille/results.py
   python/raytatouille/trace.py
   python/raytatouille/py.typed)
 set(RTT_PY_COPIES "")
