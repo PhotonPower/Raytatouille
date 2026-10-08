@@ -40,7 +40,9 @@ def test_michelson_main_form(michelson: rt.CompiledSystem) -> None:
     # #122: the four paths carry R T, T R, T T, R R = 0.25 each (ideal splitter, R = 0.5), so
     # every start ray adds up to (R + T)^2 = 1; the arms differ by 2 Delta = 15 mm (VACUUM).
     start = collimated_bundle()
-    before = {name: np.array(getattr(start, name)) for name in ("pos_x", "pos_y", "weight")}
+    columns = ("pos_x", "pos_y", "pos_z", "dir_x", "dir_y", "dir_z", "opl", "weight", "status",
+               "last_surface")
+    before = {name: np.array(getattr(start, name)) for name in columns}
     total = np.zeros(len(start))
     for name in ("reference arm", "test arm", "reference arm, return", "test arm, return"):
         t = an.path_transmission(michelson, name, start=start)
@@ -176,3 +178,25 @@ def test_run_control(reference_dir: Path, michelson: rt.CompiledSystem) -> None:
     with pytest.raises(rt.Cancelled):
         an.opl_difference(michelson, "reference arm", "test arm", start=collimated_bundle(),
                           cancel=token)
+
+
+def test_ghost_ranking_options_and_run_control() -> None:
+    # Every keyword reaches C++ at its place: resolution_radius shows in the result and changes
+    # rho, lost_warning_fraction is checked, cancel and progress act (stages aim and trace). The
+    # singlet's ghost is defocused (r_g != r_b), so rho depends on r0; for the plate it would not.
+    g = rt.compile_with_ghosts(rt.load(REFERENCE_DIR / "m1" / "singlet_const.rtt.json"), "main")
+    default = an.ghost_ranking(g, 0, rays="hexapolar:2", threads=1)
+    wide = an.ghost_ranking(g, 0, rays="hexapolar:2", resolution_radius=0.02, threads=1)
+    assert (default.resolution_radius, wide.resolution_radius) == (0.005, 0.02)
+    assert wide.entries.relative_irradiance[0] != default.entries.relative_irradiance[0]
+    assert wide.entries.relative_power[0] == default.entries.relative_power[0]
+    with pytest.raises(ValueError):
+        an.ghost_ranking(g, 0, lost_warning_fraction=1.5)
+    stages: list[str] = []
+    an.ghost_ranking(g, 0, rays="hexapolar:2",
+                     progress=lambda done, total, stage: stages.append(stage))
+    assert set(stages) == {"aim", "trace"}
+    token = rt.CancelToken()
+    token.cancel()
+    with pytest.raises(rt.Cancelled):
+        an.ghost_ranking(g, 0, cancel=token)

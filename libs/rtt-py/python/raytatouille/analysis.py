@@ -6,7 +6,9 @@ Every function takes a System (compiled on each call with ``materials``) or a Co
 for several analyses compile once with rt.compile(). ``path`` is an index or a path name,
 ``field`` a field index, ``wavelength`` a wavelength index where None means the reference
 wavelength (in spot(): polychromatic). ``threads`` limits the worker threads; results are
-bitwise the same for every number of threads.
+bitwise the same for every number of threads. The GIL is released during a computation; do not
+change the columns of a RayBatch passed as ``start`` from another thread meanwhile (as for
+rt.trace.trace).
 
 The bundle and sweep analyses (spot, ray_fan, opd_map, opd_fan, longitudinal_colour,
 lateral_colour, distortion, field_curvature) take ``cancel`` (a CancelToken; cancel() from
