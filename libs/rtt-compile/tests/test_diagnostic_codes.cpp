@@ -296,11 +296,43 @@ std::vector<Case> cases() {
       {"crystal.optic_axis_not_allowed", "/root/children/1/optic_axis",
        [](System& s) { element(s, 1).optic_axis = std::array<double, 3>{0.0, 0.0, 1.0}; }},
       // --- compile()
-      {"crystal.unsupported", "/root/children/1/material",
+      {"crystal.unsupported", "/paths/0/events",
        [](System& s) {
          element(s, 1).material.reset();
          element(s, 1).crystal = CrystalMaterial{"CONST:1.66", "CONST:1.49"};
          element(s, 1).optic_axis = std::array<double, 3>{0.0, 1.0, 1.0};
+       }},
+      {"crystal.absorbing", "/root/children/1/material/ordinary",
+       [](System& s) {
+         element(s, 1).material.reset();
+         element(s, 1).crystal = CrystalMaterial{"CONST:1.66,0.01", "CONST:1.49"};
+         element(s, 1).optic_axis = std::array<double, 3>{0.0, 1.0, 1.0};
+       }},
+      {"crystal.interaction_unsupported", "/root/children/1/surfaces/0/interaction",
+       [](System& s) {
+         element(s, 1).material.reset();
+         element(s, 1).crystal = CrystalMaterial{"CONST:1.66", "CONST:1.49"};
+         element(s, 1).optic_axis = std::array<double, 3>{0.0, 1.0, 1.0};
+         element(s, 1).surfaces[0].interaction = IdealMirror{};
+       }},
+      {"paths.crystal_mode_required", "/paths/0/events/1",
+       [](System& s) {
+         element(s, 1).material.reset();
+         element(s, 1).crystal = CrystalMaterial{"CONST:1.66", "CONST:1.49"};
+         element(s, 1).optic_axis = std::array<double, 3>{0.0, 1.0, 1.0};
+         s.paths = {{"x",
+                     false,
+                     {{SurfaceId("STO"), EventKind::Transmit, 0},
+                      {SurfaceId("L1.S1"), EventKind::Refract, 0},
+                      {SurfaceId("L1.S2"), EventKind::Refract, 0}}}};
+       }},
+      {"paths.mode_without_crystal", "/paths/0/events/1",
+       [](System& s) {
+         s.paths = {{"x",
+                     false,
+                     {{SurfaceId("STO"), EventKind::Transmit, 0},
+                      {SurfaceId("L1.S1"), EventKind::Ordinary, 0},
+                      {SurfaceId("L1.S2"), EventKind::Refract, 0}}}};
        }},
       {"wavelengths.too_many", "/wavelengths",
        [](System& s) {

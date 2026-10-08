@@ -335,6 +335,22 @@ class Shape {
 
 **Doppelbrechung:** o- und e-Wellenvektor an der Grenzfläche; der e-Strahl läuft entlang des Poynting-Vektors, der OPL über den Wellenvektor. Amplituden aus den Eigenpolarisationen (McClain/Chipman). Der Pfad wählt `Ordinary` oder `Extraordinary`. Umgesetzt in #130 (`rtt/polar/birefringence.hpp`, Lam Gl. (2.11), (2.39), (2.41)): `uniaxial_mode` löst k = κ + βN aus dem Tangentialanteil κ (mit Beugungsterm, ADR 0025) für die o-Mode (|k| = n_O, S = k) und die e-Mode (K-Fläche, S als ihre Normale mit S·N > 0), `isotropic_from_tangential` den Austritt; dazu die Eigenpolarisationen und die PRT-Matrizen der Projektion (ADR 0026, Punkt 5). Keine reelle Lösung und streifender Austritt ergeben `std::nullopt`.
 
+**Kristalle im Pfad (ADR 0026 Punkt 4, umgesetzt in compile mit #131):** Jedes Kristallelement hat ein eigenes Medium (`CompiledMedium` mit n_O, n_E und globaler, normierter optischer Achse); jedes Ereignis im Kristall trägt die Mode seines Eintritts (`CompiledEvent::crystal_mode`). Die Medienregeln bleiben wie oben. B ist das Medium vor dem Ereignis, A danach, „jenseits“ die andere Seite der Fläche; Fehler stehen am Pointer des Ereignisses.
+
+| Fall | erlaubt | sonst |
+| --- | --- | --- |
+| Eintritt (B isotrop, A Kristall) | `ordinary` oder `extraordinary`, `order` nach ADR 0025 | `refract`: `paths.crystal_mode_required` |
+| Austritt (B Kristall, A isotrop) | `refract`, `order` nach ADR 0025 | `ordinary`/`extraordinary`: `paths.mode_without_crystal` |
+| `ordinary`/`extraordinary` an einem Element ohne Kristall | – | `paths.mode_without_crystal` |
+| Kristall → Kristall | – | `crystal.unsupported` |
+| `reflect` mit B Kristall | – | `crystal.unsupported` |
+| `reflect` von außen (jenseits Kristall) | nur mit `ideal_anti_reflection` (r = 0) | `crystal.unsupported` |
+| `transmit` mit B isotrop an einer Kristallfläche | ja (Durchgang ohne Wirkung) | – |
+| `transmit` mit B Kristall | nur `order` = 0, Mode bleibt | `crystal.unsupported` |
+| automatischer Pfad durch ein Kristallelement | – | `crystal.unsupported` (am Pfad) |
+
+Interaktionen an Kristallflächen in M4: `fresnel` und `ideal_anti_reflection`, sonst `crystal.interaction_unsupported`; ein Teil mit κ ≠ 0 bei einer Systemwellenlänge ist `crystal.absorbing`. Haben die Wellenlängenbereiche von n_O und n_E keinen gemeinsamen Bereich, meldet `material.wavelength_out_of_range` das am Material. Bis #132 endet ein Strahl an `ordinary`/`extraordinary` im Tracer mit `EventImpossible`.
+
 **Phasen und Beugung:** lokale Gittergleichung k_t,aus = k_t,ein + m·∇φ; evaneszente Ordnungen enden mit Status. Effizienz pro Ordnung als Wert oder Tabelle.
 
 **Strahlteiler:** kein eigenes Modul, sondern Kombination aus Element und Interaktion (Platte, Würfel, Pellicle, PBS). Der Pfad wählt `Reflect` oder `Refract`/`Transmit`.

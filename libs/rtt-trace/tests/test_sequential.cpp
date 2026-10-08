@@ -1,6 +1,7 @@
 #include <oneapi/tbb/task_arena.h>
 
 #include <Eigen/Geometry>
+#include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <cstddef>
@@ -305,6 +306,36 @@ TEST_CASE("a surface with diffraction efficiencies stops every order until #127"
   REQUIRE(rays.status()[0] == RayStatus::EventImpossible);
   REQUIRE(rays.last_surface()[0] == 0);
   REQUIRE((pos(rays, 0) - Vec3(0.0, 1.0, 10.0)).norm() <= 1e-12);
+}
+
+TEST_CASE("a crystal mode stops with EventImpossible until #132", "[sequential]") {
+  // #131 compiles crystal elements (ADR 0026); the tracer follows the modes from #132 on. Until
+  // then an Ordinary or Extraordinary event must not pass silently as a refraction.
+  for (const rtt::model::EventKind mode :
+       {rtt::model::EventKind::Ordinary, rtt::model::EventKind::Extraordinary}) {
+    System s = bare_system();
+    Element plate{"P",
+                  ElementKind::Plate,
+                  Pose::along_z(10.0),
+                  std::nullopt,
+                  {surface("P.S1"), surface("P.S2", 5.0)}};
+    plate.crystal = rtt::model::CrystalMaterial{"CONST:1.6584", "CONST:1.4864"};
+    plate.optic_axis = std::array<double, 3>{0.0, 1.0, 1.0};
+    s.root.children.push_back({plate});
+    s.paths = {
+        {"crystal",
+         false,
+         {{SurfaceId("P.S1"), mode, 0}, {SurfaceId("P.S2"), rtt::model::EventKind::Refract, 0}}}};
+    const MaterialLibrary lib;
+    const CompiledSystem cs = compile(s, lib);
+
+    RayBatch rays(1);
+    set_ray(rays, 0, Vec3(0.0, 1.0, 0.0), Vec3::UnitZ());
+    [[maybe_unused]] const auto stats = SequentialTracer().trace(cs, PathId{0}, rays);
+    REQUIRE(rays.status()[0] == RayStatus::EventImpossible);
+    REQUIRE(rays.last_surface()[0] == 0);
+    REQUIRE((pos(rays, 0) - Vec3(0.0, 1.0, 10.0)).norm() <= 1e-12);
+  }
 }
 
 TEST_CASE("invalid trace input throws before tracing", "[sequential]") {

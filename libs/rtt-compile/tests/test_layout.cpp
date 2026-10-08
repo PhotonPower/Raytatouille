@@ -193,8 +193,8 @@ TEST_CASE("sag and normals against the closed formulas", "[layout]") {
   for (const Case& c : cases) {
     INFO("surface " << c.id);
     const std::uint32_t s_index = index_of(cs, c.id);
-    std::vector<double> z(x.size());
-    std::vector<double> n(3 * x.size());
+    std::vector<double> z(x.size(), 0.0);
+    std::vector<double> n(3 * x.size(), 0.0);
     rtt::compile::surface_sag(cs, s_index, x, y, z);
     rtt::compile::surface_normal(cs, s_index, x, y, Frame::Local, n);
     for (std::size_t i = 0; i < x.size(); ++i) {

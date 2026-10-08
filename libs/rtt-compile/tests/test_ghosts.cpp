@@ -1,3 +1,4 @@
+#include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -167,11 +168,18 @@ TEST_CASE("ghosts: limit, name conflicts and invalid base paths (#123)", "[ghost
   REQUIRE(rtt::compile::ghost_paths(cs, path(cs, "main"), one).size() == 1);
   REQUIRE_THROWS_AS(rtt::compile::ghost_paths(cs, PathId{7}), std::invalid_argument);
   // M4: no ghosts for paths with a diffraction order or a crystal mode (ADR 0027).
+  // Since #131 a mode needs a crystal (ADR 0026, point 4): P becomes one, and only the crystal
+  // path is kept (the automatic and the reflecting paths of s are not allowed at a crystal).
   System modes = s;
-  modes.paths.push_back({"crystal",
-                         false,
-                         {event("STO", EventKind::Transmit), event("P.S1", EventKind::Ordinary),
-                          event("P.S2", EventKind::Refract), event("IMG", EventKind::Transmit)}});
+  Element& crystal = std::get<Element>(modes.root.children[1].value);
+  REQUIRE(crystal.name == "P");
+  crystal.material.reset();
+  crystal.crystal = rtt::model::CrystalMaterial{"CONST:1.6584", "CONST:1.4864"};
+  crystal.optic_axis = std::array<double, 3>{0.0, 1.0, 1.0};
+  modes.paths = {{"crystal",
+                  false,
+                  {event("STO", EventKind::Transmit), event("P.S1", EventKind::Ordinary),
+                   event("P.S2", EventKind::Refract), event("IMG", EventKind::Transmit)}}};
   const CompiledSystem with_mode = rtt::compile::compile(modes, lib);
   REQUIRE_THROWS_AS(rtt::compile::ghost_paths(with_mode, path(with_mode, "crystal")),
                     std::invalid_argument);
