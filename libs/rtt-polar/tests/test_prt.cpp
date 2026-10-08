@@ -232,8 +232,9 @@ TEST_CASE("ideal mirror: no diattenuation, no retardance, E_r = -(I - 2 N N^T) E
     if (std::abs(k.dot(n)) < 0.05) continue;
     const Vec3 k_out = reflect(k, n);
     const CMat3 p = rtt::polar::prt_matrix(k, k_out, n, Cx(-1.0), Cx(1.0));
-    // n n^T written out here, independent of rtt-polar: an Eigen lazy outer product made GCC -O2
-    // report a false -Wnull-dereference in this file (#35). Same values as 2.0 * n * n^T.
+    // n n^T written out here, independent of rtt-polar: the scaled lazy outer product
+    // 2.0 * n * n.transpose() made GCC -O2 report a false -Wnull-dereference (#35; the plain
+    // k * k.transpose() elsewhere in this file does not). Same values as 2.0 * n * n^T.
     Mat3 nn;
     for (int row = 0; row < 3; ++row) {
       for (int col = 0; col < 3; ++col) nn(row, col) = n(row) * n(col);
