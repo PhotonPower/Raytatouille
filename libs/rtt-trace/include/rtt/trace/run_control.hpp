@@ -116,7 +116,7 @@ class RunMonitor {
   std::atomic<bool> failed_{false};
   std::mutex mutex_;          ///< serialises the callback; guards last_ and error_
   std::exception_ptr error_;  ///< first exception of the callback
-  std::chrono::steady_clock::time_point last_{};  ///< time of the last report
+  std::chrono::steady_clock::time_point last_;  ///< time of the last report
   bool reported_ = false;  ///< a report was made (the first one is not throttled)
 };
 
