@@ -28,6 +28,8 @@ Neue Entscheidungen bekommen die nächste Nummer. Bestehende ADRs werden nicht u
 | [0022](0022.md) | Fehlercodes, Fehlerorte und Diagnosekanal | angenommen |
 | [0023](0023.md) | Ergebnisformat raytatouille-result und Strahlverluste als Daten | angenommen |
 | [0024](0024.md) | Modell lesen und ändern, Undo über JSON Patch | angenommen |
+| [0025](0025.md) | Gitter als Phasenschicht (Ordnung, Effizienz, Evaneszenz) | vorgeschlagen |
+| [0026](0026.md) | Kristallmodell (einachsig, optische Achse, Strahlzustand) | vorgeschlagen |
 
 ## Vorlage
 
