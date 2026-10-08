@@ -75,3 +75,11 @@ def test_analysis_example(capsys: pytest.CaptureFixture[str], tmp_path: Path) ->
     png = tmp_path / "analysis.png"
     assert namespace["main"](str(png)) == 0
     assert png.stat().st_size > 0
+
+
+def test_model_tree_example(capsys: pytest.CaptureFixture[str]) -> None:
+    namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "model_tree.py"))
+    assert namespace["main"]() == 0
+    out = capsys.readouterr().out
+    assert "lens 'L2' at z 10.691 mm, SCHOTT:N-SF5" in out
+    assert "L1.S1: R 23.713 mm" in out and "path 'main'" in out

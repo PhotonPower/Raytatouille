@@ -69,10 +69,17 @@ ReadOnlyArray<T> read_only_array(const Items& items, Get get) {
   return ReadOnlyArray<T>(values, 1, shape, owner);
 }
 
+/// __eq__ with Python semantics: comparing with another type gives False, not TypeError.
+template <typename T>
+bool equal(const T& self, nanobind::handle other) {
+  return nanobind::isinstance<T>(other) && self == nanobind::cast<const T&>(other);
+}
+
 /// Registers the translation of C++ exceptions into the classes of raytatouille.errors.
 void register_errors(nanobind::module_& m);
 
 void bind_model(nanobind::module_& m);
+void bind_model_tree(nanobind::module_& m);
 void bind_material(nanobind::module_& m);
 void bind_compile(nanobind::module_& m);
 void bind_paraxial(nanobind::module_& m);
