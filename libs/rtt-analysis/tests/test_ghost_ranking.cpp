@@ -7,7 +7,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <utility>
+#include <variant>
 #include <vector>
 
 #include "rtt/analysis/ghosts.hpp"
@@ -17,8 +17,8 @@
 #include "rtt/io/json_io.hpp"
 #include "rtt/material/material.hpp"
 #include "rtt/model/model.hpp"
-#include "rtt/paraxial/paraxial.hpp"
 #include "rtt/trace/run_control.hpp"
+#include "rtt/trace/sources.hpp"
 
 // Ghost ranking (#124, ADR 0027 addendum): rank value rho = (P_g / P_b) (r_b^2 + r0^2) /
 // (r_g^2 + r0^2), paraxial focus and blur of each ghost as diagnostics.
@@ -88,6 +88,23 @@ System two_plates() {
   return s;
 }
 
+/// Plano-convex lens CONST:1.5, R1 = 64 mm at z = 10, plane S2 at z = 13, image at z = 140.
+System singlet() {
+  System s = base_system(140.0);
+  s.root.children.insert(s.root.children.begin() + 1,
+                         {Element{"L",
+                                  ElementKind::Lens,
+                                  Pose::along_z(10.0),
+                                  "CONST:1.5",
+                                  {sphere("L.S1", 0.0, 64.0), plane("L.S2", 3.0)}}});
+  return s;
+}
+
+/// Sets the aperture of the detector surface (the last child of the root).
+void detector_aperture(System& s, const rtt::model::CircularAperture& aperture) {
+  std::get<Element>(s.root.children.back().value).surfaces[0].aperture = aperture;
+}
+
 GhostSystem with_ghosts(const System& s) {
   const MaterialLibrary lib;
   const rtt::coating::CoatingLibrary coatings;
@@ -129,7 +146,10 @@ TEST_CASE("ghost ranking of two plates: rho is the Fresnel product, in its order
   const auto ranking = rtt::analysis::ghost_ranking(g, 0, 0);
   REQUIRE(ranking.entries.size() == 6);
   REQUIRE(ranking.base_power > 0.0);
-  REQUIRE(ranking.base_rms_radius > 0.0);
+  // r_b: the collimated hexapolar bundle (6 rings, 127 rays, ring k of 6k rays on radius
+  // 2k/6 mm at EPD 4) keeps its positions through plates at normal incidence, with equal
+  // weights and centroid 0: r_b^2 = sum_k 6k (2k/6)^2 / 127 = 294/127.
+  REQUIRE(close(ranking.base_rms_radius, std::sqrt(294.0 / 127.0), 1e-10));
   for (const auto& e : ranking.entries) {
     const std::string name = ghost_name(g.system, e.path);
     INFO(name);
@@ -149,19 +169,12 @@ TEST_CASE("ghost ranking of two plates: rho is the Fresnel product, in its order
 }
 
 TEST_CASE("ghost ranking: paraxial focus and blur of a singlet ghost (#124)", "[ghosts][ranking]") {
-  // Plano-convex lens CONST:1.5, R1 = 64 mm at z = 10, plane S2 at z = 13, image at z = 140,
-  // collimated marginal ray y = 2 (EPD 4, the stop is the entrance pupil). The ghost reflects
-  // at S2 back and at S1 forward. Independent y-nu (Greivenkamp, docs/quellen.md, as
-  // docs/architecture.md: signed index, n'u' = n u - y phi, phi = c (n' - n), reflection
-  // n' = -n, transfer with global dz): focus after S2 where y = 0, blur = |y| at the image.
-  System s = base_system(140.0);
-  s.root.children.insert(s.root.children.begin() + 1,
-                         {Element{"L",
-                                  ElementKind::Lens,
-                                  Pose::along_z(10.0),
-                                  "CONST:1.5",
-                                  {sphere("L.S1", 0.0, 64.0), plane("L.S2", 3.0)}}});
-  const GhostSystem g = with_ghosts(s);
+  // singlet(): collimated marginal ray y = 2 (EPD 4, the stop is the entrance pupil). The ghost
+  // reflects at S2 back and at S1 forward. Independent y-nu (Greivenkamp, OPTI-201/202, Sec. 9,
+  // p. 9-2, docs/quellen.md, as docs/architecture.md: signed index, n'u' = n u - y phi,
+  // phi = c (n' - n), reflection n' = -n, transfer with global dz): focus after S2 where y = 0,
+  // blur = |y| at the image.
+  const GhostSystem g = with_ghosts(singlet());
   REQUIRE(g.ghosts.size() == 1);
   const double c1 = 1.0 / 64.0;
   // Each step: refraction or reflection at curvature c from index n to n2, then transfer dz.
@@ -188,30 +201,80 @@ TEST_CASE("ghost ranking: paraxial focus and blur of a singlet ghost (#124)", "[
   const auto& e = ranking.entries[0];
   REQUIRE(e.focus_offset.has_value());
   REQUIRE(close(*e.focus_offset, focus - 140.0, 1e-10));
-  REQUIRE(close(e.paraxial_blur_radius, std::abs(y), 1e-10));
+  REQUIRE(e.paraxial_blur_radius.has_value());
+  REQUIRE(close(*e.paraxial_blur_radius, std::abs(y), 1e-10));
 }
 
 TEST_CASE("ghost ranking: rho follows its definition, also for another r0 (#124)",
           "[ghosts][ranking]") {
-  const GhostSystem g = with_ghosts(two_plates());
-  for (const double r0 : {0.005, 0.05}) {
-    INFO("r0 = " << r0);
-    rtt::analysis::GhostRankingOptions options;
-    options.resolution_radius = r0;
-    const auto ranking = rtt::analysis::ghost_ranking(g, 0, 0, options);
-    REQUIRE(ranking.resolution_radius == r0);
-    REQUIRE(ranking.entries.size() == 6);
-    const double rb2 = ranking.base_rms_radius * ranking.base_rms_radius;
-    for (const auto& e : ranking.entries) {
-      REQUIRE(close(e.relative_power, e.power / ranking.base_power, 1e-12));
-      const double expected =
-          e.relative_power * (rb2 + r0 * r0) / (e.rms_radius * e.rms_radius + r0 * r0);
-      REQUIRE(close(e.relative_irradiance, expected, 1e-12));
+  // Plates: r_g = r_b, rho does not depend on r0. Singlet: the ghost spot is far wider than
+  // the useful image (paraxial blur about 12 mm), so rho grows with r0 as the formula says.
+  const GhostSystem plates = with_ghosts(two_plates());
+  const GhostSystem lens = with_ghosts(singlet());
+  for (const GhostSystem* g : {&plates, &lens}) {
+    std::vector<double> rho;
+    for (const double r0 : {0.005, 0.05}) {
+      INFO("r0 = " << r0);
+      rtt::analysis::GhostRankingOptions options;
+      options.resolution_radius = r0;
+      const auto ranking = rtt::analysis::ghost_ranking(*g, 0, 0, options);
+      REQUIRE(ranking.resolution_radius == r0);
+      REQUIRE(ranking.entries.size() == g->ghosts.size());
+      const double rb2 = ranking.base_rms_radius * ranking.base_rms_radius;
+      for (const auto& e : ranking.entries) {
+        REQUIRE(close(e.relative_power, e.power / ranking.base_power, 1e-12));
+        const double expected =
+            e.relative_power * (rb2 + r0 * r0) / (e.rms_radius * e.rms_radius + r0 * r0);
+        REQUIRE(close(e.relative_irradiance, expected, 1e-12));
+      }
+      for (std::size_t k = 1; k < ranking.entries.size(); ++k) {
+        REQUIRE(ranking.entries[k - 1].relative_irradiance >=
+                ranking.entries[k].relative_irradiance);
+      }
+      if (g == &lens) {
+        REQUIRE(ranking.entries[0].rms_radius > 10.0 * ranking.base_rms_radius);
+        rho.push_back(ranking.entries[0].relative_irradiance);
+      }
     }
-    for (std::size_t k = 1; k < ranking.entries.size(); ++k) {
-      REQUIRE(ranking.entries[k - 1].relative_irradiance >= ranking.entries[k].relative_irradiance);
+    if (g == &lens) {
+      REQUIRE(rho.size() == 2);
+      REQUIRE(rho[1] > 2.0 * rho[0]);  // a larger r0 dims the sharp useful image more
     }
   }
+}
+
+TEST_CASE("ghost ranking of the reference plate: rho = R^2 (#124)", "[ghosts][ranking]") {
+  // tests/reference/m3/fresnel_bk7.rtt.json (plate CONST:1.5168, VACUUM, object at infinity,
+  // field 0 on axis), path "main": one ghost, on the rays of the useful image at normal
+  // incidence, so rho = P_g / P_b = R^2 with R = ((n - 1) / (n + 1))^2 (Byrnes,
+  // arXiv:1603.02720v5, Eq. (6); docs/quellen.md). Relative 1e-10.
+  const MaterialLibrary lib;
+  const rtt::coating::CoatingLibrary coatings;
+  const GhostSystem g = rtt::compile::compile_with_ghosts(
+      rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m3/fresnel_bk7.rtt.json"), "main",
+      lib, coatings);
+  const auto ranking = rtt::analysis::ghost_ranking(g, 0, 0);
+  REQUIRE(ranking.entries.size() == 1);
+  const double n = 1.5168;
+  const double r = ((n - 1.0) / (n + 1.0)) * ((n - 1.0) / (n + 1.0));
+  REQUIRE(close(ranking.entries[0].relative_irradiance, r * r, 1e-10));
+  REQUIRE_FALSE(ranking.entries[0].focus_offset.has_value());
+}
+
+TEST_CASE("ghost ranking: lost ghost rays do not warn (#124)", "[ghosts][ranking]") {
+  // Detector of radius 5 mm: the useful image (near focus) arrives completely, the ghost spot
+  // (paraxial blur about 12 mm) loses most rays. Ghosts do not warn about lost rays (ADR 0027,
+  // addendum #124); their losses are in the entry.
+  System s = singlet();
+  detector_aperture(s, rtt::model::CircularAperture{5.0, 0.0});
+  const GhostSystem g = with_ghosts(s);
+  const auto ranking = rtt::analysis::ghost_ranking(g, 0, 0);
+  REQUIRE(ranking.warnings.empty());
+  REQUIRE(ranking.entries.size() == 1);
+  const auto& e = ranking.entries[0];
+  REQUIRE(e.losses.launched == 127);
+  REQUIRE(e.rays_arrived > 0);
+  REQUIRE(2 * e.rays_arrived < e.losses.launched);  // more than the default warning fraction
 }
 
 TEST_CASE("ghost ranking: errors and run control (#124)", "[ghosts][ranking]") {
@@ -221,6 +284,23 @@ TEST_CASE("ghost ranking: errors and run control (#124)", "[ghosts][ranking]") {
   REQUIRE_THROWS_AS(rtt::analysis::ghost_ranking(g, 0, 0, bad), std::invalid_argument);
   REQUIRE_THROWS_AS(rtt::analysis::ghost_ranking(g, 5, 0), std::invalid_argument);
   REQUIRE_THROWS_AS(rtt::analysis::ghost_ranking(g, 0, 3), std::invalid_argument);
+  rtt::analysis::GhostRankingOptions zero;
+  zero.resolution_radius = 0.0;
+  REQUIRE_THROWS_AS(rtt::analysis::ghost_ranking(g, 0, 0, zero), std::invalid_argument);
+  rtt::analysis::GhostRankingOptions fraction;
+  fraction.lost_warning_fraction = 1.5;
+  REQUIRE_THROWS_AS(rtt::analysis::ghost_ranking(g, 0, 0, fraction), std::invalid_argument);
+  rtt::analysis::GhostRankingOptions no_rays;
+  no_rays.sampling = rtt::trace::RandomPupil{0, 0};
+  REQUIRE_THROWS_AS(rtt::analysis::ghost_ranking(g, 0, 0, no_rays), std::invalid_argument);
+  // No ghosts: stop and detector only.
+  REQUIRE_THROWS_AS(rtt::analysis::ghost_ranking(with_ghosts(base_system(40.0)), 0, 0),
+                    std::invalid_argument);
+  // No useful image: an annular detector outside the focused bundle.
+  System annulus = singlet();
+  detector_aperture(annulus, rtt::model::CircularAperture{50.0, 5.0});
+  REQUIRE_THROWS_AS(rtt::analysis::ghost_ranking(with_ghosts(annulus), 0, 0),
+                    rtt::analysis::AnalysisError);
 
   rtt::trace::RunControl control;
   control.cancel = rtt::trace::CancelToken();

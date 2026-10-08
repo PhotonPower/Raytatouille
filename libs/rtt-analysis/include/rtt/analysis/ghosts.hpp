@@ -13,6 +13,8 @@
 /// - Ghosts do not warn about lost rays (losses are normal for them); the warnings come from
 ///   the base path only.
 /// - The paraxial focus position and blur radius of a ghost are diagnostics, not rank values.
+/// - Sampling limit: a ghost with very few arrived rays (one ray: r_g = 0) gets the full factor
+///   (r_b^2 + r0^2) / r0^2; check rays_arrived before trusting its rank.
 
 #include <cstddef>
 #include <cstdint>
@@ -32,7 +34,7 @@ namespace rtt::analysis {
 struct GhostRankingOptions {
   trace::PupilSampling sampling = trace::HexapolarPupil{6};  ///< start rays of the base path
   trace::Aiming aiming = trace::Aiming::Real;                ///< aiming of the start rays
-  /// Resolution radius r0 of the detector in mm (>= 0): spots smaller than this do not get
+  /// Resolution radius r0 of the detector in mm (> 0): spots smaller than this do not get
   /// brighter. A model choice, see the file comment.
   double resolution_radius = 0.005;
   /// Warning "rays.lost" if more than this fraction of the base path's rays is lost (ADR
@@ -42,21 +44,25 @@ struct GhostRankingOptions {
 
 /// One ghost of a ranking.
 struct GhostEntry {
-  compile::PathId path;          ///< the ghost path
-  std::uint32_t surface_j = 0;   ///< first ghost reflection (back), index into surfaces()
-  std::uint32_t surface_i = 0;   ///< second ghost reflection (forward), index into surfaces()
-  double power = 0.0;            ///< P_g: mean final weight over the launched rays, dimensionless
+  compile::PathId path;         ///< the ghost path
+  std::uint32_t surface_j = 0;  ///< first ghost reflection (back), index into surfaces()
+  std::uint32_t surface_i = 0;  ///< second ghost reflection (forward), index into surfaces()
+  /// P_g: mean final weight over the launched rays (as path_transmission, #122), dimensionless
+  double power = 0.0;
   double relative_power = 0.0;   ///< P_g / P_b, dimensionless
   double rms_radius = 0.0;       ///< r_g: weighted RMS radius on the image surface, mm (0: none)
   std::size_t rays_arrived = 0;  ///< rays of the ghost that reached the image surface
   /// rho = (P_g / P_b) (r_b^2 + r0^2) / (r_g^2 + r0^2): the rank value, dimensionless.
   double relative_irradiance = 0.0;
-  /// Paraxial focus of the ghost minus the global z of the image surface vertex, mm; none if
-  /// the ghost leaves collimated. Diagnostic (ADR 0027, addendum #124).
+  /// Diagnostic (ADR 0027, addendum #124): global z of the paraxial focus of the ghost minus
+  /// the global z of the image surface vertex, mm, positive towards +z. The focus may be
+  /// virtual (before the last surface). From the axial marginal ray of the base path,
+  /// independent of `field`. None if the ghost leaves collimated or the base path has no
+  /// finite entrance pupil (object-side telecentric).
   std::optional<double> focus_offset;
-  /// |height| of the paraxial marginal ray of the ghost at the image surface vertex plane, mm.
-  /// Diagnostic.
-  double paraxial_blur_radius = 0.0;
+  /// Diagnostic: |height| of the same paraxial ray at the image surface vertex plane, mm; none
+  /// without a finite entrance pupil.
+  std::optional<double> paraxial_blur_radius;
   RayLosses losses;  ///< launched rays of the ghost by final status (ADR 0023)
 };
 
@@ -78,12 +84,14 @@ struct GhostRanking {
 /// @param ghosts     system compiled with its ghosts
 /// @param field      index into CompiledSystem::fields().points
 /// @param wavelength index into CompiledSystem::wavelengths_um()
-/// @param options    sampling, aiming, resolution radius r0 in mm, lost-ray warning threshold
+/// @param options    sampling, aiming, resolution radius r0 in mm (> 0), lost-ray warning
+///                   threshold
 /// @throws std::invalid_argument for a system without ghosts, an invalid field or wavelength,
-///         resolution_radius < 0 or lost_warning_fraction outside [0, 1] (and as
-///         trace::make_rays)
+///         resolution_radius <= 0, lost_warning_fraction outside [0, 1], a sampling without
+///         rays (and as trace::make_rays)
 /// @throws rtt::paraxial::ParaxialError if the base path is not rotationally symmetric (aiming
 ///         and the paraxial diagnostics)
+/// @throws rtt::compile::NoStopError if the system has no stop (aiming)
 /// @throws AnalysisError if no ray of the base path arrives (no useful image to compare with)
 [[nodiscard]] GhostRanking ghost_ranking(const compile::GhostSystem& ghosts,
                                          std::uint16_t field,

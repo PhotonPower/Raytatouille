@@ -82,6 +82,7 @@ Wer an diesen Themen arbeitet, sucht zuerst eine Quelle nach dem Verfahren oben.
 
 | Thema | Meilenstein |
 | --- | --- |
+| Veröffentlichte Metrik zur Bewertung von Ghosts; bis dahin Begründung über die Bestrahlungsstärke in ADR 0027, Nachtrag #124 | M4 (#124) |
 | Skalierung der sphärischen Längsaberration mit NA² (dritte Ordnung); im Test von #8 nur als Exponent geprüft, Sollwert ist der paraxiale Fokus aus #7 | M1 (#8) |
 | Skalierung der transversalen sphärischen Aberration mit p_y³ (dritte Ordnung, Bildfläche im paraxialen Fokus); im Test von #28 nur als Exponent geprüft | M2 (#28) |
 | Skalierung der Wellenfront-Aberration W040 p⁴ (sphärische Aberration dritter Ordnung, Referenz im paraxialen Fokus); im Test von #29 nur als Exponent und Vorzeichen geprüft | M2 (#29) |
