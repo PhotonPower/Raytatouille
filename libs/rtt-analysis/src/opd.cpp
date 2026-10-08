@@ -117,7 +117,8 @@ std::vector<OpdPoint> opd_points(const CompiledSystem& system,
                                  const trace::PupilSampling& sampling,
                                  trace::Aiming aiming,
                                  const Reference& ref,
-                                 detail::LossCounter& losses) {
+                                 detail::LossCounter& losses,
+                                 const trace::RunControl& control) {
   const std::uint32_t image = image_surface(system, path);
   const auto& last = system.path(path).events.back();
   const double n_image = std::abs(system.media()[last.medium_after].index[wavelength].real());
@@ -134,7 +135,8 @@ std::vector<OpdPoint> opd_points(const CompiledSystem& system,
   const std::optional<double> opl_chief = opl_to_sphere(chief, 0, ref, n_image);
   if (!opl_chief) throw AnalysisError("analysis: the chief ray misses the reference sphere");
 
-  const trace::RayBatch rays = trace_rays(system, path, field, wavelength, sampling, aiming);
+  const trace::RayBatch rays =
+      trace_rays(system, path, field, wavelength, sampling, aiming, control);
   std::vector<OpdPoint> points;
   points.reserve(rays.size());
   for (std::size_t i = 0; i < rays.size(); ++i) {
@@ -165,6 +167,15 @@ OpdMap opd_map(const compile::CompiledSystem& system,
                std::uint16_t field,
                std::uint16_t wavelength,
                const OpdOptions& options) {
+  return opd_map(system, path, field, wavelength, options, trace::RunControl{});
+}
+
+OpdMap opd_map(const compile::CompiledSystem& system,
+               compile::PathId path,
+               std::uint16_t field,
+               std::uint16_t wavelength,
+               const OpdOptions& options,
+               const trace::RunControl& control) {
   check_path(system, path);
   check_wavelength(system, wavelength);
   if (options.grid < 1) throw std::invalid_argument("analysis: OPD grid must be >= 1");
@@ -175,7 +186,7 @@ OpdMap opd_map(const compile::CompiledSystem& system,
   map.sphere = ref.sphere;
   detail::LossCounter losses(system, path, options.lost_warning_fraction);
   map.points = opd_points(system, path, field, wavelength, trace::GridPupil{options.grid},
-                          options.aiming, ref, losses);
+                          options.aiming, ref, losses, control);
   map.losses = losses.result();
   map.warnings = losses.warnings();
 
@@ -210,6 +221,15 @@ OpdFan opd_fan(const compile::CompiledSystem& system,
                std::uint16_t field,
                std::uint16_t wavelength,
                const OpdOptions& options) {
+  return opd_fan(system, path, field, wavelength, options, trace::RunControl{});
+}
+
+OpdFan opd_fan(const compile::CompiledSystem& system,
+               compile::PathId path,
+               std::uint16_t field,
+               std::uint16_t wavelength,
+               const OpdOptions& options,
+               const trace::RunControl& control) {
   check_path(system, path);
   check_wavelength(system, wavelength);
   if (options.fan_points < 1) throw std::invalid_argument("analysis: fan points must be >= 1");
@@ -220,9 +240,9 @@ OpdFan opd_fan(const compile::CompiledSystem& system,
   fan.sphere = ref.sphere;
   detail::LossCounter losses(system, path, options.lost_warning_fraction);
   fan.tangential = opd_points(system, path, field, wavelength, trace::FanYPupil{options.fan_points},
-                              options.aiming, ref, losses);
+                              options.aiming, ref, losses, control);
   fan.sagittal = opd_points(system, path, field, wavelength, trace::FanXPupil{options.fan_points},
-                            options.aiming, ref, losses);
+                            options.aiming, ref, losses, control);
   fan.losses = losses.result();
   fan.warnings = losses.warnings();
   return fan;

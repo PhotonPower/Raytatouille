@@ -107,4 +107,29 @@ struct FieldCurvaturePoint {
                                                      std::uint16_t wavelength,
                                                      const FieldCurvatureOptions& options = {});
 
+/// distortion() and field_curvature(), overloads with cancellation and progress (#83): the same
+/// analysis with a trace::RunControl (rtt/trace/run_control.hpp) as last parameter. Cancellation
+/// and progress are run-time control, never part of the options or of the result: with an empty
+/// control the result is the same as with the overload without it, bit for bit, and it never
+/// depends on the control. A cancelled call throws trace::Cancelled, an exception of the progress
+/// callback is rethrown; both only after the parallel parts. Progress stages: "aim" and "trace" for
+/// every ray bundle (e.g. once per wavelength of a polychromatic spot, so a stage name can repeat),
+/// "field" for the points of a field sweep and "wavelength" for the colour analyses.
+/// @throws as the overloads without a control, trace::Cancelled, or the callback's exception
+/// The single-point functions (distortion_at, field_curvature_at) have no control: they trace a
+/// handful of rays.
+/// @{
+[[nodiscard]] std::vector<DistortionPoint> distortion(const compile::CompiledSystem& system,
+                                                      compile::PathId path,
+                                                      std::uint16_t wavelength,
+                                                      const FieldSweepOptions& options,
+                                                      const trace::RunControl& control);
+[[nodiscard]] std::vector<FieldCurvaturePoint> field_curvature(
+    const compile::CompiledSystem& system,
+    compile::PathId path,
+    std::uint16_t wavelength,
+    const FieldCurvatureOptions& options,
+    const trace::RunControl& control);
+/// @}
+
 }  // namespace rtt::analysis

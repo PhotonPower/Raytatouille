@@ -21,6 +21,13 @@ using detail::trace_aimed;
 LongitudinalColour longitudinal_colour(const compile::CompiledSystem& system,
                                        compile::PathId path,
                                        const ChromaticOptions& options) {
+  return longitudinal_colour(system, path, options, trace::RunControl{});
+}
+
+LongitudinalColour longitudinal_colour(const compile::CompiledSystem& system,
+                                       compile::PathId path,
+                                       const ChromaticOptions& options,
+                                       const trace::RunControl& control) {
   check_path(system, path);
   const auto count = static_cast<std::uint16_t>(system.wavelengths_um().size());
   LongitudinalColour lc;
@@ -35,7 +42,9 @@ LongitudinalColour longitudinal_colour(const compile::CompiledSystem& system,
   const std::uint32_t image = image_surface(system, path);
   const model::Field axis{0.0, 0.0, 1.0};
   int direction = 1;
+  trace::RunMonitor monitor(control, count, "wavelength");
   for (std::uint16_t wl = 0; wl < count; ++wl) {
+    if (monitor.stop()) break;
     FocusPosition f;
     f.wavelength = wl;
     // Paraxial focus: rear focal point (object at infinity) or paraxial image of the axial
@@ -58,7 +67,9 @@ LongitudinalColour longitudinal_colour(const compile::CompiledSystem& system,
     if (dy == 0.0) throw AnalysisError("analysis: the zone ray does not cross the axis");
     f.real_z = rays.pos_z()[0] - rays.pos_y()[0] * rays.dir_z()[0] / dy;
     lc.foci.push_back(f);
+    monitor.add(1);
   }
+  monitor.finish();  // after the loop: Cancelled or the callback's exception
   const FocusPosition& a = lc.foci[lc.pair.first];
   const FocusPosition& b = lc.foci[lc.pair.second];
   lc.paraxial = (a.paraxial_z - b.paraxial_z) * direction;
@@ -70,12 +81,22 @@ LateralColour lateral_colour(const compile::CompiledSystem& system,
                              compile::PathId path,
                              std::uint16_t field,
                              trace::Aiming aiming) {
+  return lateral_colour(system, path, field, aiming, trace::RunControl{});
+}
+
+LateralColour lateral_colour(const compile::CompiledSystem& system,
+                             compile::PathId path,
+                             std::uint16_t field,
+                             trace::Aiming aiming,
+                             const trace::RunControl& control) {
   check_path(system, path);
   LateralColour lat;
   lat.field = field;
   const std::uint32_t image = image_surface(system, path);
   const auto count = static_cast<std::uint16_t>(system.wavelengths_um().size());
+  trace::RunMonitor monitor(control, count, "wavelength");
   for (std::uint16_t wl = 0; wl < count; ++wl) {
+    if (monitor.stop()) break;
     const trace::AimedRay aimed = trace::aim_ray(system, path, field, wl, 0.0, 0.0, aiming);
     const trace::RayBatch rays = trace_aimed(system, path, aimed, wl);
     if (!arrived(rays, 0, image)) {
@@ -84,7 +105,9 @@ LateralColour lateral_colour(const compile::CompiledSystem& system,
                              " does not reach the image surface");
     }
     lat.chief.push_back(local_point(system, rays, 0, image));
+    monitor.add(1);
   }
+  monitor.finish();  // after the loop: Cancelled or the callback's exception
   const Point2 ref = lat.chief[system.reference_wavelength()];
   for (const Point2& c : lat.chief) lat.offset.push_back({c.x - ref.x, c.y - ref.y});
   return lat;
