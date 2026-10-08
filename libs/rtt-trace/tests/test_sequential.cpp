@@ -4,6 +4,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -15,6 +16,7 @@
 #include "rtt/model/model.hpp"
 #include "rtt/trace/ray_batch.hpp"
 #include "rtt/trace/sequential.hpp"
+#include "rtt/trace/sources.hpp"
 
 using rtt::compile::compile;
 using rtt::compile::CompiledSystem;
@@ -76,6 +78,15 @@ TEST_CASE("paraboloid mirror focuses axial rays at R/2", "[sequential]") {
   // Concave paraboloid (k = -1) with R = -200 mm: centre of curvature on the -z side, focus at
   // z = R/2 = -100 mm in front of the mirror (focal property of the paraboloid; reference case
   // of docs/architecture.md, Validierung). Issue #6: RMS spot < 1e-9 mm.
+  // Derivation (#35, instead of a literature source): the conic sag z = c r^2 / (1 + phi),
+  // phi = sqrt(1 - (1 + k) c^2 r^2) (Forbes 2011, Eq. (2.1) and the definition of phi right
+  // after it, docs/quellen.md) gives phi = 1 for k = -1, so z = r^2 / (2 R), i.e. r^2 = 2 R z.
+  // A mirror point P = (r, z) then has the distance
+  // |P - F|^2 = r^2 + (z - R/2)^2 = z^2 + R z + R^2 / 4 = (z + R/2)^2 from F = (0, R/2): as far
+  // from F as from the plane z = -R/2 (directrix). An axial ray from the
+  // start plane z0 travels (z - z0) to P and |z + R/2| on to F, here z - z0 + (-R/2 - z) =
+  // -R/2 - z0 for every r (z <= 0 < -R/2): the same optical path for all rays, so by Fermat's
+  // principle the reflected rays meet in F.
   // The OPL reference below is a path length for n = 1; the file's AIR (Ciddor since #25) is
   // replaced by VACUUM here.
   System s =
@@ -240,4 +251,35 @@ TEST_CASE("invalid trace input throws before tracing", "[sequential]") {
   rays.wl()[0] = 0;
   rays.status()[0] = static_cast<RayStatus>(9);  // e.g. garbage from a foreign caller
   REQUIRE_THROWS_AS(SequentialTracer().trace(cs, PathId{0}, rays), std::invalid_argument);
+}
+
+TEST_CASE("trace keeps the labels of every ray: field, pupil and wavelength (#35)",
+          "[sequential]") {
+  // The trace only moves rays and changes their state (position, direction, OPL, status, last
+  // surface) and, since #61/#57, their power weight and PRT matrix (Fresnel losses,
+  // polarisation). The labels set by the source stay as they are, bit for bit: field index,
+  // pupil coordinates and wavelength index, also for rays that are lost on the way.
+  MaterialLibrary lib;
+  lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/schott.agf");
+  const CompiledSystem cs =
+      compile(rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m0/singlet.rtt.json"), lib);
+  const std::vector<std::uint16_t> fields{0, 1, 2};
+  RayBatch rays = rtt::trace::make_rays(cs, PathId{0}, fields, cs.reference_wavelength(),
+                                        rtt::trace::RandomPupil{200, 11});
+  // Every wavelength of the system, and some rays moved far outside the stop (lost there).
+  for (std::size_t i = 0; i < rays.size(); ++i) {
+    rays.wl()[i] = static_cast<std::uint16_t>(i % 3);
+    if (i % 7 == 0) rays.pos_y()[i] += 50.0;
+  }
+  const RayBatch before = rays;
+  const auto stats = SequentialTracer().trace(cs, PathId{0}, rays);
+  REQUIRE(stats.count(RayStatus::Alive) > 0);
+  REQUIRE(stats.count(RayStatus::Alive) < rays.size());  // lost rays are part of the check
+  for (std::size_t i = 0; i < rays.size(); ++i) {
+    INFO("ray " << i);
+    REQUIRE(rays.field()[i] == before.field()[i]);
+    REQUIRE(rays.pupil_x()[i] == before.pupil_x()[i]);
+    REQUIRE(rays.pupil_y()[i] == before.pupil_y()[i]);
+    REQUIRE(rays.wl()[i] == before.wl()[i]);
+  }
 }

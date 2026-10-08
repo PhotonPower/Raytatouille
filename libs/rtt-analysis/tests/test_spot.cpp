@@ -1,5 +1,6 @@
 #include <oneapi/tbb/task_arena.h>
 
+#include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <cstdint>
@@ -194,4 +195,44 @@ TEST_CASE("invalid spot input throws std::invalid_argument", "[spot]") {
     s.wavelengths = {{0.4861, bad, false}, {0.5876, 1.0, true}};
     REQUIRE_THROWS_AS(compile(s, lib), rtt::compile::CompileError);
   }
+}
+
+TEST_CASE("polychromatic centroid with dispersion: sum of w S c over the wavelengths (#35)",
+          "[spot]") {
+  // From #43: with a dispersive lens the monochromatic centroids c_k differ (lateral colour),
+  // so the weighting is visible. Every polychromatic point carries w_k / sum(w) times its ray
+  // weight, all spots share the chief ray of the reference wavelength, hence
+  //   c_poly = sum_k w_k S_k c_k / sum_k w_k S_k,  S_k = sum of the ray weights of spot k
+  // (S_k differs per wavelength through the Fresnel losses of #61). Rounding of the sums over
+  // about 3 * 127 points at a height of about 6 mm (field 1, 3.5 deg, f ~ 100 mm):
+  // 381 * 2.2e-16 * 6 mm ~ 5e-13 mm, below 1e-12 mm.
+  MaterialLibrary lib;
+  lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/schott.agf");
+  System s = load("m0/singlet.rtt.json");  // N-BK7, F, d, C
+  s.wavelengths[0].weight = 1.0;
+  s.wavelengths[1].weight = 2.0;
+  s.wavelengths[2].weight = 5.0;
+  const CompiledSystem cs = compile(s, lib);
+  const auto poly = rtt::analysis::spot(cs, PathId{0}, 1, std::nullopt);
+  const std::array<double, 3> w{1.0 / 8.0, 2.0 / 8.0, 5.0 / 8.0};
+  double sum = 0.0;
+  double cx = 0.0;
+  double cy = 0.0;
+  std::array<double, 3> centroid_y{};
+  for (std::uint16_t k = 0; k < 3; ++k) {
+    const auto mono = rtt::analysis::spot(cs, PathId{0}, 1, k);
+    double s_k = 0.0;
+    for (const auto& q : mono.points) s_k += q.weight;
+    sum += w[k] * s_k;
+    cx += w[k] * s_k * mono.stats.centroid.x;
+    cy += w[k] * s_k * mono.stats.centroid.y;
+    centroid_y[k] = mono.stats.centroid.y;
+  }
+  // The test separates the weightings: lateral colour of at least a micrometre, and the plain
+  // mean of the c_k is far from the weighted one.
+  REQUIRE(std::abs(centroid_y[0] - centroid_y[2]) > 1e-3);
+  const double plain = (centroid_y[0] + centroid_y[1] + centroid_y[2]) / 3.0;
+  REQUIRE(std::abs(plain - cy / sum) > 1e-6);
+  REQUIRE(std::abs(poly.stats.centroid.x - cx / sum) <= 1e-12);
+  REQUIRE(std::abs(poly.stats.centroid.y - cy / sum) <= 1e-12);
 }
