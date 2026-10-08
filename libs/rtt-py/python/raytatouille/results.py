@@ -54,7 +54,7 @@ __all__ = [
 ]
 
 FORMAT = "raytatouille-result"
-SCHEMA_VERSION = "0.1.1"  # 0.1.1: LoadWarning (#71); load_json reads every 0.1.x
+SCHEMA_VERSION = "0.1.2"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84)
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a
@@ -100,6 +100,11 @@ _FIELDS: dict[str, tuple[str, ...]] = {
     "SeidelSurfaces": ("surface", "y", "y_bar", "a", "a_bar", "lagrange", "s1", "s2", "s3",
                        "s4", "s5", "c_l", "c_t"),
     "Seidel": ("surfaces", "sum", "lagrange", "marginal", "chief", "chromatic"),
+    "PrescriptionSurfaces": ("surface", "z", "n", "y", "u", "i", "y_bar", "u_bar", "i_bar",
+                             "lagrange"),
+    "Prescription": ("surfaces", "total_track", "object_distance", "paraxial_working_f_number",
+                     "paraxial_image_na", "lagrange_invariant", "marginal_start", "chief_start",
+                     "first_order"),
     # trace
     "TraceStats": ("rays",),
     "RayBatch": _RAY_BATCH,
@@ -118,7 +123,7 @@ _FIELDS: dict[str, tuple[str, ...]] = {
 TYPES: tuple[str, ...] = (
     "SpotDiagram", "RayFan", "OpdMap", "OpdFan", "LongitudinalColour", "LateralColour",
     "DistortionSweep", "DistortionPoint", "FieldCurvatureSweep", "FieldCurvaturePoint",
-    "FirstOrder", "Seidel", "TraceStats", "RayBatch", "RayPaths",
+    "FirstOrder", "Seidel", "Prescription", "TraceStats", "RayBatch", "RayPaths",
     "Diattenuation", "Diattenuations", "Retardance", "Retardances",
     "GlassInfo", "GlassMap", "SurfaceLayout", "CompiledElement", "Diagnostic", "LoadWarning",
 )

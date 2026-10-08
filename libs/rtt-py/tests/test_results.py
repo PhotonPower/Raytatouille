@@ -88,6 +88,7 @@ PRODUCERS: dict[str, Callable[[rt.CompiledSystem, rt.MaterialLibrary], Any]] = {
     "FieldCurvaturePoint": lambda cs, lib: rt.analysis.field_curvature_at(cs, (0.0, 4.0)),
     "FirstOrder": lambda cs, lib: rt.paraxial.first_order(cs),
     "Seidel": lambda cs, lib: rt.paraxial.seidel(cs, pair=(0, 2)),
+    "Prescription": lambda cs, lib: rt.paraxial.prescription(cs),
     "TraceStats": lambda cs, lib: traced(cs)[1],
     "RayBatch": lambda cs, lib: traced(cs)[0],
     "RayPaths": lambda cs, lib: traced(cs)[2],
@@ -124,10 +125,10 @@ def test_round_trip_is_bit_identical(name: str, singlet: rt.CompiledSystem,
     envelope = json.loads(text, parse_constant=no_constants)  # standard JSON only
     assert list(envelope) == ["format", "schema_version", "type", "data"]
     assert envelope["format"] == "raytatouille-result"
-    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.1"
+    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.2"
     assert envelope["type"] == name
     loaded = rt.results.load_json(text)
-    assert (loaded.type, loaded.schema_version) == (name, "0.1.1")
+    assert (loaded.type, loaded.schema_version) == (name, "0.1.2")
     same(loaded.data, data)
 
 
@@ -221,6 +222,19 @@ def test_scalar_special_floats_are_tagged() -> None:
     raw = json.loads(text, parse_constant=no_constants)["data"]
     assert raw == {"rays": [], "a": {"float": "NaN"}, "b": {"float": "Infinity"},
                    "c": {"float": "-Infinity"}, "d": "NaN", "e": -0.0}
+    same(rt.results.load_json(text).data, data)
+
+
+def test_prescription_without_stop(reference_dir: Path) -> None:
+    """Without a stop the pupil values are None and the chief-ray arrays NaN (#84); both come
+    back bit for bit."""
+    cs = rt.compile(rt.load(reference_dir / "m1" / "paraboloid_mirror.rtt.json"))
+    p = rt.paraxial.prescription(cs)
+    data = p.to_dict()
+    assert data["chief_start"] is None or isinstance(data["chief_start"], dict)
+    assert np.isnan(data["surfaces"]["y_bar"]).all()
+    text = p.to_json()
+    assert '"NaN"' in text
     same(rt.results.load_json(text).data, data)
 
 

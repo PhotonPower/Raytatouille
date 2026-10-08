@@ -33,6 +33,7 @@
         "FieldCurvaturePoint",
         "FirstOrder",
         "Seidel",
+        "Prescription",
         "TraceStats",
         "RayBatch",
         "RayPaths",
@@ -438,6 +439,32 @@
               "vignetted",
               "losses",
               "warnings"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "Prescription"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "surfaces",
+              "total_track",
+              "object_distance",
+              "paraxial_working_f_number",
+              "paraxial_image_na",
+              "lagrange_invariant",
+              "marginal_start",
+              "chief_start",
+              "first_order"
             ]
           }
         }

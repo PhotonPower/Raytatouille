@@ -17,8 +17,8 @@ void bind_result_methods(nb::module_& m) {
   for (const char* name :
        {"SpotDiagram", "RayFan", "OpdMap", "OpdFan", "LongitudinalColour", "LateralColour",
         "DistortionSweep", "DistortionPoint", "FieldCurvatureSweep", "FieldCurvaturePoint",
-        "FirstOrder", "Seidel", "TraceStats", "RayBatch", "RayPaths", "CompiledElement",
-        "Diagnostic", "LoadWarning"}) {
+        "FirstOrder", "Seidel", "Prescription", "TraceStats", "RayBatch", "RayPaths",
+        "CompiledElement", "Diagnostic", "LoadWarning"}) {
     const nb::object cls = m.attr(name);
     cls.attr("to_dict") = nb::cpp_function(
         [](nb::handle self) {
