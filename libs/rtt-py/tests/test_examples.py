@@ -83,3 +83,12 @@ def test_model_tree_example(capsys: pytest.CaptureFixture[str]) -> None:
     out = capsys.readouterr().out
     assert "lens 'L2' at z 10.691 mm, SCHOTT:N-SF5" in out
     assert "L1.S1: R 23.713 mm" in out and "path 'main'" in out
+
+
+def test_cancel_progress_example(capsys: pytest.CaptureFixture[str]) -> None:
+    # main() returns 1 unless every stage of the complete run ended with done == total and the
+    # second run was cancelled.
+    namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "cancel_progress.py"))
+    assert namespace["main"]() == 0
+    out = capsys.readouterr().out
+    assert "spot complete" in out and "second run: cancelled" in out
