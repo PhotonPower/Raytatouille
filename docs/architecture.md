@@ -222,7 +222,7 @@ Für `Refract`, `Ordinary` und `Extraordinary` hängt die Regel nur von der Art 
 | `opl` | `double` | akkumulierter optischer Weg in mm |
 | `prt` | 9 × `std::complex<double>` | akkumulierte 3×3-Polarisations-Raytracing-Matrix P, leistungsnormiert |
 | `weight` | `double` | Leistung für eine unpolarisierte Quelle (Start 1) |
-| `status` | `uint8_t` (enum) | `Alive`, `Missed`, `Vignetted`, `Tir`, `NoConvergence`, `Absorbed`, `EventImpossible` |
+| `status` | `uint8_t` (enum) | `Alive`, `Missed`, `Vignetted`, `Tir`, `NoConvergence`, `Absorbed`, `EventImpossible`, `Evanescent` (ADR 0025, angehängt; `kRayStatusCount` = 8) |
 | `field`, `pupil` | `uint16_t`, 2 × `double` | Herkunft für Analysen |
 | `last_surface` | `uint32_t` | letzte getroffene Fläche |
 

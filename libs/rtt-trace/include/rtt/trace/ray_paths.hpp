@@ -13,11 +13,11 @@
 ///
 /// Lost rays: a ray that stops at event j (status no longer Alive) has count = j + 2 valid slots
 /// and lost_at = j; slot j + 1 holds the state returned for that event (the hit point for
-/// Vignetted, Tir, Absorbed, EventImpossible, the unchanged state for Missed and NoConvergence)
-/// with the loss status. The slots after it have NaN in position, direction, opl and weight and
-/// repeat the loss status. A ray that is not Alive at the start has count = 1 and lost_at = -1;
-/// a ray that passes all events has count = S and lost_at = -1. The last valid slot, count - 1,
-/// is bitwise the state that the trace leaves in the RayBatch.
+/// Vignetted, Tir, Absorbed, EventImpossible, Evanescent, the unchanged state for Missed and
+/// NoConvergence) with the loss status. The slots after it have NaN in position, direction, opl and
+/// weight and repeat the loss status. A ray that is not Alive at the start has count = 1 and
+/// lost_at = -1; a ray that passes all events has count = S and lost_at = -1. The last valid slot,
+/// count - 1, is bitwise the state that the trace leaves in the RayBatch.
 ///
 /// Units and frames as RayBatch: positions in mm and unit directions in global coordinates,
 /// OPL in mm, weight dimensionless (ADR 0021).

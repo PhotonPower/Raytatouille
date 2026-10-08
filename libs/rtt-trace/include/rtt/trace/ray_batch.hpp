@@ -26,8 +26,12 @@ enum class RayStatus : std::uint8_t {
   Tir,              ///< total internal reflection where refraction was requested
   NoConvergence,    ///< iterative intersection did not converge
   Absorbed,         ///< stopped by an absorbing surface
-  EventImpossible,  ///< the requested event cannot happen (e.g. evanescent order)
-  Evanescent,  // STUB for the red run of #127 PR A
+  EventImpossible,  ///< the requested event cannot happen (event of a later milestone,
+                    ///< amplitudes that are not finite)
+  /// The diffraction order has no real direction (ADR 0025, point 7); the ray stays at its hit
+  /// point, last_surface is that surface, as for Tir. Appended so that the values of the other
+  /// statuses stay as they are.
+  Evanescent,
 };
 
 /// Value of `last_surface` before a ray has hit any surface.

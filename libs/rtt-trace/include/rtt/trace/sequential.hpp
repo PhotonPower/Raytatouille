@@ -17,8 +17,8 @@
 namespace rtt::trace {
 
 /// Number of values of RayStatus.
-inline constexpr std::size_t kRayStatusCount = 7;
-static_assert(kRayStatusCount == static_cast<std::size_t>(RayStatus::EventImpossible) + 1,
+inline constexpr std::size_t kRayStatusCount = 8;
+static_assert(kRayStatusCount == static_cast<std::size_t>(RayStatus::Evanescent) + 1,
               "kRayStatusCount must match RayStatus");
 
 /// Result summary of a trace: number of rays per status after the trace.

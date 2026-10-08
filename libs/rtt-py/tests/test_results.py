@@ -125,10 +125,10 @@ def test_round_trip_is_bit_identical(name: str, singlet: rt.CompiledSystem,
     envelope = json.loads(text, parse_constant=no_constants)  # standard JSON only
     assert list(envelope) == ["format", "schema_version", "type", "data"]
     assert envelope["format"] == "raytatouille-result"
-    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.2"
+    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.3"
     assert envelope["type"] == name
     loaded = rt.results.load_json(text)
-    assert (loaded.type, loaded.schema_version) == (name, "0.1.2")
+    assert (loaded.type, loaded.schema_version) == (name, "0.1.3")
     same(loaded.data, data)
 
 

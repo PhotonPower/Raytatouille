@@ -379,4 +379,3 @@ TEST_CASE("Evanescent is a ray status of its own, appended to the enum (#127)", 
   REQUIRE(rays.last_surface()[1] == 0);
   REQUIRE(pos(rays, 1) == Vec3(0.0, 2.0, -1.0));  // untouched
 }
-

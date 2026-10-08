@@ -118,4 +118,3 @@ TEST_CASE("an Evanescent ray counts as lost at the surface where it stopped (#12
   REQUIRE(t.losses.worst_surface == std::optional<std::uint32_t>{1});
   require_consistent(t.losses, 7, 6);
 }
-

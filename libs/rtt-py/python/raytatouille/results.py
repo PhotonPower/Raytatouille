@@ -54,7 +54,8 @@ __all__ = [
 ]
 
 FORMAT = "raytatouille-result"
-SCHEMA_VERSION = "0.1.2"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84)
+SCHEMA_VERSION = "0.1.3"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
+# 0.1.3: status Evanescent, status arrays one entry longer (#127)
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a

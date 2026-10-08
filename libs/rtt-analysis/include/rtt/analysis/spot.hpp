@@ -44,9 +44,9 @@ class AnalysisError : public std::runtime_error {
  public:
   /// The lost ray of an AnalysisError.
   struct LostRay {
-    /// Last surface the ray reached (RayBatch::last_surface): for Vignetted, Absorbed, Tir and
-    /// EventImpossible the surface where it stopped; for Missed and NoConvergence the surface
-    /// before the one it did not reach. None if the ray reached no surface.
+    /// Last surface the ray reached (RayBatch::last_surface): for Vignetted, Absorbed, Tir,
+    /// EventImpossible and Evanescent the surface where it stopped; for Missed and NoConvergence
+    /// the surface before the one it did not reach. None if the ray reached no surface.
     std::optional<model::SurfaceId> surface;
     std::optional<std::string> location;  ///< JSON pointer of that surface in the system file
     trace::RayStatus ray_status = trace::RayStatus::Alive;
@@ -88,9 +88,9 @@ struct RayLosses {
   /// image surface; a ray that ended Alive elsewhere counts as Vignetted.
   std::array<std::size_t, trace::kRayStatusCount> by_status{};
   /// Index into CompiledSystem::surfaces() of the surface that most lost rays reached last
-  /// (RayBatch::last_surface: the surface where a Vignetted, Absorbed, Tir or EventImpossible
-  /// ray stopped, the surface before the one a Missed or NoConvergence ray did not reach);
-  /// ties go to the lowest index. None if no lost ray reached a surface.
+  /// (RayBatch::last_surface: the surface where a Vignetted, Absorbed, Tir, EventImpossible or
+  /// Evanescent ray stopped, the surface before the one a Missed or NoConvergence ray did not
+  /// reach); ties go to the lowest index. None if no lost ray reached a surface.
   std::optional<std::uint32_t> worst_surface;
   std::size_t worst_surface_count = 0;  ///< lost rays whose last surface is worst_surface
 
