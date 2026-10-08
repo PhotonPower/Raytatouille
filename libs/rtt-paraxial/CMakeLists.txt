@@ -12,4 +12,7 @@ if(RTT_BUILD_TESTS)
     SOURCES tests/test_paraxial.cpp tests/test_seidel.cpp tests/test_errors.cpp
             tests/test_prescription.cpp
     LIBS rtt::paraxial rtt::io)
+  # SCHOTT catalogue for the dispersive field-conversion tests (#35).
+  target_compile_definitions(rtt_paraxial_tests PRIVATE
+    RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs")
 endif()
