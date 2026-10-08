@@ -47,8 +47,10 @@ enum class SystemApertureType : std::uint8_t {
   ImageSpaceFNumber,
   /// Object-space numerical aperture NA, dimensionless, finite objects only, read paraxially:
   /// the paraxial marginal slope from the axial object point is u = NA / n, n the refractive
-  /// index of object space (first_order, ray aiming of object-space telecentric systems); the
-  /// launched marginal ray has tan U = NA / n. Greivenkamp, OPTI-502, Sec. 9, p. 9-34:
+  /// index of object space (first_order, ray aiming of object-space telecentric systems). With
+  /// paraxial aiming the marginal ray has tan U = NA / n; with real aiming it hits the paraxial
+  /// stop edge R_s, and its tan U differs from NA / n by the pupil aberration.
+  /// Greivenkamp, OPTI-502, Sec. 9, p. 9-34:
   /// NA = n sin U ≈ n u; a real marginal ray with n sin U = NA differs for a large NA
   /// (docs/quellen.md). With an object-space telecentric system only ObjectSpaceNA and
   /// StopSize define the bundle.

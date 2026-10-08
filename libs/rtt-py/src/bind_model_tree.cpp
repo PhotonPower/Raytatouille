@@ -90,8 +90,10 @@ void bind_model_tree(nb::module_& m) {
       .value("OBJECT_SPACE_NA", model::SystemApertureType::ObjectSpaceNA,
              "object-space numerical aperture NA, dimensionless, finite objects only, read "
              "paraxially: the paraxial marginal slope from the axial object point is u = NA / n, "
-             "n the index of object space, so the launched marginal ray has tan U = NA / n "
-             "(Greivenkamp, OPTI-502, Sec. 9, p. 9-34: NA = n sin U ~ n u); "
+             "n the index of object space (Greivenkamp, OPTI-502, Sec. 9, p. 9-34: "
+             "NA = n sin U ~ n u). With paraxial aiming the marginal ray has tan U = NA / n; with "
+             "real aiming it hits the paraxial stop edge R_s, and its tan U differs from NA / n "
+             "by the pupil aberration; "
              "file: \"object_na\"")
       .value("STOP_SIZE", model::SystemApertureType::StopSize,
              "the stop aperture as defined; the value is not used (file: \"stop_size\")");
