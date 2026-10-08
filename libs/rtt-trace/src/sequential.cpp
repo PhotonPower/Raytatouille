@@ -19,9 +19,18 @@
 namespace rtt::trace {
 namespace {
 
-/// Diffraction orders are traced from #127 on (ADR 0025). Until then an event with order != 0
-/// ends the ray at its hit point with EventImpossible, as the event kind Diffract did before
-/// schema 0.3; a miss, vignetting and an absorber keep their status, as in sequential_step().
+/// Diffraction orders and efficiencies are traced from #127 on (ADR 0025). Until then an event
+/// with order != 0 ends the ray at its hit point with EventImpossible, as the event kind Diffract
+/// did before schema 0.3. So does every event at a surface with diffraction_efficiency: there
+/// orders not listed, also order 0, have efficiency 0 (ADR 0025, point 5), so passing with full
+/// weight would be wrong. A miss, vignetting and an absorber keep their status, as in
+/// sequential_step().
+[[nodiscard]] bool order_not_traced(const compile::CompiledEvent& event,
+                                    const compile::CompiledSurface& surface) noexcept {
+  return event.order != 0 || surface.diffraction_efficiency.has_value();
+}
+
+/// The event that order_not_traced() selects: stops at the hit point (see there).
 RayState stop_at_order(const RayState& ray,
                        const compile::CompiledSurface& surface,
                        std::uint32_t surface_index,
@@ -177,9 +186,10 @@ TraceStats trace_rays(const compile::CompiledSystem& system,
       for (; steps < events.events.size() && ray.status == RayStatus::Alive; ++steps) {
         const compile::CompiledEvent& event = events.events[steps];
         const compile::CompiledSurface& surface = system.surfaces()[event.surface];
-        ray = event.order == 0
-                  ? sequential_step(ray, surface, event.surface, event.kind, event_media(event, wl))
-                  : stop_at_order(ray, surface, event.surface, event_media(event, wl));
+        ray =
+            order_not_traced(event, surface)
+                ? stop_at_order(ray, surface, event.surface, event_media(event, wl))
+                : sequential_step(ray, surface, event.surface, event.kind, event_media(event, wl));
         recorder.after(i, steps, ray);
       }
       recorder.finish(i, steps, ray);

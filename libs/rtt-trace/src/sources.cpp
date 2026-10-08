@@ -458,11 +458,12 @@ std::optional<std::pair<double, double>> stop_hit(const Context& c, RayState ray
   const auto& events = system.path(c.path).events;
   for (std::size_t i = 0; i < c.stop_event; ++i) {
     const auto& e = events[i];
-    // Orders follow in #127 (ADR 0025); until then a ray with an order != 0 before the stop
-    // does not get there, as in the tracer. first_order() already rejects phase layers, so this
-    // only keeps stop_hit() consistent with trace().
-    if (e.order != 0) return std::nullopt;
     const compile::CompiledSurface& s = system.surfaces()[e.surface];
+    // Orders and efficiencies follow in #127 (ADR 0025); until then a ray with an order != 0 or
+    // at a surface with diffraction_efficiency before the stop does not get there, as in the
+    // tracer. first_order() already rejects phase layers, so this only keeps stop_hit()
+    // consistent with trace().
+    if (e.order != 0 || s.diffraction_efficiency) return std::nullopt;
     const SurfaceHit hit = intersect_surface(ray, s);
     ray = apply_event(ray, s, hit, e.surface, e.kind,
                       system.media()[e.medium_before].index[c.wavelength].real(),

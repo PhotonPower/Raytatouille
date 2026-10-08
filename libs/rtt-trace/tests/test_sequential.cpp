@@ -281,6 +281,32 @@ TEST_CASE("an event with order != 0 stops at its hit point with EventImpossible 
   REQUIRE(zero.last_surface()[0] == 1);
 }
 
+TEST_CASE("a surface with diffraction efficiencies stops every order until #127", "[sequential]") {
+  // ADR 0025, point 5: with the field present, orders not listed have efficiency 0, also order
+  // 0. Until #127 reads the efficiencies, order 0 must not pass there with full weight.
+  System s = bare_system();
+  Surface grating = surface("G.S1");
+  grating.phases.push_back(rtt::model::LinearGrating{Param(300.0), 0.0});
+  grating.diffraction_efficiency = std::vector<rtt::model::DiffractionEfficiency>{{1, 0.8}};
+  s.root.children.push_back(
+      {Element{"G", ElementKind::ThinElement, Pose::along_z(10.0), std::nullopt, {grating}}});
+  s.root.children.push_back(
+      {Element{"D", ElementKind::Detector, Pose::along_z(40.0), std::nullopt, {surface("D")}}});
+  s.paths = {{"zero",
+              false,
+              {{SurfaceId("G.S1"), rtt::model::EventKind::Transmit, 0},
+               {SurfaceId("D"), rtt::model::EventKind::Transmit, 0}}}};
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+
+  RayBatch rays(1);
+  set_ray(rays, 0, Vec3(0.0, 1.0, 0.0), Vec3::UnitZ());
+  [[maybe_unused]] const auto stats = SequentialTracer().trace(cs, PathId{0}, rays);
+  REQUIRE(rays.status()[0] == RayStatus::EventImpossible);
+  REQUIRE(rays.last_surface()[0] == 0);
+  REQUIRE((pos(rays, 0) - Vec3(0.0, 1.0, 10.0)).norm() <= 1e-12);
+}
+
 TEST_CASE("invalid trace input throws before tracing", "[sequential]") {
   System s = bare_system();
   s.root.children.push_back(

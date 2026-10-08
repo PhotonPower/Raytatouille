@@ -160,7 +160,8 @@ inline constexpr double kApertureTolerance = 1e-9;
 ///   coating (CompiledSurface::coating empty), an ideal axis parallel to the ray and non-finite
 ///   amplitudes (grazing incidence, a coating layer exactly at q = 0) give EventImpossible.
 /// Phase layers are ignored here (order 0); orders follow in #127 (ADR 0025). Until then the
-/// sequential tracer stops an event with order != 0 with EventImpossible (sequential.hpp).
+/// sequential tracer stops an event with order != 0, or at a surface with
+/// diffraction_efficiency, with EventImpossible (sequential.hpp).
 ///
 /// Never throws; physical problems are status flags (ADR 0009).
 /// @param ray           incoming ray in global coordinates, |dir| = 1
