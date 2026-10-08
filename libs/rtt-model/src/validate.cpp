@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 namespace rtt::model {
 
@@ -256,13 +257,16 @@ class Validator {
       check_phase(s.phases[i], idx(loc + "/phases", i));
     }
     if (!s.phases.empty()) phase_surfaces_.insert(s.id.str());
-    if (s.diffraction_efficiency) check_efficiency(s, loc + "/diffraction_efficiency");
+    if (const auto& efficiency = s.diffraction_efficiency) {
+      check_efficiency(s, *efficiency, loc + "/diffraction_efficiency");
+    }
     check_interaction(s.interaction, loc + "/interaction");
   }
 
-  /// Efficiency per diffraction order (ADR 0025, point 5).
-  void check_efficiency(const Surface& s, const std::string& loc) {
-    const auto& list = *s.diffraction_efficiency;
+  /// Efficiency per diffraction order (ADR 0025, point 5); `list` is the surface's list.
+  void check_efficiency(const Surface& s,
+                        const std::vector<DiffractionEfficiency>& list,
+                        const std::string& loc) {
     if (s.phases.empty()) {
       report("surface.efficiency_invalid", loc,
              "diffraction efficiency at a surface without phase layer");

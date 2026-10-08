@@ -245,7 +245,7 @@ TEST_CASE("an event with order != 0 stops at its hit point with EventImpossible 
   // grating surface is the event without diffraction.
   System s = bare_system();
   Surface grating = surface("G.S1");
-  grating.phases.push_back(rtt::model::LinearGrating{Param(300.0), 0.0});
+  grating.phases.emplace_back(rtt::model::LinearGrating{Param(300.0), 0.0});
   grating.aperture = rtt::model::CircularAperture{5.0, 0.0};
   s.root.children.push_back(
       {Element{"G", ElementKind::ThinElement, Pose::along_z(10.0), std::nullopt, {grating}}});
@@ -286,7 +286,7 @@ TEST_CASE("a surface with diffraction efficiencies stops every order until #127"
   // 0. Until #127 reads the efficiencies, order 0 must not pass there with full weight.
   System s = bare_system();
   Surface grating = surface("G.S1");
-  grating.phases.push_back(rtt::model::LinearGrating{Param(300.0), 0.0});
+  grating.phases.emplace_back(rtt::model::LinearGrating{Param(300.0), 0.0});
   grating.diffraction_efficiency = std::vector<rtt::model::DiffractionEfficiency>{{1, 0.8}};
   s.root.children.push_back(
       {Element{"G", ElementKind::ThinElement, Pose::along_z(10.0), std::nullopt, {grating}}});

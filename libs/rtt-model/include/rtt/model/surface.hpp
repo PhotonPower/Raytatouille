@@ -154,7 +154,7 @@ using Interaction = std::variant<Fresnel,
 /// Power fraction of one diffraction order at a surface with phase layers (ADR 0025, point 5):
 /// independent of polarization and wavelength in M4; plain numbers, not Param.
 struct DiffractionEfficiency {
-  int order = 0;  ///< diffraction order m, sign as in ADR 0025
+  int order = 0;            ///< diffraction order m, sign as in ADR 0025
   double efficiency = 1.0;  ///< power fraction, 0 <= efficiency <= 1
   bool operator==(const DiffractionEfficiency&) const = default;
 };

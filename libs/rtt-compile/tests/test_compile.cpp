@@ -316,7 +316,8 @@ TEST_CASE("media along explicit paths follow the inside/outside rule", "[compile
   s.environment.medium = "CONST:1.333";
   // A phase layer at P.S2, so that the Transmit with order 1 below is valid (ADR 0025).
   Surface grating = plane_surface("P.S2", 5.0);
-  grating.phases.push_back(rtt::model::LinearGrating{Param(100.0), 0.0});
+  const rtt::model::LinearGrating lines{Param(100.0), 0.0};
+  grating.phases.emplace_back(lines);
   s.root.children.push_back({Element{"P",
                                      ElementKind::Plate,
                                      Pose::along_z(10.0),

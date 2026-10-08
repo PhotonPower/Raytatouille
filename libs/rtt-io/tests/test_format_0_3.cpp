@@ -49,7 +49,7 @@ std::string error_pointer(const std::string& text) {
 /// Singlet with a grating on L1.S1 and an explicit path with a transmitted first order there.
 System grating_singlet() {
   System s = rtt::model::test::make_singlet();
-  element(s, 1).surfaces[0].phases.push_back(rtt::model::LinearGrating{Param(300.0), 0.0});
+  element(s, 1).surfaces[0].phases.emplace_back(rtt::model::LinearGrating{Param(300.0), 0.0});
   s.paths = {{"first order",
               false,
               {{SurfaceId("STO"), EventKind::Transmit, 0},
@@ -187,7 +187,7 @@ TEST_CASE("schema 0.3: the edit form carries crystal, optic axis and efficiencie
   // ADR 0026, point 6: the edit form (ADR 0024) writes the material object as read and the
   // optic axis if set; patches reach the new keys like any other.
   System s = crystal_singlet();
-  element(s, 1).surfaces[0].phases.push_back(rtt::model::LinearGrating{Param(300.0), 0.0});
+  element(s, 1).surfaces[0].phases.emplace_back(rtt::model::LinearGrating{Param(300.0), 0.0});
   const std::string edit = rtt::io::to_edit_json(s);
   REQUIRE_THAT(edit, ContainsSubstring(R"("optic_axis": [0.0, 1.0, 1.0])"));
   REQUIRE_THAT(edit, ContainsSubstring(R"("extraordinary": "BIREFRINGENT:CALCITE-E")"));
