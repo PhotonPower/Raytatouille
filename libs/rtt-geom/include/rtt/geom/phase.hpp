@@ -69,7 +69,8 @@ class LinearGratingPhase {
 /// r = 0.
 ///
 /// Relation to Mansuripur, Proc. SPIE 6620, 66200N (2007), Eq. (9), F(r) = sum_n a_n r^n:
-/// phi = 2 pi F gives a_n = c_(n/2) / (2 pi R^n) for even n and a_n = 0 for odd n.
+/// phi = 2 pi F gives a_n = c_(n/2) / (2 pi R^n) for even n >= 2 and a_n = 0 otherwise
+/// (including a_0: phi has no constant term).
 template <rtt::math::Real T>
 class RadialPhasePolynomial {
  public:

@@ -105,8 +105,9 @@ TEST_CASE("radial phase: hand values of phi and its gradient (#126)", "[phase]")
 TEST_CASE("radial phase: gradient equals the central difference of phi (#126)", "[phase]") {
   // Central difference with h = 1e-4 mm: truncation h^2 / 6 |phi'''| and rounding about
   // eps |phi| / h. For the example (R = 2, c = (1, 0.5, -0.25)) at r <= 1.6 mm,
-  // |phi'''| < 3 rad/mm^3 (c2 term 0.5 r^4 / 16: 24 x 0.5 / 16 ~ 1.2; c3 term 0.25 r^6 / 64:
-  // 120 x^3 0.25 / 64 ~ 1.9), so truncation < 5e-9 and rounding ~ 2e-12 rad/mm.
+  // |phi'''| < 3.2 rad/mm^3 (c2 term 0.5 r^4 / 16: 24 x 0.5 / 16 ~ 1.2; c3 term 0.25 r^6 / 64:
+  // 120 x^3 0.25 / 64 ~ 1.9; with opposite signs even less), so truncation < 5.4e-9 and
+  // rounding ~ 2e-12 rad/mm.
   // Tolerance 1e-7 rad/mm.
   const auto f = example_radial();
   constexpr double h = 1e-4;
