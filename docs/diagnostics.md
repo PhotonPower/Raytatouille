@@ -39,12 +39,14 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `coating.thickness_invalid` | Fehler | Schichtdicke nicht berechenbar (z. B. QWOT mit Re n ≤ 0) | compile | `…/s/interaction/name` |
 | `coating.unknown` | Fehler | Beschichtungsreferenz nicht auflösbar | compile | `…/s/interaction/name` |
 | `coating.wavelength_out_of_range` | Fehler | Systemwellenlänge außerhalb des Bereichs eines Schichtmaterials | compile | `…/s/interaction/name` |
+| `crystal.absorbing` | Fehler | Teil eines Kristalls mit κ ≠ 0 bei einer Systemwellenlänge (in M4 nicht unterstützt, ADR 0026) | compile | `…/el/material/ordinary` bzw. `…/extraordinary` |
+| `crystal.interaction_unsupported` | Fehler | andere Interaktion als `fresnel` oder `ideal_anti_reflection` an einer Kristallfläche | compile | `…/s/interaction` |
 | `crystal.kind_not_allowed` | Fehler | Kristallmaterial an einem Element, das keine Linse und keine Platte ist (ADR 0026) | validate | `…/el/material` |
 | `crystal.material_conflict` | Fehler | Kristall und isotropes Material zugleich gesetzt (nur über die API möglich) | validate | `…/el/material` |
 | `crystal.optic_axis_invalid` | Fehler | optische Achse null oder nicht endlich | validate | `…/el/optic_axis` |
 | `crystal.optic_axis_missing` | Fehler | Kristall ohne optische Achse | validate | `…/el/optic_axis` |
 | `crystal.optic_axis_not_allowed` | Fehler | optische Achse an einem Element ohne Kristall | validate | `…/el/optic_axis` |
-| `crystal.unsupported` | Fehler | Kristallfall, der noch nicht verfolgt werden kann (ADR 0026, Punkt 4); bis #131 jedes Kristallelement | compile | `…/el/material` bzw. das Ereignis |
+| `crystal.unsupported` | Fehler | Kristallfall, der noch nicht verfolgt werden kann (ADR 0026, Punkt 4): Kristall → Kristall, Reflexion im Kristall oder von außen (außer `ideal_anti_reflection`), Beugungsordnung im Kristall, automatischer Pfad durch einen Kristall | compile | `/paths/i/events/k` bzw. `/paths/i/events` |
 | `edit.base_not_representable` | Fehler | das zu ändernde System ist in der Bearbeitungsform nicht darstellbar (nicht endliche Zahl, Material und Segmentliste oder Kristall zugleich, kein gültiges UTF-8) | edit | leer (ganzes Dokument) |
 | `edit.invalid_value` | Fehler | die geänderte Bearbeitungsform ist keine gültige Systemdatei (Typ, Schlüssel, Aufzählungswert); Ort vom strengen Leser | edit | z. B. `/name`, `…/s/shape/base/conic` |
 | `edit.patch_invalid` | Fehler | kein gültiges JSON-Patch-Dokument oder keine gültige Operation (RFC 6902): kein Array, unbekannte Operation, fehlendes Mitglied, ungültiger Pointer oder Array-Index (keine Ziffern, führende Null, `-` außerhalb eines Ziels), Verschieben in ein eigenes Kind, doppelte Schlüssel | edit | `path` bzw. `from` der Operation oder leer |
@@ -75,10 +77,12 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `node.name_duplicate` | Fehler | Name einer Baugruppe oder eines Elements doppelt | validate | `…/name` |
 | `node.name_empty` | Fehler | leerer Name einer Baugruppe oder eines Elements | validate | `…/name` |
 | `object.distance_invalid` | Fehler | endlicher Objektabstand nicht endlich oder ≤ 0 mm | validate | `/object/distance` |
+| `paths.crystal_mode_required` | Fehler | Eintritt in einen Kristall mit `refract` statt `ordinary` oder `extraordinary` (ADR 0026) | compile | `/paths/i/events/k` |
 | `paths.empty` | Fehler | kein Pfad | validate | `/paths` |
 | `paths.events_empty` | Fehler | expliziter Pfad ohne Ereignisse | validate | `/paths/i/events` |
 | `paths.inner_surface_ambiguous` | Fehler | innere Fläche zwischen verschiedenen Materialien von außen betreten | compile | `/paths/i/events/k` |
 | `paths.mangin_mirror_automatic` | Fehler | Spiegel mit Substrat und mehreren Flächen auf einem automatischen Pfad | compile | `…/el/surfaces` |
+| `paths.mode_without_crystal` | Fehler | `ordinary` oder `extraordinary` an einem Ereignis, dessen Medium danach kein Kristall ist (Element ohne Kristall oder Austritt) | compile | `/paths/i/events/k` |
 | `paths.name_duplicate` | Fehler | Pfadname doppelt | validate | `/paths/i/name` |
 | `paths.name_empty` | Fehler | leerer Pfadname | validate | `/paths/i/name` |
 | `paths.order_not_allowed` | Fehler | Beugungsordnung an einem Ereignis, das nicht beugt: Fläche ohne Phasenschicht (ADR 0025) | validate | `/paths/i/events/k/order` |

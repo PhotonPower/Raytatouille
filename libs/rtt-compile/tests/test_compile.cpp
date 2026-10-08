@@ -332,9 +332,9 @@ TEST_CASE("media along explicit paths follow the inside/outside rule", "[compile
       "T", ElementKind::ThinElement, Pose::along_z(50.0), std::nullopt, {plane_surface("T.S")}}});
   s.paths = {{"explicit",
               false,
-              {{SurfaceId("P.S1"), EventKind::Ordinary, 0},
+              {{SurfaceId("P.S1"), EventKind::Refract, 0},
                {SurfaceId("P.S2"), EventKind::Transmit, 1},
-               {SurfaceId("P.S2"), EventKind::Extraordinary, 0},
+               {SurfaceId("P.S2"), EventKind::Refract, 0},
                {SurfaceId("M.S1"), EventKind::Refract, 0},
                {SurfaceId("M.S2"), EventKind::Reflect, 0},
                {SurfaceId("M.S1"), EventKind::Refract, 0},
@@ -346,9 +346,9 @@ TEST_CASE("media along explicit paths follow the inside/outside rule", "[compile
   const CompiledSystem cs = compile(s, lib);
   REQUIRE(cs.media()[cs.environment_medium()].reference == "CONST:1.333");
   require_events(cs, "explicit",
-                 {{"P.S1", EventKind::Ordinary, "CONST:1.333", "CONST:1.5"},
+                 {{"P.S1", EventKind::Refract, "CONST:1.333", "CONST:1.5"},
                   {"P.S2", EventKind::Transmit, "CONST:1.5", "CONST:1.5"},
-                  {"P.S2", EventKind::Extraordinary, "CONST:1.5", "CONST:1.333"},
+                  {"P.S2", EventKind::Refract, "CONST:1.5", "CONST:1.333"},
                   {"M.S1", EventKind::Refract, "CONST:1.333", "CONST:1.6"},
                   {"M.S2", EventKind::Reflect, "CONST:1.6", "CONST:1.6"},
                   {"M.S1", EventKind::Refract, "CONST:1.6", "CONST:1.333"},
@@ -812,7 +812,7 @@ TEST_CASE("Refract at a surface that does not bound the current segment", "[comp
   SECTION("from outside through an inner surface between different glasses: CompileError") {
     s.paths = {{"inner",
                 false,
-                {refract("L.S1"), refract("L.S1"), {SurfaceId("L.S3"), EventKind::Ordinary, 0}}}};
+                {refract("L.S1"), refract("L.S1"), {SurfaceId("L.S3"), EventKind::Refract, 0}}}};
     const CompileError e = compile_error(s);
     REQUIRE(e.diagnostics().size() == 1);
     REQUIRE(has_error_at(e, "/paths/0/events/2"));
@@ -865,10 +865,10 @@ TEST_CASE("a prism of one glass can be entered through an inner surface", "[comp
                    plane_surface("P.S4", 3.0)}};
     prism.segment_materials = {"CONST:1.6", "CONST:1.6", "CONST:1.6"};
     s.root.children.push_back({prism});
-    s.paths = {{"side", false, {{SurfaceId("P.S3"), EventKind::Ordinary, 0}, refract("P.S1")}}};
+    s.paths = {{"side", false, {{SurfaceId("P.S3"), EventKind::Refract, 0}, refract("P.S1")}}};
     const CompiledSystem cs = compile(s, lib);
     require_events(cs, "side",
-                   {{"P.S3", EventKind::Ordinary, "AIR", "CONST:1.6"},
+                   {{"P.S3", EventKind::Refract, "AIR", "CONST:1.6"},
                     {"P.S1", EventKind::Refract, "CONST:1.6", "AIR"}});
   }
 }

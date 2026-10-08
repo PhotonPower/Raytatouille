@@ -96,12 +96,35 @@ struct CompiledSurface {
   std::optional<math::Vec3> ideal_axis;
 };
 
-/// A homogeneous medium evaluated at all system wavelengths.
+/// A homogeneous medium evaluated at all system wavelengths: isotropic, or a uniaxial crystal
+/// (ADR 0026, point 3). Isotropic media with equal references are shared; every crystal element
+/// has a medium of its own, because the optic axis belongs to it.
 struct CompiledMedium {
-  std::string reference;  ///< material reference as in the model, e.g. "AIR", "CONST:1.5168"
+  /// Material reference as in the model, e.g. "AIR", "CONST:1.5168"; for a crystal the
+  /// reference of the ordinary index n_O.
+  std::string reference;
   /// Complex index n + i*kappa per system wavelength (same order as wavelengths_um()),
-  /// evaluated at the environment temperature.
+  /// evaluated at the environment temperature and pressure; for a crystal n_O (kappa = 0, since
+  /// compile rejects absorbing crystals with crystal.absorbing).
   std::vector<math::Complex> index;
+  /// Crystal only (empty otherwise): reference of the extraordinary index n_E.
+  std::string reference_extraordinary{};  // NOLINT(readability-redundant-member-init)
+  /// Crystal only (empty otherwise): n_E per system wavelength, real, same order as `index`.
+  std::vector<double> index_extraordinary{};  // NOLINT(readability-redundant-member-init)
+  /// Crystal only: optic axis in global coordinates, unit vector; the model's axis in element
+  /// coordinates rotated with the assembly and element poses (ADR 0026, point 2). Its sign has
+  /// no meaning.
+  std::optional<math::Vec3> optic_axis{};  // NOLINT(readability-redundant-member-init)
+
+  /// True for a uniaxial crystal (optic_axis set).
+  [[nodiscard]] bool is_crystal() const noexcept { return optic_axis.has_value(); }
+};
+
+/// Mode of the ray inside a crystal (ADR 0026, point 3): None outside crystals.
+enum class CrystalMode : std::uint8_t {
+  None,           ///< the medium before the event is not a crystal
+  Ordinary,       ///< the ray entered the crystal with an Ordinary event
+  Extraordinary,  ///< the ray entered the crystal with an Extraordinary event
 };
 
 /// One step of a compiled path.
@@ -120,6 +143,9 @@ struct CompiledEvent {
   /// segments). For a coated surface this is the substrate side (ADR 0019): the tracer then uses
   /// the reversed layer stack (ADR 0021).
   bool from_inside = false;
+  /// For an event whose medium before is a crystal: the mode with which the path entered this
+  /// crystal (ADR 0026, point 3), so that the exit knows it; None otherwise.
+  CrystalMode crystal_mode = CrystalMode::None;
 };
 
 /// Named, ordered list of events.
@@ -185,8 +211,16 @@ class CompiledSystem;
 ///   goes to the environment. A cemented group is one element with one material per segment;
 ///   two separate elements always meet through the environment.
 ///
-/// Not supported yet (CompileError): Zernike sag terms (M8); crystal elements (ADR 0026,
-/// code crystal.unsupported until #131).
+/// Not supported yet (CompileError): Zernike sag terms (M8).
+/// Crystals (ADR 0026): every crystal element gets a medium of its own (CompiledMedium with
+/// n_O, n_E and the global optic axis; parts resolved at .../material/ordinary and
+/// .../extraordinary, crystal.absorbing for kappa != 0), and every event inside a crystal its
+/// CompiledEvent::crystal_mode. Path rules of ADR 0026, point 4 (docs/architecture.md): a
+/// crystal is entered with Ordinary or Extraordinary (paths.crystal_mode_required), modes only
+/// enter crystals (paths.mode_without_crystal), crystal to crystal, reflection inside or at a
+/// crystal from outside (except ideal_anti_reflection), an order inside a crystal and the
+/// automatic path through a crystal are crystal.unsupported; interactions other than fresnel and
+/// ideal_anti_reflection at a crystal surface are crystal.interaction_unsupported.
 /// Also a CompileError: a Mirror with substrate material and more than one surface on an
 /// automatic path (Mangin mirror; its front surface refracts, so it needs an explicit path
 /// Refract, Reflect, Refract); a Plate of one material with more than 2 surfaces on an

@@ -19,6 +19,7 @@
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/compile/errors.hpp"
 #include "rtt/diagnostics/codes.hpp"
+#include "rtt/material/uniaxial.hpp"
 
 namespace rtt::compile {
 namespace {
@@ -45,6 +46,9 @@ struct ElementInfo {
   /// The media follow the segments: every Lens, and a Plate with different segment materials.
   /// Otherwise (Mirror, Plate of one material) Refract toggles inside <-> environment.
   bool segmented = false;
+  /// A crystal whose parts could not be resolved (errors reported): no media, and its events
+  /// are not checked against the crystal path rules, to avoid follow-up errors.
+  bool unresolved_crystal = false;
   std::string location;             ///< JSON pointer of the element
   std::uint32_t first_surface = 0;  ///< surfaces [first_surface, first_surface + count)
   std::uint32_t surface_count = 0;
@@ -137,8 +141,69 @@ class Compiler {
     }
     const auto index = static_cast<std::uint32_t>(media_.size());
     media_.push_back(std::move(m));
-    media_checks_.push_back({material->wavelength_range_um(), location});
+    media_checks_.push_back({material->wavelength_range_um(), location, false});
     medium_index_.emplace(reference, index);
+    return index;
+  }
+
+  /// Medium of a crystal element (ADR 0026, points 1-3), a medium of its own: n_O and n_E per
+  /// wavelength and the optic axis `axis` (element coordinates) rotated into global coordinates
+  /// and normalised. Each part is resolved with its own JSON pointer (material.unknown);
+  /// kappa != 0 at a system wavelength is crystal.absorbing at the part. None if a part cannot
+  /// be resolved. `location` is the JSON pointer of the element.
+  std::optional<std::uint32_t> crystal_medium(const model::CrystalMaterial& crystal,
+                                              const std::array<double, 3>& axis,
+                                              const math::Isometry3& to_global,
+                                              const std::string& location) {
+    const std::string where = location + "/material";
+    const auto part = [&](const std::string& reference,
+                          const char* name) -> std::shared_ptr<const material::Material> {
+      try {
+        return materials_.resolve(reference);
+      } catch (const material::UnknownMaterial& e) {
+        report("material.unknown", where + "/" + name, e.what());
+        return nullptr;
+      }
+    };
+    auto ordinary = part(crystal.ordinary, "ordinary");
+    auto extraordinary = part(crystal.extraordinary, "extraordinary");
+    if (ordinary == nullptr || extraordinary == nullptr) return std::nullopt;
+    const material::UniaxialMaterial uniaxial(std::move(ordinary), std::move(extraordinary));
+
+    CompiledMedium m{crystal.ordinary, {}};
+    m.reference_extraordinary = crystal.extraordinary;
+    m.index.reserve(wavelengths_um_.size());
+    m.index_extraordinary.reserve(wavelengths_um_.size());
+    const double t = system_.environment.temperature_c;
+    const double p = system_.environment.pressure_atm;
+    bool absorbing_o = false;
+    bool absorbing_e = false;
+    for (const double wl : wavelengths_um_) {
+      const math::Complex n_o = uniaxial.n_ordinary(wl, t, p);
+      const math::Complex n_e = uniaxial.n_extraordinary(wl, t, p);
+      // M4 has no absorbing crystals (ADR 0026, point 1); one error per part.
+      if (n_o.imag() != 0.0 && !absorbing_o) {
+        absorbing_o = true;
+        report("crystal.absorbing", where + "/ordinary",
+               "kappa = " + number(n_o.imag()) + " at " + number(wl) +
+                   " um: absorbing crystals "
+                   "are not supported in M4 (ADR 0026)");
+      }
+      if (n_e.imag() != 0.0 && !absorbing_e) {
+        absorbing_e = true;
+        report("crystal.absorbing", where + "/extraordinary",
+               "kappa = " + number(n_e.imag()) + " at " + number(wl) +
+                   " um: absorbing crystals "
+                   "are not supported in M4 (ADR 0026)");
+      }
+      m.index.push_back(n_o);
+      m.index_extraordinary.push_back(n_e.real());
+    }
+    m.optic_axis = to_global.apply_vector(math::Vec3(axis[0], axis[1], axis[2])).normalized();
+
+    const auto index = static_cast<std::uint32_t>(media_.size());
+    media_.push_back(std::move(m));
+    media_checks_.push_back({uniaxial.wavelength_range_um(), where, true});
     return index;
   }
 
@@ -175,10 +240,23 @@ class Compiler {
       const material::WavelengthRange& valid = range.value();
       for (const double wl : wavelengths_um_) {
         if (valid.contains(wl)) continue;
-        report("material.wavelength_out_of_range", location.value(),
-               "wavelength " + number(wl) + " um is outside the valid range [" +
-                   number(valid.min_um) + ", " + number(valid.max_um) + "] um of material '" +
-                   media_[m].reference + "'");
+        if (!media_checks_[m].crystal) {
+          report("material.wavelength_out_of_range", location.value(),
+                 "wavelength " + number(wl) + " um is outside the valid range [" +
+                     number(valid.min_um) + ", " + number(valid.max_um) + "] um of material '" +
+                     media_[m].reference + "'");
+        } else {
+          // A crystal is valid where both parts are (#129); disjoint ranges have no common one.
+          const std::string crystal = "crystal ('" + media_[m].reference + "', '" +
+                                      media_[m].reference_extraordinary + "')";
+          report("material.wavelength_out_of_range", location.value(),
+                 valid.min_um > valid.max_um
+                     ? "the ordinary and extraordinary parts of the " + crystal +
+                           " have no common valid range of wavelengths"
+                     : "wavelength " + number(wl) + " um is outside the common valid range [" +
+                           number(valid.min_um) + ", " + number(valid.max_um) + "] um of the " +
+                           crystal);
+        }
         break;
       }
     }
@@ -362,16 +440,22 @@ class Compiler {
     info.location = location;
     info.first_surface = static_cast<std::uint32_t>(surfaces_.size());
     info.surface_count = static_cast<std::uint32_t>(element.surfaces.size());
-    // Crystals are compiled from #131 on (ADR 0026, point 6); until then the element is an
-    // error, and the rest of compile treats it as an element without material.
-    if (element.crystal) {
-      report("crystal.unsupported", location + "/material",
-             "crystal elements cannot be compiled yet (ADR 0026)");
-    }
     // Unresolved materials are reported by medium(); index 0 is only a placeholder then.
     const bool lens_or_plate =
         element.kind == model::ElementKind::Lens || element.kind == model::ElementKind::Plate;
-    if (lens_or_plate && !element.segment_materials.empty()) {
+    if (const auto& crystal = element.crystal) {
+      // A crystal holds for all segments (ADR 0026, point 1; validate: Lens or Plate only).
+      // An unresolved crystal leaves the element without media; its errors stop compile().
+      // validate() guarantees a finite, non-zero optic axis for a crystal.
+      const std::array<double, 3> axis = element.optic_axis.value_or(std::array{0.0, 0.0, 1.0});
+      if (const auto m = crystal_medium(*crystal, axis, to_global, location)) {
+        const std::size_t count = element.surfaces.size() - 1;
+        info.media.assign(count, *m);
+        info.media_locations.assign(count, location + "/material");
+      } else {
+        info.unresolved_crystal = true;
+      }
+    } else if (lens_or_plate && !element.segment_materials.empty()) {
       for (std::size_t i = 0; i < element.segment_materials.size(); ++i) {
         info.media_locations.push_back(idx(location + "/material", i));
         info.media.push_back(
@@ -416,7 +500,14 @@ class Compiler {
         const auto& a = retarder->fast_axis;
         c.ideal_axis = to_global.apply_vector(math::Vec3(a[0], a[1], a[2]));
       }
-      if (const auto* ref = std::get_if<model::CoatingRef>(&s.interaction)) {
+      // At a crystal surface only fresnel and ideal_anti_reflection, as projections without
+      // reflection loss in M4 (ADR 0026, point 5); independent of the paths.
+      if (element.crystal && !std::holds_alternative<model::Fresnel>(s.interaction) &&
+          !std::holds_alternative<model::IdealAntiReflection>(s.interaction)) {
+        report("crystal.interaction_unsupported", surface_location + "/interaction",
+               "only fresnel and ideal_anti_reflection are supported at a crystal surface in M4 "
+               "(ADR 0026)");
+      } else if (const auto* ref = std::get_if<model::CoatingRef>(&s.interaction)) {
         c.coating = surface_coating(*ref, info, j, surface_location + "/interaction");
       }
       surface_index_.emplace(s.id, static_cast<std::uint32_t>(surfaces_.size()));
@@ -501,7 +592,85 @@ class Compiler {
       }
     }
     assign_media(compiled.events, location + "/events");
+    check_crystal_events(compiled.events, location + "/events", path.automatic);
     return compiled;
+  }
+
+  /// Path rules at crystals (ADR 0026, point 4) and the mode of each event inside a crystal.
+  /// B is the medium before, A after, "beyond" the other side of the surface. Allowed: entry
+  /// (B isotropic, A crystal) with Ordinary or Extraordinary; exit (B crystal, A isotropic) with
+  /// Refract; Transmit from outside; Transmit inside with order 0 (the mode is kept); Reflect
+  /// from outside at an ideal_anti_reflection surface. Errors at the event (`location`/k):
+  /// Refract into a crystal: paths.crystal_mode_required; a mode whose A is not a crystal:
+  /// paths.mode_without_crystal; crystal to crystal, Reflect inside a crystal, Reflect from
+  /// outside at any other interaction, Transmit inside with order != 0: crystal.unsupported.
+  /// An automatic path through a crystal element has no mode: crystal.unsupported at `location`.
+  void check_crystal_events(std::vector<CompiledEvent>& events,
+                            const std::string& location,
+                            bool automatic) {
+    // After an unresolved material, medium indices are placeholders that may not exist in
+    // media_ (see check_wavelength_ranges); such a medium counts as isotropic.
+    const auto crystal = [&](std::uint32_t medium) {
+      return medium < media_.size() && media_[medium].is_crystal();
+    };
+    if (automatic) {
+      for (const CompiledEvent& e : events) {
+        if (crystal(e.medium_before) || crystal(e.medium_after)) {
+          report("crystal.unsupported", location,
+                 "the automatic path passes the crystal element '" +
+                     surfaces_[e.surface].element_name +
+                     "' and has no mode: use an explicit path with Ordinary or Extraordinary "
+                     "(ADR 0026)");
+          return;
+        }
+      }
+      return;
+    }
+    CrystalMode mode = CrystalMode::None;
+    for (std::size_t k = 0; k < events.size(); ++k) {
+      CompiledEvent& e = events[k];
+      if (elements_[surface_element_[e.surface]].unresolved_crystal) continue;
+      const bool before = crystal(e.medium_before);
+      const bool after = crystal(e.medium_after);
+      const bool is_mode =
+          e.kind == model::EventKind::Ordinary || e.kind == model::EventKind::Extraordinary;
+      const std::string at = idx(location, k);
+      const std::string surface = "surface " + surfaces_[e.surface].id.str();
+      e.crystal_mode = before ? mode : CrystalMode::None;
+      if (is_mode && !after) {
+        report("paths.mode_without_crystal", at,
+               surface +
+                   ": Ordinary and Extraordinary enter a crystal; here the ray does not "
+                   "(ADR 0026)");
+      } else if (before && after && (is_mode || e.kind == model::EventKind::Refract)) {
+        report("crystal.unsupported", at,
+               surface + ": from a crystal into a crystal is not supported in M4 (ADR 0026)");
+      } else if (is_mode) {
+        mode = e.kind == model::EventKind::Ordinary ? CrystalMode::Ordinary
+                                                    : CrystalMode::Extraordinary;
+      } else if (e.kind == model::EventKind::Refract && after) {
+        report("paths.crystal_mode_required", at,
+               surface +
+                   ": a crystal is entered with Ordinary or Extraordinary, not Refract "
+                   "(ADR 0026)");
+      } else if (e.kind == model::EventKind::Reflect && before) {
+        report("crystal.unsupported", at,
+               surface + ": reflection inside a crystal is not supported in M4 (ADR 0026)");
+      } else if (e.kind == model::EventKind::Reflect && crystal(e.medium_beyond) &&
+                 !std::holds_alternative<model::IdealAntiReflection>(
+                     surfaces_[e.surface].interaction)) {
+        report("crystal.unsupported", at,
+               surface +
+                   ": reflection at a crystal from outside needs ideal_anti_reflection "
+                   "in M4 (ADR 0026)");
+      } else if (e.kind == model::EventKind::Transmit && before && e.order != 0) {
+        report("crystal.unsupported", at,
+               surface +
+                   ": a diffraction order inside a crystal is not supported in M4 "
+                   "(ADR 0026)");
+      }
+      if (!after) mode = CrystalMode::None;
+    }
   }
 
   /// Lens and Plate refract, Mirror reflects, Stop, Detector and ThinElement transmit (#5).
@@ -637,10 +806,12 @@ class Compiler {
   std::vector<std::uint32_t> surface_element_;  // owning element per surface
   std::map<model::SurfaceId, std::uint32_t> surface_index_;
   std::map<std::string, std::uint32_t, std::less<>> medium_index_;
-  /// Valid wavelength range and first referencing JSON pointer, per entry of media_.
+  /// Valid wavelength range and first referencing JSON pointer, per entry of media_. For a
+  /// crystal the range is the intersection of both parts (empty if they are disjoint).
   struct MediumCheck {
     std::optional<material::WavelengthRange> range;
     std::string location;
+    bool crystal = false;
   };
   std::vector<MediumCheck> media_checks_;
   std::set<std::string> mangin_reported_;         // mirrors already reported as Mangin mirrors
