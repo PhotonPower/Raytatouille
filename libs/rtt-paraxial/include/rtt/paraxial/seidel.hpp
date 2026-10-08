@@ -135,8 +135,10 @@ struct Seidel {
 ///   hypot(tan theta_x, tan theta_y) for field angles and hypot(x, y) for object or paraxial
 ///   image heights, placed in the meridional plane at +y. A paraxial image height is converted
 ///   with the paraxial chief ray of unit field value, linear in the field (as in rtt-trace,
-///   #8). If all field points lie on the axis, the chief ray is 0 and only S_I and C_L can be
-///   non-zero.
+///   #8). As in rtt-trace (#31, #50), a paraxial image height and a field angle with a finite
+///   object are converted at the reference wavelength, into a slope or an object height; the
+///   chief ray at `wavelength` passes through the centre of its own entrance pupil (#35). If
+///   all field points lie on the axis, the chief ray is 0 and only S_I and C_L can be non-zero.
 /// - Surface shape: vertex curvature, conic constant and A4 of the base shape (Conic,
 ///   EvenAsphere); higher asphere terms do not enter the third order.
 /// @param system     compiled system
@@ -148,8 +150,9 @@ struct Seidel {
 /// @throws ParaxialError if the path is not rotationally symmetric, the stop aperture is not
 ///         circular, the entrance pupil is at infinity or has no diameter, an object height is
 ///         given for an object at infinity, a field angle is not in (-90, 90) degree, a paraxial
-///         image height is given without a finite paraxial image, or a path id or wavelength index
-///         does not exist
+///         image height is given without a finite paraxial image, the field conversion at the
+///         reference wavelength needs an entrance pupil there that is at infinity or in the
+///         object plane, or a path id or wavelength index does not exist
 [[nodiscard]] Seidel seidel(const compile::CompiledSystem& system,
                             compile::PathId path,
                             std::uint16_t wavelength,
