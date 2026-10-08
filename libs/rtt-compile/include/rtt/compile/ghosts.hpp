@@ -28,7 +28,7 @@ struct GhostOptions {
 };
 
 /// Two-reflection ghost paths of the path `base` (ADR 0027):
-/// - Ghost surfaces are the Refract events of `base`; Reflect, Transmit and Diffract events are
+/// - Ghost surfaces are the Refract events of `base`; Reflect and Transmit events are
 ///   not. In M4 `base` must have no diffraction orders and no crystal modes (Ordinary,
 ///   Extraordinary): ghosts at gratings and crystals come later (ADR 0027). Nor may it enter an
 ///   element from outside through an inner surface, where the media rules of compile are not

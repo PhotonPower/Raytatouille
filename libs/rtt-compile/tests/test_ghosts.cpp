@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "rtt/coating/catalog.hpp"
@@ -174,15 +175,17 @@ TEST_CASE("ghosts: limit, name conflicts and invalid base paths (#123)", "[ghost
   const CompiledSystem with_mode = rtt::compile::compile(modes, lib);
   REQUIRE_THROWS_AS(rtt::compile::ghost_paths(with_mode, path(with_mode, "crystal")),
                     std::invalid_argument);
-  // The generator checks order != 0, not the event kind. Before schema 0.3.0 an order needs a
-  // `diffract` event; with ADR 0025 (format PR) this case becomes an order at an event of a
-  // surface with a phase layer, and the test is adapted there.
+  // The generator checks order != 0, not the event kind: since schema 0.3.0 (ADR 0025) an order
+  // is allowed at any event of a surface with a phase layer, here a grating on P.S2.
   System grating = s;
+  Surface& p_s2 = std::get<Element>(grating.root.children[1].value).surfaces[1];
+  REQUIRE(p_s2.id.str() == "P.S2");
+  p_s2.phases.emplace_back(rtt::model::LinearGrating{Param(300.0), 0.0});
   grating.paths.push_back(
       {"grating",
        false,
        {event("STO", EventKind::Transmit), event("P.S1", EventKind::Refract),
-        event("P.S2", EventKind::Refract), Event{SurfaceId("IMG"), EventKind::Diffract, 1}}});
+        Event{SurfaceId("P.S2"), EventKind::Refract, 1}, event("IMG", EventKind::Transmit)}});
   const CompiledSystem with_order = rtt::compile::compile(grating, lib);
   REQUIRE_THROWS_AS(rtt::compile::ghost_paths(with_order, path(with_order, "grating")),
                     std::invalid_argument);
