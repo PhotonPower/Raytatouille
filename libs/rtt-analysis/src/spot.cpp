@@ -77,6 +77,15 @@ SpotDiagram spot(const compile::CompiledSystem& system,
                  std::uint16_t field,
                  std::optional<std::uint16_t> wavelength,
                  const SpotOptions& options) {
+  return spot(system, path, field, wavelength, options, trace::RunControl{});
+}
+
+SpotDiagram spot(const compile::CompiledSystem& system,
+                 compile::PathId path,
+                 std::uint16_t field,
+                 std::optional<std::uint16_t> wavelength,
+                 const SpotOptions& options,
+                 const trace::RunControl& control) {
   check_path(system, path);
   if (field >= system.fields().points.size()) {
     throw std::invalid_argument("analysis: field index " + std::to_string(field) +
@@ -118,7 +127,7 @@ SpotDiagram spot(const compile::CompiledSystem& system,
   detail::LossCounter losses(system, path, options.lost_warning_fraction);
   for (std::size_t k = 0; k < wavelengths.size(); ++k) {
     const trace::RayBatch rays =
-        trace_rays(system, path, field, wavelengths[k], options.sampling, options.aiming);
+        trace_rays(system, path, field, wavelengths[k], options.sampling, options.aiming, control);
     losses.add(rays, d.image_surface);
     d.rays_launched += rays.size();
     for (std::size_t i = 0; i < rays.size(); ++i) {
@@ -143,6 +152,15 @@ RayFan ray_fan(const compile::CompiledSystem& system,
                std::uint16_t field,
                std::uint16_t wavelength,
                const FanOptions& options) {
+  return ray_fan(system, path, field, wavelength, options, trace::RunControl{});
+}
+
+RayFan ray_fan(const compile::CompiledSystem& system,
+               compile::PathId path,
+               std::uint16_t field,
+               std::uint16_t wavelength,
+               const FanOptions& options,
+               const trace::RunControl& control) {
   check_path(system, path);
   check_wavelength(system, wavelength);
   if (options.points < 1) throw std::invalid_argument("analysis: fan points must be >= 1");
@@ -155,7 +173,7 @@ RayFan ray_fan(const compile::CompiledSystem& system,
   detail::LossCounter losses(system, path, options.lost_warning_fraction);
   const auto make_fan = [&](const trace::PupilSampling& sampling, bool tangential) {
     const trace::RayBatch rays =
-        trace_rays(system, path, field, wavelength, sampling, options.aiming);
+        trace_rays(system, path, field, wavelength, sampling, options.aiming, control);
     losses.add(rays, fan.image_surface);
     std::vector<FanPoint> points;
     points.reserve(rays.size());

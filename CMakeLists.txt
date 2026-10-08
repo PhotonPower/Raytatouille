@@ -58,4 +58,5 @@ endif()
 
 if(RTT_BUILD_APPS)
   add_subdirectory(apps/rtt-cli)
+  add_subdirectory(apps/rtt-bench)
 endif()

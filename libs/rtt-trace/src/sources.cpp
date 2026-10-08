@@ -621,12 +621,19 @@ AimedRay aim_ray(const compile::CompiledSystem& system,
   return aim(c, make_field(c, field), px, py, aiming);
 }
 
-RayBatch make_rays(const compile::CompiledSystem& system,
-                   compile::PathId path,
-                   std::span<const std::uint16_t> fields,
-                   std::uint16_t wavelength,
-                   const PupilSampling& sampling,
-                   Aiming aiming) {
+namespace {
+
+/// make_rays() with an optional control (run_control.hpp, #83). The aiming loop stays serial
+/// and computes every ray exactly as without a control; with an active control it reports the
+/// progress (stage "aim") and checks for cancellation before every block of
+/// control->block_size rays, leaves the loop on a stop and throws only after it.
+RayBatch make_rays_impl(const compile::CompiledSystem& system,
+                        compile::PathId path,
+                        std::span<const std::uint16_t> fields,
+                        std::uint16_t wavelength,
+                        const PupilSampling& sampling,
+                        Aiming aiming,
+                        const RunControl* control) {
   const Context c = make_context(system, path, wavelength);
   const std::vector<PupilPoint> points = pupil_points(sampling);
   for (const PupilPoint& p : points) {
@@ -639,9 +646,24 @@ RayBatch make_rays(const compile::CompiledSystem& system,
   for (const std::uint16_t f : fields) starts.push_back(make_field(c, field_point(c, f)));
 
   RayBatch rays(fields.size() * points.size());
+  std::optional<RunMonitor> monitor;
+  if (control != nullptr && control->active()) monitor.emplace(*control, rays.size(), "aim");
+  const std::size_t block = control != nullptr ? std::max<std::size_t>(control->block_size, 1) : 1;
+  std::size_t reported = 0;
+  bool stopped = false;
   std::size_t i = 0;
-  for (std::size_t f = 0; f < fields.size(); ++f) {
+  for (std::size_t f = 0; f < fields.size() && !stopped; ++f) {
     for (const PupilPoint& p : points) {
+      if (monitor && i % block == 0) {
+        if (i > reported) {
+          monitor->add(i - reported);
+          reported = i;
+        }
+        if (monitor->stop()) {
+          stopped = true;
+          break;
+        }
+      }
       const AimedRay aimed = aim(c, starts[f], p.px, p.py, aiming);
       rays.pos_x()[i] = aimed.ray.pos.x();
       rays.pos_y()[i] = aimed.ray.pos.y();
@@ -657,7 +679,32 @@ RayBatch make_rays(const compile::CompiledSystem& system,
       ++i;
     }
   }
+  if (monitor) {
+    if (!stopped && i > reported) monitor->add(i - reported);
+    monitor->finish();  // after the loop: Cancelled, the callback's exception, or done == total
+  }
   return rays;
+}
+
+}  // namespace
+
+RayBatch make_rays(const compile::CompiledSystem& system,
+                   compile::PathId path,
+                   std::span<const std::uint16_t> fields,
+                   std::uint16_t wavelength,
+                   const PupilSampling& sampling,
+                   Aiming aiming) {
+  return make_rays_impl(system, path, fields, wavelength, sampling, aiming, nullptr);
+}
+
+RayBatch make_rays(const compile::CompiledSystem& system,
+                   compile::PathId path,
+                   std::span<const std::uint16_t> fields,
+                   std::uint16_t wavelength,
+                   const PupilSampling& sampling,
+                   Aiming aiming,
+                   const RunControl& control) {
+  return make_rays_impl(system, path, fields, wavelength, sampling, aiming, &control);
 }
 
 }  // namespace rtt::trace

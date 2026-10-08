@@ -12,6 +12,7 @@
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/trace/ray_batch.hpp"
 #include "rtt/trace/ray_paths.hpp"
+#include "rtt/trace/run_control.hpp"
 
 namespace rtt::trace {
 
@@ -85,6 +86,19 @@ class SequentialTracer final : public Tracer {
       RayPaths& paths,
       std::optional<std::span<const std::size_t>> record_rays = std::nullopt,
       std::size_t max_recorded_rays = kDefaultMaxRecordedRays) const;
+
+  /// trace() with cancellation and progress (run_control.hpp, #83): stage "trace", one work
+  /// item per ray. With an empty `control` it is trace() exactly; with an active one the batch
+  /// is split into blocks of control.block_size rays, and the result is bitwise the same for
+  /// any block size and thread count. After a cancellation request no new block starts and
+  /// Cancelled is thrown once the running blocks are done (at most one block per worker); the
+  /// batch is then partly traced. An exception from the progress callback is rethrown the same
+  /// way.
+  /// @throws as trace(), Cancelled, or the exception of the progress callback
+  [[nodiscard]] TraceStats trace(const compile::CompiledSystem& system,
+                                 compile::PathId path,
+                                 RayBatch& rays,
+                                 const RunControl& control) const;
 };
 
 }  // namespace rtt::trace

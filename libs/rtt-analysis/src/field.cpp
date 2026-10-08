@@ -215,12 +215,25 @@ std::vector<DistortionPoint> distortion(const compile::CompiledSystem& system,
                                         compile::PathId path,
                                         std::uint16_t wavelength,
                                         const FieldSweepOptions& options) {
+  return distortion(system, path, wavelength, options, trace::RunControl{});
+}
+
+std::vector<DistortionPoint> distortion(const compile::CompiledSystem& system,
+                                        compile::PathId path,
+                                        std::uint16_t wavelength,
+                                        const FieldSweepOptions& options,
+                                        const trace::RunControl& control) {
   check_path(system, path);
   check_wavelength(system, wavelength);
+  const std::vector<model::Field> fields = sweep(system, options.samples);
   std::vector<DistortionPoint> points;
-  for (const model::Field& f : sweep(system, options.samples)) {
+  trace::RunMonitor monitor(control, fields.size(), "field");
+  for (const model::Field& f : fields) {
+    if (monitor.stop()) break;
     points.push_back(distortion_at(system, path, f, wavelength, options.aiming));
+    monitor.add(1);
   }
+  monitor.finish();  // after the loop: Cancelled or the callback's exception
   return points;
 }
 
@@ -263,12 +276,25 @@ std::vector<FieldCurvaturePoint> field_curvature(const compile::CompiledSystem& 
                                                  compile::PathId path,
                                                  std::uint16_t wavelength,
                                                  const FieldCurvatureOptions& options) {
+  return field_curvature(system, path, wavelength, options, trace::RunControl{});
+}
+
+std::vector<FieldCurvaturePoint> field_curvature(const compile::CompiledSystem& system,
+                                                 compile::PathId path,
+                                                 std::uint16_t wavelength,
+                                                 const FieldCurvatureOptions& options,
+                                                 const trace::RunControl& control) {
   check_path(system, path);
   check_wavelength(system, wavelength);
+  const std::vector<model::Field> fields = sweep(system, options.samples);
   std::vector<FieldCurvaturePoint> points;
-  for (const model::Field& f : sweep(system, options.samples)) {
+  trace::RunMonitor monitor(control, fields.size(), "field");
+  for (const model::Field& f : fields) {
+    if (monitor.stop()) break;
     points.push_back(field_curvature_at(system, path, f, wavelength, options));
+    monitor.add(1);
   }
+  monitor.finish();  // after the loop: Cancelled or the callback's exception
   return points;
 }
 

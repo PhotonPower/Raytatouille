@@ -4,6 +4,7 @@
 #include <oneapi/tbb/parallel_for.h>
 #include <oneapi/tbb/partitioner.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -79,11 +80,14 @@ class Record {
 
 /// The sequential ray loop shared by both trace() overloads; `recorder` sees the start state,
 /// the state after every executed event and the final state of each ray.
+/// With an active `control` the batch is split into blocks of control->block_size rays
+/// (run_control.hpp, #83); every ray is still traced exactly once by the same code.
 template <class Recorder>
 TraceStats trace_rays(const compile::CompiledSystem& system,
                       compile::PathId path,
                       RayBatch& rays,
-                      const Recorder& recorder) {
+                      const Recorder& recorder,
+                      const RunControl* control = nullptr) {
   // Input checks at the API boundary (ADR 0009); the tracing loop itself never throws.
   const compile::CompiledPath& events = system.path(path);
   const std::size_t wavelengths = system.wavelengths_um().size();
@@ -157,8 +161,25 @@ TraceStats trace_rays(const compile::CompiledSystem& system,
       rays.weight()[i] = ray.weight;
     }
   };
-  oneapi::tbb::parallel_for(oneapi::tbb::blocked_range<std::size_t>(0, rays.size()), trace_range,
-                            oneapi::tbb::static_partitioner());
+  if (control == nullptr || !control->active()) {
+    oneapi::tbb::parallel_for(oneapi::tbb::blocked_range<std::size_t>(0, rays.size()), trace_range,
+                              oneapi::tbb::static_partitioner());
+  } else {
+    // Blocks of at most block_size rays (simple_partitioner splits down to the grain size): no
+    // new block after a cancellation request or a failed progress callback; the monitor throws
+    // only in finish(), after the parallel part (rule 3). ADR 0004, addendum #83.
+    RunMonitor monitor(*control, rays.size(), "trace");
+    const std::size_t grain = std::max<std::size_t>(control->block_size, 1);
+    oneapi::tbb::parallel_for(
+        oneapi::tbb::blocked_range<std::size_t>(0, rays.size(), grain),
+        [&](const oneapi::tbb::blocked_range<std::size_t>& range) {
+          if (monitor.stop()) return;
+          trace_range(range);
+          monitor.add(range.size());
+        },
+        oneapi::tbb::simple_partitioner());
+    monitor.finish();
+  }
 
   TraceStats stats;
   for (const RayStatus s : rays.status()) {
@@ -168,6 +189,13 @@ TraceStats trace_rays(const compile::CompiledSystem& system,
 }
 
 }  // namespace
+
+TraceStats SequentialTracer::trace(const compile::CompiledSystem& system,
+                                   compile::PathId path,
+                                   RayBatch& rays,
+                                   const RunControl& control) const {
+  return trace_rays(system, path, rays, NoRecord{}, &control);
+}
 
 TraceStats SequentialTracer::trace(const compile::CompiledSystem& system,
                                    compile::PathId path,

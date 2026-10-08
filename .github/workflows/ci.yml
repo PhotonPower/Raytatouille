@@ -73,6 +73,12 @@ jobs:
         run: cmake --build --preset ${{ matrix.preset }}
       - name: Test
         run: ctest --preset ${{ matrix.preset }}
+      # Run-time measurement (#83): times in the job summary, a warning above 3 x the rough guide
+      # of 10 ms for a spot of the Cooke triplet; never fails the job (runners vary).
+      - name: Benchmark (warns only)
+        if: matrix.preset == 'ci-linux-gcc'
+        continue-on-error: true
+        run: ./build/ci-linux-gcc/apps/rtt-bench/rtt_bench --runs 21 --github --summary "$GITHUB_STEP_SUMMARY"
 
   windows:
     name: Windows MSVC

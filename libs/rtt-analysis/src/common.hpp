@@ -59,6 +59,22 @@ inline trace::RayBatch trace_rays(const CompiledSystem& system,
   return rays;
 }
 
+/// trace_rays() with cancellation and progress (#83): stages "aim" and "trace"; with an empty
+/// control the same rays as without.
+inline trace::RayBatch trace_rays(const CompiledSystem& system,
+                                  PathId path,
+                                  std::uint16_t field,
+                                  std::uint16_t wavelength,
+                                  const trace::PupilSampling& sampling,
+                                  trace::Aiming aiming,
+                                  const trace::RunControl& control) {
+  const std::uint16_t fields[] = {field};
+  trace::RayBatch rays =
+      trace::make_rays(system, path, fields, wavelength, sampling, aiming, control);
+  [[maybe_unused]] const auto stats = trace::SequentialTracer().trace(system, path, rays, control);
+  return rays;
+}
+
 /// Traces one aimed ray through the whole path (batch of size 1).
 inline trace::RayBatch trace_aimed(const CompiledSystem& system,
                                    PathId path,

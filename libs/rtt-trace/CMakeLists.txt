@@ -1,4 +1,5 @@
-add_library(rtt_trace src/ray_batch.cpp src/apply_event.cpp src/sequential.cpp src/sources.cpp)
+add_library(rtt_trace src/ray_batch.cpp src/apply_event.cpp src/sequential.cpp src/sources.cpp
+  src/run_control.cpp)
 add_library(rtt::trace ALIAS rtt_trace)
 target_include_directories(rtt_trace PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
@@ -14,6 +15,7 @@ if(RTT_BUILD_TESTS)
   rtt_add_test(rtt_trace_tests
     SOURCES tests/test_ray_batch.cpp tests/test_apply_event.cpp tests/test_sequential.cpp
             tests/test_sources.cpp tests/test_interactions.cpp tests/test_ray_paths.cpp
+            tests/test_run_control.cpp
     LIBS rtt::trace rtt::io rtt::polar rtt::coating TBB::tbb)
   target_compile_definitions(rtt_trace_tests PRIVATE
     RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs")
