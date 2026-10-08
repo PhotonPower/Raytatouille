@@ -14,6 +14,12 @@
 ///   distance from that point to the centre of the paraxial exit pupil (rtt-paraxial). A ray's
 ///   OPL to the sphere is its OPL at the image surface minus |n'| s, with s the signed path from
 ///   the sphere to the image surface along the ray and n' the image-space index (real part).
+///   It is evaluated as OPL - |n'| (s - R) on the crossing towards the exit pupil, free of
+///   cancellation; the constant |n'| R is common to all rays and cancels in W (#102).
+/// - Exit pupil at infinity (image-space telecentric, #102): the limit R -> infinity, radius
+///   +infinity; W = OPL_chief - OPL_ray + |n'| d . (p - C) with p the hit, d the direction of
+///   the ray and C the centre, i.e. the OPL to the foot of the perpendicular from C on the ray.
+///   Continuous with a finite but distant exit pupil from both sides.
 /// - Reference ray: the chief ray of the same wavelength, so W(0, 0) = 0 at every wavelength.
 ///   Piston and tilt are not removed; lateral colour shows up as tilt.
 /// - Unit: waves at the reference wavelength, W = OPD[mm] / lambda_ref[mm], for every
@@ -36,7 +42,8 @@ namespace rtt::analysis {
 /// Reference sphere in global coordinates.
 struct ReferenceSphere {
   math::Vec3 centre = math::Vec3::Zero();  ///< chief-ray point on the image surface, mm
-  double radius = 0.0;                     ///< distance to the exit-pupil centre, mm
+  /// Distance to the exit-pupil centre, mm; +infinity if the exit pupil is at infinity.
+  double radius = 0.0;
 };
 
 /// OPD at one pupil point.
@@ -103,8 +110,7 @@ struct OpdFan {
 /// @throws rtt::compile::NoStopError (a std::invalid_argument) if the path has no stop; checked
 ///         by rtt::compile::require_stop before any ray is traced (ADR 0022)
 /// @throws AnalysisError if a chief ray does not reach the image surface or misses the
-///         reference sphere, the exit pupil is at infinity (image-space telecentric, not
-///         supported yet) or no ray arrives
+///         reference sphere, or no ray arrives (an exit pupil at infinity is supported, #102)
 [[nodiscard]] OpdMap opd_map(const compile::CompiledSystem& system,
                              compile::PathId path,
                              std::uint16_t field,

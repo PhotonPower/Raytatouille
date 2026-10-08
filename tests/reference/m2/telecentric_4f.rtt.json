@@ -1,0 +1,85 @@
+{
+  "schema_version": "0.2.0",
+  "name": "Double-telecentric 4f relay of two Descartes lenses (f = 128 mm, conic -n^2)",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "object": {"at_infinity": false, "distance": 128.0},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "object_na", "value": 0.1},
+  "fields": {
+    "type": "object_height",
+    "points": [
+      {},
+      {"y": 1.0}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "lens",
+        "name": "L1",
+        "material": "CONST:1.5",
+        "surfaces": [
+          {
+            "id": "L1.S1",
+            "shape": {
+              "base": {"type": "conic", "radius": 64.0, "conic": -2.25}
+            },
+            "aperture": {"type": "circular", "radius": 16.0}
+          },
+          {
+            "id": "L1.S2",
+            "pose": {"position": [0.0, 0.0, 3.0]},
+            "aperture": {"type": "circular", "radius": 16.0}
+          }
+        ]
+      },
+      {
+        "type": "stop",
+        "name": "stop",
+        "pose": {"position": [0.0, 0.0, 129.0]},
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 15.0}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "L2",
+        "pose": {"position": [0.0, 0.0, 255.0]},
+        "material": "CONST:1.5",
+        "surfaces": [
+          {
+            "id": "L2.S1",
+            "aperture": {"type": "circular", "radius": 16.0}
+          },
+          {
+            "id": "L2.S2",
+            "pose": {"position": [0.0, 0.0, 3.0]},
+            "shape": {
+              "base": {"type": "conic", "radius": -64.0, "conic": -2.25}
+            },
+            "aperture": {"type": "circular", "radius": 16.0}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 386.0]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}
