@@ -4,11 +4,14 @@ Raytracing-Engine für Optikdesign: Linsen (sphärisch, asphärisch, Freiform), 
 Beschichtungen, Strahlteiler, Polarisatoren und Retarder; Polarisation von Anfang an.
 C++20 mit Python-API, Linux und Windows, MIT-Lizenz.
 
-**Stand:** Meilenstein M3 (Polarisation) erreicht. Sequenzielles Raytracing mit Ray Aiming und
+**Stand:** Version 0.5.0, GUI-Grundlagen erreicht. Sequenzielles Raytracing mit Ray Aiming und
 paraxialer Analyse (M1); Glaskataloge (AGF), Luft und dn/dT, Spot, Ray Fans, OPD, Verzeichnung,
 Seidel und Python-API (M2); Polarisations-Raytracing mit Fresnel (komplexer Index), Coatings
-(Transfermatrix, Kataloge), idealen Polarisatoren und Retardern (M3). Als Nächstes: Multi-Path
-(M4). Der Plan steht in [docs/architecture.md](docs/architecture.md).
+(Transfermatrix, Kataloge), idealen Polarisatoren und Retardern (M3). Für eine GUI: Strahlpfade
+und Geometrie-Export, Modell lesen und ändern mit Undo (JSON Patch), Abbruch und Fortschritt,
+Prescription-Daten, durchsuchbare Materialbibliothek, stabile Diagnosecodes und ein JSON-
+Ergebnisformat, telezentrische Systeme. Als Nächstes: Multi-Path (M4). Der Plan steht in
+[docs/architecture.md](docs/architecture.md).
 
 ## Bauen
 
