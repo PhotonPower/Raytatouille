@@ -1,5 +1,6 @@
 """Analyses as data objects (rtt-analysis): spot diagram, ray fans, OPD, longitudinal and
-lateral colour, distortion, field curvature and Seidel sums.
+lateral colour, distortion, field curvature and Seidel sums; path transmission and OPL
+difference of two paths (#122) and the ghost ranking (#124).
 
 Every function takes a System (compiled on each call with ``materials``) or a CompiledSystem;
 for several analyses compile once with rt.compile(). ``path`` is an index or a path name,
@@ -44,15 +45,23 @@ from ._core import (
     FieldCurvaturePoint,
     FieldCurvatureSweep,
     Foci,
+    GhostEntries,
+    GhostRanking,
+    GhostSystem,
     LateralColour,
     LongitudinalColour,
     MaterialLibrary,
     OpdFan,
     OpdMap,
     OpdPoints,
+    OplDifferencePoints,
+    PathOplDifference,
+    PathRays,
+    PathTransmission,
     Point2,
     Points2,
     RayFan,
+    RayLosses,
     ReferenceSphere,
     SpotDiagram,
     SpotStatistics,
@@ -69,6 +78,7 @@ from .trace import (
     ProgressCallback,
     PupilSampling,
     RandomPupil,
+    RayBatch,
     SinglePupilPoint,
 )
 
@@ -79,14 +89,21 @@ __all__ = [
     "FieldCurvaturePoint",
     "FieldCurvatureSweep",
     "Foci",
+    "GhostEntries",
+    "GhostRanking",
     "LateralColour",
     "LongitudinalColour",
     "OpdFan",
     "OpdMap",
     "OpdPoints",
+    "OplDifferencePoints",
+    "PathOplDifference",
+    "PathRays",
+    "PathTransmission",
     "Point2",
     "Points2",
     "RayFan",
+    "RayLosses",
     "ReferenceSphere",
     "SpotDiagram",
     "SpotStatistics",
@@ -94,10 +111,13 @@ __all__ = [
     "distortion_at",
     "field_curvature",
     "field_curvature_at",
+    "ghost_ranking",
     "lateral_colour",
     "longitudinal_colour",
     "opd_fan",
     "opd_map",
+    "opl_difference",
+    "path_transmission",
     "ray_fan",
     "sampling",
     "seidel",
@@ -163,7 +183,8 @@ def sampling(rays: str | PupilSampling) -> PupilSampling:
     raise ValueError(f"invalid ray sampling {rays!r}: {_SHORTHAND}")
 
 
-_R = TypeVar("_R", SpotDiagram, RayFan, OpdMap, OpdFan)
+_R = TypeVar("_R", SpotDiagram, RayFan, OpdMap, OpdFan, PathTransmission, PathOplDifference,
+              GhostRanking)
 
 
 def _warn(result: _R) -> _R:
@@ -409,3 +430,180 @@ def field_curvature_at(
     return _core.field_curvature_at(
         compiled(system, materials), path, _field(field), wavelength, delta, aiming, threads
     )
+
+
+# ----------------------------------------------- path evaluation and ghosts (#122 to #124) ---
+
+def _start_form(
+    start: RayBatch | None,
+    field: int | None,
+    rays: str | PupilSampling | None,
+    aiming: Aiming | None,
+    wavelength: int | None,
+) -> None:
+    """The main form (start rays) excludes the parameters of the convenience form."""
+    if start is None:
+        return
+    given = [name for name, value in (("field", field), ("wavelength", wavelength),
+                                      ("rays", rays), ("aiming", aiming)) if value is not None]
+    if given:
+        raise ValueError(f"{', '.join(given)} only apply without start rays (each start ray "
+                         "carries its field, pupil point and wavelength)")
+
+
+def path_transmission(
+    system: SystemLike,
+    path: int | str = 0,
+    *,
+    start: RayBatch | None = None,
+    field: int | None = None,
+    wavelength: int | None = None,
+    rays: str | PupilSampling | None = None,
+    aiming: Aiming | None = None,
+    materials: MaterialLibrary | None = None,
+    threads: int | None = None,
+    lost_warning_fraction: float = 0.5,
+    cancel: CancelToken | None = None,
+    progress: ProgressCallback | None = None,
+) -> PathTransmission:
+    """Transmission of ``path`` (#122): the final weight of every launched ray (lost rays 0)
+    with mean, min and max. weight is the power for an unpolarized source (ADR 0021), so
+    ``mean`` is the transmitted power fraction of a uniformly illuminated pupil (with start
+    weights other than 1 the apodized transmitted power).
+
+    Two forms:
+
+    - Start rays (main form; also for folded and tilted paths such as interferometers, which
+      the paraxial aiming of make_rays does not accept): ``start`` is a RayBatch in global
+      coordinates; it is copied, not changed. Every ray counts as launched; a ray that is not
+      ALIVE at the start counts as lost with its status. Start weight and start OPL are
+      carried along, and each ray has its own wavelength index (``wl``). ``field``,
+      ``wavelength``, ``rays`` and ``aiming`` are not allowed then (ValueError)::
+
+          start = rt.trace.RayBatch(1)  # one ray at the origin along +z
+          t = rt.analysis.path_transmission(compiled, "test arm", start=start)
+
+    - make_rays (convenience form; rotationally symmetric paths only): ``field`` (default 0)
+      at ``wavelength`` (None: reference) with the pupil sampling ``rays`` (default
+      "hexapolar:6", shorthand as in spot()) and ``aiming`` (default REAL)::
+
+          t = rt.analysis.path_transmission(compiled, "main", field=1, rays="hexapolar:12")
+
+    Raises ValueError for an invalid path, empty start rays, a wavelength index that is not a
+    system wavelength or an invalid status in the start rays, and for mixing the two forms;
+    ParaxialError (convenience form) for a path that is not rotationally symmetric; NoStopError
+    (convenience form) without a stop; Cancelled after a cancellation.
+
+    ``lost_warning_fraction`` in [0, 1]: above this fraction of lost rays the result warns with
+    rays.lost (ADR 0023). Warnings stay in ``warnings`` and are also issued as
+    RaytatouilleWarning. ``cancel`` and ``progress`` as in the module docstring (stages "aim"
+    in the convenience form, then "trace").
+    """
+    _start_form(start, field, rays, aiming, wavelength)
+    cs = compiled(system, materials)
+    if start is not None:
+        return _warn(_core.path_transmission_rays(
+            cs, path, start, lost_warning_fraction, threads, cancel, progress
+        ))
+    return _warn(_core.path_transmission(
+        cs, path, 0 if field is None else field, wavelength,
+        sampling("hexapolar:6" if rays is None else rays),
+        Aiming.REAL if aiming is None else aiming, lost_warning_fraction, threads, cancel,
+        progress,
+    ))
+
+
+def opl_difference(
+    system: SystemLike,
+    path_a: int | str,
+    path_b: int | str,
+    *,
+    start: RayBatch | None = None,
+    field: int | None = None,
+    wavelength: int | None = None,
+    rays: str | PupilSampling | None = None,
+    aiming: Aiming | None = None,
+    materials: MaterialLibrary | None = None,
+    threads: int | None = None,
+    lost_warning_fraction: float = 0.5,
+    cancel: CancelToken | None = None,
+    progress: ProgressCallback | None = None,
+) -> PathOplDifference:
+    """Optical path difference OPL_b - OPL_a of two paths (#122) per start ray, in mm: a path
+    length on the image surface, not a wavefront (waves belong to an interferogram). Both
+    paths must end on the same surface (ValueError otherwise); the two rays of one start ray
+    may land at different points. ``points.delta`` is 0 and ``points.status`` not ALIVE for a
+    ray lost on either path; ``chief`` is the delta of the first start ray at pupil (0, 0)
+    that arrived on both paths, None if there is none.
+
+    The two forms of path_transmission(): start rays (main form), e.g. for a Michelson
+    interferometer::
+
+        d = rt.analysis.opl_difference(compiled, "reference arm", "test arm", start=start)
+
+    or ``field``, ``wavelength``, ``rays`` and ``aiming`` for make_rays on ``path_a``
+    (convenience form; the same rays are traced on ``path_b``)::
+
+        d = rt.analysis.opl_difference(compiled, 0, 1, field=0, rays="grid:9")
+
+    Raises as path_transmission(). The warnings of both paths (path a first) are issued as
+    RaytatouilleWarning and stay in ``warnings``.
+    """
+    _start_form(start, field, rays, aiming, wavelength)
+    cs = compiled(system, materials)
+    if start is not None:
+        return _warn(_core.opl_difference_rays(
+            cs, path_a, path_b, start, lost_warning_fraction, threads, cancel, progress
+        ))
+    return _warn(_core.opl_difference(
+        cs, path_a, path_b, 0 if field is None else field, wavelength,
+        sampling("hexapolar:6" if rays is None else rays),
+        Aiming.REAL if aiming is None else aiming, lost_warning_fraction, threads, cancel,
+        progress,
+    ))
+
+
+def ghost_ranking(
+    ghosts: GhostSystem,
+    field: int = 0,
+    wavelength: int | None = None,
+    *,
+    rays: str | PupilSampling = "hexapolar:6",
+    aiming: Aiming = Aiming.REAL,
+    resolution_radius: float = 0.005,
+    threads: int | None = None,
+    lost_warning_fraction: float = 0.5,
+    cancel: CancelToken | None = None,
+    progress: ProgressCallback | None = None,
+) -> GhostRanking:
+    """Ranks the ghosts of a GhostSystem (raytatouille.compile_with_ghosts) by their irradiance
+    at the image relative to the useful image (#124, ADR 0027). Every ghost is traced with the
+    start rays of the base path (make_rays for ``field`` at ``wavelength``, None: reference,
+    with ``rays`` and ``aiming``), and the rank value is
+
+        rho = (P_g / P_b) (r_b^2 + r0^2) / (r_g^2 + r0^2)
+
+    with P the transmitted power (mean final weight over the launched rays), r the weighted
+    RMS radius of the arrived rays about their centroid in mm and r0 = ``resolution_radius``
+    in mm (> 0), the resolution radius of the detector: a model choice, not a physical
+    constant. The RMS radius is geometric (no diffraction). A ghost with very few arrived rays
+    gets nearly the full factor (r_b^2 + r0^2) / r0^2; check ``entries.rays_arrived``.
+    ``entries.focus_offset`` and ``entries.paraxial_blur_radius`` are paraxial diagnostics in
+    mm, NaN where they have no value (collimated ghost, no finite entrance pupil).
+
+    Example::
+
+        g = rt.compile_with_ghosts(rt.load("cooke_triplet.rtt.json"), "main", materials=lib)
+        ranking = rt.analysis.ghost_ranking(g, field=0)
+        strongest = ranking.entries.relative_irradiance[0]
+
+    Raises ValueError for a GhostSystem without ghosts, an invalid field or wavelength,
+    resolution_radius <= 0 or lost_warning_fraction outside [0, 1]; ParaxialError if the base
+    path is not rotationally symmetric; NoStopError without a stop; AnalysisError if no ray of
+    the base path arrives; Cancelled after a cancellation. Ghosts do not warn about lost rays:
+    the warnings of the base path are issued as RaytatouilleWarning and stay in ``warnings``.
+    """
+    return _warn(_core.ghost_ranking(
+        ghosts, field, wavelength, sampling(rays), aiming, resolution_radius,
+        lost_warning_fraction, threads, cancel, progress,
+    ))

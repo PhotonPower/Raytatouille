@@ -28,6 +28,7 @@
 #include <vector>
 
 #include "npy_writer.hpp"
+#include "paths_cases.hpp"
 #include "polar_batch.hpp"
 #include "rtt/coating/catalog.hpp"
 #include "rtt/compile/compiled_system.hpp"
@@ -319,6 +320,7 @@ int main(int argc, char** argv) {
     fs::create_directories(args[2]);
     for (const Case& c : cases()) run(c, args[0], args[1], args[2], threads);
     rtt::py::reference::run_analysis_cases(args[0], args[1], args[2], threads);
+    rtt::py::reference::run_paths_cases(args[0], args[1], args[2], threads);
     return 0;
   } catch (const std::exception& e) {
     std::cerr << "rtt_py_reference: " << e.what() << '\n';

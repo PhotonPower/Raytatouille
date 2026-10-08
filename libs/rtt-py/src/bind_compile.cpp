@@ -3,8 +3,10 @@
 #include <nanobind/stl/filesystem.h>
 #include <nanobind/stl/optional.h>
 #include <nanobind/stl/string.h>
+#include <nanobind/stl/variant.h>
 #include <nanobind/stl/vector.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <stdexcept>
@@ -16,7 +18,9 @@
 #include "bindings.hpp"
 #include "rtt/coating/catalog.hpp"
 #include "rtt/compile/compiled_system.hpp"
+#include "rtt/compile/ghosts.hpp"
 #include "rtt/material/material.hpp"
+#include "rtt/model/path.hpp"
 #include "rtt/model/system.hpp"
 
 namespace nb = nanobind;
@@ -56,6 +60,23 @@ void warn(const std::vector<model::Diagnostic>& diagnostics) {
     nb::module_::import_("warnings")
         .attr("warn")(category(d.message, d.code, d.location), "stacklevel"_a = 1);
   }
+}
+
+/// The ghost paths of a GhostSystem, bound with columns() (#123, #133).
+struct GhostPaths {
+  std::vector<compile::GhostPath> points;
+};
+
+/// Name of the model path `base` (a name, or an index into system.paths) for
+/// compile_with_ghosts(), which takes a name.
+/// @throws std::invalid_argument (ValueError) for an index that is not a path of `system`
+std::string base_name(const model::System& system, const PathArg& base) {
+  if (const auto* name = std::get_if<std::string>(&base)) return *name;
+  const std::uint32_t index = std::get<std::uint32_t>(base);
+  if (index >= system.paths.size()) {
+    throw std::invalid_argument("ghosts: path index " + std::to_string(index) + " does not exist");
+  }
+  return system.paths[index].name;
 }
 
 }  // namespace
@@ -156,6 +177,82 @@ void bind_compile(nb::module_& m) {
       "CompileError with the diagnostics for invalid models, unknown materials and unknown "
       "coatings.\n\nEvery warning (CompiledSystem.diagnostics) is also issued as a "
       "raytatouille.errors.RaytatouilleWarning with its code and location.");
+
+  // Ghost generator (#123, ADR 0027; Python #133).
+  auto ghost_paths = columns<GhostPaths>(
+      m, "GhostPaths",
+      "Which path of GhostSystem.system is which ghost (ADR 0027), one entry per ghost in the "
+      "order of ghost_paths(); read-only NumPy copies.");
+  column<std::uint32_t>(
+      ghost_paths, "path", [](const compile::GhostPath& g) { return g.path.index; },
+      "Index of the ghost path in GhostSystem.system (copy).");
+  column<std::uint32_t>(
+      ghost_paths, "base", [](const compile::GhostPath& g) { return g.base.index; },
+      "Index of the base path it was derived from (copy).");
+  column<std::uint32_t>(
+      ghost_paths, "surface_j", [](const compile::GhostPath& g) { return g.surface_j; },
+      "Surface of the first ghost reflection (back), index into surface_ids (copy).");
+  column<std::uint32_t>(
+      ghost_paths, "surface_i", [](const compile::GhostPath& g) { return g.surface_i; },
+      "Surface of the second ghost reflection (forward), index into surface_ids (copy).");
+  column<std::uint64_t>(
+      ghost_paths, "event_j", [](const compile::GhostPath& g) { return g.event_j; },
+      "Index of the reflecting event j in the base path (copy).");
+  column<std::uint64_t>(
+      ghost_paths, "event_i", [](const compile::GhostPath& g) { return g.event_i; },
+      "Index of the reflecting event i in the base path (copy).");
+
+  nb::class_<compile::GhostSystem>(
+      m, "GhostSystem",
+      "A system compiled with the ghosts of one base path (ADR 0027): `system` has all paths of "
+      "the model, then the ghosts; `ghosts` tells which path is which ghost. Pass it to "
+      "raytatouille.analysis.ghost_ranking().")
+      .def_ro("system", &compile::GhostSystem::system,
+              "The compiled copy: all paths of the model, then the ghost paths.")
+      .def_prop_ro(
+          "ghosts", [](const compile::GhostSystem& g) { return GhostPaths{g.ghosts}; },
+          "One entry per ghost, in the order of ghost_paths().");
+
+  m.def(
+      "ghost_paths",
+      [](const compile::CompiledSystem& system, const PathArg& base, std::size_t max_paths) {
+        return compile::ghost_paths(system, path_id(system, base),
+                                    compile::GhostOptions{max_paths});
+      },
+      "system"_a, "base"_a = 0, nb::kw_only(), "max_paths"_a = compile::GhostOptions{}.max_paths,
+      "Two-reflection ghost paths of the path `base` (index or name) of a CompiledSystem, as "
+      "explicit model paths (raytatouille.model.Path; ADR 0027). A ghost reflects at refracting "
+      "surface j back and at refracting surface i < j forward again, then continues to the "
+      "image surface: base[0..j-1], Reflect at j, base[i+1..j-1] reversed, Reflect at i, "
+      "base[i+1..end]. N Refract events give N (N - 1) / 2 ghosts, j ascending, then i "
+      "ascending; names \"<base> ghost <surface j>/<surface i>\" (\"#k\" with the event index "
+      "for a surface that occurs more than once). The ghosts are derived data, never written "
+      "into a file by raytatouille.\n\nRaises ValueError for an unknown path, a base path with "
+      "a diffraction order or a crystal mode (not supported in M4), one that enters an "
+      "element from outside through an inner surface, more than `max_paths` ghosts, or a "
+      "ghost name that is already a path name or occurs twice.");
+  m.def(
+      "compile_with_ghosts",
+      [](const model::System& system, const PathArg& base,
+         const material::MaterialLibrary* materials, const coating::CoatingLibrary* coatings,
+         std::size_t max_paths) {
+        const material::MaterialLibrary default_materials;
+        const coating::CoatingLibrary no_coatings;
+        compile::GhostSystem ghosts = compile::compile_with_ghosts(
+            system, base_name(system, base), materials != nullptr ? *materials : default_materials,
+            coatings != nullptr ? *coatings : no_coatings, compile::GhostOptions{max_paths});
+        warn(ghosts.system.diagnostics());
+        return ghosts;
+      },
+      "system"_a, "base"_a = 0, "materials"_a.none() = nb::none(), "coatings"_a.none() = nb::none(),
+      nb::kw_only(), "max_paths"_a = compile::GhostOptions{}.max_paths,
+      "Compiles a System with the two-reflection ghosts of its path `base` (index into "
+      "System paths or name; ADR 0027): compiles the system, derives the ghosts with "
+      "ghost_paths(), appends them to a copy of the model and compiles the copy. The System "
+      "itself is not changed. `materials` and `coatings` as for compile(). Pass the result to "
+      "raytatouille.analysis.ghost_ranking().\n\nRaises CompileError as compile(), ValueError "
+      "for an unknown path and as ghost_paths().\n\nEvery compile warning is also issued as a "
+      "raytatouille.errors.RaytatouilleWarning, as by compile().");
 }
 
 }  // namespace rtt::py
