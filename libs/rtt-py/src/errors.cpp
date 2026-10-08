@@ -13,6 +13,7 @@
 #include "rtt/analysis/spot.hpp"
 #include "rtt/coating/catalog.hpp"
 #include "rtt/compile/compiled_system.hpp"
+#include "rtt/io/edit.hpp"
 #include "rtt/io/json_io.hpp"
 #include "rtt/material/agf.hpp"
 #include "rtt/material/material.hpp"
@@ -52,6 +53,9 @@ void register_errors(nb::module_& /*m*/) {
   nb::register_exception_translator([](const std::exception_ptr& p, void* /*payload*/) {
     try {
       std::rethrow_exception(p);
+    } catch (const io::EditError& e) {
+      // Before nanobind's std::invalid_argument -> ValueError (ADR 0024).
+      raise("EditError", e.what(), e.code(), e.location(), optional(e.op_index()), e.diagnostics());
     } catch (const io::ParseError& e) {
       raise("ParseError", e.what(), e.pointer());
     } catch (const compile::CompileError& e) {

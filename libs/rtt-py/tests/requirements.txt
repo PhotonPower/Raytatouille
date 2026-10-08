@@ -7,3 +7,6 @@ pytest==9.1.1
 matplotlib==3.10.9; python_version < "3.11"
 matplotlib==3.11.2; python_version >= "3.11"
 mypy==2.4.0
+# Schema test of the edit form (ADR 0024 point 7): the same requirement as
+# tests/schema/requirements.txt, a lower bound, not a fixed pin (ADR 0024 addendum, PR 3).
+jsonschema>=4.18

@@ -9,6 +9,7 @@ NB_MODULE(_core, m) {
       "name ends in _deg, temperature in degC, pressure in atm.";
   rtt::py::register_errors(m);
   rtt::py::bind_model(m);
+  rtt::py::bind_edit(m);
   rtt::py::bind_compile(m);
   rtt::py::bind_paraxial(m);
   rtt::py::bind_trace(m);

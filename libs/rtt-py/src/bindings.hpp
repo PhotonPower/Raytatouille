@@ -16,11 +16,13 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "rtt/compile/compiled_system.hpp"
+#include "rtt/model/system.hpp"
 #include "rtt/trace/run_control.hpp"
 
 namespace rtt::py {
@@ -99,6 +101,19 @@ void register_errors(nanobind::module_& m);
 
 void bind_model(nanobind::module_& m);
 void bind_model_tree(nanobind::module_& m);
+void bind_edit(nanobind::module_& m);
+
+/// The edit form of `s` (ADR 0024) as Python objects (json.loads of rtt::io::to_edit_json).
+[[nodiscard]] nanobind::object edit_dict(const model::System& s);
+/// The value at a JSON pointer (RFC 6901) in the edit form of `s`.
+/// Raises KeyError if it does not exist and ValueError for an invalid pointer or array index.
+[[nodiscard]] nanobind::object json_at(const model::System& s, std::string_view pointer);
+/// Current JSON pointer of a surface id, a node (assembly or element) name or a path name;
+/// std::nullopt (None in Python) if there is none (ADR 0024 point 2: separate name spaces).
+[[nodiscard]] std::optional<std::string> locate_surface(const model::System& s,
+                                                        std::string_view id);
+[[nodiscard]] std::optional<std::string> locate_node(const model::System& s, std::string_view name);
+[[nodiscard]] std::optional<std::string> locate_path(const model::System& s, std::string_view name);
 void bind_material(nanobind::module_& m);
 void bind_compile(nanobind::module_& m);
 void bind_paraxial(nanobind::module_& m);

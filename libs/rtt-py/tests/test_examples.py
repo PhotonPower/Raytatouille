@@ -92,3 +92,11 @@ def test_cancel_progress_example(capsys: pytest.CaptureFixture[str]) -> None:
     assert namespace["main"]() == 0
     out = capsys.readouterr().out
     assert "spot complete" in out and "second run: cancelled" in out
+
+
+def test_edit_undo_example(capsys: pytest.CaptureFixture[str]) -> None:
+    namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "edit_undo.py"))
+    assert namespace["main"]() == 0
+    out = capsys.readouterr().out
+    assert "rejected: [surface.id_duplicate]" in out
+    assert "after two commands: radius 50.0 mm" in out and "same system: True" in out
