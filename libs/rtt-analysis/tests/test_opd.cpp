@@ -428,3 +428,99 @@ TEST_CASE("finite, distant exit pupil converges to the reference at infinity (#1
     }
   }
 }
+
+TEST_CASE("finite exit pupil behind the image: the crossing towards the exit pupil (#102)",
+          "[opd][telecentric]") {
+  // Descartes lens of the singlet test above (plane L.S1 at z = 0, hyperbola L.S2 at z = 3,
+  // R = -64, K = -2.25, f = 128, H = V1 + 2, H' = V2), object at infinity, stop (EPD 20)
+  // 64 mm beyond the front focal point, at z = -190: Newton x = 64 gives the exit pupil at
+  // H' + f + f^2 / x = 3 + 128 + 256 = 387, behind the focus F = (0, 0, 131) and the image
+  // plane at F + eps: the sphere about C must be cut on the downstream side (s = -R + ...).
+  // Expected W from an own evaluation of the definition (Wyant & Creath, Sec. I): every ray
+  // passes F (perfect focus, Sasian L14, p. 5) with the same OPL and reaches the image plane at
+  // p = F + t d, t = eps / cos U; both crossings s = b +- sqrt(b^2 - |p - C|^2 + R^2) of the line
+  // p - s d with the sphere |x - C| = R, b = d . (p - C), the one closer to the exit pupil is
+  // taken; W = OPL_ref - OPL_ray = (eps - s_chief) - (t - s), s_chief = -R. The wrong crossing
+  // changes W by about -|p - C|_perp^2 / R (here about 0.1 waves), far above the tolerance
+  // 1e-7 waves (roundings of a few 1e-13 mm).
+  for (const double eps : {2.0, -2.0}) {
+    System s;
+    s.name = "Descartes lens, exit pupil behind the image";
+    s.environment.medium = "VACUUM";
+    s.wavelengths = {{0.5876, 1.0, true}};
+    s.aperture = {rtt::model::SystemApertureType::EntrancePupilDiameter, rtt::model::Param(20.0)};
+    s.fields = {rtt::model::FieldType::AngleDeg, {{0.0, 0.0, 1.0}}};
+    s.root.name = "root";
+    rtt::model::Surface sto;
+    sto.id = rtt::model::SurfaceId("STO");
+    sto.aperture = rtt::model::CircularAperture{10.0, 0.0};
+    rtt::model::Surface s1;
+    s1.id = rtt::model::SurfaceId("L.S1");
+    rtt::model::Surface s2;
+    s2.id = rtt::model::SurfaceId("L.S2");
+    s2.pose = Pose::along_z(3.0);
+    s2.shape.base = rtt::model::Conic{rtt::model::Param(-64.0), rtt::model::Param(-2.25)};
+    rtt::model::Surface img;
+    img.id = rtt::model::SurfaceId("IMG");
+    s.root.children = {
+        {rtt::model::Element{
+            "stop", rtt::model::ElementKind::Stop, Pose::along_z(-190.0), std::nullopt, {sto}}},
+        {rtt::model::Element{
+            "L", rtt::model::ElementKind::Lens, Pose::along_z(0.0), "CONST:1.5", {s1, s2}}},
+        {rtt::model::Element{"image",
+                             rtt::model::ElementKind::Detector,
+                             Pose::along_z(131.0 + eps),
+                             std::nullopt,
+                             {img}}}};
+    s.paths = {{"main", true, {}}};
+    const MaterialLibrary lib;
+    const CompiledSystem cs = compile(s, lib);
+    const auto fo = rtt::paraxial::first_order(cs, PathId{0}, 0);
+    REQUIRE(fo.exit_pupil);
+    REQUIRE(fo.exit_pupil->z);
+    const double z_xp = *fo.exit_pupil->z;
+    REQUIRE(std::abs(z_xp - 387.0) <= 1e-9);
+
+    rtt::analysis::OpdOptions options;
+    options.fan_points = 21;
+    const auto fan = rtt::analysis::opd_fan(cs, PathId{0}, 0, 0, options);
+    const double z_c = 131.0 + eps;
+    const double radius = z_xp - z_c;
+    REQUIRE(std::abs(fan.sphere.radius - radius) <= 1e-9);
+    int checked = 0;
+    for (const auto& q : fan.tangential) {
+      REQUIRE(q.status == RayStatus::Alive);
+      // Ray in the meridional plane: height h = 10 py on the hyperbola, through F.
+      const double h = 10.0 * q.py;
+      const double c = -1.0 / 64.0;
+      const double sag = c * h * h / (1.0 + std::sqrt(1.0 - (1.0 - 2.25) * c * c * h * h));
+      const double dz = 131.0 - (3.0 + sag);
+      const double len = std::hypot(h, dz);
+      const double dy = -h / len;  // towards the axis (F)
+      const double dzn = dz / len;
+      const double t = eps / dzn;  // F to the image plane along the ray
+      // p - C with p = F + t d and C = (0, 0, z_c): (t dy, 131 + t dzn - z_c).
+      const double pcy = t * dy;
+      const double pcz = 131.0 + t * dzn - z_c;
+      const double b = dy * pcy + dzn * pcz;
+      const double root = std::sqrt(b * b - (pcy * pcy + pcz * pcz) + radius * radius);
+      double best_s = 0.0;
+      double best_e = -1.0;
+      for (const double s_try : {b + root, b - root}) {
+        // Crossing point p - s d relative to the exit pupil (0, 0, z_xp).
+        const double ey = pcy - s_try * dy;
+        const double ez = z_c + pcz - s_try * dzn - z_xp;
+        const double e = ey * ey + ez * ez;
+        if (best_e < 0.0 || e < best_e) {
+          best_e = e;
+          best_s = s_try;
+        }
+      }
+      const double expected = ((eps + radius) - (t - best_s)) / kLambdaMm;
+      INFO("eps " << eps << ", py " << q.py << ", W " << q.w << ", expected " << expected);
+      REQUIRE(std::abs(q.w - expected) <= 1e-7);
+      ++checked;
+    }
+    REQUIRE(checked == 21);
+  }
+}
