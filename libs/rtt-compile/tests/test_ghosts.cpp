@@ -165,6 +165,27 @@ TEST_CASE("ghosts: limit, name conflicts and invalid base paths (#123)", "[ghost
   one.max_paths = 1;
   REQUIRE(rtt::compile::ghost_paths(cs, path(cs, "main"), one).size() == 1);
   REQUIRE_THROWS_AS(rtt::compile::ghost_paths(cs, PathId{7}), std::invalid_argument);
+  // M4: no ghosts for paths with a diffraction order or a crystal mode (ADR 0027).
+  System modes = s;
+  modes.paths.push_back({"crystal",
+                         false,
+                         {event("STO", EventKind::Transmit), event("P.S1", EventKind::Ordinary),
+                          event("P.S2", EventKind::Refract), event("IMG", EventKind::Transmit)}});
+  const CompiledSystem with_mode = rtt::compile::compile(modes, lib);
+  REQUIRE_THROWS_AS(rtt::compile::ghost_paths(with_mode, path(with_mode, "crystal")),
+                    std::invalid_argument);
+  // The generator checks order != 0, not the event kind. Before schema 0.3.0 an order needs a
+  // `diffract` event; with ADR 0025 (format PR) this case becomes an order at an event of a
+  // surface with a phase layer, and the test is adapted there.
+  System grating = s;
+  grating.paths.push_back(
+      {"grating",
+       false,
+       {event("STO", EventKind::Transmit), event("P.S1", EventKind::Refract),
+        event("P.S2", EventKind::Refract), Event{SurfaceId("IMG"), EventKind::Diffract, 1}}});
+  const CompiledSystem with_order = rtt::compile::compile(grating, lib);
+  REQUIRE_THROWS_AS(rtt::compile::ghost_paths(with_order, path(with_order, "grating")),
+                    std::invalid_argument);
   // A path that already has the ghost's name.
   rtt::model::Path taken = s.paths[1];
   taken.name = "main ghost P.S2/P.S1";
@@ -203,6 +224,22 @@ TEST_CASE("compile_with_ghosts: compile determines the media of the ghost (#123)
   REQUIRE(ref(events[4].medium_before) == "CONST:1.5168");  // out of the plate at P.S2
   REQUIRE(ref(events[4].medium_after) == "VACUUM");
   REQUIRE(s.paths.size() == 2);  // the model itself is unchanged
+
+  // Cemented achromat, ghost L1.S3/L1.S1: on the way back the cemented surface L1.S2 is
+  // crossed from F2 into N-BK7 (segment rule backwards), then L1.S1 reflects inside N-BK7.
+  MaterialLibrary schott;
+  schott.add_catalog(std::string(RTT_CATALOG_DIR) + "/schott.agf");
+  const auto a =
+      rtt::compile::compile_with_ghosts(load("m2/achromat.rtt.json"), "main", schott, coatings);
+  REQUIRE(a.ghosts.size() == 3);
+  const auto& back = a.system.path(a.ghosts[1].path).events;
+  REQUIRE(back.size() == 9);
+  const auto mat = [&](std::uint32_t medium) { return a.system.media()[medium].reference; };
+  REQUIRE(mat(back[3].medium_before) == "SCHOTT:F2");     // reflection at L1.S3 inside F2
+  REQUIRE(mat(back[4].medium_before) == "SCHOTT:F2");     // L1.S2 backwards ...
+  REQUIRE(mat(back[4].medium_after) == "SCHOTT:N-BK7");   // ... into N-BK7
+  REQUIRE(mat(back[5].medium_before) == "SCHOTT:N-BK7");  // reflection at L1.S1 inside N-BK7
+  REQUIRE(back[5].from_inside);
   REQUIRE_THROWS_AS(rtt::compile::compile_with_ghosts(s, "no such path", lib, coatings),
                     std::invalid_argument);
 }

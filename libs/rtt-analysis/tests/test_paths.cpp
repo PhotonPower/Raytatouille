@@ -379,3 +379,22 @@ TEST_CASE("ghost of a plane plate: weight T R R T at normal incidence (#123)", "
   const double transmit = 1.0 - reflect;
   REQUIRE(std::abs(t.rays[0].weight - transmit * reflect * reflect * transmit) <= 1e-12);
 }
+
+TEST_CASE("ghosts of the Cooke triplet run through the tracer (#123)", "[paths][ghosts]") {
+  // All 15 ghosts of m2/cooke_triplet with the start rays of the base aiming: every ghost path
+  // compiles and traces; the rays count as launched (smoke test, no reference values).
+  MaterialLibrary lib;
+  lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/m2/schott.agf");
+  const rtt::coating::CoatingLibrary coatings;
+  const auto g =
+      rtt::compile::compile_with_ghosts(load("m2/cooke_triplet.rtt.json"), "main", lib, coatings);
+  REQUIRE(g.ghosts.size() == 15);
+  const std::vector<std::uint16_t> field{0};
+  const RayBatch start =
+      rtt::trace::make_rays(g.system, g.ghosts[0].base, field, 0, rtt::trace::HexapolarPupil{2});
+  for (const auto& ghost : g.ghosts) {
+    const auto t = rtt::analysis::path_transmission(g.system, ghost.path, start);
+    REQUIRE(t.rays_launched == start.size());
+    REQUIRE(t.losses.launched == start.size());
+  }
+}

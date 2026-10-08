@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -28,10 +29,29 @@ std::string surface_label(const CompiledSystem& system, const CompiledPath& base
   return label;
 }
 
-model::Event model_event(const CompiledSystem& system,
-                         const CompiledEvent& e,
-                         model::EventKind kind) {
-  return model::Event{system.surfaces()[e.surface].id, kind, e.order};
+model::Event model_event(const CompiledSystem& system, const CompiledEvent& e) {
+  return model::Event{system.surfaces()[e.surface].id, e.kind, e.order};
+}
+
+/// The two ghost reflections: specular, diffraction order 0.
+model::Event ghost_reflection(const CompiledSystem& system, const CompiledEvent& e) {
+  return model::Event{system.surfaces()[e.surface].id, model::EventKind::Reflect, 0};
+}
+
+/// Ghosts in M4 only for paths without diffraction orders and crystal modes (ADR 0027).
+void check_base(const CompiledPath& base) {
+  for (const auto& e : base.events) {
+    if (e.order != 0) {
+      throw std::invalid_argument("ghosts: path '" + base.name +
+                                  "' has a diffraction order; ghosts at gratings are not "
+                                  "supported yet (ADR 0027)");
+    }
+    if (e.kind == model::EventKind::Ordinary || e.kind == model::EventKind::Extraordinary) {
+      throw std::invalid_argument("ghosts: path '" + base.name +
+                                  "' passes a crystal; ghosts at crystals are not supported yet "
+                                  "(ADR 0027)");
+    }
+  }
 }
 
 /// Pairs (j, i) of Refract events, j ascending, then i ascending (ADR 0027).
@@ -64,9 +84,11 @@ std::vector<model::Path> ghost_paths(const CompiledSystem& system,
                                 " does not exist");
   }
   const CompiledPath& path = system.path(base);
+  check_base(path);
   const std::vector<GhostPair> pairs = ghost_pairs(path, options.max_paths);
   std::vector<model::Path> out;
   out.reserve(pairs.size());
+  std::set<std::string> names;
   for (const GhostPair& p : pairs) {
     model::Path ghost;
     ghost.name = path.name + " ghost " + surface_label(system, path, p.j) + "/" +
@@ -75,17 +97,20 @@ std::vector<model::Path> ghost_paths(const CompiledSystem& system,
       throw std::invalid_argument("ghosts: the system already has a path named '" + ghost.name +
                                   "'");
     }
+    // Surface ids may contain '/' or '#', so two pairs could give the same name.
+    if (!names.insert(ghost.name).second) {
+      throw std::invalid_argument("ghosts: two ghosts would both be named '" + ghost.name + "'");
+    }
     // base[0..j-1], Reflect at j, base[i+1..j-1] reversed, Reflect at i, base[i+1..end].
-    for (std::size_t k = 0; k < p.j; ++k) {
-      ghost.events.push_back(model_event(system, path.events[k], path.events[k].kind));
-    }
-    ghost.events.push_back(model_event(system, path.events[p.j], model::EventKind::Reflect));
+    for (std::size_t k = 0; k < p.j; ++k)
+      ghost.events.push_back(model_event(system, path.events[k]));
+    ghost.events.push_back(ghost_reflection(system, path.events[p.j]));
     for (std::size_t k = p.j - 1; k > p.i; --k) {
-      ghost.events.push_back(model_event(system, path.events[k], path.events[k].kind));
+      ghost.events.push_back(model_event(system, path.events[k]));
     }
-    ghost.events.push_back(model_event(system, path.events[p.i], model::EventKind::Reflect));
+    ghost.events.push_back(ghost_reflection(system, path.events[p.i]));
     for (std::size_t k = p.i + 1; k < path.events.size(); ++k) {
-      ghost.events.push_back(model_event(system, path.events[k], path.events[k].kind));
+      ghost.events.push_back(model_event(system, path.events[k]));
     }
     out.push_back(std::move(ghost));
   }
