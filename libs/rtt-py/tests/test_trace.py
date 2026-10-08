@@ -148,6 +148,19 @@ def test_result_does_not_depend_on_the_number_of_threads(reference_dir: Path) ->
         rt.trace.trace(cs, rt.trace.RayBatch(1), threads=0)
 
 
+def test_make_rays_does_not_depend_on_the_number_of_threads(reference_dir: Path) -> None:
+    # Parallel aiming (#119): every ray is aimed on its own, bit for bit the same.
+    cs = compiled_singlet(reference_dir)
+    results = []
+    for threads in (1, 4, None):
+        rays = rt.trace.make_rays(cs, rt.trace.HexapolarPupil(rings=12), threads=threads)
+        results.append(np.stack([rays.pos_x, rays.pos_y, rays.pos_z, rays.dir_x, rays.dir_y,
+                                 rays.dir_z, rays.status.astype(np.float64)]).tobytes())
+    assert results[0] == results[1] == results[2]
+    with pytest.raises(ValueError):
+        rt.trace.make_rays(cs, rt.trace.HexapolarPupil(rings=1), threads=0)
+
+
 def test_invalid_rays_raise_at_the_api_boundary(reference_dir: Path) -> None:
     cs = compiled_singlet(reference_dir)
     rays = rt.trace.RayBatch(2)
