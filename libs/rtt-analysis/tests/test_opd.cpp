@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <cstdint>
@@ -522,5 +523,65 @@ TEST_CASE("finite exit pupil behind the image: the crossing towards the exit pup
       ++checked;
     }
     REQUIRE(checked == 21);
+  }
+}
+
+TEST_CASE("OPD of a path through a crystal is rejected by first_order (guard, #132)", "[opd]") {
+  // opd.cpp reads the isotropic index of the image medium; inside a crystal the OPD would need
+  // the index of the mode (ADR 0026, point 3). That code is unreachable for crystals today:
+  // make_reference and make_rays call rtt::paraxial::first_order, which rejects ordinary and
+  // extraordinary events, the only way into a crystal (#131). This test turns red when a
+  // crystal-capable first_order opens that path without a crystal-aware OPD.
+  System s;
+  s.name = "calcite plate behind a stop";
+  s.environment.medium = "VACUUM";
+  s.wavelengths = {{0.5876, 1.0, true}};
+  s.aperture = {rtt::model::SystemApertureType::EntrancePupilDiameter, rtt::model::Param(2.0)};
+  s.fields = {rtt::model::FieldType::AngleDeg, {{0.0, 0.0, 1.0}}};
+  s.root.name = "root";
+  rtt::model::Surface sto;
+  sto.id = rtt::model::SurfaceId("STO");
+  sto.aperture = rtt::model::CircularAperture{1.0, 0.0};
+  rtt::model::Surface s1;
+  s1.id = rtt::model::SurfaceId("P.S1");
+  rtt::model::Surface s2;
+  s2.id = rtt::model::SurfaceId("P.S2");
+  s2.pose = Pose::along_z(2.0);
+  rtt::model::Surface img;
+  img.id = rtt::model::SurfaceId("IMG");
+  Element plate{"P", rtt::model::ElementKind::Plate, Pose::along_z(10.0), std::nullopt, {s1, s2}};
+  plate.crystal = rtt::model::CrystalMaterial{"CONST:1.6584", "CONST:1.4864"};
+  plate.optic_axis = std::array{1.0, 0.0, 1.0};
+  s.root.children = {
+      {Element{"stop", rtt::model::ElementKind::Stop, Pose::along_z(0.0), std::nullopt, {sto}}},
+      {plate},
+      {Element{
+          "image", rtt::model::ElementKind::Detector, Pose::along_z(20.0), std::nullopt, {img}}}};
+  using rtt::model::EventKind;
+  using rtt::model::SurfaceId;
+  const auto rejected = [](const auto& call) {
+    try {
+      call();
+    } catch (const rtt::paraxial::ParaxialError& e) {
+      return std::string(e.what()).find("ordinary and extraordinary") != std::string::npos;
+    }
+    return false;
+  };
+  for (const EventKind mode : {EventKind::Ordinary, EventKind::Extraordinary}) {
+    s.paths = {{"through",
+                false,
+                {{SurfaceId("STO"), EventKind::Transmit, 0},
+                 {SurfaceId("P.S1"), mode, 0},
+                 {SurfaceId("P.S2"), EventKind::Refract, 0},
+                 {SurfaceId("IMG"), EventKind::Transmit, 0}}}};
+    const MaterialLibrary lib;
+    const CompiledSystem cs = compile(s, lib);
+    const rtt::analysis::OpdOptions options;
+    REQUIRE(rejected([&] {
+      [[maybe_unused]] const auto map = rtt::analysis::opd_map(cs, PathId{0}, 0, 0, options);
+    }));
+    REQUIRE(rejected([&] {
+      [[maybe_unused]] const auto fan = rtt::analysis::opd_fan(cs, PathId{0}, 0, 0, options);
+    }));
   }
 }
