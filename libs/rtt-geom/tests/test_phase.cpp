@@ -71,6 +71,11 @@ TEST_CASE("linear grating: |grad phi| = 2 pi G along the grating vector (#126)",
                        g.phase(1.0, -2.0), 1e-10));
     }
   }
+  // psi = 30 deg, literal hand value: grad phi = 600 pi (sqrt(3)/2, 1/2) = (300 pi sqrt(3), 300
+  // pi).
+  const LinearGratingPhase<double> g30(300.0, kPi / 6.0);
+  REQUIRE(near_rel(g30.grad(0.0, 0.0).first, 300.0 * kPi * std::sqrt(3.0), 1e-12));
+  REQUIRE(near_rel(g30.grad(0.0, 0.0).second, 300.0 * kPi, 1e-12));
   // psi = 90 deg at (2, 3): phi = 2 pi 300 * 3 = 1800 pi (cos psi is 6e-17, not 0).
   const LinearGratingPhase<double> g90(300.0, kPi / 2.0);
   REQUIRE(near_rel(g90.phase(2.0, 3.0), 1800.0 * kPi, 1e-12));

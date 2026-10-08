@@ -252,6 +252,7 @@
       "oneOf": [
         {
           "type": "object", "additionalProperties": false, "required": ["type", "lines_per_mm"],
+          "description": "Straight-line grating (ADR 0025): phi = 2 pi G (x cos psi + y sin psi) in rad over the local surface coordinates; lines_per_mm G in 1/mm, orientation_deg psi from the local x axis towards the local y axis; psi = 0 puts the grooves parallel to the local y axis.",
           "properties": {
             "type": {"const": "linear_grating"},
             "lines_per_mm": {"$ref": "#/$defs/param"},
@@ -261,6 +262,7 @@
         {
           "type": "object", "additionalProperties": false,
           "required": ["type", "normalization_radius"],
+          "description": "Rotationally symmetric phase (ADR 0025): phi = sum_k c_k rho^(2k), rho = r / normalization_radius; normalization_radius in mm, coefficients c_1, c_2, ... in rad (not in waves, no factor 2 pi), the first for rho^2. The values hold unchanged for every wavelength.",
           "properties": {
             "type": {"const": "radial_phase"},
             "normalization_radius": {"$ref": "#/$defs/param"},

@@ -19,6 +19,7 @@
 /// - Gradients are in rad/mm. The functions do not throw; input errors are rejected by the
 ///   constructors (std::invalid_argument).
 
+#include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <numbers>
@@ -117,7 +118,7 @@ template <rtt::math::Real T>
 /// surface of revolution with rotationally symmetric phi it equals Mansuripur, Proc. SPIE 6620,
 /// 66200N (2007), Eq. (11), dF/ds = (dF/dr) / sqrt(1 + (dh/dr)^2), along the meridional tangent.
 /// @param g           (dphi/dx, dphi/dy) in rad/mm
-/// @param unit_normal N, |N| = 1 (either orientation; not checked)
+/// @param unit_normal N, |N| = 1 (either orientation; assert in the debug build)
 /// @return g_par in rad/mm
 template <rtt::math::Real T>
 [[nodiscard]] math::Vec3T<T> tangential_gradient(std::pair<T, T> g,
@@ -211,6 +212,10 @@ std::pair<T, T> phase_grad(std::span<const PhaseFunction<T>> layers, T x, T y) n
 
 template <rtt::math::Real T>
 math::Vec3T<T> tangential_gradient(std::pair<T, T> g, const math::Vec3T<T>& unit_normal) noexcept {
+  using std::abs;
+  // Precondition |N| = 1, checked in the debug build (docs/architecture.md, error handling of
+  // the kernels); a normalised vector deviates by a few ulp.
+  assert(abs(unit_normal.squaredNorm() - T(1)) <= T(1e-12));
   const math::Vec3T<T> lateral(g.first, g.second, T(0));
   return lateral - unit_normal * unit_normal.dot(lateral);
 }
