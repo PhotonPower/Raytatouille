@@ -51,12 +51,10 @@ class LinearGratingPhase {
   [[nodiscard]] T orientation() const noexcept { return orientation_; }
 
   /// phi(x, y) in rad at the local point (x, y) in mm.
-  [[nodiscard]] T phase(T x, T y) const noexcept { return T(0) * x * y; }  // STUB
+  [[nodiscard]] T phase(T x, T y) const noexcept { return gx_ * x + gy_ * y; }
 
   /// (dphi/dx, dphi/dy) = 2 pi G (cos psi, sin psi) in rad/mm, independent of (x, y).
-  [[nodiscard]] std::pair<T, T> grad(T /*x*/, T /*y*/) const noexcept {
-    return {T(0) * gx_, T(0) * gy_};
-  }  // STUB
+  [[nodiscard]] std::pair<T, T> grad(T /*x*/, T /*y*/) const noexcept { return {gx_, gy_}; }
 
  private:
   T lines_per_mm_;
@@ -154,31 +152,66 @@ RadialPhasePolynomial<T>::RadialPhasePolynomial(T normalization_radius, std::vec
   }
 }
 
-// STUB for the red run of the #126 tests: zero phase, zero gradient.
 template <rtt::math::Real T>
 T RadialPhasePolynomial<T>::phase(T x, T y) const noexcept {
-  return T(0) * x * y;
+  // phi = sum_k c_k u^k = u (c_1 + u (c_2 + ...)), Horner's scheme in u = rho^2.
+  const T u = (x * x + y * y) / (radius_ * radius_);
+  T acc = T(0);
+  for (std::size_t k = coefficients_.size(); k > 0; --k) {
+    acc = acc * u + coefficients_[k - 1];
+  }
+  return acc * u;
 }
 
 template <rtt::math::Real T>
 std::pair<T, T> RadialPhasePolynomial<T>::grad(T x, T y) const noexcept {
-  return {T(0) * x, T(0) * y};
+  // dphi/dx = dphi/du * du/dx with du/dx = 2 x / R^2 (same for y);
+  // dphi/du = sum_k k c_k u^(k-1), Horner's scheme in u.
+  const T r2 = radius_ * radius_;
+  const T u = (x * x + y * y) / r2;
+  T dphi_du = T(0);
+  for (std::size_t k = coefficients_.size(); k > 0; --k) {
+    dphi_du = dphi_du * u + T(static_cast<double>(k)) * coefficients_[k - 1];
+  }
+  const T scale = T(2) * dphi_du / r2;
+  return {scale * x, scale * y};
 }
 
 template <rtt::math::Real T>
 T phase(std::span<const PhaseFunction<T>> layers, T x, T y) noexcept {
-  return T(0) * x * y * static_cast<double>(layers.size());
+  T sum = T(0);
+  for (const PhaseFunction<T>& layer : layers) {
+    // std::get_if instead of std::visit: visit may throw (valueless variant), get_if does not.
+    if (const auto* grating = std::get_if<LinearGratingPhase<T>>(&layer)) {
+      sum += grating->phase(x, y);
+    } else if (const auto* radial = std::get_if<RadialPhasePolynomial<T>>(&layer)) {
+      sum += radial->phase(x, y);
+    }
+  }
+  return sum;
 }
 
 template <rtt::math::Real T>
 std::pair<T, T> phase_grad(std::span<const PhaseFunction<T>> layers, T x, T y) noexcept {
-  const T zero = T(0) * static_cast<double>(layers.size());
-  return {zero * x, zero * y};
+  T gx = T(0);
+  T gy = T(0);
+  for (const PhaseFunction<T>& layer : layers) {
+    std::pair<T, T> g{T(0), T(0)};
+    if (const auto* grating = std::get_if<LinearGratingPhase<T>>(&layer)) {
+      g = grating->grad(x, y);
+    } else if (const auto* radial = std::get_if<RadialPhasePolynomial<T>>(&layer)) {
+      g = radial->grad(x, y);
+    }
+    gx += g.first;
+    gy += g.second;
+  }
+  return {gx, gy};
 }
 
 template <rtt::math::Real T>
 math::Vec3T<T> tangential_gradient(std::pair<T, T> g, const math::Vec3T<T>& unit_normal) noexcept {
-  return math::Vec3T<T>(T(0) * g.first, T(0) * g.second, T(0) * unit_normal.x());
+  const math::Vec3T<T> lateral(g.first, g.second, T(0));
+  return lateral - unit_normal * unit_normal.dot(lateral);
 }
 
 }  // namespace rtt::geom
