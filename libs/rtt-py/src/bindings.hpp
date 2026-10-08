@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "rtt/compile/compiled_system.hpp"
+#include "rtt/trace/run_control.hpp"
 
 namespace rtt::py {
 
@@ -45,6 +46,24 @@ auto with_threads(std::optional<int> threads, F&& f) {
   if (*threads < 1) throw std::invalid_argument("threads must be at least 1");
   oneapi::tbb::task_arena arena(*threads);
   return arena.execute(std::forward<F>(f));
+}
+
+/// Run-time control from Python (#83): the token `cancel` and the callable
+/// `progress(done, total, stage)`, both optional. The control refers to `progress` by pointer,
+/// so the workers never touch its reference count without the GIL: `progress` must outlive the
+/// run (an argument of the bound function does). The callback acquires the GIL; a Python
+/// exception from it ends the run and propagates (nanobind::python_error).
+[[nodiscard]] trace::RunControl run_control(const std::optional<trace::CancelToken>& cancel,
+                                            const std::optional<nanobind::callable>& progress);
+
+/// Releases the GIL and runs `f` with at most `threads` worker threads (with_threads). For the
+/// functions with a RunControl instead of a nanobind::call_guard: the control is built with the
+/// GIL held (run_control) and only the computation runs without it, which the explicit release
+/// makes visible. The control holds no Python reference.
+template <typename F>
+auto released(std::optional<int> threads, F&& f) {
+  const nanobind::gil_scoped_release release;
+  return with_threads(threads, std::forward<F>(f));
 }
 
 /// Read-only one-dimensional NumPy array.

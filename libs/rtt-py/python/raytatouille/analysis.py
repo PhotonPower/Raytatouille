@@ -7,6 +7,15 @@ for several analyses compile once with rt.compile(). ``path`` is an index or a p
 wavelength (in spot(): polychromatic). ``threads`` limits the worker threads; results are
 bitwise the same for every number of threads.
 
+The bundle and sweep analyses (spot, ray_fan, opd_map, opd_fan, longitudinal_colour,
+lateral_colour, distortion, field_curvature) take ``cancel`` (a CancelToken; cancel() from
+another thread raises raytatouille.errors.Cancelled after at most one block per worker: rays,
+or one field point or wavelength for the sweeps) and ``progress(done, total, stage)``
+(called with the GIL from any thread, at most every 50 ms; stages "aim" and "trace" per ray
+bundle, "field" for the sweeps, "wavelength" for the colour analyses). Neither changes a
+result; an exception of ``progress`` ends the analysis and is raised. The single-point
+functions (``*_at``) and seidel() take neither: they are fast.
+
 Units and conventions as in C++ (rtt/analysis/*.hpp): coordinates on the image surface in mm
 in its local x, y (the surface of the last path event), relative to the chief ray of the
 reference wavelength; OPD in waves at the reference wavelength, W > 0 leading. Lists in the
@@ -51,10 +60,12 @@ from ._util import SystemLike, chromatic_pair, compiled
 from .paraxial import ChromaticPair, seidel
 from .trace import (
     Aiming,
+    CancelToken,
     FanXPupil,
     FanYPupil,
     GridPupil,
     HexapolarPupil,
+    ProgressCallback,
     PupilSampling,
     RandomPupil,
     SinglePupilPoint,
@@ -175,6 +186,8 @@ def spot(
     materials: MaterialLibrary | None = None,
     threads: int | None = None,
     lost_warning_fraction: float = 0.5,
+    cancel: CancelToken | None = None,
+    progress: ProgressCallback | None = None,
 ) -> SpotDiagram:
     """Spot diagram of ``field``. ``wavelength`` None gives a POLYCHROMATIC spot over all
     system wavelengths with the model's wavelength weights (unlike the other analyses, where
@@ -188,7 +201,7 @@ def spot(
     """
     return _warn(_core.spot(
         compiled(system, materials), path, field, wavelength, sampling(rays), aiming,
-        lost_warning_fraction, threads
+        lost_warning_fraction, threads, cancel, progress
     ))
 
 
@@ -203,6 +216,8 @@ def ray_fan(
     materials: MaterialLibrary | None = None,
     threads: int | None = None,
     lost_warning_fraction: float = 0.5,
+    cancel: CancelToken | None = None,
+    progress: ProgressCallback | None = None,
 ) -> RayFan:
     """Tangential and sagittal ray fans of ``field`` with ``points`` points on [-1, 1]:
     transverse aberration relative to the chief ray of the reference wavelength, mm.
@@ -213,7 +228,7 @@ def ray_fan(
     """
     return _warn(_core.ray_fan(
         compiled(system, materials), path, field, wavelength, points, aiming,
-        lost_warning_fraction, threads
+        lost_warning_fraction, threads, cancel, progress
     ))
 
 
@@ -228,6 +243,8 @@ def opd_map(
     materials: MaterialLibrary | None = None,
     threads: int | None = None,
     lost_warning_fraction: float = 0.5,
+    cancel: CancelToken | None = None,
+    progress: ProgressCallback | None = None,
 ) -> OpdMap:
     """OPD map of ``field`` on a grid x grid pupil grid (points inside the unit circle), in
     waves at the reference wavelength, against the reference sphere centred on the chief ray.
@@ -242,7 +259,7 @@ def opd_map(
     """
     return _warn(_core.opd_map(
         compiled(system, materials), path, field, wavelength, grid, aiming,
-        lost_warning_fraction, threads
+        lost_warning_fraction, threads, cancel, progress
     ))
 
 
@@ -257,6 +274,8 @@ def opd_fan(
     materials: MaterialLibrary | None = None,
     threads: int | None = None,
     lost_warning_fraction: float = 0.5,
+    cancel: CancelToken | None = None,
+    progress: ProgressCallback | None = None,
 ) -> OpdFan:
     """Tangential (px = 0) and sagittal (py = 0) OPD fans of ``field``; as opd_map().
 
@@ -266,7 +285,7 @@ def opd_fan(
     """
     return _warn(_core.opd_fan(
         compiled(system, materials), path, field, wavelength, points, aiming,
-        lost_warning_fraction, threads
+        lost_warning_fraction, threads, cancel, progress
     ))
 
 
@@ -279,12 +298,15 @@ def longitudinal_colour(
     aiming: Aiming = Aiming.REAL,
     materials: MaterialLibrary | None = None,
     threads: int | None = None,
+    cancel: CancelToken | None = None,
+    progress: ProgressCallback | None = None,
 ) -> LongitudinalColour:
     """Longitudinal colour: focus(first) - focus(second) along the image-space propagation,
     mm, paraxially and with the real ray at pupil height ``zone`` in (0, 1]. ``pair`` =
     (first, second) wavelength indices; None: first and last system wavelength."""
     return _core.longitudinal_colour(
-        compiled(system, materials), path, chromatic_pair(pair), zone, aiming, threads
+        compiled(system, materials), path, chromatic_pair(pair), zone, aiming, threads,
+        cancel, progress,
     )
 
 
@@ -296,10 +318,14 @@ def lateral_colour(
     aiming: Aiming = Aiming.REAL,
     materials: MaterialLibrary | None = None,
     threads: int | None = None,
+    cancel: CancelToken | None = None,
+    progress: ProgressCallback | None = None,
 ) -> LateralColour:
     """Lateral colour of ``field``: chief ray per wavelength on the image surface and its
     offset from the chief ray of the reference wavelength, mm."""
-    return _core.lateral_colour(compiled(system, materials), path, field, aiming, threads)
+    return _core.lateral_colour(
+        compiled(system, materials), path, field, aiming, threads, cancel, progress
+    )
 
 
 def _field(field: Field | tuple[float, float]) -> Field:
@@ -318,12 +344,15 @@ def distortion(
     aiming: Aiming = Aiming.REAL,
     materials: MaterialLibrary | None = None,
     threads: int | None = None,
+    cancel: CancelToken | None = None,
+    progress: ProgressCallback | None = None,
 ) -> DistortionSweep:
     """Distortion D = (h_real - h_par) / h_par in percent over ``samples`` relative fields
     0 ... 1 along +y of the largest field point; real chief-ray height on the image surface,
     paraxial height in its vertex plane (rtt/analysis/field.hpp)."""
     return _core.distortion(
-        compiled(system, materials), path, wavelength, samples, aiming, threads
+        compiled(system, materials), path, wavelength, samples, aiming, threads, cancel,
+        progress,
     )
 
 
@@ -353,11 +382,14 @@ def field_curvature(
     aiming: Aiming = Aiming.REAL,
     materials: MaterialLibrary | None = None,
     threads: int | None = None,
+    cancel: CancelToken | None = None,
+    progress: ProgressCallback | None = None,
 ) -> FieldCurvatureSweep:
     """Tangential and sagittal focus from the image-surface vertex along the image-space
     propagation, mm, over the field sweep; neighbour rays at +-delta (normalised pupil)."""
     return _core.field_curvature(
-        compiled(system, materials), path, wavelength, samples, delta, aiming, threads
+        compiled(system, materials), path, wavelength, samples, delta, aiming, threads,
+        cancel, progress,
     )
 
 
