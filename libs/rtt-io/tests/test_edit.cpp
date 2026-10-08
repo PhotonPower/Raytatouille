@@ -462,6 +462,16 @@ TEST_CASE("every edit error has its code, place and operation", "[io][edit]") {
   }
 }
 
+TEST_CASE("an integer outside int in a patch is an invalid value (#35)", "[io][edit]") {
+  // The strict reader rejects it (read_int); before #35 E it became 0 without an error.
+  const System s = load("m2/cooke_triplet.rtt.json");
+  const EditError e = edit_error(
+      s, R"([{"op": "replace", "path": "/paths/0/events/0/order", "value": 4294967296}])");
+  CHECK(e.code() == "edit.invalid_value");
+  CHECK(e.location() == "/paths/0/events/0/order");
+  CHECK_THAT(std::string(e.what()), Catch::Matchers::ContainsSubstring("out of range"));
+}
+
 TEST_CASE("a failing operation leaves the system unchanged", "[io][edit]") {
   const System s = load("m2/cooke_triplet.rtt.json");
   const EditError e = edit_error(s, R"([{"op": "replace", "path": "/name", "value": "x"},
