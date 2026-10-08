@@ -289,7 +289,8 @@ TEST_CASE("a surface with diffraction efficiencies scales the weight of each ord
   // ADR 0025, point 5 (replaces the stop until #127 of 1920d17): with the field present, orders
   // not listed have efficiency 0, also order 0, which then passes with weight 0 and status
   // Alive; the listed order 1 keeps 0.8 of the power. Transmit at the thin grating and at the
-  // detector are dummy passages (weight 1 before), so the weights are 0 and 0.8 exactly.
+  // detector are dummy passages (weight 1 before): order 0 has weight 0 exactly, order 1
+  // 0.8 ||P_T||^2 / 2 with P = R(z -> k_1), which is 0.8 up to a few eps (R orthogonal).
   System s = bare_system();
   s.environment.medium = "VACUUM";
   Surface grating = surface("G.S1");
@@ -319,7 +320,7 @@ TEST_CASE("a surface with diffraction efficiencies scales the weight of each ord
   REQUIRE(rays.weight()[0] == 0.0);
   [[maybe_unused]] const auto first_stats = SequentialTracer().trace(cs, PathId{1}, first);
   REQUIRE(first.status()[0] == RayStatus::Alive);
-  REQUIRE(first.weight()[0] == 0.8);
+  REQUIRE(std::abs(first.weight()[0] - 0.8) <= 1e-15);
 }
 
 TEST_CASE("a crystal mode stops with EventImpossible until #132", "[sequential]") {
@@ -423,7 +424,16 @@ TEST_CASE("Evanescent is a ray status of its own, appended to the enum (#127)", 
   REQUIRE(rays.status()[1] == RayStatus::Evanescent);
   REQUIRE(rays.last_surface()[1] == 0);
   REQUIRE(pos(rays, 1) == Vec3(0.0, 2.0, -1.0));  // untouched
-  // kRayStatusCount (8) is the first invalid value.
-  rays.status()[0] = static_cast<RayStatus>(8);
+}
+
+TEST_CASE("the first status value after Evanescent is invalid input (#127)", "[sequential]") {
+  // kRayStatusCount (8) is the smallest invalid value (hint from the review of #145).
+  System s = bare_system();
+  s.root.children.push_back(
+      {Element{"D", ElementKind::Detector, {}, std::nullopt, {surface("D")}}});
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+  RayBatch rays(1);
+  rays.status()[0] = static_cast<RayStatus>(rtt::trace::kRayStatusCount);
   REQUIRE_THROWS_AS(SequentialTracer().trace(cs, PathId{0}, rays), std::invalid_argument);
 }

@@ -9,6 +9,7 @@
 #include <numbers>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -171,6 +172,36 @@ TEST_CASE("reflection grating, Mansuripur (8), and Littrow, Palmer (2-5) (#127)"
   REQUIRE(near(littrow.dir, -d, 1e-12));
 }
 
+TEST_CASE("orders in glass: reflection (8) with n1 = 1.5, refraction glass -> air (7b) (#127)",
+          "[diffraction]") {
+  // Mansuripur, Eq. (8): reflection on the incidence side, sigma'_x = sigma_x + (m lambda0 /
+  // n1) dF/dx, here n1 = 1.5 (Fresnel reflection against vacuum beyond, below the critical
+  // angle: t_x = 0.2); t'_z < 0. Eq. (7b) for refraction out of the glass: n2 sigma'_x =
+  // n1 sigma_x + m lambda0 dF/dx with n1 = 1.5, n2 = 1. G = 600/mm, m lambda0 G = 0.35256 m.
+  // Reflection propagates for m = -2..2 (|tau| <= 1.005 < n' = 1.5); refraction is evanescent
+  // for m = 2 (tau = 0.3 + 0.705 = 1.005 > n' = 1). 1e-12.
+  const CompiledSurface g = grating(600.0);
+  const Vec3 d(0.2, 0.0, std::sqrt(1.0 - 0.04));
+  EventMedia glass = media(1.5, 1.5);
+  glass.beyond = 1.0;  // Fresnel partner of the reflection
+  for (const int m : {-2, -1, 1, 2}) {
+    INFO("reflect, m = " << m);
+    const RayState refl = step(ray_along(d), g, EventKind::Reflect, m, glass);
+    REQUIRE(refl.status == RayStatus::Alive);
+    const double rx = d.x() + m * kLambdaMm * 600.0 / 1.5;
+    REQUIRE(near(refl.dir, Vec3(rx, 0.0, -std::sqrt(1.0 - rx * rx)), 1e-12));
+  }
+  for (const int m : {-2, -1, 1}) {
+    INFO("refract, m = " << m);
+    const RayState out = step(ray_along(d), g, EventKind::Refract, m, media(1.5, 1.0));
+    REQUIRE(out.status == RayStatus::Alive);
+    const double tx = 1.5 * d.x() + m * kLambdaMm * 600.0;
+    REQUIRE(near(out.dir, Vec3(tx, 0.0, std::sqrt(1.0 - tx * tx)), 1e-12));
+  }
+  REQUIRE(step(ray_along(d), g, EventKind::Refract, 2, media(1.5, 1.0)).status ==
+          RayStatus::Evanescent);
+}
+
 TEST_CASE("conical diffraction: the order stays on the cone, Palmer (2-3) (#127)",
           "[diffraction]") {
   // Grating vector u = (cos psi, sin psi, 0) with psi = 30 deg, grooves along w = (-sin psi,
@@ -231,6 +262,101 @@ TEST_CASE("evanescent orders: below, above and exactly on the limit |tau| = n' (
   REQUIRE(step(normal, g2, EventKind::Transmit, 1, vac).status == RayStatus::Evanescent);
   REQUIRE(step(normal, g2, EventKind::Transmit, -1, vac).status == RayStatus::Evanescent);
   REQUIRE(step(normal, g2, EventKind::Transmit, 0, vac).status == RayStatus::Alive);
+}
+
+TEST_CASE("evanescent limit with n != n': refraction glass 1.5 -> vacuum (#127)", "[diffraction]") {
+  // ADR 0025, point 7: the limit is |n t_par + m lambda0 g_par / (2 pi)| = n' with the index n'
+  // after the event, here 1, not 1.5. Exactly representable: t_x = 0.25 (n t_x = 0.375),
+  // G = 256/mm and lambda0 = 2^-11 mm give m lambda0 G = 0.125 m, so m = 5 lands on tau = 1.
+  // Order 0 is not Tir (0.375 < 1).
+  const CompiledSurface g = grating(256.0);
+  const auto ray_tx = [](double tx) { return ray_along(Vec3(tx, 0.0, std::sqrt(1.0 - tx * tx))); };
+  const EventMedia out_of_glass = media(1.5, 1.0, kExactLambdaUm);
+  REQUIRE(step(ray_tx(0.25), g, EventKind::Refract, 0, out_of_glass).status == RayStatus::Alive);
+  REQUIRE(step(ray_tx(0.25), g, EventKind::Refract, 5, out_of_glass).status ==
+          RayStatus::Evanescent);
+  REQUIRE(step(ray_tx(0.25 + 1e-6), g, EventKind::Refract, 5, out_of_glass).status ==
+          RayStatus::Evanescent);
+  const RayState below = step(ray_tx(0.25 - 1e-6), g, EventKind::Refract, 5, out_of_glass);
+  REQUIRE(below.status == RayStatus::Alive);
+  REQUIRE(std::abs(below.dir.x() - (1.0 - 1.5e-6)) <= 1e-12);
+  const RayState four = step(ray_tx(0.25), g, EventKind::Refract, 4, out_of_glass);
+  REQUIRE(four.status == RayStatus::Alive);
+  REQUIRE(four.dir.x() == 0.875);  // exact: tau_x = 0.375 + 0.5, n' = 1
+}
+
+TEST_CASE("an order at a tilted grating is the rotated result of the plane case (#127)",
+          "[diffraction]") {
+  // The local frame of the surface carries the grating (orientation in local x, y) and the
+  // normal; tilting and moving the whole surface with an isometry Q must give the same event
+  // rotated: k' = Q k, OPL equal, P' = Q P Q^T (P acts on global vectors; start P = I), weight
+  // equal. Checks the chain global -> local -> global around the phase gradient (#126).
+  // Q: 25 deg about (1, 2, -0.5), translation (3, -1, 7). 1e-12.
+  const Mat3 q = Eigen::AngleAxisd(deg(25.0), Vec3(1.0, 2.0, -0.5).normalized()).toRotationMatrix();
+  const Vec3 shift(3.0, -1.0, 7.0);
+  for (const auto& [kind, before, after] :
+       {std::tuple{EventKind::Transmit, 1.0, 1.0}, std::tuple{EventKind::Refract, 1.0, 1.5},
+        std::tuple{EventKind::Reflect, 1.0, 1.0}}) {
+    INFO("kind = " << static_cast<int>(kind));
+    CompiledSurface flat = grating(400.0, deg(35.0));
+    if (kind == EventKind::Reflect) flat.interaction = rtt::model::IdealMirror{};
+    CompiledSurface tilted = flat;
+    tilted.to_global = rtt::math::Isometry3(q, shift);
+    tilted.to_local = tilted.to_global.inverse();
+    const RayState in = ray_along(Vec3(0.12, -0.05, 1.0).normalized());
+    RayState in_tilted = in;
+    in_tilted.pos = q * in.pos + shift;
+    in_tilted.dir = q * in.dir;
+    for (const int m : {-1, 1}) {
+      INFO("m = " << m);
+      const RayState a = step(in, flat, kind, m, media(before, after));
+      const RayState b = step(in_tilted, tilted, kind, m, media(before, after));
+      REQUIRE(a.status == RayStatus::Alive);
+      REQUIRE(b.status == RayStatus::Alive);
+      REQUIRE(near(b.dir, q * a.dir, 1e-12));
+      REQUIRE(near(b.pos, q * a.pos + shift, 1e-12));
+      REQUIRE(std::abs(b.opl - a.opl) <= 1e-12);
+      const rtt::math::CMat3 qc = q.cast<std::complex<double>>();
+      REQUIRE((b.prt - qc * a.prt * qc.transpose()).cwiseAbs().maxCoeff() <= 1e-12);
+      REQUIRE(std::abs(b.weight - a.weight) <= 1e-12);
+    }
+  }
+}
+
+TEST_CASE("an order at a sphere away from the vertex: (7b) with the projected gradient (#127)",
+          "[diffraction]") {
+  // Sphere R = 30 mm (centre on +z at (0, 0, R)), grating 300/mm along local x, a ray along +z
+  // at (x0, y0) = (6, -8). Independent expectation: hit point p = (x0, y0, R - sqrt(R^2 - r^2)),
+  // unit normal N = (centre - p) / R from the sphere geometry, g = 2 pi G (1, 0, 0) projected by
+  // hand, g_par = g - N (N . g), and Mansuripur (7b) in vector form for refraction 1 -> 1.5:
+  // tau = n (t - N (N . t)) + m lambda0 g_par / (2 pi), t' = (tau + sqrt(n'^2 - |tau|^2) N) / n'
+  // (N points towards +z here, the side of the transmitted order 0). The OPL of the order adds
+  // m lambda0 phi / (2 pi) = m lambda0 G x0 (phi of the lateral position). 1e-12.
+  constexpr double radius = 30.0;
+  CompiledSurface s;
+  s.shape = rtt::geom::Conic<double>(1.0 / radius, 0.0);
+  s.phase_functions = {LinearGratingPhase<double>(300.0, 0.0)};
+  const double x0 = 6.0;
+  const double y0 = -8.0;
+  RayState in = ray_along(Vec3::UnitZ());
+  in.pos.x() = x0;
+  in.pos.y() = y0;
+  const Vec3 hit(x0, y0, radius - std::sqrt(radius * radius - x0 * x0 - y0 * y0));
+  const Vec3 n_sphere = (Vec3(0.0, 0.0, radius) - hit) / radius;
+  const Vec3 g = 2.0 * kPi * 300.0 * Vec3::UnitX();
+  const Vec3 g_par = g - n_sphere * n_sphere.dot(g);
+  const Vec3 t = Vec3::UnitZ();
+  for (const int m : {-2, 1}) {
+    INFO("m = " << m);
+    const RayState zero = step(in, s, EventKind::Refract, 0, media(1.0, 1.5));
+    const RayState out = step(in, s, EventKind::Refract, m, media(1.0, 1.5));
+    REQUIRE(out.status == RayStatus::Alive);
+    const Vec3 tau = (t - n_sphere * n_sphere.dot(t)) + m * kLambdaMm / (2.0 * kPi) * g_par;
+    const Vec3 expected = (tau + std::sqrt(1.5 * 1.5 - tau.squaredNorm()) * n_sphere) / 1.5;
+    REQUIRE(near(out.dir, expected, 1e-12));
+    REQUIRE(near(out.pos, hit, 1e-12));
+    REQUIRE(std::abs((out.opl - zero.opl) - m * kLambdaMm * 300.0 * x0) <= 1e-12);
+  }
 }
 
 TEST_CASE("Tir of order 0 comes before an order that would propagate (#127)", "[diffraction]") {
@@ -366,6 +492,24 @@ TEST_CASE("polarization of an order: P = R(k_0 -> k_m) P_0 without rotation abou
     REQUIRE(near(r * Vec3::UnitX(), Vec3::UnitX(), 1e-14));
     if (y == 0.0) REQUIRE(p == rtt::math::CMat3::Identity());
   }
+  // Diffractive lens on a refracting surface, normal incidence at a skew pupil point (1, 2):
+  // the interface gives P_0 = sqrt(T) (I - z z^T) + z z^T (s and p alike at normal incidence;
+  // T = 4 n1 n2 / (n1 + n2)^2 = 0.96 by Byrnes, Eqs. (21)-(23), power normalised as in ADR 0021),
+  // so the order has P = R P_0 = sqrt(T) R (I - z z^T) + k_m z^T with R = R(z -> k_m): the
+  // transverse part is sqrt(T) times the smallest rotation, at every pupil point (ADR 0025,
+  // "Folgen"). 1e-14.
+  {
+    RayState skew = ray_along(Vec3::UnitZ());
+    skew.pos.x() = 1.0;
+    skew.pos.y() = 2.0;
+    const RayState out = step(skew, lens, EventKind::Refract, 1, media(1.0, 1.5));
+    REQUIRE(out.status == RayStatus::Alive);
+    const Mat3 r = rtt::trace::rotation_between(Vec3::UnitZ(), out.dir);
+    const Mat3 transverse = Mat3::Identity() - Vec3::UnitZ() * Vec3::UnitZ().transpose();
+    const Mat3 expected = std::sqrt(0.96) * (r * transverse) + out.dir * Vec3::UnitZ().transpose();
+    REQUIRE(out.prt.imag().cwiseAbs().maxCoeff() <= 1e-15);
+    REQUIRE((out.prt.real() - expected).cwiseAbs().maxCoeff() <= 1e-14);
+  }
   // Refraction with Fresnel amplitudes: P_m = R(k_0 -> k_m) P_0 with P_0 that of order 0, and the
   // power fraction (weight) is that of order 0 (R keeps the transverse norm, ADR 0021). 1e-14.
   const CompiledSurface g = grating(300.0);
@@ -395,6 +539,11 @@ TEST_CASE("rotation_between: R a = b, orthonormal, det 1, also close to antipara
     // b with a . b = c = -1 + one_plus_c: b = (s, 0, c) with s = sqrt(1 - c^2).
     const double c = -1.0 + one_plus_c;
     pairs.emplace_back(Vec3::UnitZ(), Vec3(std::sqrt(1.0 - c * c), 0.0, c));
+    // The same angle about a generic axis, so that v = a x b is not exact and the unit axis
+    // v / |v| carries the rounding: a = u, b = c u + s w with unit u, w, u . w = 0.
+    const Vec3 u = Vec3(1.0, 2.0, 3.0).normalized();
+    const Vec3 w = Vec3(-2.0, 1.0, 0.0).normalized();
+    pairs.emplace_back(u, (c * u + std::sqrt(1.0 - c * c) * w).normalized());
   }
   for (const auto& [a, b] : pairs) {
     INFO("a = " << a.transpose() << ", b = " << b.transpose());

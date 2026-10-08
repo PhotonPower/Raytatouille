@@ -11,7 +11,9 @@
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "rtt/coating/catalog.hpp"
@@ -30,21 +32,31 @@ namespace {
 /// orientation_deg into rad. validate() guarantees lines_per_mm > 0 and normalization_radius > 0;
 /// non-finite coefficients or orientations (only possible through the API) make the rtt-geom
 /// constructors throw std::invalid_argument.
+template <class>
+inline constexpr bool kUnhandledPhase = false;
+
 std::vector<geom::PhaseFunction<double>> compile_phases(
     const std::vector<model::PhaseLayer>& phases) {
   std::vector<geom::PhaseFunction<double>> out;
   out.reserve(phases.size());
   for (const model::PhaseLayer& layer : phases) {
-    if (const auto* g = std::get_if<model::LinearGrating>(&layer)) {
-      out.emplace_back(geom::LinearGratingPhase<double>(g->lines_per_mm.value,
-                                                        math::deg_to_rad(g->orientation_deg)));
-    } else if (const auto* r = std::get_if<model::RadialPhase>(&layer)) {
-      std::vector<double> coefficients;
-      coefficients.reserve(r->coefficients.size());
-      for (const model::Param& c : r->coefficients) coefficients.push_back(c.value);
-      out.emplace_back(geom::RadialPhasePolynomial<double>(r->normalization_radius.value,
-                                                           std::move(coefficients)));
-    }
+    out.push_back(std::visit(
+        [](const auto& p) -> geom::PhaseFunction<double> {
+          using P = std::decay_t<decltype(p)>;
+          if constexpr (std::is_same_v<P, model::LinearGrating>) {
+            return geom::LinearGratingPhase<double>(p.lines_per_mm.value,
+                                                    math::deg_to_rad(p.orientation_deg));
+          } else if constexpr (std::is_same_v<P, model::RadialPhase>) {
+            std::vector<double> coefficients;
+            coefficients.reserve(p.coefficients.size());
+            for (const model::Param& c : p.coefficients) coefficients.push_back(c.value);
+            return geom::RadialPhasePolynomial<double>(p.normalization_radius.value,
+                                                       std::move(coefficients));
+          } else {
+            static_assert(kUnhandledPhase<P>, "compile_phases: unhandled phase layer");
+          }
+        },
+        layer));
   }
   return out;
 }

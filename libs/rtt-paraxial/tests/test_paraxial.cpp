@@ -609,7 +609,7 @@ TEST_CASE("paths that are not rotationally symmetric are rejected", "[paraxial]"
   }
   SECTION("phase layer") {
     // An order != 0 at a phase surface has no paraxial model (ADR 0025, point 4; order 0 is
-    // accepted since #127, see "order 0 at a phase surface"). Order -1 on reflection-free
+    // accepted since #127, see "order 0 at a phase surface"). Order -1 on
     // refraction, distinct from the section below (order 1).
     System s = base_system();
     Element l = lens("L", 0.0, 1.5, 50.0, -50.0, 5.0);

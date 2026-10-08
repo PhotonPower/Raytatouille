@@ -48,7 +48,8 @@ struct EventMedia {
   /// Complex index on the other side of the surface (Fresnel and coating partner for Reflect;
   /// equal to after for Refract).
   math::Complex beyond{1.0};
-  /// Vacuum wavelength, um; must be > 0 if `before` absorbs (Im > 0) or `layers` is not empty.
+  /// Vacuum wavelength, um; must be > 0 if `before` absorbs (Im > 0), `layers` is not empty or
+  /// the event has a diffraction order != 0 (otherwise EventImpossible, ADR 0025).
   /// No default wavelength, so that a forgotten value cannot pass unnoticed.
   double wavelength_um = 0.0;
   /// Coating layers at this wavelength in the order seen by the ray: from the incident medium to

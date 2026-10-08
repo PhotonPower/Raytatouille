@@ -11,7 +11,6 @@
 #include <span>
 #include <stdexcept>
 #include <string>
-#include <variant>
 #include <vector>
 
 #include "event_media.hpp"

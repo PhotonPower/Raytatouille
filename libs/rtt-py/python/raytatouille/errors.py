@@ -109,8 +109,8 @@ class AnalysisError(RaytatouilleError):
     For a single lost ray (chief or zone ray): ``surface`` is the last surface it reached (for
     VIGNETTED, ABSORBED, TIR, EVENT_IMPOSSIBLE and EVANESCENT the surface where it stopped;
     for MISSED and NO_CONVERGENCE the surface before the one it did not reach), ``location``
-    that surface's JSON pointer, ``ray_status`` its RayStatus, ``field`` the field index (None for a field
-    given as value) and ``wavelength`` the wavelength index. All None otherwise.
+    that surface's JSON pointer, ``ray_status`` its RayStatus, ``field`` the field index (None
+    for a field given as value) and ``wavelength`` the wavelength index. All None otherwise.
     """
 
     def __init__(self, message: str, surface: str | None = None, location: str | None = None,
