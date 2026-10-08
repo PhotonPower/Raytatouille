@@ -318,6 +318,53 @@ TEST_CASE("crystal: unknown parts are reported at their reference", "[crystal]")
   REQUIRE(only(errors(s, lib), "material.unknown", "/root/children/0/material/extraordinary"));
 }
 
+TEST_CASE("crystal: an unknown environment gives no follow-up errors at crystals", "[crystal]") {
+  // With /environment/medium unresolved, the environment index is a placeholder that may alias
+  // the crystal's medium; the path rules are skipped, so only the real error remains.
+  const MaterialLibrary lib;
+  System s = bare_system();
+  s.environment.medium = "NOPE:AIR";
+  s.root.children.push_back({crystal_plate("P", 10.0)});
+  s.paths = {{"x", false, {event("P.S1", EventKind::Ordinary), event("P.S2", EventKind::Refract)}}};
+  REQUIRE(only(errors(s, lib), "material.unknown", "/environment/medium"));
+}
+
+TEST_CASE("crystal: entering a second crystal from inside the first is crystal to crystal",
+          "[crystal]") {
+  // Elements do not nest: entering B while inside A leaves A (rules of #5), so both sides are
+  // crystals; with a mode as well as with Refract.
+  const MaterialLibrary lib;
+  System s = bare_system();
+  s.root.children.push_back({crystal_plate("A", 10.0)});
+  s.root.children.push_back({crystal_plate("B", 20.0)});
+  for (const EventKind kind : {EventKind::Extraordinary, EventKind::Refract}) {
+    s.paths = {{"x",
+                false,
+                {event("A.S1", EventKind::Ordinary), event("B.S1", kind),
+                 event("B.S2", EventKind::Refract)}}};
+    REQUIRE(only(errors(s, lib), "crystal.unsupported", "/paths/0/events/1"));
+  }
+}
+
+TEST_CASE("crystal: the optic axis turns with the assembly and element poses", "[crystal]") {
+  // As the axes of the ideal elements (ADR 0021): assembly pose, then element pose; not the
+  // surface pose. Assembly Rz(90): (0, -1, 1) of the element pose Rx(90) -> (1, 0, 1).
+  System s = bare_system();
+  rtt::model::Assembly group;
+  group.name = "group";
+  group.pose.rotation_deg[2] = Param(90.0);
+  Element plate = crystal_plate("P", 10.0);
+  plate.pose.rotation_deg[0] = Param(90.0);
+  plate.surfaces[0].pose.rotation_deg[1] = Param(30.0);  // surface pose: no effect on the axis
+  group.children.push_back({plate});
+  s.root.children.push_back({group});
+  s.paths = {{"o", false, {event("P.S1", EventKind::Ordinary), event("P.S2", EventKind::Refract)}}};
+  const MaterialLibrary lib;
+  const CompiledSystem cs = rtt::compile::compile(s, lib);
+  const auto& m = cs.media()[cs.path(PathId{0}).events[0].medium_after];
+  REQUIRE((*m.optic_axis - Vec3(1.0, 0.0, 1.0).normalized()).norm() <= 1e-15);
+}
+
 TEST_CASE("crystal: wavelengths outside the common range of both parts", "[crystal]") {
   MaterialLibrary lib;
   lib.add("TEST:O", std::make_shared<const RangedMaterial>(1.66, WavelengthRange{0.4, 1.0}));

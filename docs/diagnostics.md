@@ -72,7 +72,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `interaction.extinction_ratio_invalid` | Fehler | Extinktionsverhältnis des Polarisators außerhalb [0, 1] | validate | `…/s/interaction/extinction_ratio` |
 | `interaction.reflectance_invalid` | Fehler | Reflexionsgrad des Strahlteilers außerhalb [0, 1] | validate | `…/s/interaction` |
 | `interaction.retardance_invalid` | Fehler | Verzögerung nicht endlich | validate | `…/s/interaction/retardance_waves` |
-| `material.unknown` | Fehler | Materialreferenz nicht auflösbar | compile | `/environment/medium`, `…/el/material`, `…/el/material/i` |
+| `material.unknown` | Fehler | Materialreferenz nicht auflösbar | compile | `/environment/medium`, `…/el/material`, `…/el/material/i`, `…/el/material/ordinary`, `…/el/material/extraordinary` |
 | `material.wavelength_out_of_range` | Fehler | Systemwellenlänge außerhalb des Bereichs eines Materials auf einem Pfad | compile | `/environment/medium`, `…/el/material`, `…/el/material/i` |
 | `node.name_duplicate` | Fehler | Name einer Baugruppe oder eines Elements doppelt | validate | `…/name` |
 | `node.name_empty` | Fehler | leerer Name einer Baugruppe oder eines Elements | validate | `…/name` |

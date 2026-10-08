@@ -70,7 +70,10 @@ class Compiler {
              "at most 65535 wavelengths are supported (RayBatch::wl is 16 bit)");
     }
     // The environment is always media_[0] (CompiledSystem::environment_medium()).
-    environment_ = medium(system_.environment.medium, "/environment/medium").value_or(0);
+    const std::optional<std::uint32_t> environment =
+        medium(system_.environment.medium, "/environment/medium");
+    environment_ = environment.value_or(0);
+    environment_resolved_ = environment.has_value();
     add_assembly(system_.root, model::to_isometry(system_.root.pose), "/root");
     for (std::size_t p = 0; p < system_.paths.size(); ++p) {
       paths_.push_back(build_path(system_.paths[p], idx("/paths", p)));
@@ -608,6 +611,7 @@ class Compiler {
   void check_crystal_events(std::vector<CompiledEvent>& events,
                             const std::string& location,
                             bool automatic) {
+    if (!environment_resolved_) return;  // its error stops compile(); see environment_resolved_
     // After an unresolved material, medium indices are placeholders that may not exist in
     // media_ (see check_wavelength_ranges); such a medium counts as isotropic.
     const auto crystal = [&](std::uint32_t medium) {
@@ -644,7 +648,10 @@ class Compiler {
                    "(ADR 0026)");
       } else if (before && after && (is_mode || e.kind == model::EventKind::Refract)) {
         report("crystal.unsupported", at,
-               surface + ": from a crystal into a crystal is not supported in M4 (ADR 0026)");
+               surface +
+                   ": the ray is in a crystal before and after this event (crystal to "
+                   "crystal, or an element without material inside a crystal); not "
+                   "supported in M4 (ADR 0026)");
       } else if (is_mode) {
         mode = e.kind == model::EventKind::Ordinary ? CrystalMode::Ordinary
                                                     : CrystalMode::Extraordinary;
@@ -802,6 +809,9 @@ class Compiler {
   };
   std::vector<CoatingCheck> coating_checks_;
   std::uint32_t environment_ = 0;
+  /// False if /environment/medium is unresolved: environment_ is then a placeholder that may
+  /// alias another medium, and the crystal path rules are skipped (no follow-up errors).
+  bool environment_resolved_ = true;
   std::vector<ElementInfo> elements_;
   std::vector<std::uint32_t> surface_element_;  // owning element per surface
   std::map<model::SurfaceId, std::uint32_t> surface_index_;

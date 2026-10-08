@@ -65,8 +65,10 @@ Verweisen für die Hauptbrechzahlen n_O und n_E, dazu die optische Achse in Elem
 ```
 
 Der Zemax-Katalog `birefringent.agf` legt jeden Kristall so als zwei Gläser `X` und `X-E` ab.
-`rtt validate` prüft Kristall und Achse; kompilieren und verfolgen lassen sich Kristalle erst mit
-den folgenden M4-Schritten (bis dahin Kompilierfehler `crystal.unsupported`).
+`rtt validate` prüft Kristall und Achse. compile übersetzt Kristalle seit #131 nach den Pfadregeln
+in `docs/architecture.md` (Abschnitt „Kristalle im Pfad“): Eintritt nur mit `ordinary` oder
+`extraordinary`, Austritt mit `refract`. Verfolgen lassen sich die Moden erst mit #132, bis dahin
+endet der Strahl dort mit `EventImpossible`.
 
 **Spiegel.** Ohne Angabe hat jede Fläche die Interaktion `fresnel`. Ein Spiegel **ohne** `material`
 wirkt dann als idealer Leiter (r_s = −1, r_p = +1, verlustfrei), dasselbe wie `ideal_mirror`. Ein
