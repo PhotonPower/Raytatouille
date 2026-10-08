@@ -28,6 +28,10 @@ void RayBatch::resize(std::size_t size) {
   pupil_x_.resize(size, 0.0);
   pupil_y_.resize(size, 0.0);
   last_surface_.resize(size, kNoSurface);
+  wave_x_.resize(size, 0.0);
+  wave_y_.resize(size, 0.0);
+  wave_z_.resize(size, 1.0);
+  mode_index_.resize(size, 0.0);
 }
 
 namespace {

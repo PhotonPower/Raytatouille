@@ -45,7 +45,8 @@ inline constexpr std::uint32_t kNoSurface = std::numeric_limits<std::uint32_t>::
 ///
 /// A newly created or grown ray starts at the global origin travelling along +z with
 /// wavelength index 0, OPL 0, polarization ray-tracing matrix P = identity, weight 1, status
-/// Alive, field index 0, pupil coordinates (0, 0) and last_surface = kNoSurface.
+/// Alive, field index 0, pupil coordinates (0, 0), last_surface = kNoSurface, wave normal +z and
+/// mode index 0.
 /// Callers set the fields they need; the batch never checks physical consistency
 /// (e.g. |dir| = 1), which is the job of whoever fills it.
 class RayBatch {
@@ -77,6 +78,22 @@ class RayBatch {
   [[nodiscard]] std::span<const double> dir_x() const noexcept { return dir_x_; }
   [[nodiscard]] std::span<const double> dir_y() const noexcept { return dir_y_; }
   [[nodiscard]] std::span<const double> dir_z() const noexcept { return dir_z_; }
+
+  /// Unit wave normal k in global coordinates (ADR 0026, point 3). `dir` is the energy
+  /// direction S; in an isotropic medium wave = dir. Counts only where mode_index > 0: at the
+  /// start of a trace every ray with mode_index = 0 gets wave := dir, so a batch that sets only
+  /// `dir` is valid (reading rule).
+  [[nodiscard]] std::span<double> wave_x() noexcept { return wave_x_; }
+  [[nodiscard]] std::span<double> wave_y() noexcept { return wave_y_; }
+  [[nodiscard]] std::span<double> wave_z() noexcept { return wave_z_; }
+  [[nodiscard]] std::span<const double> wave_x() const noexcept { return wave_x_; }
+  [[nodiscard]] std::span<const double> wave_y() const noexcept { return wave_y_; }
+  [[nodiscard]] std::span<const double> wave_z() const noexcept { return wave_z_; }
+
+  /// Index n of the crystal mode along the wave normal, real, dimensionless: > 0 inside a
+  /// uniaxial crystal, 0 in an isotropic medium ("no mode"; ADR 0026, point 3).
+  [[nodiscard]] std::span<double> mode_index() noexcept { return mode_index_; }
+  [[nodiscard]] std::span<const double> mode_index() const noexcept { return mode_index_; }
 
   /// Index into rtt::compile::CompiledSystem::wavelengths_um().
   [[nodiscard]] std::span<std::uint16_t> wl() noexcept { return wl_; }
@@ -142,6 +159,8 @@ class RayBatch {
   std::vector<std::uint16_t> field_;
   std::vector<double> pupil_x_, pupil_y_;
   std::vector<std::uint32_t> last_surface_;
+  std::vector<double> wave_x_, wave_y_, wave_z_;
+  std::vector<double> mode_index_;
 };
 
 }  // namespace rtt::trace

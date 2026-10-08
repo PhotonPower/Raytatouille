@@ -135,6 +135,12 @@ TraceStats trace_rays(const compile::CompiledSystem& system,
       ray.last_surface = rays.last_surface()[i];
       ray.prt = rays.prt_matrix(i);
       ray.weight = rays.weight()[i];
+      // Reading rule (ADR 0026, point 3): wave counts only inside a crystal (mode_index > 0);
+      // otherwise wave := dir, so that a batch which sets only dir starts correctly.
+      ray.mode_index = rays.mode_index()[i];
+      ray.wave = ray.mode_index > 0.0
+                     ? math::Vec3(rays.wave_x()[i], rays.wave_y()[i], rays.wave_z()[i])
+                     : ray.dir;
       const std::uint16_t wl = rays.wl()[i];
       recorder.start(i, ray);
       std::size_t steps = 0;
@@ -157,6 +163,10 @@ TraceStats trace_rays(const compile::CompiledSystem& system,
       rays.last_surface()[i] = ray.last_surface;
       rays.set_prt_matrix(i, ray.prt);
       rays.weight()[i] = ray.weight;
+      rays.wave_x()[i] = ray.wave.x();
+      rays.wave_y()[i] = ray.wave.y();
+      rays.wave_z()[i] = ray.wave.z();
+      rays.mode_index()[i] = ray.mode_index;
     }
   };
   if (control == nullptr || !control->active()) {
