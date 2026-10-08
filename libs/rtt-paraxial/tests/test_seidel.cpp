@@ -6,11 +6,15 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/compile/errors.hpp"
 #include "rtt/io/json_io.hpp"
+#include "rtt/material/material.hpp"
+#include "rtt/paraxial/paraxial.hpp"
+#include "rtt/paraxial/prescription.hpp"
 #include "rtt/paraxial/seidel.hpp"
 
 // Sources of the formulas (docs/quellen.md): J. Sasian, OPTI 517 lecture notes, L4 "Seidel
@@ -496,5 +500,165 @@ TEST_CASE("Seidel input errors", "[seidel]") {
     REQUIRE_THROWS_AS(seidel(cs, PathId{0}, 3), ParaxialError);
     REQUIRE_THROWS_AS(seidel(cs, PathId{0}, 0, ChromaticPair{0, 3}), ParaxialError);
     REQUIRE_THROWS_AS(seidel(cs, PathId{1}, 0), ParaxialError);
+  }
+}
+
+namespace {
+
+/// tests/reference/m1/two_lenses_stop_between.rtt.json with N-BK7 lenses and the wavelengths
+/// F, d (reference), C: the stop lies between the lenses, so the entrance pupil, the focal
+/// length and the paraxial image all depend on the wavelength.
+System dispersive_two_lenses(MaterialLibrary& lib) {
+  lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/schott.agf");
+  System s = load("m1/two_lenses_stop_between.rtt.json");
+  s.wavelengths = {{0.4861, 1.0, false}, {0.5876, 1.0, true}, {0.6563, 1.0, false}};
+  for (auto& node : s.root.children) {
+    if (auto* e = std::get_if<Element>(&node.value); e && e->kind == ElementKind::Lens) {
+      e->material = "SCHOTT:N-BK7";
+    }
+  }
+  return s;
+}
+
+/// Expected chief ray of the field value `value` at wavelength `wl` (#35): the field is
+/// converted at the reference wavelength, as rtt-trace does since #31/#50, and the chief ray at
+/// `wl` passes through the centre of the entrance pupil at `wl`. Built separately from
+/// first_order() and the paraxial trace_ray(), not with chief_start(); the check against
+/// rtt-trace itself is the consistency test in rtt-analysis (test_chromatic.cpp):
+/// - angle, object at infinity: slope tan theta = value through z_EP(wl);
+/// - angle, finite object: object point h = (z_obj - z_EP(ref)) tan theta on the chief ray
+///   through the reference EP, then the line from (z_obj, h) through (z_EP(wl), 0);
+/// - paraxial image height: the chief ray of unit field value (unit slope through z_EP(ref),
+///   or unit object height through z_EP(ref)) traced at the reference wavelength to the
+///   reference paraxial image gives h'_1; the field value is value / h'_1 as a slope or object
+///   height, and the chief ray at `wl` passes through z_EP(wl) as above.
+/// Returned as (slope u, height at the plane z_ref_plane).
+std::pair<double, double> expected_chief(const CompiledSystem& cs,
+                                         std::uint16_t wl,
+                                         double value,
+                                         double z_ref_plane) {
+  const std::uint16_t ref = cs.reference_wavelength();
+  const auto fo_ref = rtt::paraxial::first_order(cs, PathId{0}, ref);
+  const auto fo = rtt::paraxial::first_order(cs, PathId{0}, wl);
+  const double z_ep_ref = *fo_ref.entrance_pupil->z;
+  const double z_ep = *fo.entrance_pupil->z;
+  const bool infinite = cs.object().at_infinity;
+  const double z_obj = infinite ? 0.0 : -cs.object().distance.value;
+  double slope = 0.0;   // object at infinity: tan theta
+  double height = 0.0;  // finite object: object height
+  if (cs.fields().type == rtt::model::FieldType::AngleDeg) {
+    slope = value;
+    height = (z_obj - z_ep_ref) * value;
+  } else {
+    const auto ray = infinite ? rtt::paraxial::trace_ray(cs, PathId{0}, ref, z_ep_ref, 0.0, 1.0)
+                              : rtt::paraxial::trace_ray(cs, PathId{0}, ref, z_obj, 1.0,
+                                                         -1.0 / (z_ep_ref - z_obj));
+    const auto& last = ray.back();
+    const double unit = last.y + (*fo_ref.image_z - last.z) * last.u;
+    slope = value / unit;
+    height = value / unit;
+  }
+  if (infinite) return {slope, (z_ref_plane - z_ep) * slope};
+  const double u = -height / (z_ep - z_obj);
+  return {u, height + (z_ref_plane - z_obj) * u};
+}
+
+/// Slope and height at z_ref_plane of a paraxial ray start.
+std::pair<double, double> line(const rtt::paraxial::RayStart& r, double z_ref_plane) {
+  return {r.u, r.y + (z_ref_plane - r.z) * r.u};
+}
+
+}  // namespace
+
+TEST_CASE("chief ray at another wavelength: field converted at the reference wavelength (#35)",
+          "[seidel]") {
+  // rtt-trace converts paraxial image heights, and field angles with a finite object, at the
+  // reference wavelength (#31, #50); seidel() and prescription() must use the same chief ray.
+  // Compared at wavelength F (index 0) against the construction of expected_chief(); both are
+  // the same lines, so they agree to rounding (1e-12 relative). With the field converted at F
+  // instead, the slope differs by the dispersion of N-BK7 (about 1 %). The comparisons use
+  // CHECK, so that every case reports them.
+  MaterialLibrary lib;
+  System s = dispersive_two_lenses(lib);
+  struct Case {
+    const char* name;
+    rtt::model::FieldType type;
+    bool finite;
+    double field_y;
+  };
+  const Case cases[] = {
+      {"(a) paraxial image height, object at infinity", rtt::model::FieldType::ParaxialImageHeight,
+       false, 4.0},
+      {"(b) paraxial image height, finite object", rtt::model::FieldType::ParaxialImageHeight, true,
+       4.0},
+      {"(c) field angle, finite object", rtt::model::FieldType::AngleDeg, true, 5.0},
+  };
+  for (const Case& c : cases) {
+    INFO(c.name);
+    s.fields = {c.type, {{0.0, 0.0, 1.0}, {0.0, c.field_y, 1.0}}};
+    s.object.at_infinity = !c.finite;
+    s.object.distance = Param(200.0);
+    const CompiledSystem cs = rtt::compile::compile(s, lib);
+    const double value = c.type == rtt::model::FieldType::AngleDeg ? tan_deg(c.field_y) : c.field_y;
+    const double z_plane = c.finite ? -200.0 : 0.0;
+    const auto [u_expected, y_expected] = expected_chief(cs, 0, value, z_plane);
+    const Seidel res = seidel(cs, PathId{0}, 0);
+    const auto [u, y] = line(res.chief, z_plane);
+    CHECK_THAT(u, WithinRel(u_expected, kRel));
+    CHECK_THAT(y, WithinRel(y_expected, kRel) || WithinAbs(y_expected, 1e-12));
+    // (d) prescription() uses the same chief ray.
+    const auto p = rtt::paraxial::prescription(cs, PathId{0}, 0);
+    REQUIRE(p.chief_start.has_value());
+    REQUIRE(p.chief_start->z == res.chief.z);
+    REQUIRE(p.chief_start->y == res.chief.y);
+    REQUIRE(p.chief_start->u == res.chief.u);
+    // At the reference wavelength the construction is the old one.
+    const auto [u_ref, y_ref] = expected_chief(cs, 1, value, z_plane);
+    const auto [u1, y1] = line(seidel(cs, PathId{0}, 1).chief, z_plane);
+    CHECK_THAT(u1, WithinRel(u_ref, kRel));
+    CHECK_THAT(y1, WithinRel(y_ref, kRel) || WithinAbs(y_ref, 1e-12));
+  }
+}
+
+TEST_CASE("field conversion needs a usable entrance pupil at the reference wavelength (#35)",
+          "[seidel]") {
+  // N-BK7 biconvex singlet (R = +-60 mm, 5 mm) at z = 0 with the stop 150 mm behind it, beyond
+  // its focus: the stop is imaged in front of the lens, a real entrance pupil at z_EP < 0. The
+  // object is put exactly into the entrance pupil of the reference wavelength. At F the pupil
+  // lies elsewhere (dispersion), so only the conversion at the reference wavelength meets the
+  // degenerate pupil: seidel() throws ParaxialError (as rtt-trace), prescription() leaves the
+  // chief ray empty, as it does for an unusable pupil at its own wavelength.
+  MaterialLibrary lib;
+  lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/schott.agf");
+  System s = base_system();
+  s.wavelengths = {{0.4861, 1.0, false}, {0.5876, 1.0, true}, {0.6563, 1.0, false}};
+  Surface s1 = plane_surface("L.S1", 0.0);
+  s1.shape.base = rtt::model::Conic{Param(60.0), Param(0.0)};
+  Surface s2 = plane_surface("L.S2", 5.0);
+  s2.shape.base = rtt::model::Conic{Param(-60.0), Param(0.0)};
+  add(s, Element{"L", ElementKind::Lens, Pose::along_z(0.0), "SCHOTT:N-BK7", {s1, s2}});
+  add(s, stop(150.0, 5.0));
+  add(s, Element{"image",
+                 ElementKind::Detector,
+                 Pose::along_z(600.0),
+                 std::nullopt,
+                 {plane_surface("IMG", 0.0)}});
+  const double z_ep_ref =
+      *rtt::paraxial::first_order(rtt::compile::compile(s, lib), PathId{0}, 1).entrance_pupil->z;
+  REQUIRE(z_ep_ref < 0.0);
+  s.object.at_infinity = false;
+  s.object.distance = Param(-z_ep_ref);
+  for (const auto type :
+       {rtt::model::FieldType::ParaxialImageHeight, rtt::model::FieldType::AngleDeg}) {
+    INFO("field type " << static_cast<int>(type));
+    s.fields = {type, {{0.0, 0.0, 1.0}, {0.0, 2.0, 1.0}}};
+    const CompiledSystem cs = rtt::compile::compile(s, lib);
+    REQUIRE(-cs.object().distance.value == z_ep_ref);
+    REQUIRE(*rtt::paraxial::first_order(cs, PathId{0}, 0).entrance_pupil->z != z_ep_ref);
+    REQUIRE_THROWS_AS(seidel(cs, PathId{0}, 0), ParaxialError);
+    REQUIRE_FALSE(rtt::paraxial::prescription(cs, PathId{0}, 0).chief_start.has_value());
+    // At the reference wavelength itself the pupil lies in the object plane: as before.
+    REQUIRE_THROWS_AS(seidel(cs, PathId{0}, 1), ParaxialError);
+    REQUIRE_FALSE(rtt::paraxial::prescription(cs, PathId{0}, 1).chief_start.has_value());
   }
 }

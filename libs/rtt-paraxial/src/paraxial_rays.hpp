@@ -33,10 +33,24 @@ struct ShapeData {
                                       double r_ep);
 
 /// Chief ray of the maximum field (see seidel.hpp), in object space, through the centre of the
-/// entrance pupil at z_ep.
+/// entrance pupil at z_ep; paraxial image heights and field angles with a finite object are
+/// converted at the reference wavelength (#35, as rtt-trace since #31/#50).
+/// @param fo     first-order data at `wavelength`; z_ep its entrance pupil
 /// @param caller name for error messages ("paraxial: <caller>: ...")
 /// @throws ParaxialError for field angles outside (-90, 90) degree, an object height with an
-///         object at infinity, or a paraxial image height without a finite paraxial image
+///         object at infinity, a paraxial image height without a finite paraxial image, or an
+///         entrance pupil at the reference wavelength at infinity or in the object plane where
+///         the field conversion needs it
+/// Whether the field conversion of chief_start() at `wavelength` finds a usable entrance
+/// pupil at the reference wavelength (#35): true at the reference wavelength itself and for
+/// field types that need no conversion there; otherwise the reference pupil must exist, lie at
+/// a finite position not in the object plane, or at infinity for a paraxial image height with a
+/// finite object. For prescription(), which leaves the chief ray empty instead of throwing.
+[[nodiscard]] bool reference_pupil_usable(const compile::CompiledSystem& system,
+                                          compile::PathId path,
+                                          std::uint16_t wavelength,
+                                          double z_obj);
+
 [[nodiscard]] RayStart chief_start(const compile::CompiledSystem& system,
                                    compile::PathId path,
                                    std::uint16_t wavelength,

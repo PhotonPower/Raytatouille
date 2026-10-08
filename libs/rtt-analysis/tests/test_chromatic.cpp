@@ -14,8 +14,10 @@
 #include "rtt/material/material.hpp"
 #include "rtt/model/model.hpp"
 #include "rtt/paraxial/paraxial.hpp"
+#include "rtt/paraxial/prescription.hpp"
 #include "rtt/paraxial/seidel.hpp"
 #include "rtt/trace/sequential.hpp"
+#include "rtt/trace/sources.hpp"
 
 using rtt::compile::compile;
 using rtt::compile::CompiledSystem;
@@ -209,4 +211,65 @@ TEST_CASE("invalid colour input", "[colour]") {
   REQUIRE_THROWS_AS(rtt::analysis::longitudinal_colour(cs, PathId{0}, options),
                     std::invalid_argument);
   REQUIRE_THROWS_AS(rtt::analysis::lateral_colour(cs, PathId{0}, 9), std::invalid_argument);
+}
+
+TEST_CASE("seidel and prescription use rtt-trace's chief ray also at another wavelength (#35)",
+          "[colour]") {
+  // rtt-trace converts paraxial image heights, and field angles with a finite object, at the
+  // reference wavelength (#31, #50), rtt-paraxial since #35 as well. The paraxially aimed chief
+  // ray of make_rays() at wavelength F must therefore be the chief ray of seidel() and
+  // prescription() at F: the same slope and, for a finite object, the same object point.
+  // Two N-BK7 singlets with the stop between them, so that the entrance pupil, the focal length
+  // and the paraxial image depend on the wavelength. Rounding of two independent constructions:
+  // 1e-12 relative.
+  MaterialLibrary lib;
+  add_schott(lib);
+  System s = load("m1/two_lenses_stop_between.rtt.json");
+  s.wavelengths = {{0.4861, 1.0, false}, {0.5876, 1.0, true}, {0.6563, 1.0, false}};
+  for (auto& node : s.root.children) {
+    if (auto* e = std::get_if<rtt::model::Element>(&node.value);
+        e && e->kind == rtt::model::ElementKind::Lens) {
+      e->material = "SCHOTT:N-BK7";
+    }
+  }
+  struct Case {
+    const char* name;
+    rtt::model::FieldType type;
+    bool finite;
+    double field_y;
+  };
+  const Case cases[] = {
+      {"paraxial image height, object at infinity", rtt::model::FieldType::ParaxialImageHeight,
+       false, 4.0},
+      {"paraxial image height, finite object", rtt::model::FieldType::ParaxialImageHeight, true,
+       4.0},
+      {"field angle, finite object", rtt::model::FieldType::AngleDeg, true, 5.0},
+  };
+  const std::uint16_t f_line = 0;
+  for (const Case& c : cases) {
+    INFO(c.name);
+    s.fields = {c.type, {{0.0, 0.0, 1.0}, {0.0, c.field_y, 1.0}}};  // field 1 is the maximum
+    s.object.at_infinity = !c.finite;
+    s.object.distance = rtt::model::Param(200.0);
+    const CompiledSystem cs = compile(s, lib);
+    const std::vector<std::uint16_t> field{1};
+    const rtt::trace::RayBatch chief =
+        rtt::trace::make_rays(cs, PathId{0}, field, f_line, rtt::trace::SinglePupilPoint{0.0, 0.0},
+                              rtt::trace::Aiming::Paraxial);
+    REQUIRE(chief.status()[0] == rtt::trace::RayStatus::Alive);
+    const double u_trace = chief.dir_y()[0] / chief.dir_z()[0];
+    const auto seidel = rtt::paraxial::seidel(cs, PathId{0}, f_line);
+    const auto prescription = rtt::paraxial::prescription(cs, PathId{0}, f_line);
+    REQUIRE(prescription.chief_start.has_value());
+    for (const rtt::paraxial::RayStart& r : {seidel.chief, *prescription.chief_start}) {
+      REQUIRE(std::abs(r.u - u_trace) <= 1e-12 * std::abs(u_trace));
+      if (c.finite) {
+        // Object point: the paraxial chief ray at the object plane against the ray start.
+        const double z_obj = -200.0;
+        REQUIRE(chief.pos_z()[0] == z_obj);
+        const double y_obj = r.y + (z_obj - r.z) * r.u;
+        REQUIRE(std::abs(y_obj - chief.pos_y()[0]) <= 1e-12 * std::abs(chief.pos_y()[0]));
+      }
+    }
+  }
 }

@@ -106,7 +106,10 @@ struct Prescription {
 ///   position not in the object plane. Otherwise none.
 /// - Chief ray: needs a stop and an entrance pupil at a finite position not in the object
 ///   plane; the maximum field as in seidel(). If all field points lie on the axis it is the
-///   zero ray (H = 0).
+///   zero ray (H = 0). Away from the reference wavelength, a paraxial image height and a field
+///   angle with a finite object are converted at the reference wavelength (as in seidel(),
+///   #35); they then also need a usable entrance pupil there (finite and not in the object
+///   plane, or at infinity for an image height with a finite object), otherwise none.
 /// @param system     compiled system
 /// @param path       path to evaluate
 /// @param wavelength index into system.wavelengths_um() for the rays and n
