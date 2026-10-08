@@ -20,13 +20,22 @@ namespace rtt::trace {
 
 /// State of a ray. Problems while tracing are status flags, never exceptions (ADR 0009).
 enum class RayStatus : std::uint8_t {
-  Alive,            ///< still being traced
-  Missed,           ///< did not intersect the next surface
-  Vignetted,        ///< hit a surface outside its aperture
-  Tir,              ///< total internal reflection where refraction was requested
-  NoConvergence,    ///< iterative intersection did not converge
-  Absorbed,         ///< stopped by an absorbing surface
-  EventImpossible,  ///< the requested event cannot happen (e.g. evanescent order)
+  Alive,          ///< still being traced
+  Missed,         ///< did not intersect the next surface
+  Vignetted,      ///< hit a surface outside its aperture
+  Tir,            ///< total internal reflection where refraction was requested
+  NoConvergence,  ///< iterative intersection did not converge
+  Absorbed,       ///< stopped by an absorbing surface
+  /// The requested event cannot happen, e.g.: the interaction of the surface does not support
+  /// the event kind (IdealMirror with Refract, a polarizer with Reflect), an event of a later
+  /// milestone (Ordinary, Extraordinary), a diffraction order or efficiency that is not traced
+  /// yet (until #127), or amplitudes that are not finite. A modelling problem, unlike Tir and
+  /// Evanescent (physical limits).
+  EventImpossible,
+  /// The diffraction order has no real direction (ADR 0025, point 7); the ray stays at its hit
+  /// point, last_surface is that surface, as for Tir. Appended so that the values of the other
+  /// statuses stay as they are.
+  Evanescent,
 };
 
 /// Value of `last_surface` before a ray has hit any surface.

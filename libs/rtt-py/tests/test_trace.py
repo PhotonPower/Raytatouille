@@ -104,7 +104,7 @@ def test_make_rays_and_trace(reference_dir: Path) -> None:
     assert np.all(rays.status == RayStatus.ALIVE)
     stats = rt.trace.trace(cs, rays, path="main")
     assert sum(stats.rays) == len(rays)
-    assert list(stats.rays) == list(np.bincount(rays.status, minlength=7))
+    assert list(stats.rays) == list(np.bincount(rays.status, minlength=len(RayStatus.__members__)))
     # Every ray reaches the image surface IMG at z = 106.363 mm, also the rim rays (|p| = 1)
     # aimed at the stop edge: apertures pass within kApertureTolerance = kAimTolerance (#50).
     assert stats.count(RayStatus.ALIVE) == len(rays)
@@ -177,3 +177,16 @@ def test_invalid_rays_raise_at_the_api_boundary(reference_dir: Path) -> None:
         rt.trace.trace(cs, rt.trace.RayBatch(1), path=3)
     with pytest.raises(ValueError):
         rt.trace.make_rays(cs, rt.trace.HexapolarPupil(), fields=[7])
+
+
+def test_evanescent_is_a_status_of_its_own(reference_dir: Path) -> None:
+    """ADR 0025, point 7 (#127): EVANESCENT is appended with value 7; the arrays grow to 8."""
+    assert int(RayStatus.EVENT_IMPOSSIBLE) == 6
+    assert int(RayStatus.EVANESCENT) == 7
+    cs = compiled_singlet(reference_dir)
+    rays = rt.trace.make_rays(cs, rt.trace.HexapolarPupil(rings=1))
+    rays.status[1] = int(RayStatus.EVANESCENT)
+    stats = rt.trace.trace(cs, rays, path="main")
+    assert len(stats.rays) == 8
+    assert stats.count(RayStatus.EVANESCENT) == 1
+    assert rays.status[1] == RayStatus.EVANESCENT

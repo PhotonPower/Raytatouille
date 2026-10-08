@@ -145,7 +145,9 @@ void bind_trace(nb::module_& m) {
       .value("NO_CONVERGENCE", RayStatus::NoConvergence,
              "iterative intersection or aiming did not converge")
       .value("ABSORBED", RayStatus::Absorbed, "stopped by an absorbing surface")
-      .value("EVENT_IMPOSSIBLE", RayStatus::EventImpossible, "the requested event cannot happen");
+      .value("EVENT_IMPOSSIBLE", RayStatus::EventImpossible, "the requested event cannot happen")
+      .value("EVANESCENT", RayStatus::Evanescent,
+             "the diffraction order has no real direction (ADR 0025)");
   m.attr("NO_SURFACE") = trace::kNoSurface;
 
   nb::enum_<trace::Aiming>(m, "Aiming", "How a ray is aimed into the stop.")

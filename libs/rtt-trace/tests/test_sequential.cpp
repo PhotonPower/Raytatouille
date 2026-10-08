@@ -352,3 +352,30 @@ TEST_CASE("trace keeps the labels of every ray: field, pupil and wavelength (#35
     REQUIRE(rays.wl()[i] == before.wl()[i]);
   }
 }
+
+TEST_CASE("Evanescent is a ray status of its own, appended to the enum (#127)", "[sequential]") {
+  // ADR 0025, point 7: RayStatus::Evanescent is appended with value 7, so the values of the
+  // existing statuses stay as they are; kRayStatusCount and the status arrays grow to 8.
+  REQUIRE(static_cast<int>(RayStatus::EventImpossible) == 6);
+  REQUIRE(static_cast<int>(RayStatus::Evanescent) == 7);
+  REQUIRE(rtt::trace::kRayStatusCount == 8);
+  // An Evanescent ray from an earlier trace is valid input: the tracer leaves it alone (like
+  // every ray that is not Alive) and counts it.
+  System s = bare_system();
+  s.root.children.push_back(
+      {Element{"D", ElementKind::Detector, {}, std::nullopt, {surface("D")}}});
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+  RayBatch rays(2);
+  set_ray(rays, 0, Vec3(0.0, 1.0, -1.0), Vec3::UnitZ());
+  set_ray(rays, 1, Vec3(0.0, 2.0, -1.0), Vec3::UnitZ());
+  rays.status()[1] = RayStatus::Evanescent;
+  rays.last_surface()[1] = 0;
+  const auto stats = SequentialTracer().trace(cs, PathId{0}, rays);
+  REQUIRE(stats.rays.size() == 8);
+  REQUIRE(stats.count(RayStatus::Alive) == 1);
+  REQUIRE(stats.count(RayStatus::Evanescent) == 1);
+  REQUIRE(rays.status()[1] == RayStatus::Evanescent);
+  REQUIRE(rays.last_surface()[1] == 0);
+  REQUIRE(pos(rays, 1) == Vec3(0.0, 2.0, -1.0));  // untouched
+}

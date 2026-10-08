@@ -117,7 +117,7 @@ Nicht jede Ursache ist eine Diagnose. Diese Ausnahmen tragen den Ort als Daten (
 | --- | --- | --- |
 | `rtt::compile::NoStopError` (`std::invalid_argument`); Python `NoStopError(ParaxialError, AnalysisError, ValueError)` | `path_name`, `location` (`/paths/i`) | Der Pfad hat keine Blende, gebraucht für Zielen, Pupillen, Seidel-Summen und OPD. Eine Prüfstelle: `rtt::compile::require_stop`, vor dem ersten Strahl; eigene Argumentprüfungen der Analyse (Pfad, Feld, Wellenlänge, Rotationssymmetrie, Feldpunkt außerhalb der Achse) dürfen vorher melden. |
 | `rtt::paraxial::ParaxialError` | `surface`, `location` (Fläche oder z. B. `/fields/points/i`, `/fields/type`) | Paraxiale Daten nicht definiert (nicht rotationssymmetrisch, Blende nicht kreisförmig, Feldangaben). |
-| `rtt::analysis::AnalysisError` | `surface`, `location`, `ray_status`, `field`, `wavelength` | Analyse ohne Ergebnis. Die Daten beschreiben den verlorenen Haupt- oder Zonenstrahl. `surface` ist die letzte erreichte Fläche: bei VIGNETTED, ABSORBED, TIR, EVENT_IMPOSSIBLE die Fläche, an der er endet; bei MISSED, NO_CONVERGENCE die davor. |
+| `rtt::analysis::AnalysisError` | `surface`, `location`, `ray_status`, `field`, `wavelength` | Analyse ohne Ergebnis. Die Daten beschreiben den verlorenen Haupt- oder Zonenstrahl. `surface` ist die letzte erreichte Fläche: bei VIGNETTED, ABSORBED, TIR, EVENT_IMPOSSIBLE, EVANESCENT die Fläche, an der er endet; bei MISSED, NO_CONVERGENCE die davor. |
 | `rtt::io::ParseError`, `rtt::material::AgfError`, `rtt::coating::CoatingCatalogError` | Pointer bzw. Datei und Zeile | Lesefehler; ohne Code. |
 
 ## Gruppe `agf.*`
