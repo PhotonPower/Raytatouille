@@ -608,10 +608,17 @@ TEST_CASE("paths that are not rotationally symmetric are rejected", "[paraxial]"
     require_rel(first_order_of(s).efl, 100.0);
   }
   SECTION("phase layer") {
+    // An order != 0 at a phase surface has no paraxial model (ADR 0025, point 4; order 0 is
+    // accepted since #127, see "order 0 at a phase surface"). Order -1 on reflection-free
+    // refraction, distinct from the section below (order 1).
     System s = base_system();
     Element l = lens("L", 0.0, 1.5, 50.0, -50.0, 5.0);
     l.surfaces[0].phases.push_back(rtt::model::RadialPhase{Param(10.0), {Param(1.0)}});
     add(s, l);
+    s.paths = {{"main",
+                false,
+                {{SurfaceId("L.S1"), rtt::model::EventKind::Refract, -1},
+                 {SurfaceId("L.S2"), rtt::model::EventKind::Refract, 0}}}};
     REQUIRE_THROWS_AS(first_order_of(s), ParaxialError);
   }
   SECTION("diffraction event") {
@@ -625,6 +632,27 @@ TEST_CASE("paths that are not rotationally symmetric are rejected", "[paraxial]"
                  {SurfaceId("L.S2"), rtt::model::EventKind::Refract, 0}}}};
     REQUIRE_THROWS_AS(first_order_of(s), ParaxialError);
   }
+}
+
+TEST_CASE("order 0 at a phase surface is the surface without phase layer (#127)", "[paraxial]") {
+  // ADR 0025, points 2 and 4: first_order accepts a surface with phase layers when the path
+  // takes order 0 there; the result is bitwise that of the same lens without phase layer.
+  System plain = base_system();
+  add(plain, lens("L", 0.0, 1.5, 50.0, -50.0, 5.0));
+  System phased = base_system();
+  Element l = lens("L", 0.0, 1.5, 50.0, -50.0, 5.0);
+  l.surfaces[0].phases.push_back(rtt::model::RadialPhase{Param(10.0), {Param(1.0)}});
+  l.surfaces[1].phases.push_back(rtt::model::LinearGrating{Param(300.0), 0.0});
+  add(phased, l);
+  const FirstOrder a = first_order_of(plain);
+  const FirstOrder b = first_order_of(phased);
+  REQUIRE(b.power == a.power);
+  REQUIRE(b.efl == a.efl);
+  REQUIRE(b.ffl == a.ffl);
+  REQUIRE(b.bfl == a.bfl);
+  REQUIRE(b.front_principal_z == a.front_principal_z);
+  REQUIRE(b.rear_principal_z == a.rear_principal_z);
+  REQUIRE(b.image_z == a.image_z);
 }
 
 TEST_CASE("invalid path id or wavelength index is an error", "[paraxial]") {

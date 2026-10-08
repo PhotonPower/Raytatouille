@@ -20,9 +20,20 @@
 #include "rtt/compile/errors.hpp"
 #include "rtt/diagnostics/codes.hpp"
 #include "rtt/material/uniaxial.hpp"
+#include "rtt/math/units.hpp"
 
 namespace rtt::compile {
 namespace {
+
+/// Phase layers of the model as phase functions of rtt-geom (ADR 0025, point 1): the same numbers
+/// (lines per mm; coefficients in rad, no factor 2 pi), only parameters turned into values and
+/// orientation_deg into rad. validate() guarantees lines_per_mm > 0 and normalization_radius > 0;
+/// non-finite coefficients or orientations (only possible through the API) make the rtt-geom
+/// constructors throw std::invalid_argument.
+std::vector<geom::PhaseFunction<double>> compile_phases(
+    const std::vector<model::PhaseLayer>& /*phases*/) {
+  return {};  // STUB (#127 red run)
+}
 
 std::string idx(const std::string& base, std::size_t i) {
   return base + "/" + std::to_string(i);
@@ -493,6 +504,7 @@ class Compiler {
       c.shape = compile_shape(s.shape, surface_location + "/shape");
       c.aperture = s.aperture;
       c.phases = s.phases;
+      c.phase_functions = compile_phases(s.phases);
       c.interaction = s.interaction;
       c.diffraction_efficiency = s.diffraction_efficiency;
       // Axes of ideal elements are given in element coordinates (ADR 0021).

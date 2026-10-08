@@ -351,7 +351,7 @@ class Shape {
 
 Interaktionen an Kristallflächen in M4: `fresnel` und `ideal_anti_reflection`, sonst `crystal.interaction_unsupported`; ein Teil mit κ ≠ 0 bei einer Systemwellenlänge ist `crystal.absorbing`. Haben die Wellenlängenbereiche von n_O und n_E keinen gemeinsamen Bereich, meldet `material.wavelength_out_of_range` das am Material. Bis #132 endet ein Strahl an `ordinary`/`extraordinary` im Tracer mit `EventImpossible`.
 
-**Phasen und Beugung:** lokale Gittergleichung k_t,aus = k_t,ein + m·∇φ; evaneszente Ordnungen enden mit Status. Effizienz pro Ordnung als Wert oder Tabelle.
+**Phasen und Beugung (ADR 0025, umgesetzt in #126 und #127):** lokale Gittergleichung n′t′_∥ = n t_∥ + m λ₀ g_∥/(2π) mit g_∥ = (I − N Nᵀ)∇φ (`rtt/geom/phase.hpp`, `apply_event`: `incident_tangential`, `order_momentum`, `order_direction`); die Phasenfunktionen legt compile in `CompiledSurface::phase_functions` ab. Ordnung 0 ist das Ereignis ohne Phasenschicht, bitgleich. Bei m ≠ 0 zuerst Tir der Ordnung 0, dann `Evanescent` für |τ| ≥ n′ (Gleichheit eingeschlossen); OPL + m φ λ₀/(2π); P = R(k₀ → k_m)·P₀ mit der kleinsten Drehung (`rotation_between`, Diebel); Effizienz je Ordnung (`diffraction_efficiency`) nur in `weight`. Ray Aiming (`stop_hit`) geht mit denselben Ereignisdaten (privat `event_media.hpp`) auch durch Gitter vor der Blende; `first_order` nimmt Phasenflächen mit Ordnung 0 an.
 
 **Strahlteiler:** kein eigenes Modul, sondern Kombination aus Element und Interaktion (Platte, Würfel, Pellicle, PBS). Der Pfad wählt `Reflect` oder `Refract`/`Transmit`.
 

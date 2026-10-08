@@ -89,10 +89,11 @@ braucht das Substrat, ohne `material` ist es ein Kompilierfehler.
 Zahlenwerte dürfen auch als `{"value": …, "variable": true}` stehen, das markiert sie später als
 Optimierungsvariable (`pickup` ist ebenfalls vorgesehen). Zernike-Terme (`shape.terms`) kennt das
 Schema, die Engine kompiliert sie in Version 0.4.0 aber noch nicht (Meldung: "not supported before
-M8"). Gitter und Phasenflächen (`phases`) übernimmt die Kompilierung; Beugungsordnungen verfolgt
-der Tracer erst mit den folgenden M4-Schritten. Bis dahin beenden ein Ereignis mit `order` ≠ 0, jedes
-Ereignis an einer Fläche mit `diffraction_efficiency` und die Ereignisse `ordinary` und
-`extraordinary` den Strahl mit dem Status `EventImpossible`.
+M8"). Gitter und Phasenflächen (`phases`) übernimmt die Kompilierung; der Tracer verfolgt seit #127
+jede Beugungsordnung `order` nach der lokalen Gittergleichung (ADR 0025) und rechnet
+`diffraction_efficiency` in das Gewicht ein; evaneszente Ordnungen enden mit dem Status
+`Evanescent`. Die Ereignisse `ordinary` und `extraordinary` beenden den Strahl bis #132 mit dem
+Status `EventImpossible`.
 
 ## Pfade
 
