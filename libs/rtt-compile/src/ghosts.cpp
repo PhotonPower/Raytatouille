@@ -38,9 +38,24 @@ model::Event ghost_reflection(const CompiledSystem& system, const CompiledEvent&
   return model::Event{system.surfaces()[e.surface].id, model::EventKind::Reflect, 0};
 }
 
-/// Ghosts in M4 only for paths without diffraction orders and crystal modes (ADR 0027).
-void check_base(const CompiledPath& base) {
+/// True if `surface` is neither the first nor the last surface of its element.
+bool inner_surface(const CompiledSystem& system, std::uint32_t surface) {
+  const CompiledElement& element = system.elements()[system.surfaces()[surface].element];
+  const std::uint32_t local = surface - element.first_surface;
+  return local > 0 && local + 1 < element.surface_count;
+}
+
+/// Ghosts in M4 only for paths without diffraction orders and crystal modes, and without an
+/// element entered from outside through an inner surface, where the media rules are not
+/// reversible (ADR 0027).
+void check_base(const CompiledSystem& system, const CompiledPath& base) {
   for (const auto& e : base.events) {
+    if (e.kind == model::EventKind::Refract && !e.from_inside && inner_surface(system, e.surface)) {
+      throw std::invalid_argument(
+          "ghosts: path '" + base.name + "' enters element '" +
+          system.surfaces()[e.surface].element_name + "' from outside through the inner surface " +
+          system.surfaces()[e.surface].id.str() + "; its way back is not reversible (ADR 0027)");
+    }
     if (e.order != 0) {
       throw std::invalid_argument("ghosts: path '" + base.name +
                                   "' has a diffraction order; ghosts at gratings are not "
@@ -84,7 +99,7 @@ std::vector<model::Path> ghost_paths(const CompiledSystem& system,
                                 " does not exist");
   }
   const CompiledPath& path = system.path(base);
-  check_base(path);
+  check_base(system, path);
   const std::vector<GhostPair> pairs = ghost_pairs(path, options.max_paths);
   std::vector<model::Path> out;
   out.reserve(pairs.size());

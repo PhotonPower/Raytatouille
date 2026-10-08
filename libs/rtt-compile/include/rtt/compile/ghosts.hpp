@@ -30,7 +30,9 @@ struct GhostOptions {
 /// Two-reflection ghost paths of the path `base` (ADR 0027):
 /// - Ghost surfaces are the Refract events of `base`; Reflect, Transmit and Diffract events are
 ///   not. In M4 `base` must have no diffraction orders and no crystal modes (Ordinary,
-///   Extraordinary): ghosts at gratings and crystals come later (ADR 0027).
+///   Extraordinary): ghosts at gratings and crystals come later (ADR 0027). Nor may it enter an
+///   element from outside through an inner surface, where the media rules of compile are not
+///   reversible.
 /// - The two ghost reflections are specular (order 0).
 /// - For each pair of Refract events i < j (event indices in `base`) the ghost is
 ///   base[0..j-1], Reflect at j, base[i+1..j-1] in reverse order, Reflect at i,
@@ -43,9 +45,9 @@ struct GhostOptions {
 /// @return the ghosts as explicit model paths (no automatic flag), ready to append to a copy
 ///         of the model and to compile
 /// @throws std::invalid_argument for an invalid `base`, a `base` with a diffraction order or a
-///         crystal mode, more than options.max_paths ghosts, a ghost name that is already the
-///         name of a path of `system`, or two ghosts with the same name (surface ids that
-///         contain '/' or '#')
+///         crystal mode or entering an element through an inner surface, more than
+///         options.max_paths ghosts, a ghost name that is already the name of a path of `system`,
+///         or two ghosts with the same name (surface ids that contain '/' or '#')
 [[nodiscard]] std::vector<model::Path> ghost_paths(const CompiledSystem& system,
                                                    PathId base,
                                                    const GhostOptions& options = {});

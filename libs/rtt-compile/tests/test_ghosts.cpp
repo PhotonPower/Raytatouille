@@ -243,3 +243,35 @@ TEST_CASE("compile_with_ghosts: compile determines the media of the ghost (#123)
   REQUIRE_THROWS_AS(rtt::compile::compile_with_ghosts(s, "no such path", lib, coatings),
                     std::invalid_argument);
 }
+
+TEST_CASE("ghosts: no ghosts for a path entering an element through an inner surface (#123)",
+          "[ghosts]") {
+  // Lens of three surfaces with equal segment materials: compile lets a path enter it from
+  // outside through the inner surface L.S2 (segment rule), but the way back would end in a
+  // segment instead of the environment, so the generator refuses (ADR 0027, point 4).
+  System s;
+  s.name = "inner entry";
+  s.wavelengths = {{0.5876, 1.0, true}};
+  s.aperture = {rtt::model::SystemApertureType::EntrancePupilDiameter, Param(5.0)};
+  s.fields = {rtt::model::FieldType::AngleDeg, {{0.0, 0.0, 1.0}}};
+  s.root.name = "root";
+  Element lens{"L",
+               ElementKind::Lens,
+               Pose::along_z(0.0),
+               std::nullopt,
+               {plane("L.S1", 0.0), plane("L.S2", 5.0), plane("L.S3", 10.0)}};
+  lens.segment_materials = {"CONST:1.5", "CONST:1.5"};
+  s.root.children = {{lens}};
+  s.paths = {
+      {"main", false, {event("L.S2", EventKind::Refract), event("L.S3", EventKind::Refract)}},
+      {"regular",
+       false,
+       {event("L.S1", EventKind::Refract), event("L.S2", EventKind::Refract),
+        event("L.S3", EventKind::Refract)}}};
+  const MaterialLibrary lib;
+  const CompiledSystem cs = rtt::compile::compile(s, lib);
+  REQUIRE_FALSE(cs.path(path(cs, "main")).events[0].from_inside);
+  REQUIRE_THROWS_AS(rtt::compile::ghost_paths(cs, path(cs, "main")), std::invalid_argument);
+  // Crossing the inner surface from inside (the regular path) is fine.
+  REQUIRE(rtt::compile::ghost_paths(cs, path(cs, "regular")).size() == 3);
+}
