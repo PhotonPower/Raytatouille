@@ -72,7 +72,7 @@ std::vector<Step> prepare(const CompiledSystem& cs, PathId path, std::uint16_t w
     }
     // ADR 0025, point 4: order 0 at a surface with phase layers is the surface without them
     // (point 2); other orders have no paraxial model in M4.
-    if (!s.phases.empty()) fail("phase layers are not supported before M4");  // STUB
+    if (event.order != 0) fail("diffraction orders other than 0 have no paraxial model");
     const math::Vec3 vertex = s.to_global.translation();
     const math::Vec3 axis = s.to_global.apply_vector(math::Vec3::UnitZ());
     if (std::abs(vertex.x()) > kSymmetryTolerance || std::abs(vertex.y()) > kSymmetryTolerance) {

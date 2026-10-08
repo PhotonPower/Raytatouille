@@ -1,4 +1,5 @@
 #include <Eigen/Geometry>
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <complex>
@@ -56,6 +57,20 @@ constexpr double kExactLambdaUm = 0.48828125;
 
 bool near(const Vec3& a, const Vec3& b, double tol) {
   return (a - b).cwiseAbs().maxCoeff() <= tol;
+}
+
+/// max |(R^T R - I)_ij|, in scalar code (an Eigen expression of this form triggers a false
+/// -Wnull-dereference in GCC at -O2).
+double orthonormality_error(const Mat3& r) {
+  double e = 0.0;
+  for (int i = 0; i < 3; ++i) {
+    for (int j = 0; j < 3; ++j) {
+      double dot = 0.0;
+      for (int k = 0; k < 3; ++k) dot += r(k, i) * r(k, j);
+      e = std::max(e, std::abs(dot - (i == j ? 1.0 : 0.0)));
+    }
+  }
+  return e;
 }
 
 /// Plane surface at the global origin (local = global) with a linear grating of G lines/mm,
@@ -346,7 +361,7 @@ TEST_CASE("polarization of an order: P = R(k_0 -> k_m) P_0 without rotation abou
     const rtt::math::CMat3& p = out.prt;
     REQUIRE(p.imag().cwiseAbs().maxCoeff() == 0.0);
     const Mat3 r = p.real();
-    REQUIRE((r.transpose() * r - Mat3::Identity()).cwiseAbs().maxCoeff() <= 1e-14);
+    REQUIRE(orthonormality_error(r) <= 1e-14);
     REQUIRE(near(r * Vec3::UnitZ(), out.dir, 1e-14));
     REQUIRE(near(r * Vec3::UnitX(), Vec3::UnitX(), 1e-14));
     if (y == 0.0) REQUIRE(p == rtt::math::CMat3::Identity());
@@ -387,7 +402,7 @@ TEST_CASE("rotation_between: R a = b, orthonormal, det 1, also close to antipara
     const double s = a.cross(b).norm();
     const double tol = 64.0 * eps / s + 64.0 * eps;
     REQUIRE((r * a - b).cwiseAbs().maxCoeff() <= tol);
-    REQUIRE((r.transpose() * r - Mat3::Identity()).cwiseAbs().maxCoeff() <= tol);
+    REQUIRE(orthonormality_error(r) <= tol);
     REQUIRE(std::abs(r.determinant() - 1.0) <= tol);
     // The axis a x b stays fixed: no rotation about it.
     const Vec3 n = a.cross(b) / s;

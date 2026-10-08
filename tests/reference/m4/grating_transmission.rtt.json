@@ -35,10 +35,7 @@
             "id": "G",
             "aperture": {"type": "circular", "radius": 20.0},
             "phases": [
-              {
-                "type": "linear_grating",
-                "lines_per_mm": 300.0
-              }
+              {"type": "linear_grating", "lines_per_mm": 300.0}
             ]
           }
         ]

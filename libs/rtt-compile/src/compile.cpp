@@ -31,8 +31,22 @@ namespace {
 /// non-finite coefficients or orientations (only possible through the API) make the rtt-geom
 /// constructors throw std::invalid_argument.
 std::vector<geom::PhaseFunction<double>> compile_phases(
-    const std::vector<model::PhaseLayer>& /*phases*/) {
-  return {};  // STUB (#127 red run)
+    const std::vector<model::PhaseLayer>& phases) {
+  std::vector<geom::PhaseFunction<double>> out;
+  out.reserve(phases.size());
+  for (const model::PhaseLayer& layer : phases) {
+    if (const auto* g = std::get_if<model::LinearGrating>(&layer)) {
+      out.emplace_back(geom::LinearGratingPhase<double>(g->lines_per_mm.value,
+                                                        math::deg_to_rad(g->orientation_deg)));
+    } else if (const auto* r = std::get_if<model::RadialPhase>(&layer)) {
+      std::vector<double> coefficients;
+      coefficients.reserve(r->coefficients.size());
+      for (const model::Param& c : r->coefficients) coefficients.push_back(c.value);
+      out.emplace_back(geom::RadialPhasePolynomial<double>(r->normalization_radius.value,
+                                                           std::move(coefficients)));
+    }
+  }
+  return out;
 }
 
 std::string idx(const std::string& base, std::size_t i) {

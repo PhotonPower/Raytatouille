@@ -462,7 +462,6 @@ std::optional<std::pair<double, double>> stop_hit(const Context& c, RayState ray
     const compile::CompiledSurface& s = system.surfaces()[e.surface];
     // The same event data as the tracer (event_media.hpp), with the diffraction order (ADR
     // 0025); coating layers do not change the direction and are left out.
-    if (e.order != 0 || s.diffraction_efficiency) return std::nullopt;  // STUB
     const SurfaceHit hit = intersect_surface(ray, s);
     ray = apply_event(ray, s, hit, e.surface, e.kind, e.order,
                       detail::event_media(system, e, c.wavelength));

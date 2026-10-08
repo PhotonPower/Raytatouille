@@ -144,12 +144,16 @@ std::optional<math::CMat3> interaction_prt(const compile::CompiledSurface& surfa
 }
 
 /// 2 pi as in rtt::geom::LinearGratingPhase, so that g / (2 pi) is exact for 2^k lines/mm.
-[[maybe_unused]] constexpr double kTwoPi = 2.0 * std::numbers::pi;
+constexpr double kTwoPi = 2.0 * std::numbers::pi;
 
 /// Power fraction of `order` at `surface` (ADR 0025, point 5): 1 without
 /// diffraction_efficiency, otherwise the listed value or 0 for an order not listed.
-double order_efficiency(const compile::CompiledSurface& /*surface*/, int /*order*/) noexcept {
-  return 1.0;  // STUB (#127 red run)
+double order_efficiency(const compile::CompiledSurface& surface, int order) noexcept {
+  if (!surface.diffraction_efficiency) return 1.0;
+  for (const model::DiffractionEfficiency& e : *surface.diffraction_efficiency) {
+    if (e.order == order) return e.efficiency;
+  }
+  return 0.0;
 }
 
 }  // namespace
@@ -239,29 +243,70 @@ math::Vec3 incident_tangential(const RayState& /*ray*/,
   return n_before * (d - n * n.dot(d));
 }
 
-math::Vec3 order_momentum(const compile::CompiledSurface& /*surface*/,
-                          const SurfaceHit& /*hit*/,
-                          int /*order*/,
-                          double /*wavelength_um*/) noexcept {
-  return math::Vec3::Zero();  // STUB
+math::Vec3 order_momentum(const compile::CompiledSurface& surface,
+                          const SurfaceHit& hit,
+                          int order,
+                          double wavelength_um) noexcept {
+  if (order == 0) return math::Vec3::Zero();
+  // ADR 0025, point 2: m lambda0 / (2 pi) g_par (Mansuripur, Eq. (7b), with F = phi / (2 pi)).
+  // lambda0 by division: exact for wavelengths 1000 * 2^-k um, unlike um_to_mm (* 1e-3).
+  const auto [gx, gy] =
+      geom::phase_grad<double>(surface.phase_functions, hit.point.x(), hit.point.y());
+  const math::Vec3 periods =
+      geom::tangential_gradient<double>({gx / kTwoPi, gy / kTwoPi}, hit.normal);
+  return (static_cast<double>(order) * (wavelength_um / 1000.0)) * periods;
 }
 
-std::optional<math::Vec3> order_direction(const math::Vec3& /*tau*/,
-                                          const math::Vec3& /*unit_normal*/,
-                                          double /*n_out*/,
-                                          double /*side*/) noexcept {
-  return std::nullopt;  // STUB
+std::optional<math::Vec3> order_direction(const math::Vec3& tau,
+                                          const math::Vec3& unit_normal,
+                                          double n_out,
+                                          double side) noexcept {
+  // |t'| = 1 with the tangential part tau / n_out (ADR 0025, point 2); equality is evanescent
+  // (point 7): the order would run along the surface.
+  const double tau2 = tau.squaredNorm();
+  const double n2 = n_out * n_out;
+  if (!(tau2 < n2)) return std::nullopt;
+  return (tau + (side * std::sqrt(n2 - tau2)) * unit_normal) / n_out;
 }
 
-double order_opl(const compile::CompiledSurface& /*surface*/,
-                 const SurfaceHit& /*hit*/,
-                 int /*order*/,
-                 double /*wavelength_um*/) noexcept {
-  return 0.0;  // STUB
+double order_opl(const compile::CompiledSurface& surface,
+                 const SurfaceHit& hit,
+                 int order,
+                 double wavelength_um) noexcept {
+  if (order == 0) return 0.0;
+  // ADR 0025, point 3: the order carries the phase m phi (Mansuripur, Eq. (5)), i.e. the path
+  // m phi lambda0 / (2 pi) (Mansuripur, Sec. 2, before Eq. (3a): Phi = 2 pi OPD / lambda0).
+  const double phi = geom::phase<double>(surface.phase_functions, hit.point.x(), hit.point.y());
+  return (static_cast<double>(order) * (wavelength_um / 1000.0)) * (phi / kTwoPi);
 }
 
-math::Mat3 rotation_between(const math::Vec3& /*a*/, const math::Vec3& /*b*/) noexcept {
-  return math::Mat3::Identity();  // STUB
+math::Mat3 rotation_between(const math::Vec3& a, const math::Vec3& b) noexcept {
+  // Diebel (2006), Eqs. (183)-(187), transposed (active rotation, see the header): with
+  // c = cos(alpha) = a . b, v = a x b = sin(alpha) n, R = c I + [v]_x + (1 - c) n n^T. The unit
+  // axis n = v / |v| keeps the last term accurate also close to a . b = -1, where the form
+  // v v^T / (1 + c) would divide two small numbers.
+  if (a == b) return math::Mat3::Identity();
+  const math::Vec3 v = a.cross(b);
+  const double s = v.norm();
+  const double c = a.dot(b);
+  if (!(s > 0.0)) return math::Mat3::Identity();  // parallel within rounding (c > -1 by @pre)
+  // Element by element (Diebel, Eqs. (185)-(187) with the half-angle products written as
+  // cos(alpha) and 1 - cos(alpha), transposed): R_ij = c delta_ij + k n_i n_j + eps_ikj v_k,
+  // k = 1 - c. Scalar code instead of an Eigen expression with an outer product, which GCC
+  // flags with -Wnull-dereference at -O2 (a false positive inside Eigen).
+  const math::Vec3 n = v / s;
+  const double k = 1.0 - c;
+  math::Mat3 r;
+  r(0, 0) = c + k * n.x() * n.x();
+  r(0, 1) = k * n.x() * n.y() - v.z();
+  r(0, 2) = k * n.x() * n.z() + v.y();
+  r(1, 0) = k * n.y() * n.x() + v.z();
+  r(1, 1) = c + k * n.y() * n.y();
+  r(1, 2) = k * n.y() * n.z() - v.x();
+  r(2, 0) = k * n.z() * n.x() - v.y();
+  r(2, 1) = k * n.z() * n.y() + v.x();
+  r(2, 2) = c + k * n.z() * n.z();
+  return r;
 }
 
 RayState apply_event(const RayState& ray,
