@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -30,11 +31,15 @@ math::Vec3 global_dir(const trace::RayBatch& rays, std::size_t i) {
   return {rays.dir_x()[i], rays.dir_y()[i], rays.dir_z()[i]};
 }
 
-/// Reference sphere and the data needed to measure OPL up to it (decided for #29).
+/// Reference sphere and the data needed to measure OPL up to it (decided for #29; exit pupil at
+/// infinity #102).
 struct Reference {
-  ReferenceSphere sphere;
-  math::Vec3 exit_pupil = math::Vec3::Zero();  ///< centre of the paraxial exit pupil, mm
-  double lambda_mm = 0.0;                      ///< reference wavelength, mm
+  ReferenceSphere sphere;  ///< radius +infinity if the exit pupil is at infinity
+  /// Crossing of a ray line with the sphere on the side of the exit pupil: +1 if the exit
+  /// pupil lies upstream of C along the chief ray (s = +R + ..., the usual case), -1 if it lies
+  /// downstream (virtual exit pupil behind the image). Unused for R = infinity.
+  double branch = 1.0;
+  double lambda_mm = 0.0;  ///< reference wavelength, mm
 };
 
 Reference make_reference(const CompiledSystem& system,
@@ -55,26 +60,38 @@ Reference make_reference(const CompiledSystem& system,
   // With a stop on the path (require_stop above) first_order() always gives the exit pupil.
   if (!fo.exit_pupil) throw std::logic_error("analysis: no exit pupil despite a stop");
   const paraxial::Pupil& xp = *fo.exit_pupil;
-  if (!xp.z) {
-    throw AnalysisError(
-        "analysis: the exit pupil is at infinity (image-space telecentric); OPD against a "
-        "reference sphere is not supported for it yet");
-  }
   Reference r;
   r.sphere.centre = global_pos(chief, 0);
-  r.exit_pupil = math::Vec3(0.0, 0.0, *xp.z);
-  r.sphere.radius = (r.sphere.centre - r.exit_pupil).norm();
-  if (!(r.sphere.radius > 0.0)) {
-    throw AnalysisError("analysis: the exit pupil lies on the image surface");
+  if (!xp.z) {
+    // Image-space telecentric (#102): the limit R -> infinity of the reference sphere.
+    r.sphere.radius = std::numeric_limits<double>::infinity();
+  } else {
+    const math::Vec3 exit_pupil(0.0, 0.0, *xp.z);
+    r.sphere.radius = (r.sphere.centre - exit_pupil).norm();
+    if (!(r.sphere.radius > 0.0)) {
+      throw AnalysisError("analysis: the exit pupil lies on the image surface");
+    }
+    // The exit pupil lies at C - s d of the chief ray, s = +R upstream, s = -R downstream.
+    r.branch = global_dir(chief, 0).dot(r.sphere.centre - exit_pupil) >= 0.0 ? 1.0 : -1.0;
   }
   r.lambda_mm = system.wavelengths_um()[ref] * 1e-3;
   return r;
 }
 
-/// OPL of ray i up to the reference sphere: OPL at the image surface minus |n'| s, where s is
-/// the signed path from the sphere to the image surface along the ray. Of the two crossings of
-/// the ray line with the sphere the one closer to the exit-pupil centre is taken (the sphere
-/// passes through it). None if the line misses the sphere.
+/// OPL of ray i up to the reference sphere, up to a constant n' R common to all rays (it cancels
+/// in W = OPL_ref - OPL_ray): OPL at the image surface minus |n'| (s - branch R), where s is the
+/// signed path from the sphere to the image surface along the ray, on the crossing on the side
+/// of the exit pupil. None if the line misses the sphere.
+///
+/// Derivation (definition of Wyant & Creath, Sec. I; #102): with p the hit on the image
+/// surface, d the unit direction and C the sphere centre, |p - s d - C|^2 = R^2 gives
+/// s^2 - 2 b s + |p - C|^2 - R^2 = 0, b = d . (p - C), so s = b +- root with
+/// root = sqrt(q + R^2), q = b^2 - |p - C|^2. Then
+///   s - branch R = b + branch (root - R) = b + branch q / (root + R),
+/// which is free of the cancellation of root - R and also exact for R -> infinity:
+/// s - branch R -> b. The OPD against the sphere of infinite radius about C is therefore
+/// W_inf = OPL_chief - OPL_ray + n' d . (p - C) (the path to the foot of the perpendicular from C
+/// on the ray), and W(R) = W_inf + O(1 / R), continuous from both sides of infinity.
 std::optional<double> opl_to_sphere(const trace::RayBatch& rays,
                                     std::size_t i,
                                     const Reference& ref,
@@ -82,17 +99,14 @@ std::optional<double> opl_to_sphere(const trace::RayBatch& rays,
   const math::Vec3 p = global_pos(rays, i);
   const math::Vec3 d = global_dir(rays, i);
   const math::Vec3 pc = p - ref.sphere.centre;
-  // |p - s d - C|^2 = R^2  ->  s^2 - 2 b s + |p - C|^2 - R^2 = 0 with b = d . (p - C).
   const double b = d.dot(pc);
-  const double disc = b * b - (pc.squaredNorm() - ref.sphere.radius * ref.sphere.radius);
+  if (std::isinf(ref.sphere.radius)) return rays.opl()[i] - n_image * b;
+  const double radius = ref.sphere.radius;
+  const double q = b * b - pc.squaredNorm();
+  const double disc = q + radius * radius;
   if (!(disc >= 0.0)) return std::nullopt;
   const double root = std::sqrt(disc);
-  const double s1 = b + root;
-  const double s2 = b - root;
-  const double e1 = (p - s1 * d - ref.exit_pupil).squaredNorm();
-  const double e2 = (p - s2 * d - ref.exit_pupil).squaredNorm();
-  const double s = e1 <= e2 ? s1 : s2;
-  return rays.opl()[i] - n_image * s;
+  return rays.opl()[i] - n_image * (b + ref.branch * q / (root + radius));
 }
 
 /// OPD of every ray of `sampling` at `wavelength`, in waves at the reference wavelength.

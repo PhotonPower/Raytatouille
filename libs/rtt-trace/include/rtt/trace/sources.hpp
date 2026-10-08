@@ -53,6 +53,15 @@ inline constexpr int kMaxAimIterations = 20;
 /// R_s that belongs to the entrance pupil (ADR 0007): h = kAimStepRelative * R_s.
 inline constexpr double kAimStepRelative = 1e-6;
 
+/// Lower bound of that step relative to the pupil radius r_ep in pupil units (mm on the EP
+/// plane, or the marginal slope u_m for an object-space telecentric system):
+/// h = max(kAimStepRelative |R_s|, kAimStepPupilFloor r_ep) (ADR 0007, addendum #96). The step
+/// is sized in stop units but applied to pupil coordinates; for an entrance pupil far away,
+/// |R_s / r_ep| -> 0, the first term falls below the resolution of the pupil coordinates. The
+/// floor acts only for |R_s / r_ep| < kAimStepPupilFloor / kAimStepRelative = 1e-4. For an
+/// object-space telecentric system the step is h = kAimStepRelative u_m in slope units.
+inline constexpr double kAimStepPupilFloor = 1e-10;
+
 /// One ray at normalised pupil coordinates (px, py).
 struct SinglePupilPoint {
   double px = 0.0;
@@ -126,7 +135,12 @@ struct AimedRay {
 /// reference wavelength.
 /// Finite object: the ray starts in the object point (OPL 0) and runs along the line through
 /// it and the EP point into the system (+z), also for a virtual EP on the far side of the
-/// object (z_ep < z_obj, #93).
+/// object (z_ep < z_obj, #93). Object-space telecentric (EP at infinity, #96): (px, py) are
+/// object-space slopes, d ~ (px u_m, py u_m, 1) with the paraxial marginal slope u_m (NA / n
+/// for object_na, r_stop / |s| for stop_size); the paraxial chief ray is parallel to the axis.
+/// Pupil points are oriented at the reference wavelength: if the EP of `wavelength` lies on the
+/// other side of the object than that of the reference wavelength, (px, py) is used as
+/// -(px, py), so it reaches the same side of the stop (#96).
 /// The target is (px R_s, py R_s) in the local coordinates of the stop surface (first Stop event
 /// of the path), R_s = paraxial stop radius belonging to the entrance pupil. Apertures are
 /// ignored while aiming; vignetting is left to the tracer.
@@ -136,10 +150,12 @@ struct AimedRay {
 ///         surface (no aperture and an unbounded shape domain, e.g. a paraboloid, or an
 ///         aperture of 1 km or more) that curves back against a steep field (object at
 ///         infinity); a paraxial image height is requested without a finite paraxial image; or
-///         the entrance pupil is not defined at the ray's wavelength (pupil at infinity, no
-///         diameter for this aperture type, pupil in the object plane) or, for paraxial image
-///         heights and angles with a finite object, at the reference wavelength (pupil at
-///         infinity or in the object plane)
+///         the entrance pupil is not defined at the ray's wavelength (pupil at infinity with the
+///         object at infinity, no diameter for this aperture type, pupil in the object plane;
+///         object-space telecentric with an entrance pupil diameter or image F-number as system
+///         aperture) or, for paraxial image heights and angles with a finite object, at the
+///         reference wavelength (pupil in the object plane; a field angle with a finite object
+///         and the pupil at infinity)
 /// @throws rtt::compile::NoStopError (a std::invalid_argument) if the path has no stop; checked
 ///         by rtt::compile::require_stop before any ray is traced (ADR 0022)
 /// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric or the stop

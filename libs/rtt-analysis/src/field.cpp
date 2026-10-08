@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <optional>
 #include <string>
 
 #include "common.hpp"
@@ -45,25 +46,33 @@ double fraction(const CompiledSystem& system, const model::Field& field) {
   return m > 0.0 ? std::hypot(field.x, field.y) / m : 0.0;
 }
 
-/// Global z of the paraxial entrance pupil at `wavelength`, mm.
-double entrance_pupil_z(const CompiledSystem& system, PathId path, std::uint16_t wavelength) {
+/// Global z of the paraxial entrance pupil at `wavelength`, mm; none for an object-space
+/// telecentric system (finite object, entrance pupil at infinity, #96).
+std::optional<double> entrance_pupil_z(const CompiledSystem& system,
+                                       PathId path,
+                                       std::uint16_t wavelength) {
   const paraxial::FirstOrder fo = paraxial::first_order(system, path, wavelength);
-  if (!fo.entrance_pupil || !fo.entrance_pupil->z) {
+  if (!fo.entrance_pupil || (!fo.entrance_pupil->z && system.object().at_infinity)) {
     throw std::invalid_argument("analysis: the entrance pupil is not defined");
   }
-  return *fo.entrance_pupil->z;
+  return fo.entrance_pupil->z;
 }
 
 /// Unit paraxial chief ray at `wavelength` through the entrance pupil centre z_ep: unit slope
-/// for an object at infinity, unit object height otherwise.
+/// for an object at infinity, unit object height otherwise. With the entrance pupil at
+/// infinity (z_ep none, finite object) the chief ray is parallel to the axis (#96, as in
+/// rtt-trace).
 std::vector<paraxial::RayAtEvent> unit_chief(const CompiledSystem& system,
                                              PathId path,
                                              std::uint16_t wavelength,
-                                             double z_ep) {
+                                             std::optional<double> z_ep_opt) {
   if (system.object().at_infinity) {
-    return paraxial::trace_ray(system, path, wavelength, z_ep, 0.0, 1.0);
+    if (!z_ep_opt) throw std::invalid_argument("analysis: the entrance pupil is not defined");
+    return paraxial::trace_ray(system, path, wavelength, *z_ep_opt, 0.0, 1.0);
   }
   const double z_obj = -system.object().distance.value;
+  if (!z_ep_opt) return paraxial::trace_ray(system, path, wavelength, z_obj, 1.0, 0.0);
+  const double z_ep = *z_ep_opt;
   if (z_ep == z_obj) {
     throw std::invalid_argument("analysis: the entrance pupil lies in the object plane");
   }
@@ -98,8 +107,15 @@ Point2 paraxial_chief(const CompiledSystem& system,
       const double ty = std::tan(field.y * std::numbers::pi / 180.0);
       // Object at infinity: slope tan(theta); finite object: object point on the chief ray
       // through the entrance pupil centre of the reference wavelength.
-      const double scale =
-          infinite ? 1.0 : -system.object().distance.value - entrance_pupil_z(system, path, ref);
+      double scale = 1.0;
+      if (!infinite) {
+        const std::optional<double> z_ep_ref = entrance_pupil_z(system, path, ref);
+        if (!z_ep_ref) {
+          throw std::invalid_argument(
+              "analysis: a field angle with a finite object needs a finite entrance pupil");
+        }
+        scale = -system.object().distance.value - *z_ep_ref;
+      }
       sx = scale * tx;
       sy = scale * ty;
       break;

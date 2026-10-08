@@ -54,17 +54,29 @@ struct Context {
   std::uint16_t wavelength = 0;
   paraxial::FirstOrder first_order;
   std::size_t stop_event = 0;  ///< index of the first Stop event in the path
-  double z_ep = 0.0;           ///< global z of the paraxial entrance pupil, mm
-  double r_ep = 0.0;           ///< radius of the paraxial entrance pupil, mm
-  /// Signed paraxial stop height of a ray through the EP point at unit height: the stop target
-  /// of pupil point (px, py) is (px, py) * r_ep * stop_scale (negative for an inverted image).
+  /// Object-space telecentric (#96): finite object and the paraxial entrance pupil at infinity
+  /// at the ray's wavelength. Pupil coordinates are then object-space slopes, not EP points.
+  bool telecentric = false;
+  double z_ep = 0.0;  ///< global z of the paraxial entrance pupil, mm (unused if telecentric)
+  /// Radius of the paraxial entrance pupil, mm; if telecentric, the paraxial marginal slope u_m
+  /// in object space (pupil coordinates are slopes).
+  double r_ep = 0.0;
+  /// Signed paraxial stop height of a ray through the EP point at unit height (telecentric: of
+  /// the ray from the axial object point with unit slope): the stop target of pupil point
+  /// (px, py) is (px, py) * r_ep * stop_scale (negative for an inverted image).
   double stop_scale = 1.0;
   /// First-order data for the field conversion, so a field point is the same physical direction
   /// or object point for every wavelength (#31). Set at the reference wavelength only for the
   /// field types that need it (paraxial image height, angle with a finite object); otherwise a
   /// copy of the ray-wavelength data that make_field does not read.
   paraxial::FirstOrder first_order_ref;
-  double z_ep_ref = 0.0;  ///< global z of the paraxial entrance pupil for the conversion, mm
+  double z_ep_ref = 0.0;         ///< global z of the paraxial entrance pupil for the conversion, mm
+  bool telecentric_ref = false;  ///< EP at infinity for the conversion (finite object, #96)
+  /// Orientation of the pupil labels at the reference wavelength (#96): -1 if the entrance
+  /// pupil of this wavelength lies on the other side of the object than that of the reference
+  /// wavelength (finite object), else +1. Pupil point (px, py) is then the EP point
+  /// label_sign * (px, py) * r_ep, so it means the same side of the stop for every wavelength.
+  double label_sign = 1.0;
 };
 
 /// Ray start for one field.
@@ -74,6 +86,53 @@ struct FieldStart {
   double plane_offset = 0.0;       ///< object at infinity: L of the start plane, mm
   Vec3 object = Vec3::Zero();      ///< finite object: object point, mm
 };
+
+/// Object-space telecentric context (#96): finite object, paraxial entrance pupil at infinity
+/// (the front matrix [[a, b], [c, d]] from the first vertex to the stop has a = 0; y-nu
+/// equations of Greivenkamp, OPTI-201/202 lecture notes, Sec. 9, p. 9-2, matrix form as in
+/// rtt-paraxial first_order). A paraxial
+/// ray then reaches the stop at y_s = a y + b n1 u = b n1 u, whatever its height: the stop point
+/// depends on the object-space slope only, so pupil coordinates are slopes, d ~ (a, b, 1) from
+/// the object point, and the chief ray is parallel to the axis (decided for #96).
+/// - stop_scale = s, the stop height of the paraxial ray from the axial object point with unit
+///   slope (= b n1; s != 0 because a d - b c = 1).
+/// - r_ep = u_m, the paraxial marginal slope: NA / n1 for object_na (the paraxial reading of
+///   first_order), r_stop / |s| for stop_size. An entrance pupil diameter or an image-space
+///   F-number (EPD = EFL / F#) does not define a bundle for a pupil at infinity: error.
+void set_telecentric(Context& c) {
+  const CompiledSystem& system = *c.system;
+  c.telecentric = true;
+  const double z_obj = -system.object().distance.value;
+  c.stop_scale = paraxial::trace_ray(system, c.path, c.wavelength, z_obj, 0.0, 1.0)[c.stop_event].y;
+  if (c.stop_scale == 0.0) {
+    throw std::invalid_argument("sources: telecentric object space, but no ray reaches the stop");
+  }
+  const double value = system.aperture().value.value;
+  switch (system.aperture().type) {
+    case model::SystemApertureType::ObjectSpaceNA:
+      c.r_ep = value / c.first_order.object_index;
+      break;
+    case model::SystemApertureType::StopSize: {
+      const auto& events = system.path(c.path).events;
+      const auto& aperture = system.surfaces()[events[c.stop_event].surface].aperture;
+      // first_order() has checked that the stop aperture is circular.
+      const auto* circle = aperture ? std::get_if<model::CircularAperture>(&*aperture) : nullptr;
+      if (circle == nullptr) {
+        throw std::invalid_argument("sources: the stop needs a circular aperture");
+      }
+      c.r_ep = circle->radius / std::abs(c.stop_scale);
+      break;
+    }
+    case model::SystemApertureType::EntrancePupilDiameter:
+    case model::SystemApertureType::ImageSpaceFNumber:
+      throw std::invalid_argument(
+          "sources: the entrance pupil is at infinity (object-space telecentric); give the "
+          "system aperture as object_na or stop_size");
+  }
+  if (!(c.r_ep > 0.0)) {
+    throw std::invalid_argument("sources: the system aperture gives no bundle (u_m <= 0)");
+  }
+}
 
 Context make_context(const CompiledSystem& system, PathId path, std::uint16_t wavelength) {
   if (path.index >= system.paths().size()) {
@@ -96,16 +155,21 @@ Context make_context(const CompiledSystem& system, PathId path, std::uint16_t wa
   c.stop_event = static_cast<std::size_t>(stop - events.begin());
   c.first_order = paraxial::first_order(system, path, wavelength);
   const auto& ep = c.first_order.entrance_pupil;
-  if (!ep || !ep->z || !ep->diameter || !(*ep->diameter > 0.0)) {
-    throw std::invalid_argument(
-        "sources: the entrance pupil is not defined (pupil at infinity, or the system aperture "
-        "gives no diameter for this object)");
+  const bool infinite = system.object().at_infinity;
+  if (ep && !ep->z && !infinite) {
+    set_telecentric(c);
+  } else {
+    if (!ep || !ep->z || !ep->diameter || !(*ep->diameter > 0.0)) {
+      throw std::invalid_argument(
+          "sources: the entrance pupil is not defined (pupil at infinity with the object at "
+          "infinity, or the system aperture gives no diameter for this object)");
+    }
+    c.z_ep = *ep->z;
+    c.r_ep = *ep->diameter / 2.0;
+    // The EP plane and the stop plane are conjugate, so the stop height of a paraxial ray from
+    // the EP plane does not depend on its slope: y_stop = stop_scale * y_ep.
+    c.stop_scale = paraxial::trace_ray(system, path, wavelength, c.z_ep, 1.0, 0.0)[c.stop_event].y;
   }
-  c.z_ep = *ep->z;
-  c.r_ep = *ep->diameter / 2.0;
-  // The EP plane and the stop plane are conjugate, so the stop height of a paraxial ray from
-  // the EP plane does not depend on its slope: y_stop = stop_scale * y_ep.
-  c.stop_scale = paraxial::trace_ray(system, path, wavelength, c.z_ep, 1.0, 0.0)[c.stop_event].y;
   // Field conversion at the reference wavelength (decided for #31, fix of #8). Only paraxial
   // image heights and angles with a finite object need paraxial data for the conversion; other
   // field types skip the extra first-order computation.
@@ -115,14 +179,37 @@ Context make_context(const CompiledSystem& system, PathId path, std::uint16_t wa
   if (wavelength == system.reference_wavelength() || !needs_ref) {
     c.first_order_ref = c.first_order;
     c.z_ep_ref = c.z_ep;
+    c.telecentric_ref = c.telecentric;
   } else {
     c.first_order_ref = paraxial::first_order(system, path, system.reference_wavelength());
     const auto& ep_ref = c.first_order_ref.entrance_pupil;
-    if (!ep_ref || !ep_ref->z) {
+    if (ep_ref && !ep_ref->z && !infinite) {
+      c.telecentric_ref = true;
+    } else if (!ep_ref || !ep_ref->z) {
       throw std::invalid_argument(
           "sources: the entrance pupil at the reference wavelength is at infinity");
+    } else {
+      c.z_ep_ref = *ep_ref->z;
     }
-    c.z_ep_ref = *ep_ref->z;
+  }
+  // Pupil labels oriented at the reference wavelength (decided for #96, refining #93): the
+  // image of the pupil turns over when the EP passes through infinity, so a wavelength whose
+  // EP lies on the other side of the object (z_ep - z_obj of the other sign) would otherwise
+  // see (px, py) mirrored on the stop. sigma = side(ref) side(lambda), side = sign(z_ep - z_obj),
+  // and an EP at infinity (object-space telecentric) counts as the + side (py > 0 = slope up).
+  // An object at infinity has no such side: sigma = +1. Without a change of side over the
+  // wavelengths sigma = +1 and the rays are bit for bit the same as before.
+  if (!infinite && wavelength != system.reference_wavelength()) {
+    const double z_obj = -system.object().distance.value;
+    const auto side = [z_obj](const paraxial::FirstOrder& fo) {
+      const auto& e = fo.entrance_pupil;
+      if (!e || !e->z) return 1.0;
+      return *e->z < z_obj ? -1.0 : 1.0;
+    };
+    const paraxial::FirstOrder fo_ref =
+        needs_ref ? c.first_order_ref
+                  : paraxial::first_order(system, path, system.reference_wavelength());
+    c.label_sign = side(fo_ref) * side(c.first_order);
   }
   return c;
 }
@@ -227,10 +314,15 @@ double unit_image_height(const Context& c) {
     ray = paraxial::trace_ray(system, c.path, ref, c.z_ep_ref, 0.0, 1.0);
   } else {
     const double z_obj = -system.object().distance.value;
-    if (c.z_ep_ref == z_obj) {
-      throw std::invalid_argument("sources: entrance pupil in the object (reference wavelength)");
+    if (c.telecentric_ref) {
+      // EP at infinity: the chief ray of unit object height is parallel to the axis (#96).
+      ray = paraxial::trace_ray(system, c.path, ref, z_obj, 1.0, 0.0);
+    } else {
+      if (c.z_ep_ref == z_obj) {
+        throw std::invalid_argument("sources: entrance pupil in the object (reference wavelength)");
+      }
+      ray = paraxial::trace_ray(system, c.path, ref, z_obj, 1.0, -1.0 / (c.z_ep_ref - z_obj));
     }
-    ray = paraxial::trace_ray(system, c.path, ref, z_obj, 1.0, -1.0 / (c.z_ep_ref - z_obj));
   }
   const auto& last = ray.back();
   const double y = last.y + (*fo.image_z - last.z) * last.u;
@@ -267,7 +359,13 @@ FieldStart make_field(const Context& c, const model::Field& f) {
       tx = std::tan(f.x * std::numbers::pi / 180.0);
       ty = std::tan(f.y * std::numbers::pi / 180.0);
       // Finite object: the object point on the chief ray through the EP centre at the
-      // reference wavelength (#31).
+      // reference wavelength (#31). With the EP at infinity every chief ray is parallel to the
+      // axis, so a field angle does not define an object point (#96).
+      if (!infinite && c.telecentric_ref) {
+        throw std::invalid_argument(
+            "sources: a field angle with a finite object needs a finite entrance pupil (object "
+            "space telecentric: give object heights or paraxial image heights)");
+      }
       if (!infinite && c.z_ep_ref == z_obj) {
         throw std::invalid_argument("sources: entrance pupil in the object (reference wavelength)");
       }
@@ -296,7 +394,9 @@ FieldStart make_field(const Context& c, const model::Field& f) {
   FieldStart start;
   start.infinite = infinite;
   if (!infinite) {
-    if (c.z_ep == z_obj) throw std::invalid_argument("sources: entrance pupil in the object");
+    if (!c.telecentric && c.z_ep == z_obj) {
+      throw std::invalid_argument("sources: entrance pupil in the object");
+    }
     start.object = Vec3(hx, hy, z_obj);
     return start;
   }
@@ -319,7 +419,8 @@ FieldStart make_field(const Context& c, const model::Field& f) {
   return start;
 }
 
-/// Ray through the point (a, b, z_ep) on the EP plane.
+/// Ray through the point (a, b, z_ep) on the EP plane; object-space telecentric: the ray from
+/// the object point with slopes (a, b).
 RayState ray_through(const Context& c, const FieldStart& f, double a, double b) {
   const Vec3 q(a, b, c.z_ep);
   RayState ray;
@@ -328,6 +429,10 @@ RayState ray_through(const Context& c, const FieldStart& f, double a, double b) 
     const double s = f.direction.dot(q - e) + f.plane_offset;
     ray.pos = q - s * f.direction;
     ray.dir = f.direction;
+  } else if (c.telecentric) {
+    // EP at infinity (#96): (a, b) are the object-space slopes of the ray from P, into +z.
+    ray.pos = f.object;
+    ray.dir = Vec3(a, b, 1.0).normalized();
   } else {
     // The ray is the line through the object point P and Q and travels into the system, in +z
     // (light starts towards +z in object space, rtt/paraxial/paraxial.hpp). With a virtual EP
@@ -362,9 +467,13 @@ std::optional<std::pair<double, double>> stop_hit(const Context& c, RayState ray
 }
 
 AimedRay aim(const Context& c, const FieldStart& f, double px, double py, Aiming aiming) {
-  // Paraxial solution: straight through the EP point (px, py) * r_ep.
-  double a = px * c.r_ep;
-  double b = py * c.r_ep;
+  // Pupil labels oriented at the reference wavelength (label_sign, #96); 1 * p == p exactly.
+  const double sx = c.label_sign * px;
+  const double sy = c.label_sign * py;
+  // Paraxial solution: straight through the EP point (sx, sy) * r_ep, or with the slopes
+  // (sx, sy) * u_m for an object-space telecentric system.
+  double a = sx * c.r_ep;
+  double b = sy * c.r_ep;
   AimedRay out;
   out.ray = ray_through(c, f, a, b);
   if (aiming == Aiming::Paraxial) return out;
@@ -373,9 +482,15 @@ AimedRay aim(const Context& c, const FieldStart& f, double px, double py, Aiming
   // Newton's method in 2D, e.g. Press et al., Numerical Recipes, 3rd ed., Sec. 9.6).
   out.residual = std::numeric_limits<double>::infinity();  // until the stop is reached
   const double r_s = c.r_ep * c.stop_scale;
-  const double tx = px * r_s;
-  const double ty = py * r_s;
-  const double h = kAimStepRelative * std::abs(r_s);
+  const double tx = sx * r_s;
+  const double ty = sy * r_s;
+  // Step in pupil units (ADR 0007, addendum #96): sized in stop units, but with a floor in
+  // pupil units for a very distant entrance pupil, where |r_s / r_ep| = |stop_scale| -> 0.
+  // Object-space telecentric (#96): the pupil coordinates are slopes, so the step is taken
+  // relative to u_m directly (new path, no earlier results to keep).
+  const double h = c.telecentric
+                       ? kAimStepRelative * c.r_ep
+                       : std::max(kAimStepRelative * std::abs(r_s), kAimStepPupilFloor * c.r_ep);
   const auto residual = [&](double u, double v) -> std::optional<std::pair<double, double>> {
     const auto hit = stop_hit(c, ray_through(c, f, u, v));
     if (!hit) return std::nullopt;
@@ -423,7 +538,7 @@ AimedRay aim(const Context& c, const FieldStart& f, double px, double py, Aiming
   }
   out.ray.status = RayStatus::NoConvergence;
   if (!out.ray.pos.allFinite() || !out.ray.dir.allFinite()) {
-    out.ray = ray_through(c, f, px * c.r_ep, py * c.r_ep);
+    out.ray = ray_through(c, f, sx * c.r_ep, sy * c.r_ep);
     out.ray.status = RayStatus::NoConvergence;
   }
   return out;

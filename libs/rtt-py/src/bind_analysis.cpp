@@ -220,7 +220,8 @@ void bind_analysis(nb::module_& m) {
             return read_only_array<double>(xyz, [](double v) { return v; });
           },
           nb::rv_policy::reference, "Chief-ray point on the image surface (x, y, z), mm (copy).")
-      .def_ro("radius", &ReferenceSphere::radius, "Distance to the exit-pupil centre, mm.");
+      .def_ro("radius", &ReferenceSphere::radius,
+              "Distance to the exit-pupil centre, mm; inf if the exit pupil is at infinity.");
 
   auto opd_points = columns<OpdPoints>(
       m, "OpdPoints",
