@@ -190,4 +190,3 @@ def test_evanescent_is_a_status_of_its_own(reference_dir: Path) -> None:
     assert len(stats.rays) == 8
     assert stats.count(RayStatus.EVANESCENT) == 1
     assert rays.status[1] == RayStatus.EVANESCENT
-

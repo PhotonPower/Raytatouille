@@ -337,8 +337,14 @@ def test_schema_lists_the_keys_of_every_type(reference_dir: Path, singlet: rt.Co
         assert required[name] == list(make(singlet, library).to_dict()), name
 
 
-def test_schema_version_has_the_evanescent_status() -> None:
+def test_trace_stats_carry_the_evanescent_status(singlet: rt.CompiledSystem) -> None:
     """Status Evanescent (#127): the status arrays grow by one entry at the end, a compatible
-    addition (ADR 0023), hence patch version 0.1.3."""
-    assert rt.results.SCHEMA_VERSION == "0.1.3"
-
+    addition (ADR 0023), hence patch version 0.1.3; the count survives the round trip."""
+    rays = rt.trace.make_rays(singlet, rt.trace.HexapolarPupil(rings=1))
+    rays.status[1] = int(rt.trace.RayStatus.EVANESCENT)
+    stats = rt.trace.trace(singlet, rays, path="main")
+    loaded = rt.results.load_json(stats.to_json())
+    assert loaded.schema_version == rt.results.SCHEMA_VERSION == "0.1.3"
+    counts = list(loaded.data["rays"])
+    assert len(counts) == 8
+    assert counts[int(rt.trace.RayStatus.EVANESCENT)] == 1
