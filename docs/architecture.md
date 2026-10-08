@@ -359,6 +359,19 @@ Analysen liefern Datenobjekte, niemals Plots. Optimierung und Toleranzierung arb
 | Polarisation | Jones-Pupille, Diattenuations- und Retardance-Karten, Transmission je Pfad | Stokes-Detektoren |
 | Pfade | Transmission je Pfad, Ghost-Ranking | Interferogramm zweier Pfade |
 
+**Pfadauswertung (`rtt/analysis/paths.hpp`, #122):** Transmission je Pfad und OPL-Differenz zweier Pfade für dieselben Startstrahlen; Grundlage der Michelson-Abnahme, kein Interferogramm.
+- **Hauptform:** Der Aufrufer gibt die Startstrahlen vor (`RayBatch`); sie werden je Pfad kopiert und verfolgt. Das geht auch für gefaltete und gekippte Pfade (Strahlteiler, Interferometer), die die paraxiale Zielung von `make_rays` nicht annimmt. Die Komfortform zielt über `make_rays` und gilt deshalb nur für rotationssymmetrische Pfade (sonst `ParaxialError`).
+- **Startstrahlen:**
+  - Jeder Strahl zählt als gestartet. Ist er schon zu Beginn nicht `Alive`, gilt er mit seinem Status als verloren (weight 0).
+  - Jede Systemwellenlänge ist erlaubt, auch gemischt.
+  - Startgewicht und Start-OPL werden mitgeführt.
+- **Transmission:** `mean` ist der Mittelwert der Endgewichte über alle gestarteten Strahlen, verlorene zählen 0. Das ist der übertragene Leistungsanteil bei gleichmäßig ausgeleuchteter Pupille und unpolarisierter Quelle (ADR 0021); bei Startgewichten ≠ 1 die apodisierte Leistung, kein Verhältnis zum Start. Dazu `min`, `max` und das Gewicht je Strahl, Verluste und Warnungen nach ADR 0023.
+- **OPL-Differenz** OPL_b − OPL_a je Strahl:
+  - **In mm, nicht in Wellen:** Es ist eine Weglänge auf der Bildfläche, keine Wellenfront; Wellen gehören zum Interferogramm.
+  - **Nur für zwei Pfade mit derselben Bildfläche** (Fläche des letzten Events), sonst `invalid_argument`.
+- **Abbruch und Fortschritt:** Überladungen mit `RunControl` (#83), Stufen `aim` (Komfortform) und `trace` je Pfad.
+- **Referenz:** `tests/reference/m4/michelson_offset.rtt.json` mit Stop, Testarm 7,5 mm länger und beiden Ausgängen (Kamera und Rückweg durch den Stop). Je Strahl summieren sich die vier Pfade zu (R + T)² = 1, die Arme zu R·T, und die OPL-Differenz ist 2Δ = 15 mm.
+
 **Optimierung (`rtt-optim`, M5):** Variablen sind alle `Param` mit `variable = true`. Merit-Funktion als gewichtete Summe von Operanden über beliebige Pfade und Konfigurationen; Generatoren für RMS-Spot und RMS-Wellenfront. Levenberg-Marquardt mit paralleler zentraler Differenz; Grenzen per Variablentransformation. v2: globale Suche, Glassubstitution, exakte Gradienten.
 
 **Toleranzierung (`rtt-tolerance`, M7):** Toleranzen auf Fläche, Element und Baugruppe (Kippung um den jeweiligen Pivot), Kompensatoren, Sensitivität, inverse Sensitivität, Monte Carlo mit Seed. Eine Baugruppen-Toleranz bewegt alle Kinder starr; Doppeldurchgänge sehen dieselbe Störung, weil Pfade auf `SurfaceId` verweisen.
