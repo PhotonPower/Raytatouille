@@ -522,8 +522,9 @@ System dispersive_two_lenses(MaterialLibrary& lib) {
 
 /// Expected chief ray of the field value `value` at wavelength `wl` (#35): the field is
 /// converted at the reference wavelength, as rtt-trace does since #31/#50, and the chief ray at
-/// `wl` passes through the centre of the entrance pupil at `wl`. Built only from first_order()
-/// and the paraxial trace_ray():
+/// `wl` passes through the centre of the entrance pupil at `wl`. Built separately from
+/// first_order() and the paraxial trace_ray(), not with chief_start(); the check against
+/// rtt-trace itself is the consistency test in rtt-analysis (test_chromatic.cpp):
 /// - angle, object at infinity: slope tan theta = value through z_EP(wl);
 /// - angle, finite object: object point h = (z_obj - z_EP(ref)) tan theta on the chief ray
 ///   through the reference EP, then the line from (z_obj, h) through (z_EP(wl), 0);
@@ -575,8 +576,8 @@ TEST_CASE("chief ray at another wavelength: field converted at the reference wav
   // reference wavelength (#31, #50); seidel() and prescription() must use the same chief ray.
   // Compared at wavelength F (index 0) against the construction of expected_chief(); both are
   // the same lines, so they agree to rounding (1e-12 relative). With the field converted at F
-  // instead, the slope differs by the dispersion of N-BK7 (about 1 %). CHECK, so that every case
-  // reports.
+  // instead, the slope differs by the dispersion of N-BK7 (about 1 %). The comparisons use
+  // CHECK, so that every case reports them.
   MaterialLibrary lib;
   System s = dispersive_two_lenses(lib);
   struct Case {
@@ -616,5 +617,48 @@ TEST_CASE("chief ray at another wavelength: field converted at the reference wav
     const auto [u1, y1] = line(seidel(cs, PathId{0}, 1).chief, z_plane);
     CHECK_THAT(u1, WithinRel(u_ref, kRel));
     CHECK_THAT(y1, WithinRel(y_ref, kRel) || WithinAbs(y_ref, 1e-12));
+  }
+}
+
+TEST_CASE("field conversion needs a usable entrance pupil at the reference wavelength (#35)",
+          "[seidel]") {
+  // N-BK7 biconvex singlet (R = +-60 mm, 5 mm) at z = 0 with the stop 150 mm behind it, beyond
+  // its focus: the stop is imaged in front of the lens, a real entrance pupil at z_EP < 0. The
+  // object is put exactly into the entrance pupil of the reference wavelength. At F the pupil
+  // lies elsewhere (dispersion), so only the conversion at the reference wavelength meets the
+  // degenerate pupil: seidel() throws ParaxialError (as rtt-trace), prescription() leaves the
+  // chief ray empty, as it does for an unusable pupil at its own wavelength.
+  MaterialLibrary lib;
+  lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/schott.agf");
+  System s = base_system();
+  s.wavelengths = {{0.4861, 1.0, false}, {0.5876, 1.0, true}, {0.6563, 1.0, false}};
+  Surface s1 = plane_surface("L.S1", 0.0);
+  s1.shape.base = rtt::model::Conic{Param(60.0), Param(0.0)};
+  Surface s2 = plane_surface("L.S2", 5.0);
+  s2.shape.base = rtt::model::Conic{Param(-60.0), Param(0.0)};
+  add(s, Element{"L", ElementKind::Lens, Pose::along_z(0.0), "SCHOTT:N-BK7", {s1, s2}});
+  add(s, stop(150.0, 5.0));
+  add(s, Element{"image",
+                 ElementKind::Detector,
+                 Pose::along_z(600.0),
+                 std::nullopt,
+                 {plane_surface("IMG", 0.0)}});
+  const double z_ep_ref =
+      *rtt::paraxial::first_order(rtt::compile::compile(s, lib), PathId{0}, 1).entrance_pupil->z;
+  REQUIRE(z_ep_ref < 0.0);
+  s.object.at_infinity = false;
+  s.object.distance = Param(-z_ep_ref);
+  for (const auto type :
+       {rtt::model::FieldType::ParaxialImageHeight, rtt::model::FieldType::AngleDeg}) {
+    INFO("field type " << static_cast<int>(type));
+    s.fields = {type, {{0.0, 0.0, 1.0}, {0.0, 2.0, 1.0}}};
+    const CompiledSystem cs = rtt::compile::compile(s, lib);
+    REQUIRE(-cs.object().distance.value == z_ep_ref);
+    REQUIRE(*rtt::paraxial::first_order(cs, PathId{0}, 0).entrance_pupil->z != z_ep_ref);
+    REQUIRE_THROWS_AS(seidel(cs, PathId{0}, 0), ParaxialError);
+    REQUIRE_FALSE(rtt::paraxial::prescription(cs, PathId{0}, 0).chief_start.has_value());
+    // At the reference wavelength itself the pupil lies in the object plane: as before.
+    REQUIRE_THROWS_AS(seidel(cs, PathId{0}, 1), ParaxialError);
+    REQUIRE_FALSE(rtt::paraxial::prescription(cs, PathId{0}, 1).chief_start.has_value());
   }
 }
