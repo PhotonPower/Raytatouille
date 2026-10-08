@@ -97,7 +97,7 @@ struct PathOplDifference {
   std::uint32_t image_surface = 0;         ///< common surface of the last events
   std::vector<OplDifferencePoint> points;  ///< one entry per launched ray, in batch order
   /// delta of the first launched ray at pupil (0, 0) that arrived on both paths, mm; none if
-  /// there is no such ray.
+  /// there is no such ray. Relies on the pupil labels (pupil_x, pupil_y) of the start batch.
   std::optional<double> chief;
   RayLosses losses_a;                       ///< launched rays on path a by final status (ADR 0023)
   RayLosses losses_b;                       ///< launched rays on path b by final status (ADR 0023)

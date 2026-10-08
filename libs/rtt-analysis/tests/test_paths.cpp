@@ -180,6 +180,9 @@ TEST_CASE("path transmission: lost rays count as launched with weight 0 (#122)",
   REQUIRE(2 * inside < start.size());  // more than half lost: the warning must come
   const auto t = rtt::analysis::path_transmission(cs, path(cs, "test arm"), start);
   REQUIRE(t.rays_arrived == inside);
+  // min and max run over the arrived rays only (all 0.25), not over all launched ones.
+  REQUIRE(std::abs(t.min - 0.25) <= 1e-12);
+  REQUIRE(std::abs(t.max - 0.25) <= 1e-12);
   REQUIRE(t.losses.count(RayStatus::Vignetted) == start.size() - inside);
   REQUIRE(t.losses.worst_surface == cs.find_surface(rtt::model::SurfaceId("M2")));
   REQUIRE(std::abs(t.mean - 0.25 * static_cast<double>(inside) /
@@ -190,6 +193,59 @@ TEST_CASE("path transmission: lost rays count as launched with weight 0 (#122)",
   bool lost_warning = false;
   for (const auto& w : t.warnings) lost_warning = lost_warning || w.code == "rays.lost";
   REQUIRE(lost_warning);
+}
+
+TEST_CASE("OPL difference: status of path a first, delta 0 if lost, chief ray (#122)", "[paths]") {
+  // Path a (reference arm) loses the rays with r > 1 at a reference mirror of radius 1 mm
+  // (Vignetted); path b (test arm) ends every ray at an absorbing test mirror (Absorbed). So a
+  // ray lost on both paths reports a's status, a ray lost only on b reports b's, and every delta
+  // is 0; no ray arrives on both paths, so there is no chief value.
+  System s = michelson();
+  element(s, "reference mirror").surfaces[0].aperture = rtt::model::CircularAperture{1.0, 0.0};
+  element(s, "test mirror").surfaces[0].interaction = rtt::model::Absorber{};
+  const MaterialLibrary lib;
+  const CompiledSystem cs = rtt::compile::compile(s, lib);
+  const RayBatch start = collimated_bundle();
+  const auto d =
+      rtt::analysis::opl_difference(cs, path(cs, "reference arm"), path(cs, "test arm"), start);
+  REQUIRE(d.points.size() == start.size());
+  std::size_t inside = 0;
+  for (std::size_t i = 0; i < start.size(); ++i) {
+    const double r2 = start.pos_x()[i] * start.pos_x()[i] + start.pos_y()[i] * start.pos_y()[i];
+    INFO("ray " << i);
+    REQUIRE(d.points[i].delta == 0.0);
+    if (r2 <= 1.0) {
+      ++inside;
+      REQUIRE(d.points[i].status == RayStatus::Absorbed);
+    } else {
+      REQUIRE(d.points[i].status == RayStatus::Vignetted);
+    }
+  }
+  REQUIRE(inside > 0);
+  REQUIRE(inside < start.size());
+  REQUIRE_FALSE(d.chief.has_value());
+  REQUIRE(d.losses_a.count(RayStatus::Vignetted) == start.size() - inside);
+  REQUIRE(d.losses_b.count(RayStatus::Absorbed) == start.size());
+
+  // chief is the first ray at (0, 0) that arrived on both paths: here the second one, because
+  // the first is lost at the start.
+  const CompiledSystem plain = rtt::compile::compile(michelson(), lib);
+  const RayBatch bundle = collimated_bundle();  // starts with the axis ray
+  RayBatch twice(bundle.size() + 1);
+  twice.status()[0] = RayStatus::NoConvergence;  // a lost axis ray at (0, 0) first
+  for (std::size_t i = 0; i < bundle.size(); ++i) {
+    twice.pos_x()[i + 1] = bundle.pos_x()[i];
+    twice.pos_y()[i + 1] = bundle.pos_y()[i];
+    twice.pupil_x()[i + 1] = bundle.pupil_x()[i];
+    twice.pupil_y()[i + 1] = bundle.pupil_y()[i];
+  }
+  const auto c = rtt::analysis::opl_difference(plain, path(plain, "reference arm"),
+                                               path(plain, "test arm"), twice);
+  REQUIRE(c.points.size() == twice.size());
+  REQUIRE(c.points[0].status == RayStatus::NoConvergence);
+  REQUIRE(c.points[0].delta == 0.0);
+  REQUIRE(c.chief.has_value());
+  REQUIRE(std::abs(*c.chief - 15.0) <= 1e-10);
 }
 
 TEST_CASE("path transmission: start rays that are not Alive, start weight, wavelength (#122)",
