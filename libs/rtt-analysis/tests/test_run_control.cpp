@@ -86,22 +86,35 @@ TEST_CASE("analyses with an active control give the same results, bit for bit (#
     const auto fb = rtt::analysis::opd_fan(cs, path, 1, 1, {}, control);
     for (std::size_t i = 0; i < fa.tangential.size(); ++i) {
       REQUIRE(fa.tangential[i].w == fb.tangential[i].w);
+      REQUIRE(fa.sagittal[i].w == fb.sagittal[i].w);
     }
   }
   SECTION("field sweeps and colour") {
     const auto da = rtt::analysis::distortion(cs, path, 1);
     const auto db = rtt::analysis::distortion(cs, path, 1, {}, control);
     REQUIRE(da.size() == db.size());
-    for (std::size_t i = 0; i < da.size(); ++i) REQUIRE(da[i].percent == db[i].percent);
+    for (std::size_t i = 0; i < da.size(); ++i) {
+      REQUIRE(da[i].real_height == db[i].real_height);
+      REQUIRE(da[i].percent == db[i].percent);
+    }
     const auto ca = rtt::analysis::field_curvature(cs, path, 1);
     const auto cb = rtt::analysis::field_curvature(cs, path, 1, {}, control);
-    for (std::size_t i = 0; i < ca.size(); ++i) REQUIRE(ca[i].tangential == cb[i].tangential);
+    for (std::size_t i = 0; i < ca.size(); ++i) {
+      REQUIRE(ca[i].tangential == cb[i].tangential);
+      REQUIRE(ca[i].sagittal == cb[i].sagittal);
+    }
     const auto la = rtt::analysis::longitudinal_colour(cs, path);
     const auto lb = rtt::analysis::longitudinal_colour(cs, path, {}, control);
     REQUIRE(la.real == lb.real);
+    REQUIRE(la.paraxial == lb.paraxial);
+    for (std::size_t i = 0; i < la.foci.size(); ++i)
+      REQUIRE(la.foci[i].real_z == lb.foci[i].real_z);
     const auto ta = rtt::analysis::lateral_colour(cs, path, 2);
     const auto tb = rtt::analysis::lateral_colour(cs, path, 2, rtt::trace::Aiming::Real, control);
-    for (std::size_t i = 0; i < ta.offset.size(); ++i) REQUIRE(ta.offset[i].y == tb.offset[i].y);
+    for (std::size_t i = 0; i < ta.offset.size(); ++i) {
+      REQUIRE(ta.chief[i].x == tb.chief[i].x);
+      REQUIRE(ta.chief[i].y == tb.chief[i].y);
+    }
   }
 }
 

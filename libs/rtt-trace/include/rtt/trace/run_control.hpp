@@ -35,6 +35,11 @@ namespace rtt::trace {
 class CancelToken {
  public:
   CancelToken() : flag_(std::make_shared<std::atomic<bool>>(false)) {}
+  // Copy only: a moved-from token would hold no flag. Declaring the copy operations suppresses
+  // the implicit moves, so a "move" copies the shared pointer and both stay valid.
+  CancelToken(const CancelToken&) = default;
+  CancelToken& operator=(const CancelToken&) = default;
+  ~CancelToken() = default;
 
   /// Asks the computation that holds this token to stop.
   void request_cancel() noexcept { flag_->store(true, std::memory_order_relaxed); }
@@ -54,9 +59,9 @@ struct Progress {
 };
 
 /// Default number of rays per block when a RunControl is active: short enough for a quick
-/// reaction to a cancellation (one block per worker, well below a millisecond for typical
-/// lenses), long enough that the per-block overhead (an atomic add, a flag check) is negligible
-/// (ADR 0004, addendum #83).
+/// reaction to a cancellation (one block per worker: well below a millisecond for a trace of
+/// typical lenses, a few milliseconds for real aiming), long enough that the per-block overhead
+/// (an atomic add, a flag check) is negligible (ADR 0004, addendum #83).
 inline constexpr std::size_t kRunBlockSize = 256;
 
 /// Cancellation and progress for one call. Empty (no token and no callback) means: run as
@@ -107,7 +112,7 @@ class RunMonitor {
   void finish();
 
  private:
-  void report(std::size_t done, bool force) noexcept;
+  void report() noexcept;
 
   const RunControl& control_;
   std::size_t total_;
@@ -117,7 +122,8 @@ class RunMonitor {
   std::mutex mutex_;          ///< serialises the callback; guards last_ and error_
   std::exception_ptr error_;  ///< first exception of the callback
   std::chrono::steady_clock::time_point last_;  ///< time of the last report
-  bool reported_ = false;  ///< a report was made (the first one is not throttled)
+  bool reported_ = false;      ///< a report was made (the first one is not throttled)
+  std::size_t last_done_ = 0;  ///< done of the last report
 };
 
 }  // namespace rtt::trace

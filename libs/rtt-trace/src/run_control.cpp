@@ -17,25 +17,21 @@ bool RunMonitor::stop() const noexcept {
 }
 
 void RunMonitor::add(std::size_t n) noexcept {
-  const std::size_t done = done_.fetch_add(n, std::memory_order_relaxed) + n;
-  report(done, false);
+  done_.fetch_add(n, std::memory_order_relaxed);
+  report();
 }
 
-void RunMonitor::report(std::size_t done, bool force) noexcept {
+void RunMonitor::report() noexcept {
   if (!control_.progress || failed_.load(std::memory_order_relaxed)) return;
   // Another worker reporting right now: skip this report (throttling allows it). The values
   // reported under the lock are read from the counter there, so they never decrease.
-  std::unique_lock lock(mutex_, std::defer_lock);
-  if (force) {
-    lock.lock();
-  } else if (!lock.try_lock()) {
-    return;
-  }
+  const std::unique_lock lock(mutex_, std::try_to_lock);
+  if (!lock.owns_lock()) return;
   // Re-check under the lock: another worker may have failed while this one waited.
   if (failed_.load(std::memory_order_relaxed)) return;
   const auto now = std::chrono::steady_clock::now();
-  if (!force && reported_ && now - last_ < control_.min_interval) return;
-  const std::size_t current = force ? done : done_.load(std::memory_order_relaxed);
+  if (reported_ && now - last_ < control_.min_interval) return;
+  const std::size_t current = done_.load(std::memory_order_relaxed);
   try {
     control_.progress(Progress{current, total_, stage_});
   } catch (...) {
@@ -44,6 +40,7 @@ void RunMonitor::report(std::size_t done, bool force) noexcept {
   }
   last_ = now;
   reported_ = true;
+  last_done_ = current;
 }
 
 void RunMonitor::finish() {
@@ -53,8 +50,10 @@ void RunMonitor::finish() {
   }
   if (control_.cancel && control_.cancel->cancelled()) throw Cancelled();
   if (!control_.progress) return;
-  // The final report of a completed stage; an exception here propagates directly.
+  // The final report of a completed stage, unless the last report already said done == total;
+  // an exception here propagates directly.
   const std::lock_guard lock(mutex_);
+  if (reported_ && last_done_ == total_) return;
   control_.progress(Progress{total_, total_, stage_});
 }
 

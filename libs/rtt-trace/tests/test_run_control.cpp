@@ -168,24 +168,23 @@ TEST_CASE("run control: a cancelled call throws Cancelled (#83)", "[run_control]
   SECTION("cancelled from a second thread returns within the documented time") {
     // At most one block per worker runs after the request: 256 rays of the singlet take well
     // below a millisecond, so 1 s leaves room for a loaded CI runner. The batch is large
-    // (3 * 109 621 rays) so that the trace is still running when the request comes.
+    // (3 * 109 621 rays) so that cancelling saves a measurable amount of work.
     RayBatch rays = rays_of(cs, 191, Aiming::Paraxial);
     RunControl control;
     control.cancel = CancelToken();
     control.min_interval = std::chrono::milliseconds{0};
+    // The request comes from another thread, started and joined inside the first progress
+    // report: so it certainly falls into the parallel part (the trace cannot finish first).
     std::atomic<bool> started{false};
-    control.progress = [&](const Progress&) { started.store(true); };
     std::chrono::steady_clock::time_point requested;
-    std::thread canceller([&] {
-      // Waits for the first progress report, but never longer than 30 s (so that a missing
-      // report fails the test instead of hanging it).
-      const auto give_up = std::chrono::steady_clock::now() + std::chrono::seconds{30};
-      while (!started.load() && std::chrono::steady_clock::now() < give_up) {
-        std::this_thread::yield();
-      }
-      requested = std::chrono::steady_clock::now();
-      control.cancel->request_cancel();
-    });
+    control.progress = [&](const Progress&) {
+      if (started.exchange(true)) return;
+      std::thread canceller([&] {
+        requested = std::chrono::steady_clock::now();
+        control.cancel->request_cancel();
+      });
+      canceller.join();
+    };
     bool cancelled = false;
     try {
       [[maybe_unused]] const auto s = SequentialTracer().trace(cs, PathId{0}, rays, control);
@@ -193,7 +192,6 @@ TEST_CASE("run control: a cancelled call throws Cancelled (#83)", "[run_control]
       cancelled = true;
     }
     const auto returned = std::chrono::steady_clock::now();
-    canceller.join();
     REQUIRE(started.load());
     REQUIRE(cancelled);
     REQUIRE(returned - requested < std::chrono::seconds{1});

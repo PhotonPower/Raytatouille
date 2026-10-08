@@ -9,4 +9,10 @@ rtt_target_defaults(rtt_bench)
 if(RTT_BUILD_TESTS)
   # Smoke test only (one run, no timing check): the measurement itself runs in CI.
   add_test(NAME bench.smoke COMMAND rtt_bench --runs 1 --quick)
+  if(MINGW)
+    # As rtt_add_test (cmake/RttTargets.cmake): load the toolchain's runtime DLLs (#47).
+    get_filename_component(_rtt_cxx_bin "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    set_tests_properties(bench.smoke PROPERTIES
+      ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_rtt_cxx_bin}")
+  endif()
 endif()
