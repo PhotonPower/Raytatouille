@@ -14,6 +14,8 @@
 ///   every `min_interval`; the last call of a completed stage reports done == total);
 /// - an exception thrown by the callback stops the run like a cancellation and is rethrown
 ///   after the parallel part.
+/// Cancellation takes effect from the parallel part on; the input checks before it run without
+/// a cancellation check.
 /// Results do not depend on the block size or the number of threads: every ray is computed
 /// independently and exactly once (ADR 0004, addendum #83).
 
@@ -70,7 +72,9 @@ struct RunControl {
   std::optional<CancelToken> cancel;  ///< checked before every block
   /// Called with the progress of the current stage; serialised (never concurrently), possibly
   /// from a worker thread, at most every `min_interval`, and once with done == total when a
-  /// stage completes. An exception stops the run and is rethrown by the call.
+  /// stage completes. An exception stops the run and is rethrown by the call. The callback must
+  /// not start a raytatouille computation: through work stealing it may be called again in the
+  /// same thread.
   std::function<void(const Progress&)> progress;
   std::chrono::milliseconds min_interval{50};  ///< minimum time between two progress calls
   std::size_t block_size = kRunBlockSize;  ///< rays per block (>= 1); results do not depend on it
