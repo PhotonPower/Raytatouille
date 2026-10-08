@@ -83,7 +83,7 @@ def rueckwaerts():
 
 
 system = {
-    "schema_version": "0.2.0",
+    "schema_version": "0.3.0",
     "name": "Mikroskopobjektiv 20x/0,45 nach Schnittbild (rückwärts: Tubusseite → Präparat)",
     "units": {"length": "mm", "wavelength": "um"},
     "object": {"at_infinity": True},

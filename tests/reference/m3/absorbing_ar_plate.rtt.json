@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.2.0",
+  "schema_version": "0.3.0",
   "name": "Absorbing plate n = 1.52 + 1e-6 i, 10 mm, quarter-wave MgF2 anti-reflection on both sides",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},

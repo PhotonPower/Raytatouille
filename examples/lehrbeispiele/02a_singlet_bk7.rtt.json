@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.2.0",
+  "schema_version": "0.3.0",
   "name": "Singlet aus N-BK7, f = 100 mm (Farbfehler sichtbar)",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [

@@ -151,6 +151,14 @@ using Interaction = std::variant<Fresnel,
 
 // -------------------------------------------------------------- surface -----
 
+/// Power fraction of one diffraction order at a surface with phase layers (ADR 0025, point 5):
+/// independent of polarization and wavelength in M4; plain numbers, not Param.
+struct DiffractionEfficiency {
+  int order = 0;            ///< diffraction order m, sign as in ADR 0025
+  double efficiency = 1.0;  ///< power fraction, 0 <= efficiency <= 1
+  bool operator==(const DiffractionEfficiency&) const = default;
+};
+
 struct Surface {
   SurfaceId id;
   Pose pose;  ///< placement in the element
@@ -158,6 +166,12 @@ struct Surface {
   std::optional<Aperture> aperture;
   std::vector<PhaseLayer> phases;
   Interaction interaction = Fresnel{};
+  /// Efficiency per diffraction order (ADR 0025, point 5). Absent: every order has efficiency 1
+  /// (geometry only). Present: orders not listed have efficiency 0. Only at a surface with a
+  /// phase layer, never empty. Last member with an explicit initializer, so that aggregate
+  /// initialisations stay free of -Wmissing-field-initializers.
+  std::optional<std::vector<DiffractionEfficiency>>
+      diffraction_efficiency{};  // NOLINT(readability-redundant-member-init)
   bool operator==(const Surface&) const = default;
 };
 

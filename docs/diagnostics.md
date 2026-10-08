@@ -39,7 +39,13 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `coating.thickness_invalid` | Fehler | Schichtdicke nicht berechenbar (z. B. QWOT mit Re n ≤ 0) | compile | `…/s/interaction/name` |
 | `coating.unknown` | Fehler | Beschichtungsreferenz nicht auflösbar | compile | `…/s/interaction/name` |
 | `coating.wavelength_out_of_range` | Fehler | Systemwellenlänge außerhalb des Bereichs eines Schichtmaterials | compile | `…/s/interaction/name` |
-| `edit.base_not_representable` | Fehler | das zu ändernde System ist in der Bearbeitungsform nicht darstellbar (nicht endliche Zahl, Material und Segmentliste zugleich, kein gültiges UTF-8) | edit | leer (ganzes Dokument) |
+| `crystal.kind_not_allowed` | Fehler | Kristallmaterial an einem Element, das keine Linse und keine Platte ist (ADR 0026) | validate | `…/el/material` |
+| `crystal.material_conflict` | Fehler | Kristall und isotropes Material zugleich gesetzt (nur über die API möglich) | validate | `…/el/material` |
+| `crystal.optic_axis_invalid` | Fehler | optische Achse null oder nicht endlich | validate | `…/el/optic_axis` |
+| `crystal.optic_axis_missing` | Fehler | Kristall ohne optische Achse | validate | `…/el/optic_axis` |
+| `crystal.optic_axis_not_allowed` | Fehler | optische Achse an einem Element ohne Kristall | validate | `…/el/optic_axis` |
+| `crystal.unsupported` | Fehler | Kristallfall, der noch nicht verfolgt werden kann (ADR 0026, Punkt 4); bis #131 jedes Kristallelement | compile | `…/el/material` bzw. das Ereignis |
+| `edit.base_not_representable` | Fehler | das zu ändernde System ist in der Bearbeitungsform nicht darstellbar (nicht endliche Zahl, Material und Segmentliste oder Kristall zugleich, kein gültiges UTF-8) | edit | leer (ganzes Dokument) |
 | `edit.invalid_value` | Fehler | die geänderte Bearbeitungsform ist keine gültige Systemdatei (Typ, Schlüssel, Aufzählungswert); Ort vom strengen Leser | edit | z. B. `/name`, `…/s/shape/base/conic` |
 | `edit.patch_invalid` | Fehler | kein gültiges JSON-Patch-Dokument oder keine gültige Operation (RFC 6902): kein Array, unbekannte Operation, fehlendes Mitglied, ungültiger Pointer oder Array-Index (keine Ziffern, führende Null, `-` außerhalb eines Ziels), Verschieben in ein eigenes Kind, doppelte Schlüssel | edit | `path` bzw. `from` der Operation oder leer |
 | `edit.path_not_found` | Fehler | Ziel, Quelle oder Eltern-Wert einer Operation fehlt, ein Array-Index liegt außerhalb, oder der Eltern-Wert ist kein Objekt bzw. Array | edit | `path` bzw. `from` der Operation |
@@ -75,7 +81,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `paths.mangin_mirror_automatic` | Fehler | Spiegel mit Substrat und mehreren Flächen auf einem automatischen Pfad | compile | `…/el/surfaces` |
 | `paths.name_duplicate` | Fehler | Pfadname doppelt | validate | `/paths/i/name` |
 | `paths.name_empty` | Fehler | leerer Pfadname | validate | `/paths/i/name` |
-| `paths.order_not_allowed` | Fehler | Beugungsordnung an einem Ereignis, das nicht beugt | validate | `/paths/i/events/k/order` |
+| `paths.order_not_allowed` | Fehler | Beugungsordnung an einem Ereignis, das nicht beugt: Fläche ohne Phasenschicht (ADR 0025) | validate | `/paths/i/events/k/order` |
 | `paths.uniform_plate_automatic` | Fehler | Platte aus einem Material mit mehr als 2 Flächen auf einem automatischen Pfad | compile | `…/el/surfaces` |
 | `paths.unknown_surface` | Fehler | Ereignis an einer unbekannten Flächen-ID | validate | `/paths/i/events/k/surface` |
 | `phase.lines_per_mm_invalid` | Fehler | Liniendichte des Gitters nicht endlich oder ≤ 0 | validate | `…/s/phases/i/lines_per_mm` |
@@ -90,6 +96,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `stop.clips_beam` | Warnung | Strahlen der Abtastung enden an der Blende mit VIGNETTED: die Blendenöffnung beschneidet das Bündel, das die Systemapertur festlegt | analysis | Blendenfläche `…/s` |
 | `stop.multiple` | Fehler | mehr als ein Blendenelement | validate | `…/el` (zweite Blende) |
 | `stop.not_on_path` | Warnung | ein Pfad besucht das Blendenelement nicht; Zielen, Pupillen, Seidel-Summen und OPD werfen auf ihm `NoStopError` | compile | `/paths/i` |
+| `surface.efficiency_invalid` | Fehler | Beugungseffizienz ungültig: leere Liste, Wert außerhalb [0, 1], Ordnung doppelt oder Fläche ohne Phasenschicht (ADR 0025) | validate | `…/s/diffraction_efficiency`, `…/k/efficiency`, `…/k/order` |
 | `surface.id_duplicate` | Fehler | Flächen-ID doppelt | validate | `…/s/id` |
 | `surface.id_empty` | Fehler | leere Flächen-ID | validate | `…/s/id` |
 | `surface_aperture.half_width_invalid` | Fehler | halbe Breite der Rechteckapertur nicht endlich oder ≤ 0 mm | validate | `…/s/aperture` |

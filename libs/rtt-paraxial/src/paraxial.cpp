@@ -68,7 +68,7 @@ std::vector<Step> prepare(const CompiledSystem& cs, PathId path, std::uint16_t w
     };
     if (event.kind != EventKind::Refract && event.kind != EventKind::Reflect &&
         event.kind != EventKind::Transmit) {
-      fail("diffraction and birefringent events have no paraxial model before M4");
+      fail("ordinary and extraordinary events have no paraxial model");
     }
     if (!s.phases.empty()) fail("phase layers are not supported before M4");
     const math::Vec3 vertex = s.to_global.translation();

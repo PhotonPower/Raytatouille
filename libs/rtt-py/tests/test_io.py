@@ -62,7 +62,7 @@ def test_wavelengths_are_read_only_copies(reference_dir: Path) -> None:
     wavelengths = system.wavelengths
     assert [w.um for w in wavelengths] == [0.4861, 0.5876, 0.6563]
     assert [w.reference for w in wavelengths] == [False, True, False]
-    assert system.schema_version == "0.2.0"
+    assert system.schema_version == "0.3.0"
 
 
 def test_value_equality_and_no_hash(reference_dir: Path) -> None:

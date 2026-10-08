@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.2.0",
+  "schema_version": "0.3.0",
   "name": "Ritchey-Chrétien-Teleskop: zwei Hyperbeln, f ≈ 1440 mm (f/14,4)",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [

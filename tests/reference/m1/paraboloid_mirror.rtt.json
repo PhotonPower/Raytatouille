@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.2.0",
+  "schema_version": "0.3.0",
   "name": "Paraboloid mirror R = -200 mm, focus at R/2",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [

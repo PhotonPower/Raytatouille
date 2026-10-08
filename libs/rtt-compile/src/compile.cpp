@@ -362,6 +362,12 @@ class Compiler {
     info.location = location;
     info.first_surface = static_cast<std::uint32_t>(surfaces_.size());
     info.surface_count = static_cast<std::uint32_t>(element.surfaces.size());
+    // Crystals are compiled from #131 on (ADR 0026, point 6); until then the element is an
+    // error, and the rest of compile treats it as an element without material.
+    if (element.crystal) {
+      report("crystal.unsupported", location + "/material",
+             "crystal elements cannot be compiled yet (ADR 0026)");
+    }
     // Unresolved materials are reported by medium(); index 0 is only a placeholder then.
     const bool lens_or_plate =
         element.kind == model::ElementKind::Lens || element.kind == model::ElementKind::Plate;
@@ -401,6 +407,7 @@ class Compiler {
       c.aperture = s.aperture;
       c.phases = s.phases;
       c.interaction = s.interaction;
+      c.diffraction_efficiency = s.diffraction_efficiency;
       // Axes of ideal elements are given in element coordinates (ADR 0021).
       if (const auto* polarizer = std::get_if<model::IdealPolarizer>(&s.interaction)) {
         const auto& a = polarizer->transmission_axis;
@@ -556,8 +563,9 @@ class Compiler {
   }
 
   /// Media before and after each event (rules decided for #5 and #27, docs/architecture.md,
-  /// "Medien entlang eines Pfads"). The ray starts in the environment. Reflect, Transmit and
-  /// Diffract keep the medium, and so does every event at an element without material.
+  /// "Medien entlang eines Pfads"). The ray starts in the environment. Reflect and Transmit keep
+  /// the medium, with any order (ADR 0025), and so does every event at an element without
+  /// material.
   /// Refract, Ordinary and Extraordinary
   /// - at surface i of a Lens, or of a Plate with different segment materials, with N surfaces
   ///   (segment j between surfaces j and j + 1):

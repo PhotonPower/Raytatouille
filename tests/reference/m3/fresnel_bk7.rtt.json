@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.2.0",
+  "schema_version": "0.3.0",
   "name": "M3 acceptance: Fresnel at N-BK7 (n = 1.5168), normal incidence and Brewster angle atan(n)",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},

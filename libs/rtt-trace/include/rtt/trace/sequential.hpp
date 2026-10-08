@@ -59,7 +59,9 @@ class Tracer {
 /// skipped. Each ray is traced independently;
 /// the batch is split with oneTBB parallel_for and static_partitioner (ADR 0004), so the result
 /// does not depend on the number of threads. The medium indices are the real parts of the
-/// compiled media at the ray's wavelength.
+/// compiled media at the ray's wavelength. Until diffraction orders are traced (#127, ADR 0025),
+/// an event with order != 0, and every event at a surface with diffraction_efficiency, stops the
+/// ray at its hit point with EventImpossible.
 class SequentialTracer final : public Tracer {
  public:
   /// @throws std::out_of_range if `path` does not belong to `system`

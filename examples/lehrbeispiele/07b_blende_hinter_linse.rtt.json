@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.2.0",
+  "schema_version": "0.3.0",
   "name": "Blende 20 mm hinter der Linse (Kissenverzeichnung)",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [

@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/PhotonPower/Raytatouille/schema/raytatouille.schema.json",
-  "title": "Raytatouille system file (.rtt.json), schema 0.2",
-  "description": "Units: lengths mm, wavelengths um, angles in degree where the key ends in _deg. Parsing in rtt-io is the reference; this schema must accept exactly what rtt-io accepts structurally for the current schema version. rtt-io migrates older files (0.1); run rtt format before checking them against this schema.",
+  "title": "Raytatouille system file (.rtt.json), schema 0.3",
+  "description": "Units: lengths mm, wavelengths um, angles in degree where the key ends in _deg. Parsing in rtt-io is the reference; this schema must accept exactly what rtt-io accepts structurally for the current schema version. rtt-io migrates older files (0.1, 0.2); run rtt format before checking them against this schema.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "units", "wavelengths", "aperture", "fields", "root", "paths"],
   "properties": {
-    "schema_version": {"type": "string", "pattern": "^0\\.2\\.[0-9]+$"},
+    "schema_version": {"type": "string", "pattern": "^0\\.3\\.[0-9]+$"},
     "name": {"type": "string"},
     "units": {
       "type": "object",
@@ -128,14 +128,27 @@
         "name": {"type": "string"},
         "pose": {"$ref": "#/$defs/pose"},
         "material": {"$ref": "#/$defs/material"},
+        "optic_axis": {
+          "description": "Optic axis of a crystal (ADR 0026) in element coordinates, dimensionless, not normalised; required exactly for a crystal material (checked by rtt validate).",
+          "$ref": "#/$defs/vec3"
+        },
         "surfaces": {"type": "array", "items": {"$ref": "#/$defs/surface"}}
       }
     },
     "material": {
-      "description": "Catalog reference CATALOG:NAME. A string is one material for all segments; an array has one entry per segment (segment i between surfaces i and i+1, N surfaces give N-1 entries, lens and plate only; counts are checked by rtt validate).",
+      "description": "Catalog reference CATALOG:NAME. A string is one material for all segments; an array has one entry per segment (segment i between surfaces i and i+1, N surfaces give N-1 entries, lens and plate only; counts are checked by rtt validate). An object is a uniaxial crystal for all segments (ADR 0026): ordinary and extraordinary reference the principal indices n_O and n_E; lens and plate only, with optic_axis.",
       "oneOf": [
         {"type": "string"},
-        {"type": "array", "items": {"type": "string"}, "minItems": 1}
+        {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ordinary", "extraordinary"],
+          "properties": {
+            "ordinary": {"type": "string"},
+            "extraordinary": {"type": "string"}
+          }
+        }
       ]
     },
     "surface": {
@@ -148,6 +161,19 @@
         "shape": {"$ref": "#/$defs/shape"},
         "aperture": {"$ref": "#/$defs/aperture"},
         "phases": {"type": "array", "items": {"$ref": "#/$defs/phase"}},
+        "diffraction_efficiency": {
+          "description": "Power fraction per diffraction order (ADR 0025); orders not listed have efficiency 0. A non-empty list at a surface with phases, efficiencies in [0, 1], each order once: checked by rtt validate.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["order", "efficiency"],
+            "properties": {
+              "order": {"type": "integer", "minimum": -2147483648, "maximum": 2147483647},
+              "efficiency": {"type": "number"}
+            }
+          }
+        },
         "interaction": {"$ref": "#/$defs/interaction"}
       }
     },
@@ -296,7 +322,7 @@
                 "required": ["surface"],
                 "properties": {
                   "surface": {"type": "string"},
-                  "kind": {"enum": ["refract", "reflect", "transmit", "ordinary", "extraordinary", "diffract"]},
+                  "kind": {"enum": ["refract", "reflect", "transmit", "ordinary", "extraordinary"]},
                   "order": {"type": "integer", "minimum": -2147483648, "maximum": 2147483647}
                 }
               }

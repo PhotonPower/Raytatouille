@@ -138,7 +138,7 @@ inline constexpr double kApertureTolerance = 1e-9;
 /// A ray that is not Alive is returned unchanged; a hit with status Missed or NoConvergence
 /// gives that status and leaves the ray unchanged. Otherwise the ray moves to the hit point
 /// (move_to_hit, with volume absorption) and then: Absorber interaction -> Absorbed with
-/// weight 0; Diffract, Ordinary, Extraordinary -> EventImpossible (M4); Refract -> refracted
+/// weight 0; Ordinary, Extraordinary -> EventImpossible (M4); Refract -> refracted
 /// direction (Snell with Re(n)) or Tir beyond the critical angle; Reflect -> reflected direction;
 /// Transmit -> unchanged direction. A stopped ray stays at the hit point with last_surface =
 /// surface_index. The aperture is not checked here.
@@ -159,7 +159,9 @@ inline constexpr double kApertureTolerance = 1e-9;
 /// - Any other combination of interaction and event kind, a CoatingRef surface without compiled
 ///   coating (CompiledSurface::coating empty), an ideal axis parallel to the ray and non-finite
 ///   amplitudes (grazing incidence, a coating layer exactly at q = 0) give EventImpossible.
-/// Phase layers are ignored before M4.
+/// Phase layers are ignored here (order 0); orders follow in #127 (ADR 0025). Until then the
+/// sequential tracer stops an event with order != 0, or at a surface with
+/// diffraction_efficiency, with EventImpossible (sequential.hpp).
 ///
 /// Never throws; physical problems are status flags (ADR 0009).
 /// @param ray           incoming ray in global coordinates, |dir| = 1

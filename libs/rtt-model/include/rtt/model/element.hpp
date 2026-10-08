@@ -3,6 +3,7 @@
 /// @file element.hpp
 /// Hierarchy: Assembly -> Element -> Surface (docs/architecture.md, "Hierarchie").
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -24,6 +25,15 @@ enum class ElementKind : std::uint8_t {
   Detector,     ///< exactly 1 surface
 };
 
+/// Uniaxial crystal (ADR 0026): two ordinary catalog references for the principal indices n_O
+/// and n_E (e.g. the Zemax convention X / X-E). File form: "material": {"ordinary": ...,
+/// "extraordinary": ...}; Lens and Plate only, one crystal for all segments.
+struct CrystalMaterial {
+  std::string ordinary;       ///< catalog reference for n_O, e.g. "BIREFRINGENT:CALCITE"
+  std::string extraordinary;  ///< catalog reference for n_E, e.g. "BIREFRINGENT:CALCITE-E"
+  bool operator==(const CrystalMaterial&) const = default;
+};
+
 /// A physical body. Outside it the medium is the surrounding medium.
 ///
 /// Inside, an element with N surfaces has N - 1 segments; segment i is the glass between
@@ -32,7 +42,8 @@ enum class ElementKind : std::uint8_t {
 /// - `material`: shorthand, one catalog reference for all segments (file: a string);
 /// - `segment_materials`: one catalog reference per segment, N - 1 entries (file: an array).
 /// Only Lens and Plate accept `segment_materials`. Both forms are kept as read, so that writing
-/// reproduces the file byte for byte.
+/// reproduces the file byte for byte. A crystal (ADR 0026) is given in `crystal` instead; then
+/// `material` and `segment_materials` are empty.
 struct Element {
   std::string name;
   ElementKind kind = ElementKind::Lens;
@@ -44,11 +55,17 @@ struct Element {
   /// initializer, so that aggregate initialisations {name, kind, pose, material, surfaces} stay
   /// valid and free of -Wmissing-field-initializers.
   std::vector<std::string> segment_materials{};  // NOLINT(readability-redundant-member-init)
+  /// Uniaxial crystal for all segments (ADR 0026); Lens and Plate only.
+  std::optional<CrystalMaterial> crystal{};  // NOLINT(readability-redundant-member-init)
+  /// Direction of the optic axis of the crystal in element coordinates, dimensionless, not
+  /// normalised; the sign has no meaning (ADR 0026, point 2). Required exactly for a crystal.
+  std::optional<std::array<double, 3>> optic_axis{};  // NOLINT(readability-redundant-member-init)
   bool operator==(const Element&) const = default;
 
   /// Material of segment `segment` (between surfaces `segment` and `segment + 1`): the list
   /// entry if `segment_materials` is used, otherwise the shorthand `material`. Empty if the
-  /// element has no material or `segment + 1` is not a valid surface index.
+  /// element has no isotropic material (none, or a crystal) or `segment + 1` is not a valid
+  /// surface index.
   [[nodiscard]] std::optional<std::string> segment_material(std::size_t segment) const;
 };
 

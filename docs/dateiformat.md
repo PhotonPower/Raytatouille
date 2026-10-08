@@ -1,7 +1,8 @@
 # Systemdateien `.rtt.json` erzeugen
 
 Kurzanleitung für das Dateiformat, das die Engine, die CLI (`rtt`) und der Raytatouille Explorer
-laden. Alle Beispiele hier wurden gegen Schema `0.2.x` und Bibliotheksversion 0.4.0 geprüft.
+laden. Alle Beispiele hier wurden gegen Schema `0.3.x` geprüft (Bibliothek nach 0.5.0). Dateien
+mit Schema 0.1 und 0.2 liest `rtt` weiter und schreibt sie mit `rtt format` als 0.3.
 Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/architecture.md`.
 
 > Hinweis: Der Raytatouille Explorer (Streamlit-Oberfläche `rtt_explorer.py`) ist nicht Teil dieses
@@ -27,7 +28,7 @@ Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/a
 
 | Feld | Pflicht | Inhalt |
 | --- | --- | --- |
-| `schema_version` | ja | `"0.2.0"` (Muster `0.2.x`) |
+| `schema_version` | ja | `"0.3.0"` (Muster `0.3.x`) |
 | `name` | nein | Anzeigename |
 | `units` | ja | genau `{"length": "mm", "wavelength": "um"}` |
 | `environment` | nein | `temperature_c`, `pressure_atm`, `medium` (Standard: Luft nach Ciddor, 20 °C, 1 atm) |
@@ -54,6 +55,19 @@ einen Eintrag pro Segment. Gültig sind `AIR`, `VACUUM`, `CONST:1.5168` und Kata
 wie `SCHOTT:N-BK7`. Der Katalogname ist der Dateiname der AGF-Datei in Großbuchstaben (oder
 ein Alias), die Datei lädt man beim Kompilieren oder im Explorer.
 
+**Kristalle** (einachsig, ADR 0026, ab Schema 0.3): Das Material ist dann ein Objekt mit zwei
+Verweisen für die Hauptbrechzahlen n_O und n_E, dazu die optische Achse in Elementkoordinaten
+(nur `lens` und `plate`, ein Kristall für alle Segmente):
+
+```json
+"material": {"ordinary": "BIREFRINGENT:CALCITE", "extraordinary": "BIREFRINGENT:CALCITE-E"},
+"optic_axis": [0.0, 1.0, 1.0]
+```
+
+Der Zemax-Katalog `birefringent.agf` legt jeden Kristall so als zwei Gläser `X` und `X-E` ab.
+`rtt validate` prüft Kristall und Achse; kompilieren und verfolgen lassen sich Kristalle erst mit
+den folgenden M4-Schritten (bis dahin Kompilierfehler `crystal.unsupported`).
+
 **Spiegel.** Ohne Angabe hat jede Fläche die Interaktion `fresnel`. Ein Spiegel **ohne** `material`
 wirkt dann als idealer Leiter (r_s = −1, r_p = +1, verlustfrei), dasselbe wie `ideal_mirror`. Ein
 Spiegel **mit** `material` (Substrat, z. B. `CONST:1.2,7.26` für ein Metall mit komplexem Index)
@@ -66,14 +80,17 @@ braucht das Substrat, ohne `material` ist es ein Kompilierfehler.
 | --- | --- |
 | `shape.base` | `{"type": "plane"}`, `{"type": "conic", "radius": R, "conic": k}` oder `{"type": "even_asphere", "radius": R, "conic": k, "coefficients": [A4, A6, …]}` |
 | `aperture` | `circular` (`radius`, optional `inner_radius`), `rectangular` (`half_width_x`, `half_width_y`) oder `elliptical` (`semi_axis_x`, `semi_axis_y`) |
+| `phases` | Phasenschichten: `{"type": "linear_grating", "lines_per_mm": G, "orientation_deg": ψ}` oder `{"type": "radial_phase", "normalization_radius": R, "coefficients": [c1, c2, …]}` (ADR 0025) |
+| `diffraction_efficiency` | nur an Flächen mit `phases`: Leistungsanteil je Beugungsordnung, z. B. `[{"order": 1, "efficiency": 0.8}]`; fehlt das Feld, hat jede Ordnung 1, sonst haben nicht aufgeführte Ordnungen 0 |
 | `interaction` | `fresnel` (Standard), `ideal_mirror`, `ideal_anti_reflection`, `absorber`, `ideal_beam_splitter` (`reflectance_s`, `reflectance_p`), `ideal_polarizer` (`transmission_axis`, `extinction_ratio`), `ideal_retarder` (`fast_axis`, `retardance_waves`) oder `{"type": "coating", "name": "KATALOG:NAME"}`. Die Achsen von Polarisator und Retarder stehen in Elementkoordinaten. |
 
 Zahlenwerte dürfen auch als `{"value": …, "variable": true}` stehen, das markiert sie später als
 Optimierungsvariable (`pickup` ist ebenfalls vorgesehen). Zernike-Terme (`shape.terms`) kennt das
 Schema, die Engine kompiliert sie in Version 0.4.0 aber noch nicht (Meldung: "not supported before
-M8"). Gitter und Phasenflächen (`phases`) übernimmt die Kompilierung, der Tracer ignoriert sie aber
-bis M4. Ein Ereignis `diffract`, `ordinary` oder `extraordinary` beendet den Strahl bis dahin mit
-dem Status `EventImpossible`.
+M8"). Gitter und Phasenflächen (`phases`) übernimmt die Kompilierung; Beugungsordnungen verfolgt
+der Tracer erst mit den folgenden M4-Schritten. Bis dahin beenden ein Ereignis mit `order` ≠ 0, jedes
+Ereignis an einer Fläche mit `diffraction_efficiency` und die Ereignisse `ordinary` und
+`extraordinary` den Strahl mit dem Status `EventImpossible`.
 
 ## Pfade
 
@@ -87,7 +104,11 @@ reicht (Strahlteiler, Doppeldurchgang), steht eine explizite Liste:
 "events": [{"surface": "P.S1"}, {"surface": "P.S2", "kind": "reflect"}]
 ```
 
-`kind` ist `refract`, `reflect`, `transmit`, `ordinary`, `extraordinary` oder `diffract`.
+`kind` ist `refract` (Standard), `reflect`, `transmit`, `ordinary` oder `extraordinary`. Eine
+Beugungsordnung steht als `"order": m` an einem beliebigen Ereignis einer Fläche mit `phases`
+(ADR 0025), z. B. `{"surface": "G.S1", "kind": "reflect", "order": 1}` für ein
+Reflexionsgitter; an Flächen ohne Phasenschicht ist `order` ≠ 0 ein Fehler. Die frühere Art
+`diffract` (bis Schema 0.2) liest `rtt` als `transmit` mit derselben Ordnung.
 
 ## Beispiel 1: Plankonvex-Singlet
 
@@ -97,7 +118,7 @@ dahinter, der Detektor im paraxialen Fokus bei z = 106,442 mm.
 
 ```json
 {
-  "schema_version": "0.2.0",
+  "schema_version": "0.3.0",
   "name": "Plankonvex-Singlet",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": true}, {"um": 0.6563}],
@@ -178,7 +199,7 @@ def singlet(r1, r2, dicke, glas="CONST:1.5168", epd=20.0, bild_abstand=95.0, hal
 
     z_linse = 5.0
     return {
-        "schema_version": "0.2.0", "name": f"Singlet R1={r1} R2={r2}",
+        "schema_version": "0.3.0", "name": f"Singlet R1={r1} R2={r2}",
         "units": {"length": "mm", "wavelength": "um"},
         "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": True}, {"um": 0.6563}],
         "aperture": {"type": "epd", "value": epd},

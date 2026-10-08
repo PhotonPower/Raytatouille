@@ -119,7 +119,7 @@ void bind_model(nb::module_& m) {
       .def(nb::init<>())
       .def_rw("name", &model::System::name)
       .def_ro("schema_version", &model::System::schema_version,
-              "File format version of the model, e.g. \"0.2.0\".")
+              "File format version of the model, e.g. \"0.3.0\".")
       .def_rw("environment", &model::System::environment,
               "Surroundings; changes act on this System.")
       .def_prop_ro(

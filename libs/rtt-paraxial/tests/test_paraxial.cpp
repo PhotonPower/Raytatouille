@@ -616,10 +616,12 @@ TEST_CASE("paths that are not rotationally symmetric are rejected", "[paraxial]"
   }
   SECTION("diffraction event") {
     System s = base_system();
-    add(s, lens("L", 0.0, 1.5, 50.0, -50.0, 5.0));
+    Element l = lens("L", 0.0, 1.5, 50.0, -50.0, 5.0);
+    l.surfaces[0].phases.push_back(rtt::model::RadialPhase{Param(10.0), {Param(1.0)}});
+    add(s, l);
     s.paths = {{"main",
                 false,
-                {{SurfaceId("L.S1"), rtt::model::EventKind::Diffract, 1},
+                {{SurfaceId("L.S1"), rtt::model::EventKind::Refract, 1},
                  {SurfaceId("L.S2"), rtt::model::EventKind::Refract, 0}}}};
     REQUIRE_THROWS_AS(first_order_of(s), ParaxialError);
   }

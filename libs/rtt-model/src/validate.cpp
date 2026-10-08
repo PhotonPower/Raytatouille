@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 namespace rtt::model {
 
@@ -182,12 +183,38 @@ class Validator {
     }
     if (e.material && e.material->empty())
       report("element.material_empty", loc + "/material", "material must not be empty");
+    check_crystal(e, loc);
     for (std::size_t i = 0; i < n; ++i) check_surface(e.surfaces[i], idx(loc + "/surfaces", i));
+  }
+
+  /// Crystal material and optic axis (ADR 0026, points 1 and 2).
+  void check_crystal(const Element& e, const std::string& loc) {
+    const std::string mloc = loc + "/material";
+    const std::string aloc = loc + "/optic_axis";
+    if (e.crystal) {
+      if (e.kind != ElementKind::Lens && e.kind != ElementKind::Plate)
+        report("crystal.kind_not_allowed", mloc, "only a lens or a plate can be a crystal");
+      if (e.material || !e.segment_materials.empty()) {
+        report("crystal.material_conflict", mloc,
+               "crystal and isotropic material are both set; use one of them");
+      }
+      if (e.crystal->ordinary.empty())
+        report("element.material_empty", mloc + "/ordinary", "material must not be empty");
+      if (e.crystal->extraordinary.empty())
+        report("element.material_empty", mloc + "/extraordinary", "material must not be empty");
+      if (!e.optic_axis)
+        report("crystal.optic_axis_missing", aloc, "a crystal needs an optic axis");
+    } else if (e.optic_axis) {
+      report("crystal.optic_axis_not_allowed", aloc, "optic axis at an element without crystal");
+    }
+    if (e.optic_axis && !nonzero_axis(*e.optic_axis))
+      report("crystal.optic_axis_invalid", aloc, "optic axis must be finite and non-zero");
   }
 
   /// Lens and Plate: N surfaces have N - 1 segments, given either as one shorthand material
   /// for all segments or as a list with one entry per segment (ADR 0017).
   void check_segment_materials(const Element& e, const std::string& loc, std::string_view what) {
+    if (e.crystal) return;  // check_crystal()
     const std::string mloc = loc + "/material";
     const std::size_t n = e.surfaces.size();
     const auto& list = e.segment_materials;
@@ -229,7 +256,37 @@ class Validator {
     for (std::size_t i = 0; i < s.phases.size(); ++i) {
       check_phase(s.phases[i], idx(loc + "/phases", i));
     }
+    if (!s.phases.empty()) phase_surfaces_.insert(s.id.str());
+    if (const auto& efficiency = s.diffraction_efficiency) {
+      check_efficiency(s, *efficiency, loc + "/diffraction_efficiency");
+    }
     check_interaction(s.interaction, loc + "/interaction");
+  }
+
+  /// Efficiency per diffraction order (ADR 0025, point 5); `list` is the surface's list.
+  void check_efficiency(const Surface& s,
+                        const std::vector<DiffractionEfficiency>& list,
+                        const std::string& loc) {
+    if (s.phases.empty()) {
+      report("surface.efficiency_invalid", loc,
+             "diffraction efficiency at a surface without phase layer");
+    }
+    if (list.empty()) {
+      report("surface.efficiency_invalid", loc,
+             "empty list of diffraction efficiencies (it would block every order)");
+    }
+    std::unordered_set<int> orders;
+    for (std::size_t i = 0; i < list.size(); ++i) {
+      const DiffractionEfficiency& d = list[i];
+      if (!std::isfinite(d.efficiency) || d.efficiency < 0.0 || d.efficiency > 1.0) {
+        report("surface.efficiency_invalid", idx(loc, i) + "/efficiency",
+               "efficiency must be in [0, 1]");
+      }
+      if (!orders.insert(d.order).second) {
+        report("surface.efficiency_invalid", idx(loc, i) + "/order",
+               "order " + std::to_string(d.order) + " is listed twice");
+      }
+    }
   }
 
   void check_radius(const Param& r, const std::string& loc) {
@@ -348,9 +405,11 @@ class Validator {
           report("paths.unknown_surface", eloc + "/surface",
                  "unknown surface id '" + e.surface.str() + "'");
         }
-        if (e.kind != EventKind::Diffract && e.order != 0) {
+        // ADR 0025: an event diffracts exactly when its surface has a phase layer.
+        if (e.order != 0 && surface_ids_.contains(e.surface.str()) &&
+            !phase_surfaces_.contains(e.surface.str())) {
           report("paths.order_not_allowed", eloc + "/order",
-                 "order is only allowed for diffract events");
+                 "diffraction order at a surface without phase layer");
         }
       }
     }
@@ -359,6 +418,7 @@ class Validator {
   const System& system_;
   std::vector<Diagnostic> out_;
   std::unordered_map<std::string, std::string> surface_ids_;
+  std::unordered_set<std::string> phase_surfaces_;  // ids of surfaces with a phase layer
   std::unordered_map<std::string, std::string> node_names_;
   std::vector<std::string> stops_;
 };
