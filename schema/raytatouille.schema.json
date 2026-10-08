@@ -297,7 +297,7 @@
                 "properties": {
                   "surface": {"type": "string"},
                   "kind": {"enum": ["refract", "reflect", "transmit", "ordinary", "extraordinary", "diffract"]},
-                  "order": {"type": "integer"}
+                  "order": {"type": "integer", "minimum": -2147483648, "maximum": 2147483647}
                 }
               }
             }

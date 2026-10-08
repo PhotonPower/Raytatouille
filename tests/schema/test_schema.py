@@ -63,6 +63,21 @@ def _lens(doc):
     return doc["root"]["children"][1]
 
 
+def _with_order(order):
+    doc = copy.deepcopy(load(ROOT / "tests" / "reference" / "m0" / "singlet.rtt.json"))
+    doc["paths"] = [{"name": "main", "events": [{"surface": "L1.S1", "kind": "diffract",
+                                                  "order": order}]}]
+    return doc
+
+
+def test_event_order_is_an_int():
+    # Event::order is an int; the C++ reader rejects values outside it (#35 E).
+    for order in (2147483647, -2147483648, 0, 1):
+        assert VALIDATOR.is_valid(_with_order(order)), order
+    for order in (2147483648, -2147483649, 4294967296, 1.5):
+        assert not VALIDATOR.is_valid(_with_order(order)), order
+
+
 @pytest.mark.parametrize(
     "mutate",
     [

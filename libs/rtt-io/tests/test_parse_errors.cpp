@@ -89,6 +89,29 @@ TEST_CASE("a number that overflows double is a ParseError (#68)", "[io][errors]"
   REQUIRE_THROWS_WITH(rtt::io::parse_system(text), Catch::Matchers::ContainsSubstring("1e400"));
 }
 
+TEST_CASE("an integer outside the range of int is a ParseError, not cut off (#35)",
+          "[io][errors]") {
+  // Event::order is an int; before #35 E, get<int>() silently cut 4294967296 to 0.
+  const auto with_order = [](const std::string& order) {
+    std::string text = minimal();
+    const std::string automatic = R"("events": "auto")";
+    text.replace(text.find(automatic), automatic.size(),
+                 R"("events": [{"surface": "IMG", "kind": "diffract", "order": )" + order + "}]");
+    return text;
+  };
+  for (const char* order : {"2147483648", "4294967296", "-2147483649", "18446744073709551615",
+                            "-9223372036854775808"}) {
+    INFO(order);
+    REQUIRE(error_pointer(with_order(order)) == "/paths/0/events/0/order");
+    REQUIRE_THROWS_WITH(rtt::io::parse_system(with_order(order)),
+                        Catch::Matchers::ContainsSubstring("out of range"));
+  }
+  REQUIRE(rtt::io::parse_system(with_order("2147483647")).paths[0].events[0].order == 2147483647);
+  REQUIRE(rtt::io::parse_system(with_order("-2147483648")).paths[0].events[0].order ==
+          -2147483647 - 1);
+  REQUIRE(error_pointer(with_order("1.0")) == "/paths/0/events/0/order");  // not an integer
+}
+
 TEST_CASE("parameters accept plain numbers and objects", "[io]") {
   const auto s = rtt::io::parse_system(
       minimal("", R"("mm")", R"("0.1.0")",
