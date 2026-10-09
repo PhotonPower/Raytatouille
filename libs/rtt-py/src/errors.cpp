@@ -17,6 +17,7 @@
 #include "rtt/io/json_io.hpp"
 #include "rtt/material/agf.hpp"
 #include "rtt/material/material.hpp"
+#include "rtt/optim/merit.hpp"
 #include "rtt/paraxial/paraxial.hpp"
 #include "rtt/trace/run_control.hpp"
 
@@ -56,6 +57,9 @@ void register_errors(nb::module_& /*m*/) {
     } catch (const io::EditError& e) {
       // Before nanobind's std::invalid_argument -> ValueError (ADR 0024).
       raise("EditError", e.what(), e.code(), e.location(), optional(e.op_index()), e.diagnostics());
+    } catch (const optim::OptimError& e) {
+      // Before nanobind's std::invalid_argument -> ValueError (ADR 0030, point 10).
+      raise("OptimError", e.what(), e.diagnostics());
     } catch (const io::ParseError& e) {
       raise("ParseError", e.what(), e.pointer());
     } catch (const compile::CompileError& e) {

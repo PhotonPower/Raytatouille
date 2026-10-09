@@ -159,6 +159,8 @@ void bind_analysis(nanobind::module_& m);
 void bind_paths(nanobind::module_& m);
 /// Reports as data (#177); after bind_analysis (Prescription).
 void bind_reports(nanobind::module_& m);
+/// Optimization (#169, ADR 0030); after bind_model (Diagnostic) and bind_trace (CancelToken).
+void bind_optim(nanobind::module_& m);
 void bind_polar(nanobind::module_& m);
 void bind_layout(nanobind::module_& m);
 /// to_dict()/to_json() on the result classes (ADR 0023); call after all bind_* functions.

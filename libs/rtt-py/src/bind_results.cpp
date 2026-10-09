@@ -31,6 +31,8 @@ void bind_result_methods(nb::module_& m) {
                            "RaytraceReport",
                            "SystemReport",
                            "DimensionReport",
+                           "OptimResult",
+                           "MeritEvaluation",
                            "FirstOrder",
                            "Seidel",
                            "Prescription",

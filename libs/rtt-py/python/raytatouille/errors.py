@@ -23,6 +23,7 @@ __all__ = [
     "CompileError",
     "EditError",
     "NoStopError",
+    "OptimError",
     "ParaxialError",
     "ParseError",
     "RaytatouilleError",
@@ -181,3 +182,18 @@ class AgfError(RaytatouilleError, ValueError):
 class Cancelled(RaytatouilleError):
     """A run was cancelled through its CancelToken (#83); the run's outputs (e.g. a partly
     traced RayBatch) are undefined."""
+
+
+class OptimError(RaytatouilleError, ValueError):
+    """An optimization run that cannot start (ADR 0030, point 10): ``diagnostics`` carry the
+    stable codes optim.no_variables and/or optim.no_operands (both if both apply), or
+    merit.operand_unsupported, with JSON pointers into the system file."""
+
+    def __init__(self, message: str, diagnostics: list[Diagnostic]) -> None:
+        super().__init__(message)
+        self.diagnostics = diagnostics
+
+    @property
+    def codes(self) -> list[str]:
+        """The stable codes of ``diagnostics``, in the same order."""
+        return [d.code for d in self.diagnostics]

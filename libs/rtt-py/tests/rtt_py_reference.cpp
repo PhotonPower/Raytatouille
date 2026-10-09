@@ -31,6 +31,7 @@
 #include "crystal_cases.hpp"
 #include "diffraction_cases.hpp"
 #include "npy_writer.hpp"
+#include "optim_cases.hpp"
 #include "paths_cases.hpp"
 #include "polar_batch.hpp"
 #include "reports_cases.hpp"
@@ -327,6 +328,7 @@ int main(int argc, char** argv) {
     rtt::py::reference::run_paths_cases(args[0], args[1], args[2], threads);
     rtt::py::reference::run_crystal_cases(args[0], args[1], args[2], threads);
     rtt::py::reference::run_diffraction_cases(args[0], args[1], args[2], threads);
+    rtt::py::reference::run_optim_cases(args[0], args[2], threads);
     rtt::py::reference::run_configuration_cases(args[0], args[1], args[2], threads);
     rtt::py::reference::run_reports_cases(args[0], args[1], args[2], threads);
     return 0;
