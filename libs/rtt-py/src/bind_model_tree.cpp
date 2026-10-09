@@ -100,30 +100,111 @@ void bind_model_tree(nb::module_& m) {
   read_only_class<model::Param>(
       m, "Param",
       "Numeric design parameter (read-only copy). Its unit is that of the attribute that holds "
-      "it.")
-      .def_ro("value", &model::Param::value, "Current value.")
-      .def_ro("variable", &model::Param::variable, "True if the optimizer may change it.")
-      .def_ro("pickup", &model::Param::pickup,
-              "Pickup expression (evaluated from M5 on); None for an independent value.")
+      "it. Either a value (unbound) or bound to a row of System.parameters (ADR 0029).")
+      .def_prop_ro(
+          "value",
+          [](const model::Param& p) -> std::optional<double> {
+            if (p.is_bound()) return std::nullopt;
+            return p.value;
+          },
+          "Current value; None for a Param bound to a parameter row (its value comes from the "
+          "table, ADR 0029).")
+      .def_ro("variable", &model::Param::variable,
+              "True if the optimizer may change it (unbound Params only).")
+      .def_ro("min", &model::Param::min,
+              "Lower bound for the optimizer, unit of the value; None if not set.")
+      .def_ro("max", &model::Param::max,
+              "Upper bound for the optimizer, unit of the value; None if not set.")
+      .def_ro("param", &model::Param::param,
+              "Name of the parameter row it is bound to (file: {\"param\": ...}); None for a "
+              "value.")
       .def("__repr__", [](const model::Param& p) {
+        if (p.is_bound()) return nb::str("Param(param={!r})").format(*p.param);
         nb::str text = nb::str("Param(value={!r}").format(p.value);
         if (p.variable) text = nb::str("{}, variable=True").format(text);
-        if (p.pickup) text = nb::str("{}, pickup={!r}").format(text, *p.pickup);
+        if (p.min) text = nb::str("{}, min={!r}").format(text, *p.min);
+        if (p.max) text = nb::str("{}, max={!r}").format(text, *p.max);
         return nb::str("{})").format(text);
       });
 
+  nb::enum_<model::PoseReference>(
+      m, "PoseReference",
+      "What a Pose is relative to (ADR 0028): global(X) = global(reference) * pose(X).")
+      .value("ABSOLUTE", model::PoseReference::Absolute, "the parent node (file: \"absolute\")")
+      .value("RELATIVE_TO_PRECEDING", model::PoseReference::RelativeToPreceding,
+             "the last surface before the node in tree order (file: "
+             "\"relative_to_preceding\")")
+      .value("RELATIVE_TO_SIBLING", model::PoseReference::RelativeToSibling,
+             "the preceding sibling in the same assembly or element (file: "
+             "\"relative_to_sibling\")");
+
+  nb::enum_<model::PoseOrder>(m, "PoseOrder",
+                              "Order of translation and rotation of a Pose (ADR 0028).")
+      .value("TRANSLATE_FIRST", model::PoseOrder::TranslateFirst,
+             "p_ref = t + P + R (p - P), pivot P in the node's coordinates (file: "
+             "\"translate_first\")")
+      .value("ROTATE_FIRST", model::PoseOrder::RotateFirst,
+             "p_ref = Q + R (t + p - Q), pivot Q in the reference frame: a coordinate break "
+             "(file: \"rotate_first\")");
+
   read_only_class<model::Pose>(
       m, "Pose",
-      "Placement of a node in its parent coordinate system (read-only copy): translation, then "
-      "intrinsic X -> Y -> Z rotation about the pivot, p_parent = position + pivot + "
-      "R (p_child - pivot) with R = Rx Ry Rz. Right-handed coordinates, +z is the optical "
-      "axis, y the meridional direction.")
+      "Placement of a node relative to its reference (read-only copy, ADR 0028). With order "
+      "TRANSLATE_FIRST: translation, then intrinsic X -> Y -> Z rotation about the pivot, "
+      "p_ref = position + pivot + R (p_child - pivot) with R = Rx Ry Rz; with ROTATE_FIRST the "
+      "rotation about the pivot (in the reference frame) comes first and the translation runs "
+      "along the rotated axes. Right-handed coordinates, +z is the optical axis, y the "
+      "meridional direction.")
+      .def_ro("reference", &model::Pose::reference,
+              "What the pose is relative to (PoseReference); ABSOLUTE is the parent node.")
+      .def_ro("order", &model::Pose::order, "Order of translation and rotation (PoseOrder).")
       .def_ro("position", &model::Pose::position,
-              "Translation x, y, z in mm, in parent coordinates (Param each).")
+              "Translation x, y, z in mm, in the reference frame (TRANSLATE_FIRST) or along the "
+              "rotated axes (ROTATE_FIRST) (Param each).")
       .def_ro("rotation_deg", &model::Pose::rotation_deg,
               "Rotation angles about x, y, z in degree, intrinsic X -> Y -> Z (Param each).")
       .def_ro("pivot", &model::Pose::pivot,
-              "Pivot point x, y, z in mm, in local coordinates; tolerances tilt about it.");
+              "Pivot point x, y, z in mm, in the node's coordinates (TRANSLATE_FIRST) or in the "
+              "reference frame (ROTATE_FIRST); tolerances tilt about it.");
+
+  read_only_class<model::Configuration>(
+      m, "Configuration", "A configuration: one column of the parameter table (ADR 0029).")
+      .def_ro("name", &model::Configuration::name, "Name, unique.");
+
+  read_only_class<model::ParameterRow>(
+      m, "ParameterRow",
+      "Row of the parameter table (read-only copy, ADR 0029): exactly one of value (all "
+      "configurations), values (one per configuration) and expression (earlier rows); the "
+      "other two are None. Its unit is that of the Params bound to it.")
+      .def_ro("name", &model::ParameterRow::name, "Name, [A-Za-z_][A-Za-z0-9_]*, unique.")
+      .def_prop_ro(
+          "value",
+          [](const model::ParameterRow& r) -> std::optional<double> {
+            if (const auto* v = std::get_if<double>(&r.form)) return *v;
+            return std::nullopt;
+          },
+          "The value in all configurations, or None.")
+      .def_prop_ro(
+          "values",
+          [](const model::ParameterRow& r) -> std::optional<std::vector<double>> {
+            if (const auto* v = std::get_if<std::vector<double>>(&r.form)) return *v;
+            return std::nullopt;
+          },
+          "One value per configuration (order of System.configurations), or None.")
+      .def_prop_ro(
+          "expression",
+          [](const model::ParameterRow& r) -> std::optional<std::string> {
+            if (const auto* e = std::get_if<model::ParameterExpression>(&r.form)) return e->text;
+            return std::nullopt;
+          },
+          "Expression of earlier rows, or None.")
+      .def_ro("variable", &model::ParameterRow::variable,
+              "True if the optimizer may change it (never for an expression).")
+      .def_ro("min", &model::ParameterRow::min, "Lower bound, or None.")
+      .def_ro("max", &model::ParameterRow::max, "Upper bound, or None.")
+      .def("__repr__", [](const model::ParameterRow& r) {
+        return nb::str("ParameterRow({!r})").format(r.name);
+      });
 
   // ---------------------------------------------------------------- shape -----
   read_only_class<model::Plane>(m, "Plane", "Flat surface z = 0 (read-only copy).");

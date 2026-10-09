@@ -47,11 +47,6 @@ std::uint16_t wavelength_index(const compile::CompiledSystem& system,
   return wavelength.value_or(system.reference_wavelength());
 }
 
-namespace {
-
-/// Issues every warning of `diagnostics` as a raytatouille.errors.RaytatouilleWarning (ADR 0022).
-/// Called from C++, stacklevel 1 is already the Python line that called compile(). An error
-/// raised by a warnings filter ("error") propagates as that Python exception.
 void warn(const std::vector<model::Diagnostic>& diagnostics) {
   for (const model::Diagnostic& d : diagnostics) {
     if (d.severity != model::Severity::Warning) continue;
@@ -61,6 +56,8 @@ void warn(const std::vector<model::Diagnostic>& diagnostics) {
         .attr("warn")(category(d.message, d.code, d.location), "stacklevel"_a = 1);
   }
 }
+
+namespace {
 
 /// The ghost paths of a GhostSystem, bound with columns() (#123, #133).
 struct GhostPaths {

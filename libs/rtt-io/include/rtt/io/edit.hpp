@@ -5,8 +5,10 @@
 /// (ADR 0024). Patches cross this interface as JSON text, so nlohmann stays private (ADR 0020).
 ///
 /// The edit form is the system file with every value written: defaults are not omitted, every
-/// Param is an object {"value": ..., "variable": ...} (plus "pickup" if set), optional members
-/// without a value (surface aperture, element material, pickup) are missing. It has the same
+/// unbound Param is an object {"value": ..., "variable": ...} (plus "min"/"max" if set), a bound
+/// one {"param": ...} (ADR 0029); every row of the parameter table carries "variable"; optional
+/// members without a value (surface aperture, element material, bounds, configurations when
+/// there are none) are missing. It has the same
 /// schema and schema version as the file; units and signs are those of the file format (mm,
 /// um, degree for keys ending in _deg; docs/architecture.md). Every JSON pointer into the
 /// canonical file is also valid in the edit form.

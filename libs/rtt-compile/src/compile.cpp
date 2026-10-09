@@ -886,6 +886,98 @@ void require_stop(const CompiledSystem& system, PathId path) {
   if (!has_stop) throw NoStopError(p.name, "/paths/" + std::to_string(path.index));
 }
 
+namespace {
+
+/// Interim state between #162 and #163/#165 (removed there): schema 0.4 reads relative poses and
+/// bound Params, compile does not evaluate them yet. Rejected with a pointer instead of using
+/// the parent as reference or the meaningless value of a bound Param.
+class InterimCheck {
+ public:
+  std::vector<model::Diagnostic> run(const model::System& s) {
+    param(s.object.distance, "/object/distance");
+    param(s.aperture.value, "/aperture/value");
+    assembly(s.root, "/root");
+    return std::move(out_);
+  }
+
+ private:
+  void report(diagnostics::DiagnosticCode code, std::string location, std::string message) {
+    out_.push_back(
+        {code.severity(), std::move(location), std::move(message), std::string(code.str())});
+  }
+
+  void param(const model::Param& p, const std::string& loc) {
+    if (const std::optional<std::string>& name = p.param) {
+      report("param.unresolved", loc,
+             "a Param bound to the parameter table ('" + *name + "') is not evaluated yet (#165)");
+    }
+  }
+
+  void params(const std::vector<model::Param>& list, const std::string& loc) {
+    for (std::size_t k = 0; k < list.size(); ++k) param(list[k], loc + "/" + std::to_string(k));
+  }
+
+  void pose(const model::Pose& p, const std::string& loc) {
+    if (p.reference != model::PoseReference::Absolute) {
+      report("pose.reference_unsupported", loc + "/pose/reference",
+             "relative placement is not evaluated yet (#163)");
+    }
+    for (std::size_t k = 0; k < 3; ++k) {
+      param(p.position[k], loc + "/pose/position/" + std::to_string(k));
+      param(p.rotation_deg[k], loc + "/pose/rotation_deg/" + std::to_string(k));
+    }
+  }
+
+  void assembly(const model::Assembly& a, const std::string& loc) {
+    pose(a.pose, loc);
+    for (std::size_t i = 0; i < a.children.size(); ++i) {
+      const std::string child = loc + "/children/" + std::to_string(i);
+      if (const auto* sub = std::get_if<model::Assembly>(&a.children[i].value)) {
+        assembly(*sub, child);
+      } else {
+        element(std::get<model::Element>(a.children[i].value), child);
+      }
+    }
+  }
+
+  void element(const model::Element& e, const std::string& loc) {
+    pose(e.pose, loc);
+    for (std::size_t i = 0; i < e.surfaces.size(); ++i) {
+      const model::Surface& s = e.surfaces[i];
+      const std::string sloc = loc + "/surfaces/" + std::to_string(i);
+      pose(s.pose, sloc);
+      const std::string base = sloc + "/shape/base";
+      if (const auto* c = std::get_if<model::Conic>(&s.shape.base)) {
+        param(c->radius, base + "/radius");
+        param(c->conic, base + "/conic");
+      } else if (const auto* a = std::get_if<model::EvenAsphere>(&s.shape.base)) {
+        param(a->radius, base + "/radius");
+        param(a->conic, base + "/conic");
+        params(a->coefficients, base + "/coefficients");
+      }
+      for (std::size_t t = 0; t < s.shape.terms.size(); ++t) {
+        const auto& z = std::get<model::ZernikeSag>(s.shape.terms[t]);
+        const std::string tloc = sloc + "/shape/terms/" + std::to_string(t);
+        param(z.normalization_radius, tloc + "/normalization_radius");
+        params(z.coefficients, tloc + "/coefficients");
+      }
+      for (std::size_t k = 0; k < s.phases.size(); ++k) {
+        const std::string ploc = sloc + "/phases/" + std::to_string(k);
+        if (const auto* g = std::get_if<model::LinearGrating>(&s.phases[k])) {
+          param(g->lines_per_mm, ploc + "/lines_per_mm");
+        } else if (const auto* r = std::get_if<model::RadialPhase>(&s.phases[k])) {
+          param(r->normalization_radius, ploc + "/normalization_radius");
+          params(r->coefficients, ploc + "/coefficients");
+        }
+      }
+    }
+  }
+
+  std::vector<model::Diagnostic> out_;
+};
+
+}  // namespace
+
 CompiledSystem compile(const model::System& system, const material::MaterialLibrary& materials) {
   const coating::CoatingLibrary none;
   return compile(system, materials, none);
@@ -899,6 +991,9 @@ CompiledSystem compile(const model::System& system,
     std::erase_if(diagnostics,
                   [](const model::Diagnostic& d) { return d.severity != model::Severity::Error; });
     throw CompileError(std::move(diagnostics));
+  }
+  if (std::vector<model::Diagnostic> interim = InterimCheck().run(system); !interim.empty()) {
+    throw CompileError(std::move(interim));
   }
 
   Compiler compiler(system, materials, coatings);

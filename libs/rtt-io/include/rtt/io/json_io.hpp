@@ -6,17 +6,20 @@
 /// Parsing is strict: unknown keys, wrong types, wrong units and incompatible schema
 /// versions are errors. Writing is canonical: the same model always yields the same bytes,
 /// so `to_json(parse(text)) == text` holds for every canonical file. Files of an older supported
-/// schema version (0.1, 0.2) are migrated on reading: the event kind "diffract" of files before
-/// 0.3 is read as "transmit" with its order (ADR 0025). Writing always uses
-/// `model::kSchemaVersion`.
+/// schema version (0.1, 0.2, 0.3) are migrated on reading: the event kind "diffract" of files
+/// before 0.3 is read as "transmit" with its order (ADR 0025); the pickup of a Param in a file
+/// before 0.4 is dropped with the warning io.pickup_dropped, its value stays (ADR 0029). Forms of
+/// a newer version in an older file are errors. Writing always uses `model::kSchemaVersion`.
 
 #include <filesystem>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "rtt/model/system.hpp"
+#include "rtt/model/validate.hpp"
 
 namespace rtt::io {
 
@@ -33,10 +36,24 @@ class ParseError : public std::runtime_error {
   std::string pointer_;
 };
 
-/// Parses a system from JSON text. Throws ParseError.
+/// Parses a system from JSON text and appends the warnings of the reader to `warnings`
+/// (diagnostics with severity Warning, a registered code and the JSON pointer into `json_text`;
+/// in tree order, object keys sorted, arrays in order). Today the only warning is
+/// io.pickup_dropped of the migration 0.3 -> 0.4 (ADR 0029, point 6). Throws ParseError.
+[[nodiscard]] model::System parse_system(std::string_view json_text,
+                                         std::vector<model::Diagnostic>& warnings);
+
+/// parse_system() that drops the warnings of the reader: for files that need no migration, or
+/// where the caller does not report them. Throws ParseError.
 [[nodiscard]] model::System parse_system(std::string_view json_text);
 
-/// Reads a system file. Throws ParseError or std::runtime_error on I/O failure.
+/// Reads a system file and appends the warnings of the reader to `warnings` (as parse_system).
+/// Throws ParseError or std::runtime_error on I/O failure.
+[[nodiscard]] model::System load_system(const std::filesystem::path& file,
+                                        std::vector<model::Diagnostic>& warnings);
+
+/// load_system() that drops the warnings of the reader. Throws ParseError or std::runtime_error
+/// on I/O failure.
 [[nodiscard]] model::System load_system(const std::filesystem::path& file);
 
 /// Canonical JSON text of a system (2-space indent, LF line ends, trailing newline,

@@ -168,9 +168,11 @@ class Editor:
 
     def set(self, pointer: str, value: Any) -> None:
         """Sets the value at ``pointer``: ``replace``, or ``add`` for a missing member of an
-        object (an optional member such as a surface aperture). A number set on a Param object
-        goes to ``pointer + "/value"`` so that ``variable`` and ``pickup`` stay. A missing array
-        element is not added (that is ``insert``): it raises EditError edit.path_not_found.
+        object (an optional member such as a surface aperture). A number set on an unbound Param
+        object goes to ``pointer + "/value"`` so that ``variable`` and the bounds stay; on a Param
+        bound to a parameter row ({"param": ...}, ADR 0029) it replaces the whole object, which
+        unbinds it. A missing array element is not added (that is ``insert``): it raises
+        EditError edit.path_not_found.
 
         Raises ValueError for an invalid pointer, EditError if the patch fails (the Editor is
         unchanged)."""

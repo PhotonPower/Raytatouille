@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.3.0",
+  "schema_version": "0.4.0",
   "name": "Polarizer, quarter-wave plate at 45 deg and crossed polarizer with extinction ratio 1e-4",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},

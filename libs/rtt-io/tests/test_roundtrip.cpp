@@ -61,7 +61,11 @@ TEST_CASE("model -> file -> model preserves the model", "[io][roundtrip]") {
   // Exercise non-default parameter features.
   auto& lens = rtt::model::test::element(s, 1);
   lens.pose.position[2].variable = true;
-  lens.surfaces[1].pose.position[2].pickup = "L1.S1.thickness";
+  rtt::model::ParameterRow thickness;  // a bound Param instead of the pickup of 0.3 (#162)
+  thickness.name = "T";
+  thickness.form = 4.0;
+  s.parameters = {thickness};
+  lens.surfaces[1].pose.position[2] = rtt::model::Param::bound("T");
   lens.surfaces[0].shape.terms.push_back(
       rtt::model::ZernikeSag{rtt::model::Param(12.7), {0.0, 1e-4, rtt::model::Param(-2e-5)}});
   s.object = {false, rtt::model::Param(250.0)};

@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.3.0",
+  "schema_version": "0.4.0",
   "name": "M4 acceptance: calcite walk-off (n_O = 1.6584, n_E = 1.4864, optic axis at 45 degree)",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},

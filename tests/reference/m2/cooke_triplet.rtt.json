@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.3.0",
+  "schema_version": "0.4.0",
   "name": "Cooke triplet (Geiser), f = 50 mm, f/4, 20 deg; Sasian OPTI 517 L20",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [

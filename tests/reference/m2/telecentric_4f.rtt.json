@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.3.0",
+  "schema_version": "0.4.0",
   "name": "Double-telecentric 4f relay of two Descartes lenses (f = 128 mm, conic -n^2)",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},

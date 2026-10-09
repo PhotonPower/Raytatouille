@@ -187,3 +187,59 @@ def test_schema_0_3_keys_are_accepted(mutate):
 )
 def test_schema_0_3_errors_are_rejected(mutate):
     assert not VALIDATOR.is_valid(_broken(mutate))
+
+
+# ---- schema 0.4 (#162): relative poses (ADR 0028), parameter table (ADR 0029) ----
+
+def _tour():
+    return copy.deepcopy(load(ROOT / "tests" / "reference" / "m0" / "feature_tour.rtt.json"))
+
+
+def _with(mutate):
+    doc = _tour()
+    mutate(doc)
+    return doc
+
+
+def _a_s2_z(d):
+    return d["root"]["children"][2]["surfaces"][1]["pose"]["position"]
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda d: _a_s2_z(d).__setitem__(2, {"param": "A_S2_Z"}),
+        lambda d: _a_s2_z(d).__setitem__(2, {"value": 6.0, "min": 0.0, "max": 10.0}),
+        lambda d: d["root"]["children"][2].update(
+            pose={"reference": "relative_to_preceding", "order": "rotate_first"}),
+        lambda d: d["root"]["children"][2].update(pose={"reference": "relative_to_sibling"}),
+        lambda d: d["parameters"].append({"name": "_x9", "values": [1.0, 2.0]}),
+    ],
+    ids=["bound-param", "bounds", "relative-rotate-first", "sibling", "values-row"],
+)
+def test_0_4_forms_are_accepted(mutate):
+    VALIDATOR.validate(_with(mutate))
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda d: _a_s2_z(d).__setitem__(2, {"value": 6.0, "pickup": "2 * 3"}),
+        lambda d: _a_s2_z(d).__setitem__(2, {"param": "A_S2_Z", "value": 6.0}),
+        lambda d: _a_s2_z(d).__setitem__(2, {"param": 3}),
+        lambda d: d["root"]["children"][2].update(pose={"reference": "relative"}),
+        lambda d: d["root"]["children"][2].update(pose={"order": "zyx"}),
+        lambda d: d.update(configurations=[]),
+        lambda d: d.update(configurations=["near"]),
+        lambda d: d["parameters"].append({"name": "X"}),
+        lambda d: d["parameters"].append({"name": "X", "value": 1.0, "expression": "1"}),
+        lambda d: d["parameters"].append({"name": "X", "expression": "1", "min": 0.0}),
+        lambda d: d["parameters"].append({"name": "X", "values": 1.0}),
+        lambda d: d["parameters"].append({"name": "X", "value": 1.0, "weight": 1.0}),
+    ],
+    ids=["pickup", "param-with-value", "param-not-string", "reference-value", "order-value",
+         "empty-configurations", "configuration-string", "row-without-form", "row-two-forms",
+         "bounds-at-expression", "values-not-array", "row-unknown-key"],
+)
+def test_0_4_errors_are_rejected(mutate):
+    assert not VALIDATOR.is_valid(_with(mutate))

@@ -24,10 +24,16 @@
 
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/model/system.hpp"
+#include "rtt/model/validate.hpp"
 #include "rtt/trace/ray_batch.hpp"
 #include "rtt/trace/run_control.hpp"
 
 namespace rtt::py {
+
+/// Issues every warning of `diagnostics` as a raytatouille.errors.RaytatouilleWarning (ADR 0022).
+/// Called from C++, stacklevel 1 is already the Python line that called the bound function. An
+/// error raised by a warnings filter ("error") propagates as that Python exception.
+void warn(const std::vector<model::Diagnostic>& diagnostics);
 
 /// A path given from Python: index into CompiledSystem paths or path name.
 using PathArg = std::variant<std::uint32_t, std::string>;

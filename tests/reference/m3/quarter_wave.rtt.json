@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.3.0",
+  "schema_version": "0.4.0",
   "name": "M3 acceptance: x polarizer and an ideal quarter-wave plate with its fast axis at 45 deg",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},

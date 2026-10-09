@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/PhotonPower/Raytatouille/schema/raytatouille.schema.json",
-  "title": "Raytatouille system file (.rtt.json), schema 0.3",
-  "description": "Units: lengths mm, wavelengths um, angles in degree where the key ends in _deg. Parsing in rtt-io is the reference; this schema must accept exactly what rtt-io accepts structurally for the current schema version. rtt-io migrates older files (0.1, 0.2); run rtt format before checking them against this schema.",
+  "title": "Raytatouille system file (.rtt.json), schema 0.4",
+  "description": "Units: lengths mm, wavelengths um, angles in degree where the key ends in _deg. Parsing in rtt-io is the reference; this schema must accept exactly what rtt-io accepts structurally for the current schema version. rtt-io migrates older files (0.1, 0.2, 0.3); run rtt format before checking them against this schema. Semantic rules (names of parameter rows, one value per configuration, bounds) are checked by validate, not here.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "units", "wavelengths", "aperture", "fields", "root", "paths"],
   "properties": {
-    "schema_version": {"type": "string", "pattern": "^0\\.3\\.[0-9]+$"},
+    "schema_version": {"type": "string", "pattern": "^0\\.4\\.[0-9]+$"},
     "name": {"type": "string"},
     "units": {
       "type": "object",
@@ -74,11 +74,28 @@
         }
       }
     },
+    "configurations": {
+      "description": "Configurations (ADR 0029): columns of the parameter table. Omitted for only the nominal configuration; never empty.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {"name": {"type": "string"}}
+      }
+    },
+    "parameters": {
+      "description": "Parameter table (ADR 0029) in evaluation order.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/parameter_row"}
+    },
     "root": {"$ref": "#/$defs/assembly"},
     "paths": {"type": "array", "items": {"$ref": "#/$defs/path"}}
   },
   "$defs": {
     "param": {
+      "description": "A number, a value with optimizer flags and bounds, or a reference to a row of the parameter table without a value of its own (ADR 0029).",
       "oneOf": [
         {"type": "number"},
         {
@@ -88,10 +105,35 @@
           "properties": {
             "value": {"type": "number"},
             "variable": {"type": "boolean"},
-            "pickup": {"type": "string"}
+            "min": {"type": "number"},
+            "max": {"type": "number"}
           }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["param"],
+          "properties": {"param": {"type": "string"}}
         }
       ]
+    },
+    "parameter_row": {
+      "description": "A name and exactly one of value (all configurations), values (one per configuration) and expression (earlier rows); bounds only with value or values.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {"type": "string"},
+        "value": {"type": "number"},
+        "values": {"type": "array", "items": {"type": "number"}},
+        "expression": {"type": "string"},
+        "variable": {"type": "boolean"},
+        "min": {"type": "number"},
+        "max": {"type": "number"}
+      },
+      "oneOf": [{"required": ["value"]}, {"required": ["values"]}, {"required": ["expression"]}],
+      "if": {"required": ["expression"]},
+      "then": {"properties": {"min": false, "max": false}}
     },
     "param_list": {"type": "array", "items": {"$ref": "#/$defs/param"}},
     "param3": {"type": "array", "items": {"$ref": "#/$defs/param"}, "minItems": 3, "maxItems": 3},
@@ -100,6 +142,8 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "reference": {"enum": ["absolute", "relative_to_preceding", "relative_to_sibling"]},
+        "order": {"enum": ["translate_first", "rotate_first"]},
         "position": {"$ref": "#/$defs/param3"},
         "rotation_deg": {"$ref": "#/$defs/param3"},
         "pivot": {"$ref": "#/$defs/vec3"}
