@@ -34,6 +34,7 @@ Neue Entscheidungen bekommen die nächste Nummer. Bestehende ADRs werden nicht u
 | [0028](0028.md) | Relative Platzierung (Pose.reference, Pose.order) | angenommen |
 | [0029](0029.md) | Parametertabelle und Konfigurationen | angenommen |
 | [0030](0030.md) | Optimierung (Merit-Funktion, Operanden, Levenberg-Marquardt) | angenommen |
+| [0031](0031.md) | Ideale Linse und ideale Zylinderlinse | vorgeschlagen |
 
 ## Vorlage
 
