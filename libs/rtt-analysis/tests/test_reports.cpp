@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <numbers>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -227,6 +228,12 @@ TEST_CASE("dimension report: larger semi-diameter, circumscribed apertures, tilt
   CHECK(s.semi_diameter_first == 12.7);
   CHECK(std::isnan(s.edge_thickness));
   CHECK(std::isnan(s.diameter));
+  // A second surface tilted by 1e-9 rad is not coaxial (the bound is 1e-12 rad on the
+  // transverse part; review of #188).
+  lens.surfaces[1].aperture = rtt::model::CircularAperture{12.7, 0.0};
+  lens.surfaces[1].pose.rotation_deg[0] = rtt::model::Param(1e-9 * 180.0 / std::numbers::pi);
+  cs = rtt::compile::compile(sys, MaterialLibrary{});
+  CHECK_FALSE(rtt::analysis::dimension_report(cs).segments.at(0).coaxial);
   // A tilted second surface: not coaxial, the thicknesses are NaN.
   lens.surfaces[1].aperture = rtt::model::CircularAperture{12.7, 0.0};
   lens.surfaces[1].pose.rotation_deg[0] = rtt::model::Param(5.0);
@@ -235,4 +242,43 @@ TEST_CASE("dimension report: larger semi-diameter, circumscribed apertures, tilt
   CHECK_FALSE(s.coaxial);
   CHECK(std::isnan(s.centre_thickness));
   CHECK(std::isnan(s.edge_thickness));
+}
+
+TEST_CASE("dimension report: a turned surface equals the mirrored one", "[reports]") {
+  // Review of #188: L1.S2 as a sphere R2 = -60 at z = 4, and as R2 = +60 turned by 180 deg about
+  // x at the same vertex (its z axis antiparallel): the same glass, so the same coaxial segment,
+  // centre thickness and edge thickness (the turn by 180 deg rounds to a few 1e-16).
+  System sys = load("m1/singlet_const.rtt.json");
+  Element& lens = std::get<Element>(sys.root.children[1].value);
+  lens.surfaces[1].shape.base = rtt::model::Conic{rtt::model::Param(-60.0), rtt::model::Param(0.0)};
+  const SegmentDimensions mirrored =
+      rtt::analysis::dimension_report(rtt::compile::compile(sys, MaterialLibrary{})).segments.at(0);
+  lens.surfaces[1].shape.base = rtt::model::Conic{rtt::model::Param(60.0), rtt::model::Param(0.0)};
+  lens.surfaces[1].pose.rotation_deg[0] = rtt::model::Param(180.0);
+  const SegmentDimensions turned =
+      rtt::analysis::dimension_report(rtt::compile::compile(sys, MaterialLibrary{})).segments.at(0);
+  CHECK(mirrored.coaxial);
+  CHECK(turned.coaxial);
+  CHECK(std::abs(turned.centre_thickness - 4.0) <= 1e-12);
+  CHECK(std::abs(mirrored.centre_thickness - 4.0) <= 1e-12);
+  CHECK(std::abs(turned.edge_thickness - mirrored.edge_thickness) <= 1e-12);
+  // Closed form: t + sag2(h) - sag1(h) with sag2 = -(60 - sqrt(60^2 - h^2)) (R2 = -60).
+  const double h = 12.7;
+  const double expected =
+      4.0 - (60.0 - std::sqrt(3600.0 - h * h)) - (51.68 - std::sqrt(51.68 * 51.68 - h * h));
+  CHECK(std::abs(mirrored.edge_thickness - expected) <= 1e-12);
+}
+
+TEST_CASE("dimension report: relative placement gives the same dimensions", "[reports]") {
+  // L1.S2 placed relative to L1.S1 (ADR 0028) at 4 mm instead of absolutely at z = 4: the report
+  // reads the compiled geometry, so nothing changes.
+  System sys = load("m1/singlet_const.rtt.json");
+  const SegmentDimensions absolute =
+      rtt::analysis::dimension_report(rtt::compile::compile(sys, MaterialLibrary{})).segments.at(0);
+  std::get<Element>(sys.root.children[1].value).surfaces[1].pose.reference =
+      rtt::model::PoseReference::RelativeToPreceding;
+  const SegmentDimensions relative =
+      rtt::analysis::dimension_report(rtt::compile::compile(sys, MaterialLibrary{})).segments.at(0);
+  CHECK(relative.centre_thickness == absolute.centre_thickness);
+  CHECK(relative.edge_thickness == absolute.edge_thickness);
 }

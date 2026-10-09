@@ -61,7 +61,11 @@ double sag(const compile::CompiledSystem& system, std::uint32_t surface, double 
 }
 
 /// Tolerances of the coaxiality test (documented at SegmentDimensions::coaxial).
-constexpr double kAxisTolerance = 1e-12;   // 1 - |z_j . z_k|
+// The axis of the second surface in the frame of the first is (sin t cos p, sin t sin p, cos t)
+// for a tilt t: its transverse part is sin t, so 1e-12 bounds the tilt to 1e-12 rad (review of
+// #188; 1 - |cos t| would let t up to 1.4e-6 rad pass). Rounding of the composed transforms is a
+// few 1e-16, far below. The vertex offset 1e-9 mm is the same bound at lever arms up to 1000 mm.
+constexpr double kAxisTolerance = 1e-12;   // |transverse part of z_k in the frame of j| = sin t
 constexpr double kVertexTolerance = 1e-9;  // mm, lateral offset of vertex k from the axis of j
 
 SegmentDimensions segment(const compile::CompiledSystem& system,
@@ -85,7 +89,7 @@ SegmentDimensions segment(const compile::CompiledSystem& system,
       first.to_local.apply_point(second.to_global.apply_point(math::Vec3::Zero()));
   const math::Vec3 axis =
       first.to_local.apply_vector(second.to_global.apply_vector(math::Vec3::UnitZ()));
-  d.coaxial = 1.0 - std::abs(axis.z()) <= kAxisTolerance &&
+  d.coaxial = std::hypot(axis.x(), axis.y()) <= kAxisTolerance &&
               std::hypot(vertex.x(), vertex.y()) <= kVertexTolerance;
   if (!d.coaxial) {
     d.centre_thickness = kNaN;

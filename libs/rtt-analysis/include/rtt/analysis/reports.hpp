@@ -23,8 +23,7 @@ namespace rtt::analysis {
 
 /// One row of the raytrace report: the state of one ray after one event of the path (slot
 /// s >= 1) or at its start (slot 0). Positions in mm, directions as unit vectors; "local" is the
-/// coordinate frame of the event's surface (CompiledSurface::to_local), NaN in slot 0 and after
-/// the ray stopped (the slots beyond RayPaths::count).
+/// coordinate frame of the event's surface (CompiledSurface::to_local), NaN in slot 0.
 struct RaytraceRow {
   std::size_t ray = 0;                        ///< index of the ray in the start batch
   std::size_t slot = 0;                       ///< 0 = start, s = after event s - 1
@@ -69,8 +68,10 @@ struct SystemReport {
   std::size_t surface_count = 0;      ///< surfaces of the compiled system
   std::size_t event_count = 0;        ///< events of the path
   std::optional<std::uint32_t> stop;  ///< stop surface on the path, if any
-  /// Paraxial data; none if the path has none (not rotationally symmetric, crystal, order != 0),
-  /// with the reason in `warnings` (report.paraxial_unavailable).
+  /// Paraxial data; none if paraxial::prescription rejects the path (paraxial::ParaxialError:
+  /// e.g. not rotationally symmetric, a crystal, an order != 0, a stop aperture that is not
+  /// circular, a field the chief ray cannot be built for), with the error's message as the
+  /// reason in `warnings` (report.paraxial_unavailable).
   std::optional<paraxial::Prescription> prescription;
   std::vector<model::Diagnostic> warnings;
 };
@@ -90,8 +91,9 @@ enum class ApertureKind : std::uint8_t { None, Circular, Rectangular, Elliptical
 struct SegmentDimensions {
   std::uint32_t element = 0;        ///< index into CompiledSystem::elements()
   std::uint32_t first_surface = 0;  ///< surface j (index into CompiledSystem::surfaces())
-  /// True if surface j + 1 shares the axis of surface j (z axes parallel or antiparallel within
-  /// 1e-12, vertex on the axis within 1e-9 mm); otherwise the thicknesses are NaN.
+  /// True if surface j + 1 shares the axis of surface j: its z axis parallel or antiparallel
+  /// (a turned surface) within a tilt of 1e-12 rad, its vertex on the axis within 1e-9 mm;
+  /// otherwise the thicknesses are NaN.
   bool coaxial = true;
   /// Centre thickness: distance from the vertex of surface j to that of surface j + 1 along the
   /// z axis of surface j, mm (from the compiled geometry, so relative placement and

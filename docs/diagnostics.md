@@ -121,7 +121,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `pose.no_sibling` | Fehler | `relative_to_sibling` am ersten Kind oder an der Wurzel | validate | `…/pose/reference` |
 | `pose.relative_first_surface` | Fehler | erste Fläche eines Elements relativ platziert (beide Arten; einzige Diagnose an diesem Ort) | validate | `…/s/pose/reference` |
 | `rays.lost` | Warnung | mehr Strahlen verloren als die Schwelle `lost_warning_fraction` der Analyse (Standard 50 %; Vignettierung am Feldrand ist gewollt) | analysis | Fläche, an der die meisten verlorenen Strahlen enden (`…/s`), sonst leer |
-| `report.paraxial_unavailable` | Warnung | Systemdaten-Report ohne paraxiale Daten, weil `prescription` den Pfad ablehnt (nicht rotationssymmetrisch, Kristall, Ordnung ≠ 0); die übrigen Angaben bleiben | analysis | `/paths/i` |
+| `report.paraxial_unavailable` | Warnung | Systemdaten-Report ohne paraxiale Daten, weil `prescription` den Pfad ablehnt (`ParaxialError`, dessen Meldung der Grund ist: z. B. nicht rotationssymmetrisch, Kristall, Ordnung ≠ 0, nicht kreisförmige Stop-Apertur, Feld ohne Hauptstrahl); die übrigen Angaben bleiben | analysis | `/paths/i` |
 | `shape.asphere_without_coefficients` | Warnung | gerade Asphäre ohne Koeffizienten | validate | `…/s/shape/base/coefficients` |
 | `shape.radius_invalid` | Fehler | Radius null oder nicht endlich | validate | `…/s/shape/base/radius` |
 | `shape.zernike_radius_invalid` | Fehler | Zernike-Normierungsradius nicht endlich oder ≤ 0 mm | validate | `…/s/shape/terms/i/normalization_radius` |
