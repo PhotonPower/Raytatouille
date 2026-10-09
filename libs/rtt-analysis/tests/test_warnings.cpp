@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "rtt/analysis/opd.hpp"
+#include "rtt/analysis/reports.hpp"
 #include "rtt/analysis/spot.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/diagnostics/codes.hpp"
@@ -145,8 +146,24 @@ TEST_CASE("no stop.clips_beam for marginal rays aimed exactly at the stop rim",
   }
 }
 
+TEST_CASE("report.paraxial_unavailable for a path the prescription rejects",
+          "[analysis][warnings]") {
+  // The system report of a diffraction order (#177): no paraxial data, a warning at the path.
+  const CompiledSystem cs = rtt::compile::compile(
+      rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m4/grating_transmission.rtt.json"),
+      rtt::material::MaterialLibrary{});
+  const PathId order = *cs.find_path("order +1");
+  const rtt::analysis::SystemReport r = rtt::analysis::system_report(cs, order, 0);
+  REQUIRE(r.warnings.size() == 1);
+  CHECK(r.warnings[0].code == "report.paraxial_unavailable");
+  CHECK(r.warnings[0].location == "/paths/" + std::to_string(order.index));
+  // A path with paraxial data has none.
+  CHECK(rtt::analysis::system_report(cs, *cs.find_path("order 0"), 0).warnings.empty());
+}
+
 TEST_CASE("every analysis code has a case in this file", "[analysis][warnings]") {
-  const std::set<std::string> covered = {"rays.lost", "stop.clips_beam"};
+  const std::set<std::string> covered = {"rays.lost", "stop.clips_beam",
+                                         "report.paraxial_unavailable"};
   for (const rtt::diagnostics::CodeInfo& info : rtt::diagnostics::kCodes) {
     if (info.producer != "analysis") continue;
     INFO("no case for " << info.code);
