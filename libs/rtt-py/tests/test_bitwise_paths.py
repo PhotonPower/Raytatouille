@@ -132,6 +132,15 @@ def systems() -> Systems:
     data["root"]["children"][3]["surfaces"][0]["aperture"] = {"type": "circular", "radius": 1.0}
     schott = rt.MaterialLibrary()
     schott.add_catalog(CATALOG_DIR / "m2" / "schott.agf")
+    schott_bk7 = rt.MaterialLibrary()  # N-BK7 of the feature tour
+    schott_bk7.add_catalog(CATALOG_DIR / "schott.agf")
+    # The feature tour shows every format element and does not compile as it is: without the
+    # Zernike term of A.S1 (M8) and with a bare Fresnel A.S1 instead of the coating "AR_VIS"
+    # (no catalog), as in paths_cases.cpp.
+    tour = json.loads(rt.load(REFERENCE_DIR / "m0" / "feature_tour.rtt.json").to_json())
+    a_s1 = tour["root"]["children"][2]["surfaces"][0]
+    del a_s1["shape"]["terms"]
+    a_s1["interaction"] = {"type": "fresnel"}
     return {
         "michelson": rt.compile(rt.load(REFERENCE_DIR / "m4" / "michelson_offset.rtt.json")),
         "michelson_small": rt.compile(rt.System.from_json(json.dumps(data))),
@@ -140,6 +149,12 @@ def systems() -> Systems:
                                         "main"),
         "cooke": rt.compile_with_ghosts(rt.load(REFERENCE_DIR / "m2" / "cooke_triplet.rtt.json"),
                                         "main", materials=schott),
+        # M4 acceptance (#135)
+        "ghost_plates": rt.compile_with_ghosts(
+            rt.load(REFERENCE_DIR / "m4" / "ghost_plates.rtt.json"), "main"),
+        "ghost_singlet": rt.compile_with_ghosts(
+            rt.load(REFERENCE_DIR / "m4" / "ghost_singlet.rtt.json"), "main"),
+        "tour": rt.compile(rt.System.from_json(json.dumps(tour)), materials=schott_bk7),
     }
 
 
@@ -174,7 +189,24 @@ CASES: dict[str, Case] = {
     "cooke_ghosts": lambda s, t: flatten_ghosts(s["cooke"]),
     "cooke_ranking": lambda s, t: flatten_ranking(an.ghost_ranking(
         s["cooke"], 1, resolution_radius=0.01, threads=t)),
+    # M4 acceptance (#135)
+    "ghost_plates_ghosts": lambda s, t: flatten_ghosts(s["ghost_plates"]),
+    "ghost_plates_ranking": lambda s, t: flatten_ranking(an.ghost_ranking(
+        s["ghost_plates"], 0, threads=t)),
+    "ghost_singlet_ghosts": lambda s, t: flatten_ghosts(s["ghost_singlet"]),
+    "ghost_singlet_ranking": lambda s, t: flatten_ranking(an.ghost_ranking(
+        s["ghost_singlet"], 0, threads=t)),
+    "tour_first_order": lambda s, t: flatten_transmission(an.path_transmission(
+        s["tour"], "first order", start=collimated_bundle(), threads=t)),
 }
+
+
+# The annular stop of the feature tour clips the collimated bundle on purpose (#135): only that
+# case filters stop.clips_beam, the other cases keep the warning as a guard.
+CLIPS_BEAM = pytest.mark.filterwarnings(
+    r"ignore:warning \[stop\.clips_beam\]:raytatouille.errors.RaytatouilleWarning")
+CASE_PARAMS = [pytest.param(name, marks=CLIPS_BEAM) if name.startswith("tour_") else name
+               for name in CASES]
 
 
 @pytest.fixture(scope="module")
@@ -186,7 +218,7 @@ def compiled_systems() -> Systems:
 @pytest.mark.filterwarnings(
     r"ignore:warning \[rays\.lost\]:raytatouille.errors.RaytatouilleWarning")
 @pytest.mark.parametrize("threads", [1, 4], ids=lambda t: f"py{t}threads")
-@pytest.mark.parametrize("name", list(CASES))
+@pytest.mark.parametrize("name", CASE_PARAMS)
 def test_paths_equal_cpp_bitwise(name: str, threads: int, cpp_dir: Path,
                                  compiled_systems: Systems) -> None:
     results = CASES[name](compiled_systems, threads)
@@ -214,3 +246,14 @@ def test_the_cases_separate_status_and_values(compiled_systems: Systems) -> None
     cooke = CASES["cooke_ranking"](compiled_systems, 1)
     assert cooke["path"].size == 15
     assert np.unique(cooke["relative_irradiance"]).size > 1
+    # M4 (#135): six plate ghosts with different rho, a singlet ghost with a paraxial focus, and
+    # the feature tour with lost rays (annular stop) next to arrived ones.
+    plates = CASES["ghost_plates_ranking"](compiled_systems, 1)
+    assert plates["path"].size == 6 and np.unique(plates["relative_irradiance"]).size == 6
+    singlet = CASES["ghost_singlet_ranking"](compiled_systems, 1)
+    assert np.isfinite(singlet["focus_offset"]).all()
+    with pytest.warns(rt.errors.RaytatouilleWarning, match=r"stop\.clips_beam"):
+        tour = CASES["tour_first_order"](compiled_systems, 1)
+    assert {int(RayStatus.ALIVE), int(RayStatus.VIGNETTED)} <= set(np.unique(tour["status"]).tolist())
+    assert np.unique(tour["weight"][tour["status"] == int(RayStatus.ALIVE)]).size > 1
+

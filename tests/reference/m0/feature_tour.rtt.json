@@ -180,7 +180,7 @@
         {"surface": "STO", "kind": "transmit"},
         {"surface": "A.S1"},
         {"surface": "A.S2"},
-        {"surface": "G.S1", "kind": "transmit", "order": 1},
+        {"surface": "G.S1", "order": 1},
         {"surface": "G.S2"},
         {"surface": "IMG", "kind": "transmit"}
       ]
@@ -193,11 +193,11 @@
         {"surface": "STO", "kind": "transmit"},
         {"surface": "A.S1"},
         {"surface": "A.S2"},
-        {"surface": "G.S1", "kind": "transmit", "order": 1},
+        {"surface": "G.S1", "order": 1},
         {"surface": "G.S2", "kind": "reflect"},
-        {"surface": "G.S1", "kind": "transmit", "order": -1},
+        {"surface": "G.S1", "order": -1},
         {"surface": "A.S2", "kind": "reflect"},
-        {"surface": "G.S1", "kind": "transmit", "order": 1},
+        {"surface": "G.S1", "order": 1},
         {"surface": "G.S2"},
         {"surface": "IMG", "kind": "transmit"}
       ]
