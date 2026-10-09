@@ -17,6 +17,7 @@ if(RTT_BUILD_TESTS)
             tests/test_sources.cpp tests/test_interactions.cpp tests/test_ray_paths.cpp
             tests/test_run_control.cpp tests/test_parallel_aiming.cpp
             tests/test_diffraction.cpp tests/test_crystal_trace.cpp tests/test_relative_trace.cpp
+            tests/test_gauss_pupil.cpp
     LIBS rtt::trace rtt::io rtt::polar rtt::coating rtt::model_test_support TBB::tbb)
   target_compile_definitions(rtt_trace_tests PRIVATE
     RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs")
