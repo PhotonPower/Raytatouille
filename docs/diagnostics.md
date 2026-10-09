@@ -2,7 +2,7 @@
 
 Jede Diagnose (`rtt::model::Diagnostic`, in Python `rt.Diagnostic`) trägt einen stabilen Code in Punktnotation `<gruppe>.<was>` (ADR 0022). Dazu kommen Schwere, JSON-Pointer und Meldung. Der Code ist die maschinenlesbare Ursache; die Meldung ist für Menschen und darf sich ändern.
 
-**Stabilitätsversprechen:** Ein Code wird nie umbenannt, wiederverwendet oder umgedeutet. Neue Codes kommen nur hinzu. Ein Code, der nicht mehr erzeugt wird, bleibt in dieser Liste und wird als „nicht mehr erzeugt“ markiert. Ausnahme: Ein Zwischencode zwischen zwei Releases (in der Bedeutung als „Zwischenstand“ markiert, z. B. `param.unresolved`) darf vor dem nächsten Release wieder entfallen, weil er nie stabil veröffentlicht war (ADR 0022).
+**Stabilitätsversprechen:** Ein Code wird nie umbenannt, wiederverwendet oder umgedeutet. Neue Codes kommen nur hinzu. Ein Code, der nicht mehr erzeugt wird, bleibt in dieser Liste und wird als „nicht mehr erzeugt“ markiert. Ausnahme: Ein Zwischencode zwischen zwei Releases (in der Bedeutung als „Zwischenstand“ markiert) darf vor dem nächsten Release wieder entfallen, weil er nie stabil veröffentlicht war (ADR 0022).
 
 **Registry:** `libs/rtt-diagnostics/include/rtt/diagnostics/codes.hpp` (Schicht Basis, header-only), in Python `rt.diagnostics.CODES`.
 - Ein Erzeuger kann nur registrierte Codes verwenden. Der Typ `DiagnosticCode` prüft das beim Kompilieren, ein Tippfehler ist ein Compile-Fehler.
@@ -42,6 +42,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `coating.thickness_invalid` | Fehler | Schichtdicke nicht berechenbar (z. B. QWOT mit Re n ≤ 0) | compile | `…/s/interaction/name` |
 | `coating.unknown` | Fehler | Beschichtungsreferenz nicht auflösbar | compile | `…/s/interaction/name` |
 | `coating.wavelength_out_of_range` | Fehler | Systemwellenlänge außerhalb des Bereichs eines Schichtmaterials | compile | `…/s/interaction/name` |
+| `config.unknown` | Fehler | Konfigurationsindex von compile größer oder gleich der Zahl der Konfigurationen (ADR 0029, Punkt 5) | compile | `/configurations`, ohne Abschnitt leer |
 | `configurations.name_duplicate` | Fehler | Name einer Konfiguration doppelt | validate | `/configurations/k/name` (zweites Vorkommen) |
 | `configurations.name_invalid` | Fehler | Name einer Konfiguration leer oder nur Leerraum | validate | `/configurations/k/name` |
 | `crystal.absorbing` | Fehler | Teil eines Kristalls mit κ ≠ 0 bei einer Systemwellenlänge (in M4 nicht unterstützt, ADR 0026) | compile | `…/el/material/ordinary` bzw. `…/extraordinary` |
@@ -85,7 +86,6 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `object.distance_invalid` | Fehler | endlicher Objektabstand nicht endlich oder ≤ 0 mm | validate | `/object/distance` |
 | `param.bound_conflict` | Fehler | gebundenes Param (`param`) mit `variable` oder Grenzen (nur über die API) | validate | Pointer des Params |
 | `param.unknown_parameter` | Fehler | Param an eine Zeile gebunden, die es nicht gibt | validate | `…/param` |
-| `param.unresolved` | Fehler | Zwischenstand bis #165: gebundenes Param, das compile noch nicht auswertet | compile | Pointer des Params |
 | `parameters.expression_syntax` | Fehler | Ausdruck einer Zeile nicht nach der Grammatik von ADR 0029 (Zeichenposition in der Meldung), länger als 1000 Zeichen, tiefer als 64 geschachtelt oder mit einem Literal, das weder 0 noch ein endliches normales double ist (Überlauf, Unterlauf, subnormal) | validate | `/parameters/i/expression` |
 | `parameters.forward_reference` | Fehler | Ausdruck nutzt die eigene oder eine spätere Zeile | validate | `/parameters/i/expression` |
 | `parameters.name_duplicate` | Fehler | Name einer Zeile der Parametertabelle doppelt | validate | `/parameters/i/name` (zweites Vorkommen) |

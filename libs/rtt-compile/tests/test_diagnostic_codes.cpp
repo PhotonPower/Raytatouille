@@ -131,11 +131,11 @@ void make_doublet(System& s) {
 
 /// All diagnostics of `s`: validate() and, if it found no error, the errors of compile() or,
 /// if it succeeds, its warnings (CompiledSystem::diagnostics(), validate's warnings included).
-std::vector<Diagnostic> diagnose(const System& s) {
+std::vector<Diagnostic> diagnose(const System& s, std::size_t configuration = 0) {
   std::vector<Diagnostic> d = rtt::model::validate(s);
   if (rtt::model::has_errors(d)) return d;
   try {
-    return rtt::compile::compile(s, materials(), coatings()).diagnostics();
+    return rtt::compile::compile(s, materials(), coatings(), configuration).diagnostics();
   } catch (const CompileError& e) {
     d.insert(d.end(), e.diagnostics().begin(), e.diagnostics().end());
   }
@@ -146,6 +146,7 @@ struct Case {
   const char* code;
   const char* location;
   std::function<void(System&)> mutate;
+  std::size_t configuration = 0;  ///< compiled configuration (#165)
 };
 
 std::vector<Case> cases() {
@@ -496,12 +497,8 @@ std::vector<Case> cases() {
        [](System& s) { s.configurations = {{"a"}, {"a"}}; }},
       {"value.not_finite", "/root/children/1/pose/pivot/2",
        [](System& s) { element(s, 1).pose.pivot[2] = kNaN; }},
-      // compile, interim state until #165 (removed there with this case)
-      {"param.unresolved", "/root/children/2/pose/position/2",
-       [](System& s) {
-         s.parameters = {row("D", 106.363)};
-         element(s, 2).pose.position[2] = Param::bound("D");
-       }},
+      // compile: a configuration index beyond the configurations (#165)
+      {"config.unknown", "/configurations", [](System& s) { s.configurations = {{"a"}}; }, 1},
   };
 }
 
@@ -519,7 +516,7 @@ TEST_CASE("every registered code has a case that produces it at its location", "
     REQUIRE(info != nullptr);
     System s = singlet();
     c.mutate(s);
-    const std::vector<Diagnostic> d = diagnose(s);
+    const std::vector<Diagnostic> d = diagnose(s, c.configuration);
     bool found = false;
     for (const Diagnostic& x : d) {
       INFO(rtt::model::to_string(x));

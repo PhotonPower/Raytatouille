@@ -510,11 +510,9 @@ TEST_CASE("compiled system is independent of the model and const-only", "[compil
   REQUIRE(cs->media()[medium_index(*cs, "CONST:1.5168")].index[0] == Complex(1.5168, 0.0));
 }
 
-TEST_CASE("interim state until #165: bound Params are rejected", "[compile]") {
-  // Schema 0.4 reads them (#162), compile evaluates them only with #165 (parameter table).
-  // Until then compile rejects them instead of using the meaningless value 0 of a bound Param.
-  // This case goes with #165. Relative poses are evaluated since #163
-  // (test_relative_placement.cpp).
+TEST_CASE("bound Params take the value of their row, rotate_first compiles", "[compile]") {
+  // Since #165 compile evaluates the parameter table (configurations: test_configurations.cpp);
+  // relative poses since #163 (test_relative_placement.cpp).
   const MaterialLibrary lib;
   System s = load("m1/singlet_const.rtt.json");
   rtt::model::ParameterRow d;
@@ -522,8 +520,7 @@ TEST_CASE("interim state until #165: bound Params are rejected", "[compile]") {
   d.form = 5.0;
   s.parameters = {d};
   std::get<Element>(s.root.children[1].value).pose.position[2] = Param::bound("D");
-  REQUIRE(has_error_at(compile_error(s), "/root/children/1/pose/position/2"));
-  REQUIRE_THAT(compile_error(s).what(), ContainsSubstring("param.unresolved"));
+  REQUIRE(compile(s, lib).surfaces()[1].to_global.translation().z() == 5.0);
 
   // rotate_first needs no evaluation beyond to_isometry: it compiles already.
   s = load("m1/singlet_const.rtt.json");

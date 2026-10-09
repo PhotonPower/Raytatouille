@@ -245,6 +245,14 @@ class CompiledSystem;
 /// substrate: an inner surface between two segments, a Mirror without material, a ThinElement,
 /// Stop or Detector.
 ///
+/// Configurations (ADR 0029, point 5; #165): `configuration` selects a column of the parameter
+/// table. Before the poses are composed, every Param bound to a row gets the row's value in that
+/// configuration (model::resolve_parameters); without bound Params the system is compiled as it
+/// is, so the result does not depend on `configuration` beyond configuration() and
+/// configuration_name(). Errors of the table are diagnostics of validate() and come as
+/// CompileError; an index >= model::configuration_count(system) is a CompileError with
+/// config.unknown at "/configurations" ("" without a configurations section).
+///
 /// The result holds no references or pointers into `system`, `materials` or `coatings`.
 /// @throws CompileError as described above
 /// @throws std::invalid_argument for a phase layer with a non-finite coefficient or orientation
@@ -252,11 +260,13 @@ class CompiledSystem;
 ///         coefficients of aspheres; rtt::geom phase constructors, #127)
 [[nodiscard]] CompiledSystem compile(const model::System& system,
                                      const material::MaterialLibrary& materials,
-                                     const coating::CoatingLibrary& coatings);
+                                     const coating::CoatingLibrary& coatings,
+                                     std::size_t configuration = 0);
 
 /// compile() with an empty CoatingLibrary: a system with a CoatingRef gives a CompileError.
 [[nodiscard]] CompiledSystem compile(const model::System& system,
-                                     const material::MaterialLibrary& materials);
+                                     const material::MaterialLibrary& materials,
+                                     std::size_t configuration = 0);
 
 /// Immutable compiled system. Only const access; safe to read from many threads.
 class CompiledSystem {
@@ -304,6 +314,14 @@ class CompiledSystem {
   /// Id of the path with this name, if any.
   [[nodiscard]] std::optional<PathId> find_path(std::string_view name) const;
 
+  /// Index of the configuration this system was compiled for (ADR 0029, point 5); 0 for the
+  /// nominal configuration of a system without configurations.
+  [[nodiscard]] std::size_t configuration() const noexcept { return configuration_; }
+  /// Name of that configuration; empty for the nominal configuration (no configurations section).
+  [[nodiscard]] const std::string& configuration_name() const noexcept {
+    return configuration_name_;
+  }
+
   /// Warnings found while compiling (model::validate), with code and JSON pointer (ADR 0022).
   [[nodiscard]] const std::vector<model::Diagnostic>& diagnostics() const noexcept {
     return diagnostics_;
@@ -312,7 +330,8 @@ class CompiledSystem {
  private:
   friend CompiledSystem compile(const model::System&,
                                 const material::MaterialLibrary&,
-                                const coating::CoatingLibrary&);
+                                const coating::CoatingLibrary&,
+                                std::size_t);
   CompiledSystem() = default;
 
   std::vector<double> wavelengths_um_;
@@ -328,6 +347,8 @@ class CompiledSystem {
   std::vector<CompiledCoating> coatings_;
   std::vector<CompiledPath> paths_;
   std::vector<model::Diagnostic> diagnostics_;
+  std::size_t configuration_ = 0;
+  std::string configuration_name_;
 };
 
 }  // namespace rtt::compile
