@@ -74,7 +74,10 @@ SegmentDimensions segment(const compile::CompiledSystem& system,
   d.first_surface = j;
   std::tie(d.semi_diameter_first, d.aperture_first) = semi_diameter(first.aperture);
   std::tie(d.semi_diameter_second, d.aperture_second) = semi_diameter(second.aperture);
-  const double h = std::max(d.semi_diameter_first, d.semi_diameter_second);  // NaN if either is
+  // The larger semi-diameter; undefined (NaN) if a surface has no aperture.
+  const double h = std::isnan(d.semi_diameter_first) || std::isnan(d.semi_diameter_second)
+                       ? kNaN
+                       : std::max(d.semi_diameter_first, d.semi_diameter_second);
   d.diameter = 2.0 * h;
 
   // Vertex and axis of the second surface in the frame of the first.

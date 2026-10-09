@@ -109,7 +109,7 @@ struct SegmentDimensions {
   /// two surfaces at the meridional height y = h of surface j, mm; NaN if a surface does not
   /// reach h (domain of the shape) or the segment is not coaxial.
   double edge_thickness = 0.0;
-  double diameter = 0.0;  ///< 2 h, mm
+  double diameter = 0.0;  ///< 2 h, mm; NaN if a surface has no aperture (h undefined)
 };
 
 /// Dimension report: one entry per segment of every lens and plate, in element order.

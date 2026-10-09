@@ -116,7 +116,8 @@ TEST_CASE("raytrace report: global columns are bitwise those of RayPaths", "[rep
 
 TEST_CASE("raytrace report: an axial ray meets every surface at its vertex", "[reports]") {
   const CompiledSystem cs = singlet();
-  RayBatch start(1);  // on the axis along +z from the origin
+  RayBatch start(1);  // on the axis along +z, in front of the stop at z = 0
+  start.pos_z()[0] = -1.0;
   const RaytraceReport report = rtt::analysis::raytrace_report(cs, PathId{0}, start);
   REQUIRE(report.rows.size() == report.slots);  // the ray arrives
   for (std::size_t s = 1; s < report.slots; ++s) {
@@ -157,7 +158,9 @@ TEST_CASE("system report: settings and the paraxial prescription", "[reports]") 
   CHECK(r.warnings.empty());
   // The same numbers as paraxial::prescription.
   const rtt::paraxial::Prescription p = rtt::paraxial::prescription(cs, PathId{0}, 1);
-  CHECK(same(r.prescription->first_order.efl, p.first_order.efl));
+  REQUIRE(p.first_order.efl.has_value());
+  REQUIRE(r.prescription->first_order.efl.has_value());
+  CHECK(same(*r.prescription->first_order.efl, *p.first_order.efl));
   CHECK(same(r.prescription->total_track, p.total_track));
   REQUIRE(r.prescription->surfaces.size() == p.surfaces.size());
   CHECK_THROWS_AS(rtt::analysis::system_report(cs, PathId{0}, 9), std::invalid_argument);
@@ -223,6 +226,7 @@ TEST_CASE("dimension report: larger semi-diameter, circumscribed apertures, tilt
   CHECK(std::isnan(s.semi_diameter_second));
   CHECK(s.semi_diameter_first == 12.7);
   CHECK(std::isnan(s.edge_thickness));
+  CHECK(std::isnan(s.diameter));
   // A tilted second surface: not coaxial, the thicknesses are NaN.
   lens.surfaces[1].aperture = rtt::model::CircularAperture{12.7, 0.0};
   lens.surfaces[1].pose.rotation_deg[0] = rtt::model::Param(5.0);
