@@ -663,3 +663,71 @@ TEST_CASE("invalid path id or wavelength index is an error", "[paraxial]") {
   REQUIRE_THROWS_AS(first_order(cs, PathId{0}, 1), ParaxialError);
   REQUIRE_THROWS_AS(trace_ray(cs, PathId{0}, 7, 0.0, 1.0, 0.0), ParaxialError);
 }
+
+// ------------------------------------------------ afocal threshold (#35, item B9) -----
+// A thick biconvex lens R1 = r, R2 = -r, n = 1.5 has phi1 = phi2 = 0.5 / r and the power
+// Phi = phi1 + phi2 - (d / n) phi1 phi2 (lensmaker formula, as in check_thick_lens), so it is
+// afocal for d = 6 r and has Phi = (6 - d) / (6 r^2) near it. The threshold is relative:
+// afocal iff |Phi| <= 16 N u S with S the power of the same y-nu trace in magnitudes, the
+// transfers with (|z'| + |z|) / |n| (derivation in paraxial.cpp).
+
+TEST_CASE("afocal threshold: a micro lens is afocal despite rounding of its coordinates",
+          "[paraxial][afocal]") {
+  // r = 3 um at z = 10 mm: the computed Phi is about -1.3e-11 / mm (the vertex z = 10 + d is
+  // only known to u * 10 mm, and dPhi/dd = -phi1 phi2 / n = -1.9e4 / mm^2), far above the old
+  // absolute threshold 1e-14 / mm, which made the lens focal with EFL of about -8e10 mm.
+  // The relative threshold is about 1.3e-9 / mm here.
+  System s = base_system();
+  add(s, lens("L", 10.0, 1.5, 0.003, -0.003, 0.018));
+  const FirstOrder fo = first_order_of(s);
+  REQUIRE(std::abs(fo.power) > 1e-12);  // the rounding is really there
+  REQUIRE_FALSE(fo.efl.has_value());
+  REQUIRE_FALSE(fo.rear_focal_z.has_value());
+}
+
+TEST_CASE("afocal threshold: a very weak lens stays focal", "[paraxial][afocal]") {
+  // Plano-convex, R = 5e15 mm, n = 1.5: Phi = 0.5 / R = 1e-16 / mm, EFL 1e16 mm. All terms are
+  // that small, so the relative threshold is about 1e-30 / mm; the old absolute 1e-14 / mm
+  // made the lens afocal. One division and one product: relative 1e-12.
+  System s = base_system();
+  add(s, lens("L", 10.0, 1.5, 5e15, std::nullopt, 2.0));
+  const FirstOrder fo = first_order_of(s);
+  REQUIRE(fo.efl.has_value());
+  require_rel(fo.efl, 1e16);
+}
+
+TEST_CASE("afocal threshold: a nearly afocal lens just above the threshold stays focal",
+          "[paraxial][afocal]") {
+  // r = 1 mm at z = 10 mm, d = 6 - 6e-12 mm: Phi = 1e-12 / mm, about 50 times the threshold
+  // (1.9e-14 / mm), so the threshold is not too generous. Tolerance fixed beforehand: the
+  // computed Phi is off by at most 8 N u S = 9.5e-15 / mm, relative 1e-2 of Phi.
+  System s = base_system();
+  const double d = 6.0 - 6.0e-12;
+  add(s, lens("L", 10.0, 1.5, 1.0, -1.0, d));
+  const FirstOrder fo = first_order_of(s);
+  REQUIRE(fo.efl.has_value());
+  const double phi = (6.0 - d) / 6.0;
+  REQUIRE(std::abs(fo.power - phi) <= 1e-2 * phi);
+}
+
+TEST_CASE("afocal threshold: depends on the absolute position of the surfaces",
+          "[paraxial][afocal]") {
+  // S grows with |z|, because the coordinates carry a rounding of u |z| each. The same lens
+  // (r = 1 mm, Phi = 5e-13 / mm) is focal at z = 10 mm (threshold 1.9e-14 / mm) and afocal at
+  // z = 1000 mm (threshold 1.2e-12 / mm). The ordinary cases do not change: Phi = 1e-10 / mm
+  // is focal and the afocal lens r = 10 mm, d = 60 mm is afocal at both positions.
+  const auto first_order_at = [](double z, double r, double d) {
+    System s = base_system();
+    add(s, lens("L", z, 1.5, r, -r, d));
+    return first_order_of(s);
+  };
+  const double weak = 6.0 - 3.0e-12;  // Phi = 5e-13 / mm
+  REQUIRE(first_order_at(10.0, 1.0, weak).efl.has_value());
+  REQUIRE_FALSE(first_order_at(1000.0, 1.0, weak).efl.has_value());
+  const double clear = 6.0 - 6.0e-10;  // Phi = 1e-10 / mm
+  for (const double z : {10.0, 1000.0}) {
+    INFO("z = " << z);
+    REQUIRE(first_order_at(z, 1.0, clear).efl.has_value());
+    REQUIRE_FALSE(first_order_at(z, 10.0, 60.0).efl.has_value());
+  }
+}
