@@ -57,6 +57,7 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 | 0027 | Ghost-Generator: Zweifachreflexions-Ghosts eines Pfads als erzeugte explizite Pfade, Medien durch compile (angenommen) |
 | 0028 | Relative Platzierung: `Pose.reference` (absolut, relativ zur vorangehenden Fläche oder zum vorangehenden Geschwister) und `Pose.order` (`translate_first` wie bisher, `rotate_first` als Koordinatensprung) (angenommen) |
 | 0029 | Parametertabelle mit Ausdrücken nur über frühere Zeilen, Konfigurationen als Spalten (nur Parameter), Modell-Param verweist mit `{"param": …}` auf eine Zeile, `pickup` entfällt mit Warnung (angenommen) |
+| 0030 | Optimierung: Merit-Funktion als kleinste Quadrate im Abschnitt `optimization`, Operanden und Gauß-Quadratur-Generatoren, Levenberg-Marquardt (Madsen/Nielsen/Tingleff, Dämpfung nach Nielsen, feste Skalierung nach MINPACK-1), zentrale Differenz parallel, Grenzen per MINUIT-Transformation, Abbruch mit bestem Stand, Ergebnis als ein Patch (angenommen) |
 
 **Konventionen (verbindlich für alle Bibliotheken)**
 
