@@ -27,12 +27,15 @@ from ._core import CompiledElement, CompiledSystem
 
 __all__ = [
     "CompiledElement",
+    "NodeFrame",
     "SectionPlane",
     "SurfaceLayout",
     "elements",
+    "node_frames",
     "normal",
     "outlines",
     "profile",
+    "reference_frame",
     "sag",
     "surfaces",
 ]
@@ -103,6 +106,41 @@ def surfaces(system: CompiledSystem) -> list[SurfaceLayout]:
                                  float(k), list(coefficients), max_radius, aperture, int(front),
                                  int(back)))
     return out
+
+
+class NodeFrame(NamedTuple):
+    """Frames of one node of the model tree (assembly, element or surface) in a compiled system
+    (ADR 0028, points 2 and 6; #169).
+
+    ``location`` is the JSON pointer of the node in the edit form (System.locate_node,
+    System.locate_surface), e.g. ``"/root/children/1/surfaces/0"``. ``reference`` and
+    ``to_global`` are homogeneous 4 x 4 matrices: the global frame the node's pose is given in
+    (the parent for an absolute pose, the last surface before the node in tree order for
+    relative_to_preceding, the preceding sibling for relative_to_sibling, the identity for the
+    root), and the node's own frame, ``to_global = reference @ pose``. A GUI moves a node in
+    ``reference``, or turns an absolute pose into a relative one with
+    ``inv(new_reference) @ to_global``."""
+
+    location: str
+    reference: FloatArray
+    to_global: FloatArray
+
+
+def node_frames(system: CompiledSystem) -> list[NodeFrame]:
+    """The frames of every node in pre-order (an element before its surfaces); the
+    ``to_global`` of a surface equals SurfaceLayout.to_global bit for bit."""
+    return [NodeFrame(str(loc), ref, glob) for loc, ref, glob in _core.layout_node_frames(system)]
+
+
+def reference_frame(system: CompiledSystem, node: str) -> FloatArray:
+    """The global frame (4 x 4, local -> global) in which the pose of `node` is given; `node` is
+    a JSON pointer as from System.locate_node or System.locate_surface.
+
+    Raises KeyError if the compiled system has no node at that pointer."""
+    for frame in node_frames(system):
+        if frame.location == node:
+            return frame.reference
+    raise KeyError(node)
 
 
 def elements(system: CompiledSystem) -> list[CompiledElement]:

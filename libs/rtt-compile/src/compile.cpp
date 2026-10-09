@@ -113,7 +113,9 @@ class Compiler {
         medium(system_.environment.medium, "/environment/medium");
     environment_ = environment.value_or(0);
     environment_resolved_ = environment.has_value();
-    add_assembly(system_.root, model::to_isometry(system_.root.pose), "/root");
+    const math::Isometry3 root = model::to_isometry(system_.root.pose);
+    node_frames_.push_back({"/root", math::Isometry3::identity(), root});
+    add_assembly(system_.root, root, "/root");
     for (std::size_t p = 0; p < system_.paths.size(); ++p) {
       paths_.push_back(build_path(system_.paths[p], idx("/paths", p)));
     }
@@ -125,6 +127,7 @@ class Compiler {
   std::vector<model::Diagnostic> warnings_;
   std::vector<double> wavelengths_um_;
   std::vector<CompiledSurface> surfaces_;
+  std::vector<NodeFrame> node_frames_;  // pre-order, see CompiledSystem::node_frames()
   std::vector<CompiledElement>
       compiled_elements_;  ///< in tree order, see CompiledSystem::elements()
   std::vector<CompiledMedium> media_;
@@ -466,22 +469,34 @@ class Compiler {
   /// this is the expression before schema 0.4, parent * to_isometry(pose), so such systems stay
   /// bitwise. validate() guarantees that the reference exists (pose.no_preceding,
   /// pose.no_sibling, pose.relative_first_surface); compile() runs it first.
+  /// Records the node's frames at `location` (NodeFrame, #169).
   [[nodiscard]] math::Isometry3 place(const model::Pose& pose,
                                       const math::Isometry3& parent,
-                                      const math::Isometry3* sibling) const {
+                                      const math::Isometry3* sibling,
+                                      const std::string& location) {
+    const math::Isometry3 reference = reference_of(pose, parent, sibling);
+    const math::Isometry3 global = reference * model::to_isometry(pose);
+    node_frames_.push_back({location, reference, global});
+    return global;
+  }
+
+  /// The global frame a pose is given in (ADR 0028, point 2), see place().
+  [[nodiscard]] math::Isometry3 reference_of(const model::Pose& pose,
+                                             const math::Isometry3& parent,
+                                             const math::Isometry3* sibling) const {
     switch (pose.reference) {
       case model::PoseReference::Absolute:
-        return parent * model::to_isometry(pose);
+        return parent;
       case model::PoseReference::RelativeToPreceding:
         if (surfaces_.empty()) {
           throw std::logic_error("compile: relative_to_preceding without a preceding surface");
         }
-        return surfaces_.back().to_global * model::to_isometry(pose);
+        return surfaces_.back().to_global;
       case model::PoseReference::RelativeToSibling:
         if (sibling == nullptr) {
           throw std::logic_error("compile: relative_to_sibling without a preceding sibling");
         }
-        return *sibling * model::to_isometry(pose);
+        return *sibling;
     }
     throw std::logic_error("compile: unknown pose reference");
   }
@@ -497,12 +512,12 @@ class Compiler {
       const auto& value = assembly.children[i].value;
       const math::Isometry3* sibling = i > 0 ? &previous : nullptr;
       if (const auto* sub = std::get_if<model::Assembly>(&value)) {
-        const math::Isometry3 global = place(sub->pose, to_global, sibling);
+        const math::Isometry3 global = place(sub->pose, to_global, sibling, child_location);
         add_assembly(*sub, global, child_location);
         previous = global;
       } else {
         const auto& element = std::get<model::Element>(value);
-        const math::Isometry3 global = place(element.pose, to_global, sibling);
+        const math::Isometry3 global = place(element.pose, to_global, sibling, child_location);
         add_element(element, global, child_location);
         previous = global;
       }
@@ -564,7 +579,8 @@ class Compiler {
       c.location = surface_location;
       // Surface j > 0 may refer to surface j - 1, the last surface added and its preceding
       // sibling (ADR 0028, point 2); surface 0 is absolute (validate).
-      c.to_global = place(s.pose, to_global, j > 0 ? &surfaces_.back().to_global : nullptr);
+      c.to_global =
+          place(s.pose, to_global, j > 0 ? &surfaces_.back().to_global : nullptr, surface_location);
       c.to_local = c.to_global.inverse();
       c.shape = compile_shape(s.shape, surface_location + "/shape");
       c.aperture = s.aperture;
@@ -932,6 +948,28 @@ CompiledSystem compile(const model::System& system,
   return compile(system, materials, none, configuration);
 }
 
+std::size_t configuration_index(const model::System& system, std::string_view name) {
+  if (const std::optional<std::size_t> k = model::find_configuration(system, name)) return *k;
+  constexpr diagnostics::DiagnosticCode kCode = "config.unknown";
+  throw CompileError(
+      {{kCode.severity(), system.configurations.empty() ? "" : "/configurations",
+        "no configuration '" + std::string(name) + "' in the system", std::string(kCode.str())}});
+}
+
+CompiledSystem compile(const model::System& system,
+                       const material::MaterialLibrary& materials,
+                       const coating::CoatingLibrary& coatings,
+                       std::string_view configuration) {
+  return compile(system, materials, coatings, configuration_index(system, configuration));
+}
+
+CompiledSystem compile(const model::System& system,
+                       const material::MaterialLibrary& materials,
+                       std::string_view configuration) {
+  const coating::CoatingLibrary none;
+  return compile(system, materials, none, configuration_index(system, configuration));
+}
+
 CompiledSystem compile(const model::System& input,
                        const material::MaterialLibrary& materials,
                        const coating::CoatingLibrary& coatings,
@@ -978,6 +1016,7 @@ CompiledSystem compile(const model::System& input,
   if (!input.configurations.empty())
     cs.configuration_name_ = input.configurations[configuration].name;
   cs.surfaces_ = std::move(compiler.surfaces_);
+  cs.node_frames_ = std::move(compiler.node_frames_);
   cs.elements_ = std::move(compiler.compiled_elements_);
   cs.media_ = std::move(compiler.media_);
   cs.coatings_ = std::move(compiler.compiled_coatings_);

@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <variant>
 #include <vector>
@@ -193,6 +194,39 @@ TEST_CASE("configurations: the overloads are unambiguous", "[compile][configurat
   CHECK(compile(s, lib, none).configuration() == 0);
   CHECK(compile(s, lib, none, 0).configuration() == 0);
   CHECK(compile(s, lib, none, k).configuration() == 1);
+  // By name (#169): a string literal, std::string and std::string_view choose the name
+  // overloads; an integer literal 0 never does (string_view(nullptr) would be undefined).
+  const std::string tele = "tele";
+  const std::string_view wide = "wide";
+  CHECK(compile(s, lib, "tele").configuration() == 1);
+  CHECK(compile(s, lib, tele).configuration() == 1);
+  CHECK(compile(s, lib, wide).configuration() == 0);
+  CHECK(compile(s, lib, none, "tele").configuration() == 1);
+  CHECK(compile(s, lib, none, tele).configuration() == 1);
+  CHECK(compile(s, lib, none, wide).configuration_name() == "wide");
+}
+
+TEST_CASE("configurations: lookup by name", "[compile][configurations]") {
+  const MaterialLibrary lib;
+  CHECK(rtt::compile::configuration_index(zoom(), "tele") == 1);
+  CHECK(rtt::compile::configuration_index(zoom(), "wide") == 0);
+  // An unknown name is config.unknown with the name, as an unknown index (#169).
+  try {
+    static_cast<void>(compile(zoom(), lib, "Tele"));  // names are case-sensitive
+    FAIL("no CompileError");
+  } catch (const CompileError& e) {
+    REQUIRE(e.diagnostics().size() == 1);
+    CHECK(e.diagnostics()[0].code == "config.unknown");
+    CHECK(e.diagnostics()[0].location == "/configurations");
+    CHECK_THAT(e.diagnostics()[0].message, ContainsSubstring("'Tele'"));
+  }
+  try {
+    static_cast<void>(rtt::compile::configuration_index(zoom(20.0, 20.0), "wide"));
+    FAIL("no CompileError");
+  } catch (const CompileError& e) {
+    REQUIRE(e.diagnostics().size() == 1);
+    CHECK(e.diagnostics()[0].location.empty());  // no configurations section
+  }
 }
 
 TEST_CASE("configurations: index and name of the compiled configuration",

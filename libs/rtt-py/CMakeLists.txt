@@ -122,7 +122,7 @@ if(RTT_BUILD_TESTS)
   # Writes the C++ results of the cases in tests/test_bitwise*.py as .npy files.
   # src/polar_batch.cpp: the same polarization quantities as raytatouille.polar (#62).
   add_executable(rtt_py_reference tests/rtt_py_reference.cpp tests/analysis_cases.cpp
-    tests/paths_cases.cpp tests/diffraction_cases.cpp tests/crystal_cases.cpp
+    tests/paths_cases.cpp tests/diffraction_cases.cpp tests/crystal_cases.cpp tests/configuration_cases.cpp
     src/polar_batch.cpp)
   target_include_directories(rtt_py_reference PRIVATE src)
   target_link_libraries(rtt_py_reference PRIVATE

@@ -76,6 +76,18 @@ std::string base_name(const model::System& system, const PathArg& base) {
   return system.paths[index].name;
 }
 
+/// A configuration as index or name (ADR 0029, point 5; #169).
+using ConfigArg = std::variant<std::size_t, std::string>;
+
+/// The index of `configuration`; a name goes through compile::configuration_index, so that an
+/// unknown name is a CompileError with config.unknown, as an unknown index.
+std::size_t configuration_index(const model::System& system, const ConfigArg& configuration) {
+  if (const auto* name = std::get_if<std::string>(&configuration)) {
+    return compile::configuration_index(system, *name);
+  }
+  return std::get<std::size_t>(configuration);
+}
+
 }  // namespace
 
 void bind_compile(nb::module_& m) {
@@ -177,26 +189,36 @@ void bind_compile(nb::module_& m) {
             if (!id) return std::nullopt;
             return static_cast<int>(id->index);
           },
-          "name"_a, "Index of the path with this name, or None.");
+          "name"_a, "Index of the path with this name, or None.")
+      .def_prop_ro("configuration", &compile::CompiledSystem::configuration,
+                   "Index of the configuration this system was compiled for (ADR 0029); 0 for "
+                   "the nominal configuration of a system without configurations.")
+      .def_prop_ro("configuration_name", &compile::CompiledSystem::configuration_name,
+                   "Name of that configuration; empty for the nominal configuration.");
 
   m.def(
       "compile",
       [](const model::System& system, const material::MaterialLibrary* materials,
-         const coating::CoatingLibrary* coatings) {
+         const coating::CoatingLibrary* coatings, const ConfigArg& configuration) {
         const material::MaterialLibrary default_materials;
         const coating::CoatingLibrary no_coatings;
         compile::CompiledSystem compiled =
             compile::compile(system, materials != nullptr ? *materials : default_materials,
-                             coatings != nullptr ? *coatings : no_coatings);
+                             coatings != nullptr ? *coatings : no_coatings,
+                             configuration_index(system, configuration));
         warn(compiled.diagnostics());
         return compiled;
       },
       "system"_a, "materials"_a.none() = nb::none(), "coatings"_a.none() = nb::none(),
+      nb::kw_only(), "configuration"_a = ConfigArg{std::size_t{0}},
       "Compiles a System. Without `materials` only VACUUM, AIR and CONST: references resolve; "
-      "without `coatings` a surface with a coating reference is an error (ADR 0019).\n\nRaises "
-      "CompileError with the diagnostics for invalid models, unknown materials and unknown "
-      "coatings.\n\nEvery warning (CompiledSystem.diagnostics) is also issued as a "
-      "raytatouille.errors.RaytatouilleWarning with its code and location.");
+      "without `coatings` a surface with a coating reference is an error (ADR 0019). "
+      "`configuration` (index or name, ADR 0029) selects the column of the parameter table: "
+      "Params bound to a row get its value there before the poses are composed.\n\nRaises "
+      "CompileError with the diagnostics for invalid models, unknown materials, unknown "
+      "coatings and an unknown configuration (config.unknown).\n\nEvery warning "
+      "(CompiledSystem.diagnostics) is also issued as a raytatouille.errors.RaytatouilleWarning "
+      "with its code and location.");
 
   // Ghost generator (#123, ADR 0027; Python #133).
   auto ghost_paths = columns<GhostPaths>(
@@ -255,21 +277,24 @@ void bind_compile(nb::module_& m) {
       "compile_with_ghosts",
       [](const model::System& system, const PathArg& base,
          const material::MaterialLibrary* materials, const coating::CoatingLibrary* coatings,
-         std::size_t max_paths) {
+         std::size_t max_paths, const ConfigArg& configuration) {
         const material::MaterialLibrary default_materials;
         const coating::CoatingLibrary no_coatings;
         compile::GhostSystem ghosts = compile::compile_with_ghosts(
             system, base_name(system, base), materials != nullptr ? *materials : default_materials,
-            coatings != nullptr ? *coatings : no_coatings, compile::GhostOptions{max_paths});
+            coatings != nullptr ? *coatings : no_coatings, compile::GhostOptions{max_paths},
+            configuration_index(system, configuration));
         warn(ghosts.system.diagnostics());
         return ghosts;
       },
       "system"_a, "base"_a = 0, "materials"_a.none() = nb::none(), "coatings"_a.none() = nb::none(),
       nb::kw_only(), "max_paths"_a = compile::GhostOptions{}.max_paths,
+      "configuration"_a = ConfigArg{std::size_t{0}},
       "Compiles a System with the two-reflection ghosts of its path `base` (index into "
       "System paths or name; ADR 0027): compiles the system, derives the ghosts with "
       "ghost_paths(), appends them to a copy of the model and compiles the copy. The System "
-      "itself is not changed. `materials` and `coatings` as for compile(). Pass the result to "
+      "itself is not changed. `materials`, `coatings` and `configuration` as for compile(). Pass "
+      "the result to "
       "raytatouille.analysis.ghost_ranking().\n\nRaises CompileError as compile(), ValueError "
       "for an unknown path and as ghost_paths().\n\nEvery compile warning is also issued as a "
       "raytatouille.errors.RaytatouilleWarning, as by compile().");
