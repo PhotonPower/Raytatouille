@@ -97,7 +97,8 @@ TEST_CASE("a one-entry list stays a list", "[io][segments][roundtrip]") {
   REQUIRE(rtt::io::to_json(s) == text);
 }
 
-TEST_CASE("migration: a 0.1 file with one material is written as 0.3", "[io][segments]") {
+TEST_CASE("migration: a 0.1 file with one material is written in the current version",
+          "[io][segments]") {
   const std::string old_text = doublet_file("0.1.0", kShorthand);
   const rtt::model::System s = rtt::io::parse_system(old_text);
   REQUIRE(s.schema_version == "0.4.0");

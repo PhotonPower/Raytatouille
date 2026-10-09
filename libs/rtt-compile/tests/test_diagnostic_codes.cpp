@@ -496,9 +496,7 @@ std::vector<Case> cases() {
        [](System& s) { s.configurations = {{"a"}, {"a"}}; }},
       {"value.not_finite", "/root/children/1/pose/pivot/2",
        [](System& s) { element(s, 1).pose.pivot[2] = kNaN; }},
-      // compile, interim state until #163/#165 (removed there with these cases)
-      {"pose.reference_unsupported", "/root/children/1/pose/reference",
-       [](System& s) { element(s, 1).pose.reference = PoseReference::RelativeToPreceding; }},
+      // compile, interim state until #165 (removed there with this case)
       {"param.unresolved", "/root/children/2/pose/position/2",
        [](System& s) {
          s.parameters = {row("D", 106.363)};

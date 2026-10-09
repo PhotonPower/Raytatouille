@@ -118,8 +118,8 @@ Verschiebung umkehren. Dann ist eine Luftdicke ein einziger Wert, und alles dana
 ```
 
 Die erste Fläche eines Elements bleibt absolut, sie legt das KS des Elements fest. Die Prüfung
-meldet `pose.relative_first_surface`, `pose.no_preceding` und `pose.no_sibling`. Bis #163 wertet
-die Kompilierung relative Posen noch nicht aus und meldet `pose.reference_unsupported`.
+meldet `pose.relative_first_surface`, `pose.no_preceding` und `pose.no_sibling`. Die Kompilierung
+setzt die globale Lage in Baumreihenfolge zusammen: global(X) = global(Bezug) · Pose(X) (#163).
 
 ## Parametertabelle und Konfigurationen (ab Schema 0.4, ADR 0029)
 

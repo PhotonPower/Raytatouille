@@ -457,17 +457,52 @@ class Compiler {
     return ec == std::errc{} ? std::string(buffer.data(), end) : std::string("?");
   }
 
+  /// Global transform of a node: global(reference) * to_isometry(pose) (ADR 0028, point 2). The
+  /// reference is `parent` for absolute poses, the last surface compiled so far, i.e. the last
+  /// one before the node in tree order (pre-order), for relative_to_preceding, and `sibling`,
+  /// the global transform of the preceding sibling, for relative_to_sibling. For absolute poses
+  /// this is the expression before schema 0.4, parent * to_isometry(pose), so such systems stay
+  /// bitwise. validate() guarantees that the reference exists (pose.no_preceding,
+  /// pose.no_sibling, pose.relative_first_surface); compile() runs it first.
+  [[nodiscard]] math::Isometry3 place(const model::Pose& pose,
+                                      const math::Isometry3& parent,
+                                      const math::Isometry3* sibling) const {
+    switch (pose.reference) {
+      case model::PoseReference::Absolute:
+        return parent * model::to_isometry(pose);
+      case model::PoseReference::RelativeToPreceding:
+        if (surfaces_.empty()) {
+          throw std::logic_error("compile: relative_to_preceding without a preceding surface");
+        }
+        return surfaces_.back().to_global * model::to_isometry(pose);
+      case model::PoseReference::RelativeToSibling:
+        if (sibling == nullptr) {
+          throw std::logic_error("compile: relative_to_sibling without a preceding sibling");
+        }
+        return *sibling * model::to_isometry(pose);
+    }
+    throw std::logic_error("compile: unknown pose reference");
+  }
+
+  /// Adds the children of an assembly whose global transform is `to_global`, each placed with
+  /// place() (ADR 0028, point 2).
   void add_assembly(const model::Assembly& assembly,
                     const math::Isometry3& to_global,
                     const std::string& location) {
+    math::Isometry3 previous;  // global transform of the preceding child (valid if i > 0)
     for (std::size_t i = 0; i < assembly.children.size(); ++i) {
       const std::string child_location = idx(location + "/children", i);
       const auto& value = assembly.children[i].value;
+      const math::Isometry3* sibling = i > 0 ? &previous : nullptr;
       if (const auto* sub = std::get_if<model::Assembly>(&value)) {
-        add_assembly(*sub, to_global * model::to_isometry(sub->pose), child_location);
+        const math::Isometry3 global = place(sub->pose, to_global, sibling);
+        add_assembly(*sub, global, child_location);
+        previous = global;
       } else {
         const auto& element = std::get<model::Element>(value);
-        add_element(element, to_global * model::to_isometry(element.pose), child_location);
+        const math::Isometry3 global = place(element.pose, to_global, sibling);
+        add_element(element, global, child_location);
+        previous = global;
       }
     }
   }
@@ -525,7 +560,9 @@ class Compiler {
       c.element_name = element.name;
       c.element = element_index;
       c.location = surface_location;
-      c.to_global = to_global * model::to_isometry(s.pose);
+      // Surface j > 0 may refer to surface j - 1, the last surface added and its preceding
+      // sibling (ADR 0028, point 2); surface 0 is absolute (validate).
+      c.to_global = place(s.pose, to_global, j > 0 ? &surfaces_.back().to_global : nullptr);
       c.to_local = c.to_global.inverse();
       c.shape = compile_shape(s.shape, surface_location + "/shape");
       c.aperture = s.aperture;
@@ -888,9 +925,9 @@ void require_stop(const CompiledSystem& system, PathId path) {
 
 namespace {
 
-/// Interim state between #162 and #163/#165 (removed there): schema 0.4 reads relative poses and
-/// bound Params, compile does not evaluate them yet. Rejected with a pointer instead of using
-/// the parent as reference or the meaningless value of a bound Param.
+/// Interim state between #162 and #165 (removed there): schema 0.4 reads bound Params, compile
+/// does not evaluate them yet. Rejected with a pointer instead of using the meaningless value of
+/// a bound Param.
 class InterimCheck {
  public:
   std::vector<model::Diagnostic> run(const model::System& s) {
@@ -918,10 +955,6 @@ class InterimCheck {
   }
 
   void pose(const model::Pose& p, const std::string& loc) {
-    if (p.reference != model::PoseReference::Absolute) {
-      report("pose.reference_unsupported", loc + "/pose/reference",
-             "relative placement is not evaluated yet (#163)");
-    }
     for (std::size_t k = 0; k < 3; ++k) {
       param(p.position[k], loc + "/pose/position/" + std::to_string(k));
       param(p.rotation_deg[k], loc + "/pose/rotation_deg/" + std::to_string(k));

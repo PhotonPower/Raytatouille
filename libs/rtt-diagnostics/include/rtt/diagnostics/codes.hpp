@@ -172,8 +172,6 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "relative_to_preceding without a preceding surface"},
     {"pose.no_sibling", Severity::Error, "validate",
      "relative_to_sibling without a preceding sibling"},
-    {"pose.reference_unsupported", Severity::Error, "compile",
-     "relative pose not evaluated yet (interim, removed with #163)"},
     {"pose.relative_first_surface", Severity::Error, "validate",
      "first surface of an element placed relatively"},
     {"rays.lost", Severity::Warning, "analysis",

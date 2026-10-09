@@ -179,7 +179,12 @@
       {
         "type": "detector",
         "name": "image",
-        "pose": {"position": [0.0, 0.0, 120.0]},
+        "pose": {
+          "reference": "relative_to_preceding",
+          "order": "rotate_first",
+          "position": [0.0, -30.0, 50.0],
+          "rotation_deg": [-90.0, 0.0, 0.0]
+        },
         "surfaces": [
           {"id": "IMG"}
         ]

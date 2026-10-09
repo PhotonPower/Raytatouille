@@ -510,19 +510,13 @@ TEST_CASE("compiled system is independent of the model and const-only", "[compil
   REQUIRE(cs->media()[medium_index(*cs, "CONST:1.5168")].index[0] == Complex(1.5168, 0.0));
 }
 
-TEST_CASE("interim state until #163/#165: relative poses and bound Params are rejected",
-          "[compile]") {
-  // Schema 0.4 reads them (#162), compile evaluates them only with #163 (relative placement)
-  // and #165 (parameter table). Until then compile rejects them instead of using the parent as
-  // reference or the meaningless value 0 of a bound Param. These cases go with #163 and #165.
+TEST_CASE("interim state until #165: bound Params are rejected", "[compile]") {
+  // Schema 0.4 reads them (#162), compile evaluates them only with #165 (parameter table).
+  // Until then compile rejects them instead of using the meaningless value 0 of a bound Param.
+  // This case goes with #165. Relative poses are evaluated since #163
+  // (test_relative_placement.cpp).
   const MaterialLibrary lib;
   System s = load("m1/singlet_const.rtt.json");
-  std::get<Element>(s.root.children[1].value).pose.reference =
-      rtt::model::PoseReference::RelativeToPreceding;
-  REQUIRE(has_error_at(compile_error(s), "/root/children/1/pose/reference"));
-  REQUIRE_THAT(compile_error(s).what(), ContainsSubstring("pose.reference_unsupported"));
-
-  s = load("m1/singlet_const.rtt.json");
   rtt::model::ParameterRow d;
   d.name = "D";
   d.form = 5.0;
