@@ -20,6 +20,7 @@
 #include "rtt/math/types.hpp"
 #include "rtt/model/optimization.hpp"
 #include "rtt/model/parameters.hpp"
+#include "rtt/optim/generators.hpp"
 #include "rtt/paraxial/paraxial.hpp"
 #include "rtt/paraxial/prescription.hpp"
 #include "rtt/trace/ray_batch.hpp"
@@ -49,6 +50,40 @@ std::string what_of(const std::vector<model::Diagnostic>& diagnostics) {
 
 std::string operand_pointer(std::size_t i) {
   return "/optimization/operands/" + std::to_string(i);
+}
+
+std::string generator_pointer(std::size_t g) {
+  return "/optimization/generators/" + std::to_string(g);
+}
+
+/// What both generator types have, for the start check.
+struct GeneratorCommon {
+  const std::string* path = nullptr;
+  const std::optional<std::string>* configuration = nullptr;
+  const std::optional<std::vector<std::uint16_t>>* fields = nullptr;
+  const std::optional<std::vector<std::uint16_t>>* wavelengths = nullptr;
+};
+
+GeneratorCommon generator_common(const model::Generator& g) {
+  if (const auto* s = std::get_if<model::SpotGenerator>(&g)) {
+    return {&s->path, &s->configuration, &s->fields, &s->wavelengths};
+  }
+  const auto& w = std::get<model::WavefrontGenerator>(g);
+  return {&w.path, &w.configuration, &w.fields, &w.wavelengths};
+}
+
+/// Sum of the model weights of the chosen entries (none: all); a generator needs a positive sum
+/// to normalise them (ADR 0030, addendum #168).
+template <typename Entries>
+double chosen_weight(const std::optional<std::vector<std::uint16_t>>& list,
+                     const Entries& entries) {
+  double total = 0.0;
+  if (list) {
+    for (const std::uint16_t i : *list) total += entries[i].weight;
+  } else {
+    for (const auto& e : entries) total += e.weight;
+  }
+  return total;
 }
 
 // Accessors over the operand variant with get_if (no std::visit returning a reference: GCC 13
@@ -185,13 +220,6 @@ MeritFunction::MeritFunction(const model::System& system,
 
   const model::Optimization& merit = system.optimization;
   std::vector<model::Diagnostic> unsupported;
-  unsupported.reserve(merit.generators.size());
-  // Generators come with #168; until then they would be ignored, so they are rejected.
-  for (std::size_t g = 0; g < merit.generators.size(); ++g) {
-    unsupported.push_back(diagnostic("merit.operand_unsupported",
-                                     "/optimization/generators/" + std::to_string(g),
-                                     "generators are not evaluated yet (#168)"));
-  }
   for (std::size_t i = 0; i < merit.operands.size(); ++i) {
     const model::Operand& op = merit.operands[i];
     const model::OperandCommon& common = common_of(op);
@@ -219,6 +247,29 @@ MeritFunction::MeritFunction(const model::System& system,
                                        "magnification with the object at infinity"));
     }
   }
+  // Generators (ADR 0030, point 4; addendum #168): configuration and the weights of the choice;
+  // validate has checked the indices (merit.index_out_of_range).
+  for (std::size_t g = 0; g < merit.generators.size(); ++g) {
+    const GeneratorCommon gc = generator_common(merit.generators[g]);
+    std::size_t k = 0;
+    if (*gc.configuration) {
+      const std::optional<std::size_t> found =
+          model::find_configuration(system, **gc.configuration);
+      if (!found) throw std::invalid_argument("optimize: unknown configuration");
+      k = *found;
+    }
+    generator_configurations_.push_back(k);
+    compiled_.push_back(k);
+    if (!(chosen_weight(*gc.fields, system.fields.points) > 0.0)) {
+      unsupported.push_back(diagnostic("merit.operand_unsupported", generator_pointer(g),
+                                       "the weights of the chosen fields sum to 0"));
+    }
+    if (!(chosen_weight(*gc.wavelengths, system.wavelengths) > 0.0)) {
+      unsupported.push_back(diagnostic("merit.operand_unsupported", generator_pointer(g),
+                                       "the weights of the chosen wavelengths sum to 0"));
+    }
+  }
+  generator_sizes_.assign(merit.generators.size(), 0);
   std::sort(compiled_.begin(), compiled_.end());
   compiled_.erase(std::unique(compiled_.begin(), compiled_.end()), compiled_.end());
 
@@ -237,8 +288,33 @@ MeritFunction::MeritFunction(const model::System& system,
                                          std::string("the path is not supported: ") + e.what()));
       }
     }
+    for (std::size_t g = 0; g < merit.generators.size(); ++g) {
+      if (generator_configurations_[g] != k) continue;
+      const model::Generator& gen = merit.generators[g];
+      generator_sizes_[g] = generator_size(gen, cs);
+      const GeneratorCommon gc = generator_common(gen);
+      std::vector<std::uint16_t> wavelengths;
+      if (*gc.wavelengths) {
+        wavelengths = **gc.wavelengths;
+      } else {
+        for (std::size_t l = 0; l < cs.wavelengths_um().size(); ++l) {
+          wavelengths.push_back(static_cast<std::uint16_t>(l));
+        }
+      }
+      for (const std::uint16_t wl : wavelengths) {
+        try {
+          static_cast<void>(paraxial::first_order(cs, path_id(cs, *gc.path), wl));
+        } catch (const paraxial::ParaxialError& e) {
+          unsupported.push_back(diagnostic("merit.operand_unsupported", generator_pointer(g),
+                                           std::string("the path is not supported: ") + e.what()));
+          break;
+        }
+      }
+    }
   }
   if (!unsupported.empty()) throw OptimError(std::move(unsupported));
+  size_ = merit.operands.size();
+  for (const std::size_t n : generator_sizes_) size_ += n;
 }
 
 std::vector<double> MeritFunction::start() const {
@@ -249,7 +325,7 @@ std::vector<double> MeritFunction::start() const {
 }
 
 std::size_t MeritFunction::size() const noexcept {
-  return system_->optimization.operands.size();
+  return size_;
 }
 
 MeritEvaluation MeritFunction::evaluate(std::span<const double> values) const {
@@ -264,7 +340,7 @@ MeritEvaluation MeritFunction::evaluate(std::span<const double> values) const {
   const std::vector<model::Operand>& operands = system_->optimization.operands;
   MeritEvaluation out;
   out.values.reserve(operands.size());
-  out.residuals.reserve(operands.size());
+  out.residuals.reserve(size_);
   out.undefined.reserve(operands.size());
   for (std::size_t i = 0; i < operands.size(); ++i) {
     const model::Operand& op = operands[i];
@@ -309,6 +385,20 @@ MeritEvaluation MeritFunction::evaluate(std::span<const double> values) const {
     out.values.push_back(v.value);
     out.residuals.push_back(std::sqrt(common.weight) * (v.value - common.target));
     out.undefined.push_back(std::move(v.undefined));
+  }
+
+  // Generators after the operands, each in its configuration (ADR 0030, addendum #168).
+  const std::vector<model::Generator>& generators = system_->optimization.generators;
+  out.residuals.resize(size_);
+  out.generators.resize(generators.size());
+  std::size_t offset = operands.size();
+  for (std::size_t g = 0; g < generators.size(); ++g) {
+    const std::optional<compile::CompiledSystem>& slot = compiled[generator_configurations_[g]];
+    if (!slot) throw std::logic_error("optimize: configuration of a generator not compiled");
+    generator_residuals(generators[g], *slot,
+                        std::span<double>(out.residuals).subspan(offset, generator_sizes_[g]),
+                        out.generators[g]);
+    offset += generator_sizes_[g];
   }
   return out;
 }

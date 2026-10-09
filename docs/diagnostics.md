@@ -8,7 +8,7 @@ Jede Diagnose (`rtt::model::Diagnostic`, in Python `rt.Diagnostic`) trägt einen
 - Ein Erzeuger kann nur registrierte Codes verwenden. Der Typ `DiagnosticCode` prüft das beim Kompilieren, ein Tippfehler ist ein Compile-Fehler.
 - Die Schwere einer Diagnose ist immer die ihres Registry-Eintrags.
 - Ein pytest gleicht diese Tabelle mit der Registry ab (Code, Schwere und Erzeuger).
-- Catch2-Tests erzeugen jeden Code an seinem Ort: `libs/rtt-compile/tests/test_diagnostic_codes.cpp` die Codes von validate und compile (bei mehreren Erzeugungsorten jeden), `libs/rtt-analysis/tests/test_warnings.cpp` die der Analysen, `libs/rtt-optim/tests/test_optimize.cpp` die von `optimize` (außer `optim.rays_lost`, das erst die Generatoren aus #168 erzeugen).
+- Catch2-Tests erzeugen jeden Code an seinem Ort: `libs/rtt-compile/tests/test_diagnostic_codes.cpp` die Codes von validate und compile (bei mehreren Erzeugungsorten jeden), `libs/rtt-analysis/tests/test_warnings.cpp` die der Analysen, `libs/rtt-optim/tests/test_optimize.cpp` die von `optimize` (`optim.rays_lost` und `merit.operand_unsupported` an Generatoren in `libs/rtt-optim/tests/test_generators.cpp`).
 
 **Ausgabe:** `to_string` und `rtt validate` schreiben `error [code] /pointer: Meldung`, z. B. `error [material.unknown] /root/children/1/material: …`.
 
@@ -83,7 +83,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `material.unknown` | Fehler | Materialreferenz nicht auflösbar | compile | `/environment/medium`, `…/el/material`, `…/el/material/i`, `…/el/material/ordinary`, `…/el/material/extraordinary` |
 | `material.wavelength_out_of_range` | Fehler | Systemwellenlänge außerhalb des Bereichs eines Materials auf einem Pfad | compile | `/environment/medium`, `…/el/material`, `…/el/material/i` |
 | `merit.index_out_of_range` | Fehler | Feld- oder Wellenlängenindex der Merit-Funktion außerhalb des Systems | validate | `…/field`, `…/wavelength`, `…/fields/k`, `…/wavelengths/k` |
-| `merit.operand_unsupported` | Fehler | Operand oder Generator, den die Optimierung beim Start nicht auswerten kann: ein Generator (bis #168), `magnification` bei Objekt im Unendlichen, ein Operand außer `param_value` auf einem Pfad, den `first_order` ablehnt (Kristall, Ordnung ≠ 0, nicht rotationssymmetrisch; ADR 0030, Punkt 3) | optim | `/optimization/operands/i`, `/optimization/generators/i` |
+| `merit.operand_unsupported` | Fehler | Operand oder Generator, den die Optimierung beim Start nicht auswerten kann: `magnification` bei Objekt im Unendlichen, ein Operand außer `param_value` oder ein Generator auf einem Pfad, den `first_order` ablehnt (Kristall, Ordnung ≠ 0, nicht rotationssymmetrisch; ADR 0030, Punkt 3), ein Generator, dessen gewählte Feld- oder Wellenlängengewichte sich zu 0 summieren (ADR 0030, Nachtrag #168) | optim | `/optimization/operands/i`, `/optimization/generators/i` |
 | `merit.polychromatic_wavelength` | Fehler | polychromatischer `spot_rms` mit `wavelength` (in einer Datei ein Lesefehler) | validate | `…/wavelength` |
 | `merit.sampling_invalid` | Fehler | `rings`, `arms` oder `grid` < 1 | validate | `…/rings`, `…/arms`, `…/grid` |
 | `merit.selection_empty` | Fehler | leere Liste `fields` oder `wavelengths` eines Generators (in einer Datei ein Lesefehler) | validate | `…/fields`, `…/wavelengths` |
@@ -101,7 +101,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `optim.no_operands` | Fehler | Optimierung ohne Operanden und ohne Generatoren (ADR 0030, Nachtrag #167) | optim | leer |
 | `optim.no_variables` | Fehler | Optimierung ohne variables Param und ohne variable Tabellenzeile | optim | leer |
 | `optim.parameter_at_bound` | Warnung | Ergebniswert einer Variablen liegt an ihrer Grenze | optim | Pointer der Variablen |
-| `optim.rays_lost` | Warnung | Strahlen eines Generators gingen am Endstand verloren (erzeugt ab #168) | optim | `/optimization/generators/i` |
+| `optim.rays_lost` | Warnung | Strahlen eines Generators gingen am Endstand verloren; sie haben die Residuen 0 und senken die Merit-Funktion (ADR 0030, Nachtrag #168) | optim | `/optimization/generators/i` |
 | `param.bound_conflict` | Fehler | gebundenes Param (`param`) mit `variable` oder Grenzen (nur über die API) | validate | Pointer des Params |
 | `param.unknown_parameter` | Fehler | Param an eine Zeile gebunden, die es nicht gibt | validate | `…/param` |
 | `parameters.expression_syntax` | Fehler | Ausdruck einer Zeile nicht nach der Grammatik von ADR 0029 (Zeichenposition in der Meldung), länger als 1000 Zeichen, tiefer als 64 geschachtelt oder mit einem Literal, das weder 0 noch ein endliches normales double ist (Überlauf, Unterlauf, subnormal) | validate | `/parameters/i/expression` |

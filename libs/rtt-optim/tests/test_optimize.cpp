@@ -549,21 +549,6 @@ TEST_CASE("optimize M7: input errors at the start", "[optim][optimize]") {
       CHECK(e.diagnostics()[0].location == "/optimization/operands/1");
     }
   }
-  SECTION("a generator before #168") {
-    System s = singlet();
-    radius(s, 1, 0).variable = true;
-    rtt::model::SpotGenerator g;
-    g.path = "main";
-    s.optimization.generators = {g};
-    try {
-      static_cast<void>(optimize(s, lib));
-      FAIL("no OptimError");
-    } catch (const OptimError& e) {
-      REQUIRE(e.diagnostics().size() == 1);
-      CHECK(e.diagnostics()[0].code == "merit.operand_unsupported");
-      CHECK(e.diagnostics()[0].location == "/optimization/generators/0");
-    }
-  }
   SECTION("an operand on a crystal path (ordinary and extraordinary events)") {
     System s = load("m4/calcite_walkoff.rtt.json");
     make_variable(s, "/position/2");
