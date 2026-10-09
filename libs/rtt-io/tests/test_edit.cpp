@@ -122,11 +122,15 @@ void variant(const json& o,
              bool params_inside = true) {
   INFO(where);
   REQUIRE(o.contains("type"));
-  const auto it = by_type.find(o["type"].get<std::string>());
+  const std::string type = o["type"].get<std::string>();
+  const auto it = by_type.find(type);
   REQUIRE(it != by_type.end());
-  has_keys(o, it->second, {}, where);
+  // object_distance of an ideal lens is an optional member: written only when set (ADR 0031).
+  const bool ideal_lens = type == "ideal_lens" || type == "ideal_cylinder_lens";
+  has_keys(o, it->second, ideal_lens ? Keys{"object_distance"} : Keys{}, where);
   if (!params_inside) return;
-  for (const char* k : {"radius", "conic", "normalization_radius", "lines_per_mm"}) {
+  for (const char* k : {"radius", "conic", "normalization_radius", "lines_per_mm", "focal_length",
+                        "object_distance"}) {
     if (o.contains(k)) param(o[k], where + "/" + k);
   }
   if (o.contains("coefficients")) params(o["coefficients"], where + "/coefficients");
@@ -166,7 +170,9 @@ void surface_keys(const json& s, const std::string& at) {
            {"ideal_beam_splitter", {"type", "reflectance_s", "reflectance_p"}},
            {"coating", {"type", "name"}},
            {"ideal_polarizer", {"type", "transmission_axis", "extinction_ratio"}},
-           {"ideal_retarder", {"type", "fast_axis", "retardance_waves"}}},
+           {"ideal_retarder", {"type", "fast_axis", "retardance_waves"}},
+           {"ideal_lens", {"type", "focal_length"}},
+           {"ideal_cylinder_lens", {"type", "focal_length", "axis_deg"}}},
           at + "/interaction");
 }
 

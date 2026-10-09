@@ -22,7 +22,7 @@ namespace rtt::model {
 /// every event without "diffract", diffraction efficiency, crystals and optic axis, ADR
 /// 0025/0026; 0.4: Pose.reference and Pose.order, ADR 0028; parameter table, configurations and
 /// bounds, pickup dropped, ADR 0029; merit function, ADR 0030).
-inline constexpr std::string_view kSchemaVersion = "0.4.0";
+inline constexpr std::string_view kSchemaVersion = "0.5.0";
 
 struct Wavelength {
   double um = 0.0;  ///< vacuum wavelength in micrometre

@@ -118,7 +118,7 @@ def test_loading_a_0_3_file_warns_about_dropped_pickups(tmp_path: Path) -> None:
         assert "2 * 3" in found[0].message
         z = s.root.children[1].pose.position[2]
         assert (z.value, z.param) == (6.0, None)
-        assert s.schema_version == "0.4.0"
+        assert s.schema_version == "0.5.0"
 
 
 def test_a_0_4_file_loads_without_warnings() -> None:

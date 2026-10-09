@@ -32,7 +32,7 @@ Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/a
 
 | Feld | Pflicht | Inhalt |
 | --- | --- | --- |
-| `schema_version` | ja | `"0.4.0"` (Muster `0.4.x`) |
+| `schema_version` | ja | `"0.5.0"` (Muster `0.5.x`) |
 | `name` | nein | Anzeigename |
 | `units` | ja | genau `{"length": "mm", "wavelength": "um"}` |
 | `environment` | nein | `temperature_c`, `pressure_atm`, `medium` (Standard: Luft nach Ciddor, 20 °C, 1 atm) |
@@ -91,7 +91,7 @@ braucht das Substrat, ohne `material` ist es ein Kompilierfehler.
 | `aperture` | `circular` (`radius`, optional `inner_radius`), `rectangular` (`half_width_x`, `half_width_y`) oder `elliptical` (`semi_axis_x`, `semi_axis_y`) |
 | `phases` | Phasenschichten: `{"type": "linear_grating", "lines_per_mm": G, "orientation_deg": ψ}` oder `{"type": "radial_phase", "normalization_radius": R, "coefficients": [c1, c2, …]}` (ADR 0025). Einheiten: G in 1/mm, ψ in Grad von der lokalen x- zur lokalen y-Achse (ψ = 0: Rillen parallel zur lokalen y-Achse), φ = 2πG(x cos ψ + y sin ψ); R in mm, Koeffizienten c_k in **rad** (nicht in Wellen, kein Faktor 2π), c1 gehört zu ρ², φ = Σ c_k ρ^{2k} mit ρ = r/R. Die Werte gelten unverändert für jede Wellenlänge; das Vorzeichen von φ und der Ordnung nach ADR 0025, Punkte 1 bis 3 |
 | `diffraction_efficiency` | nur an Flächen mit `phases`: Leistungsanteil je Beugungsordnung, z. B. `[{"order": 1, "efficiency": 0.8}]`; fehlt das Feld, hat jede Ordnung 1, sonst haben nicht aufgeführte Ordnungen 0 |
-| `interaction` | `fresnel` (Standard), `ideal_mirror`, `ideal_anti_reflection`, `absorber`, `ideal_beam_splitter` (`reflectance_s`, `reflectance_p`), `ideal_polarizer` (`transmission_axis`, `extinction_ratio`), `ideal_retarder` (`fast_axis`, `retardance_waves`) oder `{"type": "coating", "name": "KATALOG:NAME"}`. Die Achsen von Polarisator und Retarder stehen in Elementkoordinaten. |
+| `interaction` | `fresnel` (Standard), `ideal_mirror`, `ideal_anti_reflection`, `absorber`, `ideal_beam_splitter` (`reflectance_s`, `reflectance_p`), `ideal_polarizer` (`transmission_axis`, `extinction_ratio`), `ideal_retarder` (`fast_axis`, `retardance_waves`), `ideal_lens` (`focal_length`, `object_distance`), `ideal_cylinder_lens` (`focal_length`, `axis_deg`, `object_distance`; ab Schema 0.5, siehe unten) oder `{"type": "coating", "name": "KATALOG:NAME"}`. Die Achsen von Polarisator und Retarder stehen in Elementkoordinaten. |
 
 Zahlenwerte dürfen auch als `{"value": …, "variable": true, "min": …, "max": …}` stehen: Das
 markiert sie als Optimierungsvariable mit Grenzen (beide optional, in der Einheit des Werts). Ein
@@ -103,6 +103,39 @@ jede Beugungsordnung `order` nach der lokalen Gittergleichung (ADR 0025) und rec
 `diffraction_efficiency` in das Gewicht ein; evaneszente Ordnungen enden mit dem Status
 `Evanescent`. Kristalle mit `ordinary` und `extraordinary` verfolgt der Tracer seit #132
 (ADR 0026).
+
+## Ideale Linse und ideale Zylinderlinse (ab Schema 0.5, ADR 0031)
+
+Eine ideale Linse ohne Dicke ist eine Interaktion an der einzigen Planfläche eines
+`thin_element` (ohne `shape.terms` und ohne `phases`, sonst `interaction.ideal_lens_not_allowed`):
+
+```json
+{"type": "thin_element", "name": "IL",
+ "surfaces": [{"id": "IL",
+               "aperture": {"type": "circular", "radius": 12.0},
+               "interaction": {"type": "ideal_lens", "focal_length": 50.0,
+                               "object_distance": 75.0}}]}
+```
+
+- `focal_length` (Pflicht, mm, Param): Abstand von der Linse zum hinteren Brennpunkt im
+  umgebenden Medium, längs der Ausbreitung; f > 0 sammelt, f hängt nicht von der Wellenlänge ab.
+  Variabel, mit Grenzen und an die Parametertabelle bindbar.
+- `object_distance` (optional, mm, Param): Auslegungs-Konjugierte für den optischen Weg,
+  positiv für ein reelles Objekt vor der Linse wie `object.distance`; fehlt das Feld, liegt das
+  Objekt im Unendlichen.
+- `ideal_cylinder_lens` hat dazu `axis_deg` (Standard 0, im kanonischen Text bei 0 weggelassen):
+  die Zylinderachse in lokalen Flächenkoordinaten von x nach y. Die Linse fokussiert nur in der
+  Richtung (−sin ψ, cos ψ, 0); bei 0 also im yz-Schnitt, die Brennlinie liegt parallel zu x.
+- An der Linse wirkt nur `transmit`; `refract` oder `reflect` dort meldet compile mit
+  `paths.ideal_lens_event`, eine Linse in einem Kristall mit `crystal.unsupported`.
+- **Grenze:** Die Richtung ist für jeden Strahl exakt (kollineare Abbildung). Der optische Weg,
+  also die OPD, ist nur für Objekte in der Ebene von `object_distance` exakt; bei einer anderen
+  Konjugierten bleibt ein Rest ∝ r⁴, im Beispiel f = 50 mm, Objekt bei 75 mm statt im
+  Unendlichen etwa 11 λ am Rand. Seidel zeigt für die ideale Linse trotzdem 0. Auf einem
+  Rückweg gilt die Konjugierte gegen dessen Ausbreitung.
+- Stand #178: Format und compile; der Tracer gibt bis zu PR 2 `EventImpossible` an der Linse,
+  `first_order` bis zu PR 3 einen `ParaxialError`. Die Zylinderlinse bleibt paraxial ein
+  `ParaxialError` (nicht rotationssymmetrisch).
 
 ## Relative Platzierung (ab Schema 0.4, ADR 0028)
 
@@ -232,7 +265,7 @@ dahinter, der Detektor im paraxialen Fokus bei z = 106,442 mm.
 
 ```json
 {
-  "schema_version": "0.4.0",
+  "schema_version": "0.5.0",
   "name": "Plankonvex-Singlet",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": true}, {"um": 0.6563}],
@@ -313,7 +346,7 @@ def singlet(r1, r2, dicke, glas="CONST:1.5168", epd=20.0, bild_abstand=95.0, hal
 
     z_linse = 5.0
     return {
-        "schema_version": "0.4.0", "name": f"Singlet R1={r1} R2={r2}",
+        "schema_version": "0.5.0", "name": f"Singlet R1={r1} R2={r2}",
         "units": {"length": "mm", "wavelength": "um"},
         "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": True}, {"um": 0.6563}],
         "aperture": {"type": "epd", "value": epd},

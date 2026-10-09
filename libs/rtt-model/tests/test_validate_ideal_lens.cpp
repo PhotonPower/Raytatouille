@@ -15,6 +15,7 @@
 using rtt::model::Diagnostic;
 using rtt::model::Element;
 using rtt::model::ElementKind;
+using rtt::model::has_errors;
 using rtt::model::IdealCylinderLens;
 using rtt::model::IdealLens;
 using rtt::model::Param;
@@ -49,13 +50,6 @@ System with_thin(const rtt::model::Interaction& interaction) {
 bool has(const std::vector<Diagnostic>& d, const std::string& code, const std::string& location) {
   for (const Diagnostic& x : d) {
     if (x.severity == Severity::Error && x.code == code && x.location == location) return true;
-  }
-  return false;
-}
-
-bool has_errors(const std::vector<Diagnostic>& d) {
-  for (const Diagnostic& x : d) {
-    if (x.severity == Severity::Error) return true;
   }
   return false;
 }

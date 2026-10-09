@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.4.0",
+  "schema_version": "0.5.0",
   "name": "Singlet to optimize: EFL 100 mm and minimal RMS spot, constant index 1.5168",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [

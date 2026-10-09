@@ -358,6 +358,7 @@ class Validator {
       }
       check_pose_values(e.surfaces[i].pose, sloc + "/pose");
       check_surface(e.surfaces[i], sloc);
+      check_ideal_lens_place(e, i, sloc);
     }
   }
 
@@ -566,6 +567,46 @@ class Validator {
         report("interaction.axis_invalid", loc + "/fast_axis", "axis must be non-zero");
       if (!std::isfinite(ret->retardance_waves))
         report("interaction.retardance_invalid", loc + "/retardance_waves", "must be finite");
+    } else if (const auto* lens = std::get_if<IdealLens>(&i)) {
+      check_ideal_lens(lens->focal_length, lens->object_distance, loc);
+    } else if (const auto* cyl = std::get_if<IdealCylinderLens>(&i)) {
+      check_ideal_lens(cyl->focal_length, cyl->object_distance, loc);
+      check_value(cyl->axis_deg, loc + "/axis_deg");
+    }
+  }
+
+  /// Focal length and object distance of an ideal (cylinder) lens (ADR 0031, point 7): non-zero
+  /// and finite. A bound value is checked by compile after the resolution (ADR 0029).
+  void check_ideal_lens(const Param& f,
+                        const std::optional<Param>& object,
+                        const std::string& loc) {
+    check_param(f, loc + "/focal_length", true);
+    if (!f.is_bound() && (!std::isfinite(f.value) || f.value == 0.0)) {
+      report("interaction.focal_length_invalid", loc + "/focal_length",
+             "focal length must be non-zero and finite");
+    }
+    if (!object) return;
+    check_param(*object, loc + "/object_distance", true);
+    if (!object->is_bound() && (!std::isfinite(object->value) || object->value == 0.0)) {
+      report("interaction.object_distance_invalid", loc + "/object_distance",
+             "object distance must be non-zero and finite");
+    }
+  }
+
+  /// An ideal (cylinder) lens only at the single plane surface of a thin_element without shape
+  /// terms or phases (ADR 0031, point 1).
+  void check_ideal_lens_place(const Element& e, std::size_t i, const std::string& sloc) {
+    const Surface& s = e.surfaces[i];
+    if (!std::holds_alternative<IdealLens>(s.interaction) &&
+        !std::holds_alternative<IdealCylinderLens>(s.interaction)) {
+      return;
+    }
+    if (e.kind != ElementKind::ThinElement || e.surfaces.size() != 1 ||
+        !std::holds_alternative<Plane>(s.shape.base) || !s.shape.terms.empty() ||
+        !s.phases.empty()) {
+      report("interaction.ideal_lens_not_allowed", sloc + "/interaction",
+             "an ideal lens belongs to the single plane surface of a thin_element without shape "
+             "terms or phases");
     }
   }
 

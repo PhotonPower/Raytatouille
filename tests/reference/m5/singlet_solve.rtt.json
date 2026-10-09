@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.4.0",
+  "schema_version": "0.5.0",
   "name": "Singlet bent for minimal RMS spot at EFL 100 mm, R2 bound to the curvature C1 (constant index 1.5168; D = n - n_air holds for 0.5876 um in the default environment only)",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [

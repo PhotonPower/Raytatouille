@@ -48,10 +48,6 @@ json interaction_json(const System& s) {
   return j["root"]["children"][2]["surfaces"][0]["interaction"];
 }
 
-const rtt::model::Interaction& interaction_of(const System& s) {
-  return std::get<Element>(s.root.children[2].value).surfaces[0].interaction;
-}
-
 std::string error_pointer(const std::string& text) {
   try {
     [[maybe_unused]] const System s = rtt::io::parse_system(text);

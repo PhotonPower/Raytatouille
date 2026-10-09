@@ -135,8 +135,12 @@ std::optional<math::CMat3> interaction_prt(const compile::CompiledSurface& surfa
           const auto axis = transverse(surface.ideal_axis, k_in);
           if (!transmit || !axis) return std::nullopt;
           return polar::linear_retarder(*axis, interaction.retardance_waves, k_in);
-        } else if constexpr (std::is_same_v<I, model::Absorber>) {
-          return std::nullopt;  // handled before the event
+        } else if constexpr (std::is_same_v<I, model::Absorber> ||
+                             std::is_same_v<I, model::IdealLens> ||
+                             std::is_same_v<I, model::IdealCylinderLens>) {
+          // Absorber: handled before the event. Ideal lenses: interim state of #178 until the
+          // tracer applies them (ADR 0031, point 8): EventImpossible, never silently undeflected.
+          return std::nullopt;
         } else {
           static_assert(kUnhandledInteraction<I>, "interaction not handled");
         }

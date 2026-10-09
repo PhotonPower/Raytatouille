@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.4.0",
+  "schema_version": "0.5.0",
   "name": "Plano-convex singlet f = 100 mm, constant index 1.5168",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [

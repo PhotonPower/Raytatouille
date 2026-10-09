@@ -1,11 +1,13 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <cmath>
 #include <cstddef>
 #include <functional>
 #include <limits>
 #include <map>
 #include <memory>
+#include <numbers>
 #include <optional>
 #include <set>
 #include <stdexcept>
@@ -595,6 +597,12 @@ class Compiler {
       } else if (const auto* retarder = std::get_if<model::IdealRetarder>(&s.interaction)) {
         const auto& a = retarder->fast_axis;
         c.ideal_axis = to_global.apply_vector(math::Vec3(a[0], a[1], a[2]));
+      } else if (const auto* lens = std::get_if<model::IdealLens>(&s.interaction)) {
+        c.ideal_lens = ideal_lens(lens->focal_length, lens->object_distance, std::nullopt,
+                                  surface_location + "/interaction");
+      } else if (const auto* cyl = std::get_if<model::IdealCylinderLens>(&s.interaction)) {
+        c.ideal_lens = ideal_lens(cyl->focal_length, cyl->object_distance, cyl->axis_deg,
+                                  surface_location + "/interaction");
       }
       // At a crystal surface only fresnel and ideal_anti_reflection, as projections without
       // reflection loss in M4 (ADR 0026, point 5); independent of the paths.
@@ -627,6 +635,36 @@ class Compiler {
     }
     compiled_elements_.push_back(CompiledElement{element.name, element.kind, info.first_surface,
                                                  info.surface_count, info.media, info.segmented});
+  }
+
+  /// The resolved data of an ideal (cylinder) lens (ADR 0031, points 1, 3 and 4). validate()
+  /// has checked unbound values; a Param bound to the parameter table is checked here after the
+  /// resolution (ADR 0029) and reported at the pointer of the Param.
+  CompiledIdealLens ideal_lens(const model::Param& focal_length,
+                               const std::optional<model::Param>& object_distance,
+                               std::optional<double> axis_deg,
+                               const std::string& location) {
+    CompiledIdealLens lens;
+    lens.focal_length = focal_length.value;
+    if (!std::isfinite(lens.focal_length) || lens.focal_length == 0.0) {
+      report("interaction.focal_length_invalid", location + "/focal_length",
+             "focal length must be non-zero and finite (after the parameter table)");
+    }
+    if (object_distance) {
+      const double d = object_distance->value;
+      if (!std::isfinite(d) || d == 0.0) {
+        report("interaction.object_distance_invalid", location + "/object_distance",
+               "object distance must be non-zero and finite (after the parameter table)");
+      } else {
+        lens.t_o = 1.0 / -d;  // t_o = 1/s with s = -object_distance (ADR 0031, point 3)
+      }
+    }
+    if (axis_deg) {
+      // b = (-sin psi, cos psi, 0), psi from the local x to the y axis (ADR 0031, point 4).
+      const double psi = *axis_deg * std::numbers::pi / 180.0;
+      lens.power_axis = math::Vec3(-std::sin(psi), std::cos(psi), 0.0);
+    }
+    return lens;
   }
 
   CompiledShape compile_shape(const model::ShapeStack& shape, const std::string& location) {
@@ -681,10 +719,18 @@ class Compiler {
         }
       }
     } else {
-      for (const model::Event& event : path.events) {
+      for (std::size_t k = 0; k < path.events.size(); ++k) {
+        const model::Event& event = path.events[k];
         // validate() guarantees that every referenced surface exists.
-        compiled.events.push_back(
-            {surface_index_.at(event.surface), event.kind, event.order, 0, 0});
+        const std::uint32_t surface = surface_index_.at(event.surface);
+        compiled.events.push_back({surface, event.kind, event.order, 0, 0});
+        // Only transmit acts at an ideal lens (ADR 0031, point 7): a static path rule.
+        if (surfaces_[surface].ideal_lens &&
+            (event.kind == model::EventKind::Refract || event.kind == model::EventKind::Reflect)) {
+          report("paths.ideal_lens_event", idx(location + "/events", k),
+                 "surface " + event.surface.str() +
+                     " is an ideal lens: only transmit is allowed there (ADR 0031)");
+        }
       }
     }
     assign_media(compiled.events, location + "/events");
@@ -768,6 +814,10 @@ class Compiler {
                surface +
                    ": a diffraction order inside a crystal is not supported in M4 "
                    "(ADR 0026)");
+      } else if (e.kind == model::EventKind::Transmit && before &&
+                 surfaces_[e.surface].ideal_lens) {
+        report("crystal.unsupported", at,
+               surface + ": an ideal lens inside a crystal is not supported (ADR 0031)");
       }
       if (!after) mode = CrystalMode::None;
     }

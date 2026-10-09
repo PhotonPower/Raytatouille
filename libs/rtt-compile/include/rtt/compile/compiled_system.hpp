@@ -39,6 +39,18 @@ namespace rtt::compile {
 using CompiledShape =
     std::variant<geom::Plane<double>, geom::Conic<double>, geom::EvenAsphere<double>>;
 
+/// Resolved data of an ideal lens or ideal cylinder lens (ADR 0031): Params from the parameter
+/// table already resolved for the compiled configuration.
+struct CompiledIdealLens {
+  double focal_length = 0.0;  ///< f in mm along the propagation, f > 0 converges; never 0
+  /// t_o = 1/s of the design conjugate in 1/mm, with s = -object_distance (ADR 0031, point 3);
+  /// 0 for an object at infinity (no object_distance).
+  double t_o = 0.0;
+  /// Cylinder lens only: the direction of power b = (-sin psi, cos psi, 0) in local surface
+  /// coordinates, psi = axis_deg in rad; none for the ideal lens (power in every direction).
+  std::optional<math::Vec3> power_axis;
+};
+
 /// Coating of a surface (ADR 0019): which compiled coating, and which side is the substrate.
 struct SurfaceCoating {
   std::uint32_t coating = 0;  ///< index into CompiledSystem::coatings()
@@ -99,6 +111,8 @@ struct CompiledSurface {
   /// poses, not the surface pose); not normalised. The tracer projects it perpendicular to the
   /// ray (rtt/polar/ideal.hpp; ADR 0021).
   std::optional<math::Vec3> ideal_axis;
+  /// Set for IdealLens and IdealCylinderLens: the resolved lens data (ADR 0031).
+  std::optional<CompiledIdealLens> ideal_lens;
 };
 
 /// A homogeneous medium evaluated at all system wavelengths: isotropic, or a uniaxial crystal

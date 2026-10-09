@@ -53,7 +53,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `crystal.optic_axis_invalid` | Fehler | optische Achse null oder nicht endlich | validate | `…/el/optic_axis` |
 | `crystal.optic_axis_missing` | Fehler | Kristall ohne optische Achse | validate | `…/el/optic_axis` |
 | `crystal.optic_axis_not_allowed` | Fehler | optische Achse an einem Element ohne Kristall | validate | `…/el/optic_axis` |
-| `crystal.unsupported` | Fehler | Kristallfall, der noch nicht verfolgt werden kann (ADR 0026, Punkt 4): Kristall → Kristall, Reflexion im Kristall oder von außen (außer `ideal_anti_reflection`), Beugungsordnung im Kristall, automatischer Pfad durch einen Kristall | compile | `/paths/i/events/k` bzw. `/paths/i/events` |
+| `crystal.unsupported` | Fehler | Kristallfall, der noch nicht verfolgt werden kann (ADR 0026, Punkt 4): Kristall → Kristall, Reflexion im Kristall oder von außen (außer `ideal_anti_reflection`), Beugungsordnung im Kristall, ideale Linse im Kristall (ADR 0031), automatischer Pfad durch einen Kristall | compile | `/paths/i/events/k` bzw. `/paths/i/events` |
 | `edit.base_not_representable` | Fehler | das zu ändernde System ist in der Bearbeitungsform nicht darstellbar (nicht endliche Zahl, Material und Segmentliste oder Kristall zugleich, kein gültiges UTF-8) | edit | leer (ganzes Dokument) |
 | `edit.invalid_value` | Fehler | die geänderte Bearbeitungsform ist keine gültige Systemdatei (Typ, Schlüssel, Aufzählungswert); Ort vom strengen Leser | edit | z. B. `/name`, `…/s/shape/base/conic` |
 | `edit.patch_invalid` | Fehler | kein gültiges JSON-Patch-Dokument oder keine gültige Operation (RFC 6902): kein Array, unbekannte Operation, fehlendes Mitglied, ungültiger Pointer oder Array-Index (keine Ziffern, führende Null, `-` außerhalb eines Ziels), Verschieben in ein eigenes Kind, doppelte Schlüssel | edit | `path` bzw. `from` der Operation oder leer |
@@ -77,6 +77,9 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `interaction.axis_invalid` | Fehler | Achse von Polarisator oder Verzögerer null oder nicht endlich | validate | `…/s/interaction/transmission_axis`, `…/fast_axis` |
 | `interaction.coating_name_empty` | Fehler | leere Beschichtungsreferenz | validate | `…/s/interaction/name` |
 | `interaction.extinction_ratio_invalid` | Fehler | Extinktionsverhältnis des Polarisators außerhalb [0, 1] | validate | `…/s/interaction/extinction_ratio` |
+| `interaction.focal_length_invalid` | Fehler | Brennweite einer idealen Linse oder Zylinderlinse 0 oder nicht endlich (ADR 0031, Punkt 7); ein gebundener Wert wird nach der Auflösung von compile geprüft (ADR 0029) | validate | `…/s/interaction/focal_length` bzw. Pointer des Params |
+| `interaction.ideal_lens_not_allowed` | Fehler | ideale Linse oder Zylinderlinse nicht an der einzigen Planfläche eines `thin_element`, oder die Fläche hat `shape.terms` oder `phases` (ADR 0031, Punkt 1) | validate | `…/s/interaction` |
+| `interaction.object_distance_invalid` | Fehler | `object_distance` einer idealen Linse oder Zylinderlinse 0 oder nicht endlich (ADR 0031, Punkt 7); gebunden wie bei der Brennweite (compile nach der Auflösung) | validate | `…/s/interaction/object_distance` bzw. Pointer des Params |
 | `interaction.reflectance_invalid` | Fehler | Reflexionsgrad des Strahlteilers außerhalb [0, 1] | validate | `…/s/interaction` |
 | `interaction.retardance_invalid` | Fehler | Verzögerung nicht endlich | validate | `…/s/interaction/retardance_waves` |
 | `io.pickup_dropped` | Warnung | `pickup` eines Params aus einer Datei vor Schema 0.4 beim Lesen verworfen, der Wert bleibt (ADR 0029, Punkt 6); der Text steht in der Meldung | io | `…/pickup` in der gelesenen Datei |
@@ -115,6 +118,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `paths.crystal_mode_required` | Fehler | Eintritt in einen Kristall mit `refract` statt `ordinary` oder `extraordinary` (ADR 0026) | compile | `/paths/i/events/k` |
 | `paths.empty` | Fehler | kein Pfad | validate | `/paths` |
 | `paths.events_empty` | Fehler | expliziter Pfad ohne Ereignisse | validate | `/paths/i/events` |
+| `paths.ideal_lens_event` | Fehler | `refract` oder `reflect` an einer Fläche mit idealer Linse oder Zylinderlinse; dort ist nur `transmit` erlaubt (ADR 0031, Punkt 7) | compile | `/paths/i/events/k` |
 | `paths.inner_surface_ambiguous` | Fehler | innere Fläche zwischen verschiedenen Materialien von außen betreten | compile | `/paths/i/events/k` |
 | `paths.mangin_mirror_automatic` | Fehler | Spiegel mit Substrat und mehreren Flächen auf einem automatischen Pfad | compile | `…/el/surfaces` |
 | `paths.mode_without_crystal` | Fehler | `ordinary` oder `extraordinary` an einem Ereignis, dessen Medium danach kein Kristall ist (Element ohne Kristall oder Austritt) | compile | `/paths/i/events/k` |

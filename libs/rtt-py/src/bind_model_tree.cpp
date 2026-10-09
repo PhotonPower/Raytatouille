@@ -433,6 +433,27 @@ void bind_model_tree(nb::module_& m) {
               "Fast axis x, y, z in element coordinates, dimensionless.")
       .def_ro("retardance_waves", &model::IdealRetarder::retardance_waves,
               "Retardance in waves (0.25 for a quarter-wave plate).");
+  read_only_class<model::IdealLens>(
+      m, "IdealLens",
+      "Ideal lens without thickness (ADR 0031): images the plane at s onto the plane at s' with "
+      "1/s' = 1/s + 1/f for every ray, not only paraxially. The OPD is exact only for objects in "
+      "the plane of object_distance (read-only copy).")
+      .def_ro("focal_length", &model::IdealLens::focal_length,
+              "f in mm along the propagation in the surrounding medium, f > 0 converges (Param).")
+      .def_ro("object_distance", &model::IdealLens::object_distance,
+              "Design conjugate for the optical path in mm, positive for a real object in front "
+              "(Param); None: object at infinity.");
+  read_only_class<model::IdealCylinderLens>(
+      m, "IdealCylinderLens",
+      "Ideal cylinder lens (ADR 0031): the ideal lens in the direction of power "
+      "(-sin psi, cos psi, 0) only; the slope along the axis (cos psi, sin psi, 0) stays "
+      "(read-only copy).")
+      .def_ro("focal_length", &model::IdealCylinderLens::focal_length,
+              "f in mm along the propagation, f > 0 converges (Param).")
+      .def_ro("axis_deg", &model::IdealCylinderLens::axis_deg,
+              "Cylinder axis psi in degree, local surface frame, from the x to the y axis.")
+      .def_ro("object_distance", &model::IdealCylinderLens::object_distance,
+              "Design conjugate for the optical path in mm (Param); None: object at infinity.");
 
   // -------------------------------------------------------------- surface -----
   read_only_class<model::DiffractionEfficiency>(
@@ -459,7 +480,8 @@ void bind_model_tree(nb::module_& m) {
               "efficiency 1. If given, orders not listed have efficiency 0.")
       .def_ro("interaction", &model::Surface::interaction,
               "Interaction (Fresnel, IdealMirror, IdealAntiReflection, IdealBeamSplitter, "
-              "CoatingRef, IdealPolarizer, IdealRetarder, Absorber).")
+              "CoatingRef, IdealPolarizer, IdealRetarder, Absorber, IdealLens, "
+              "IdealCylinderLens).")
       .def("__repr__",
            [](const model::Surface& s) { return nb::str("Surface(id={!r})").format(s.id.str()); });
 

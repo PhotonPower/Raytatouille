@@ -127,6 +127,15 @@ class ParamWalker {
         list(r->coefficients, phase + "/coefficients");
       }
     }
+    // The ideal lenses (ADR 0031, point 1): focal length, then object distance if set.
+    const std::string interaction = loc + "/interaction";
+    if (auto* l = std::get_if<IdealLens>(&s.interaction)) {
+      visit_(interaction + "/focal_length", l->focal_length);
+      if (l->object_distance) visit_(interaction + "/object_distance", *l->object_distance);
+    } else if (auto* y = std::get_if<IdealCylinderLens>(&s.interaction)) {
+      visit_(interaction + "/focal_length", y->focal_length);
+      if (y->object_distance) visit_(interaction + "/object_distance", *y->object_distance);
+    }
   }
 
   const Visit& visit_;
