@@ -38,7 +38,8 @@ def grating_pointer(system: rt.System) -> str:
 
 
 def start(dx: float = 0.0) -> RayBatch:
-    """Five rays at x = -2 ... 2 mm, y = 0.5 mm, z = -5 (in front of the stop), direction (dx, 0, sqrt(1 - dx^2))."""
+    """Five rays at x = -2 ... 2 mm, y = 0.5 mm, z = -5 mm (in front of the stop), direction
+    (dx, 0, sqrt(1 - dx^2))."""
     rays = RayBatch(5)
     for k in range(5):
         rays.pos_x[k] = k - 2.0

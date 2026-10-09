@@ -37,7 +37,7 @@ COLUMNS = ("pos_x", "pos_y", "pos_z", "dir_x", "dir_y", "dir_z", "opl", "weight"
 
 def start_rays(dx: float, dz: float) -> RayBatch:
     """As start_rays() in diffraction_cases.cpp: a square grid with a pitch of 0.5 mm inside
-    r <= 2 mm at z = 0, direction (dx, 0, dz)."""
+    r <= 2 mm at z = -5 mm (in front of the stop), direction (dx, 0, dz)."""
     points = [(0.5 * i, 0.5 * j) for i in range(-4, 5) for j in range(-4, 5)
               if (0.5 * i) ** 2 + (0.5 * j) ** 2 <= 4.0]
     rays = RayBatch(len(points))
@@ -179,9 +179,9 @@ def test_cases_cover_the_statuses(compiled_systems: Systems) -> None:
     alive, vignetted, evanescent = (int(rt.trace.RayStatus.ALIVE),
                                     int(rt.trace.RayStatus.VIGNETTED),
                                     int(rt.trace.RayStatus.EVANESCENT))
-    assert status["grating_p1_normal"] == {alive}
-    assert status["grating_p6_normal"] == {evanescent}
-    assert status["grating_p6_oblique"] == {vignetted}
-    assert status["reflection_p1"] == {alive}
+    expected = {name: {alive} for name in CASES}
+    expected["grating_p6_normal"] = {evanescent}
+    expected["grating_p6_oblique"] = {vignetted}
+    assert status == expected
     weight = flatten(compiled_systems["efficiency"], "order -1", normal_rays, 1)["weight"]
-    assert status["efficiency_m1"] == {alive} and not weight.any()
+    assert not weight.any()
