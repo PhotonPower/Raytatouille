@@ -1173,9 +1173,10 @@ TEST_CASE("object-space telecentric: the finite-EP path converges to it, also fo
   // Stop at 129 + delta: a = -delta / 128, z_ep = b n1 / a = (128 + delta)(-128 / delta). For
   // delta > 0 the EP is virtual on the far side of the object (z_ep -> -infinity, #93), for
   // delta < 0 far behind the system (z_ep -> +infinity). The bundle is continuous from both
-  // sides; the label of the pupil point is continuous from z_ep -> +infinity and mirrored
-  // (px, py) -> (-px, -py) from z_ep -> -infinity (the image of the pupil turns over through
-  // infinity, docs/architecture.md "Feldwinkel und Pupille").
+  // sides, and so is the label of the pupil point: labels are oriented at the stop (ADR 0007,
+  // addendum #35 B), so the turn-over of the pupil image through infinity (stop_scale < 0 for
+  // delta > 0) does not mirror (px, py) any more (docs/architecture.md "Feldwinkel und
+  // Pupille"; before #35 B this test expected the mirrored label from z_ep -> -infinity).
   // Paraxial aiming: slope (py r_ep - h) / (z_ep - z_obj) differs from py u_m by
   // h / |z_ep - z_obj| ~ h |delta| / 128^2 (z_ep - z_obj ~ 128^2 / delta): bound
   // 2 h |delta| / 128^2 + 1e-15 (rounding of the normalised direction).
@@ -1193,27 +1194,27 @@ TEST_CASE("object-space telecentric: the finite-EP path converges to it, also fo
     REQUIRE(fo.entrance_pupil);
     REQUIRE(fo.entrance_pupil->z);
     REQUIRE((*fo.entrance_pupil->z < -200.0) == (delta > 0.0));
-    const double label = delta > 0.0 ? -1.0 : 1.0;  // mirrored from z_ep -> -infinity
     const double r_s = paraxial_stop_radius(near);
     // R_s = NA (b n1 + a (z_first - z_obj)) sign(a) = 0.05 (128 + delta - 200 delta / 128) sign(a)
-    // = 6.4 - 0.028125 delta (times the label): bound 0.05 |delta| + 1e-12.
-    REQUIRE(std::abs(r_s - label * 6.4) <= 0.05 * std::abs(delta) + 1e-12);
+    // = +-(6.4 - 0.028125 delta), negative for delta > 0 (stop_scale < 0): the target is
+    // (px, py) |R_s|. Bound on |R_s| - 6.4: 0.05 |delta| + 1e-12.
+    REQUIRE((r_s < 0.0) == (delta > 0.0));
+    REQUIRE(std::abs(std::abs(r_s) - 6.4) <= 0.05 * std::abs(delta) + 1e-12);
     for (std::uint16_t f = 0; f < 3; ++f) {
       const double h = static_cast<double>(f);
       for (const auto& [px, py] :
            {std::pair{0.0, 0.0}, std::pair{0.0, 1.0}, std::pair{0.6, -0.8}}) {
         INFO("field " << f << ", p = (" << px << ", " << py << ")");
         const auto pn = rtt::trace::aim_ray(near, PathId{0}, f, 0, px, py, Aiming::Paraxial);
-        const auto pt =
-            rtt::trace::aim_ray(tele, PathId{0}, f, 0, label * px, label * py, Aiming::Paraxial);
+        const auto pt = rtt::trace::aim_ray(tele, PathId{0}, f, 0, px, py, Aiming::Paraxial);
         REQUIRE((pn.ray.dir - pt.ray.dir).cwiseAbs().maxCoeff() <=
                 2.0 * h * std::abs(delta) / (128.0 * 128.0) + 1e-15);
         const auto rn = rtt::trace::aim_ray(near, PathId{0}, f, 0, px, py);
-        const auto rt = rtt::trace::aim_ray(tele, PathId{0}, f, 0, label * px, label * py);
+        const auto rt = rtt::trace::aim_ray(tele, PathId{0}, f, 0, px, py);
         REQUIRE(rn.ray.status == RayStatus::Alive);
         REQUIRE(rt.ray.status == RayStatus::Alive);
         const Vec3 hit = hit_on_stop(near, rn.ray);
-        REQUIRE(std::hypot(hit.x() - px * r_s, hit.y() - py * r_s) < 1e-9);
+        REQUIRE(std::hypot(hit.x() - px * std::abs(r_s), hit.y() - py * std::abs(r_s)) < 1e-9);
         REQUIRE((rn.ray.dir - rt.ray.dir).cwiseAbs().maxCoeff() <= 1e-2 * std::abs(delta) + 1e-10);
       }
     }
