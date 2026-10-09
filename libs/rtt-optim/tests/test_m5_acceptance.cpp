@@ -105,7 +105,158 @@ std::vector<std::array<double, 2>> jacobian_theta(const rtt::optim::MeritFunctio
   return j;
 }
 
+// --- Case 1: the independent 1-D reference for m5/singlet_optim ---------------------------------
+
+/// The singlet of m5/singlet_optim with R1 given and R2 from the EFL condition, and the best
+/// image plane for the RMS spot about the centroid of the Gauss rays (rms_spot of the file:
+/// GaussPupil{3, 6}, field 0, reference wavelength, quadrature weights).
+struct Bending {
+  double r1 = 0.0;
+  double r2 = 0.0;
+  double z_image = 0.0;  ///< global z of the best image plane, mm (= the detector position)
+  double s = 0.0;        ///< RMS^2 about the centroid there, mm^2 (the generator's sum of squares)
+};
+
+/// R2 of a lens of index n and centre thickness d in a medium n_a for the power phi (EFL 1/phi):
+/// the lens as two components (Greivenkamp, OPTI-201/202, Sec. 7 p. 7-4, docs/quellen.md):
+/// phi1 = (n - n_a) c1, phi2 = (n_a - n) c2 at the vertices (their principal planes), tau = d / n,
+/// phi = phi1 + phi2 - phi1 phi2 tau, so phi2 = (phi - phi1) / (1 - tau phi1).
+double thick_r2(double r1, double n, double n_a, double d, double phi) {
+  const double phi1 = (n - n_a) / r1;
+  const double phi2 = (phi - phi1) / (1.0 - d / n * phi1);
+  return (n_a - n) / phi2;
+}
+
+Bending bending(const System& base, const MaterialLibrary& lib, double r1) {
+  System s = base;
+  s.optimization = {};
+  auto& lens = std::get<rtt::model::Element>(s.root.children[1].value);
+  const CompiledSystem probe = rtt::compile::compile(s, lib);
+  const std::uint16_t ref = probe.reference_wavelength();
+  const double n_a = probe.media()[probe.environment_medium()].index[ref].real();
+  const double d = z_of(probe, "L1.S2") - z_of(probe, "L1.S1");
+  constexpr double kN = 1.5168;  // CONST:1.5168 of the file
+  Bending b;
+  b.r1 = r1;
+  b.r2 = thick_r2(r1, kN, n_a, d, 1.0 / 100.0);
+  std::get<rtt::model::Conic>(lens.surfaces[0].shape.base).radius.value = b.r1;
+  std::get<rtt::model::Conic>(lens.surfaces[1].shape.base).radius.value = b.r2;
+  const CompiledSystem cs = rtt::compile::compile(s, lib);
+  const rtt::compile::PathId main = *cs.find_path("main");
+  const rtt::trace::GaussPupil gauss{3, 6};
+  const std::uint16_t field = 0;
+  rtt::trace::RayBatch rays = rtt::trace::make_rays(cs, main, std::span(&field, 1), ref, gauss);
+  static_cast<void>(rtt::trace::SequentialTracer().trace(cs, main, rays));
+  const std::vector<double> q = rtt::trace::gauss_pupil_weights(gauss);
+  REQUIRE(q.size() == rays.size());
+  // After the last surface every ray is straight: at the plane z0 + s the point is a + s b with
+  // a = (x, y) on the detector (z0) and b = (dx/dz, dy/dz). With weights q (sum 1) the centroid
+  // is a_c + s b_c, and RMS^2(s) = sum q |(a - a_c) + s (b - b_c)|^2, a parabola in s with its
+  // minimum at s* = -sum q (a - a_c).(b - b_c) / sum q |b - b_c|^2.
+  const double z0 = z_of(cs, "IMG");
+  std::array<double, 2> ac{};
+  std::array<double, 2> bc{};
+  for (std::size_t k = 0; k < rays.size(); ++k) {
+    REQUIRE(rays.status()[k] == rtt::trace::RayStatus::Alive);
+    ac[0] += q[k] * rays.pos_x()[k];
+    ac[1] += q[k] * rays.pos_y()[k];
+    bc[0] += q[k] * rays.dir_x()[k] / rays.dir_z()[k];
+    bc[1] += q[k] * rays.dir_y()[k] / rays.dir_z()[k];
+  }
+  double ab = 0.0;
+  double bb = 0.0;
+  for (std::size_t k = 0; k < rays.size(); ++k) {
+    const double ax = rays.pos_x()[k] - ac[0];
+    const double ay = rays.pos_y()[k] - ac[1];
+    const double bx = rays.dir_x()[k] / rays.dir_z()[k] - bc[0];
+    const double by = rays.dir_y()[k] / rays.dir_z()[k] - bc[1];
+    ab += q[k] * (ax * bx + ay * by);
+    bb += q[k] * (bx * bx + by * by);
+  }
+  REQUIRE(bb > 0.0);
+  const double s_star = -ab / bb;
+  b.z_image = z0 + s_star;
+  for (std::size_t k = 0; k < rays.size(); ++k) {
+    const double x = rays.pos_x()[k] - ac[0] + s_star * (rays.dir_x()[k] / rays.dir_z()[k] - bc[0]);
+    const double y = rays.pos_y()[k] - ac[1] + s_star * (rays.dir_y()[k] / rays.dir_z()[k] - bc[1]);
+    b.s += q[k] * (x * x + y * y);
+  }
+  return b;
+}
+
+/// Golden-section search for the minimum of S(R1) on [lo, hi] (bracket from a coarse grid), until
+/// the bracket is narrower than `width`.
+Bending golden_section(
+    const System& base, const MaterialLibrary& lib, double lo, double hi, double width) {
+  const double g = 0.5 * (std::sqrt(5.0) - 1.0);
+  double a = lo;
+  double b = hi;
+  Bending c = bending(base, lib, b - g * (b - a));
+  Bending d = bending(base, lib, a + g * (b - a));
+  while (b - a > width) {
+    if (c.s < d.s) {
+      b = d.r1;
+      d = c;
+      c = bending(base, lib, b - g * (b - a));
+    } else {
+      a = c.r1;
+      c = d;
+      d = bending(base, lib, a + g * (b - a));
+    }
+  }
+  return c.s < d.s ? c : d;
+}
+
 }  // namespace
+
+TEST_CASE("M5 acceptance, case 1: the 1-D bending reference and Coddington's shape factor",
+          "[optim][m5]") {
+  // The reference of case 1, independent of rtt-optim: R2(R1) keeps the EFL at 100 mm, the image
+  // plane is the best one for each R1, and a golden-section search over R1 finds the minimum of
+  // the RMS spot. Checked here: the EFL of the reference system (thick-lens relation against the
+  // paraxial engine) and, as plausibility only, the shape factor of minimal spherical aberration
+  // of a thin lens (Sasian, OPTI 518 (2019), Lecture 14: p. 9 X = (c1 + c2) / (c1 - c2), p. 15
+  // object at infinity Y = 1, p. 30 minimum of sigma_I at X = 2 (n + 1)(n - 1) / (n + 2) Y with the
+  // relative index n; docs/quellen.md). The stop 5 mm before the lens does not change S_I (stop
+  // shift, S*_I = S_I). Band +-0.1, set beforehand: thick lens (d = 4 mm), RMS spot with real rays
+  // instead of the third-order S_I.
+  const System s = load("m5/singlet_optim.rtt.json");
+  const MaterialLibrary lib;
+  // Coarse grid for the bracket: R1 from 40 to 100 mm in steps of 5 (the thin-lens minimum lies
+  // near R1 = 59 mm).
+  double best_r1 = 40.0;
+  double best_s = std::numeric_limits<double>::infinity();
+  for (double r1 = 40.0; r1 <= 100.0; r1 += 5.0) {
+    const Bending b = bending(s, lib, r1);
+    if (b.s < best_s) {
+      best_s = b.s;
+      best_r1 = r1;
+    }
+  }
+  REQUIRE(best_r1 > 40.0);
+  REQUIRE(best_r1 < 100.0);  // an interior minimum
+  const Bending ref = golden_section(s, lib, best_r1 - 5.0, best_r1 + 5.0, 1e-6);
+  INFO("R1* = " << ref.r1 << ", R2* = " << ref.r2 << ", z* = " << ref.z_image
+                << ", RMS* = " << std::sqrt(ref.s) << " mm");
+
+  // The EFL of the reference system from the paraxial engine.
+  System at_ref = s;
+  auto& lens = std::get<rtt::model::Element>(at_ref.root.children[1].value);
+  std::get<rtt::model::Conic>(lens.surfaces[0].shape.base).radius.value = ref.r1;
+  std::get<rtt::model::Conic>(lens.surfaces[1].shape.base).radius.value = ref.r2;
+  const CompiledSystem cs = rtt::compile::compile(at_ref, lib);
+  const std::uint16_t wl = cs.reference_wavelength();
+  CHECK(std::abs(*rtt::paraxial::first_order(cs, *cs.find_path("main"), wl).efl - 100.0) <=
+        1e-12 * 100.0);
+
+  // Plausibility: Coddington's shape factor.
+  const double n_rel = 1.5168 / cs.media()[cs.environment_medium()].index[wl].real();
+  const double x_thin = 2.0 * (n_rel + 1.0) * (n_rel - 1.0) / (n_rel + 2.0);
+  const double x_ref = (1.0 / ref.r1 + 1.0 / ref.r2) / (1.0 / ref.r1 - 1.0 / ref.r2);
+  INFO("X* = " << x_ref << ", thin lens X = " << x_thin);
+  CHECK(std::abs(x_ref - x_thin) <= 0.1);
+  CHECK(ref.s > 0.0);  // content guard: a real spot, not a perfect image
+}
 
 TEST_CASE("M5 acceptance, case 2: air gap D from Gullstrand's equation", "[optim][m5]") {
   const System s = load("m5/two_lens_gap.rtt.json");
