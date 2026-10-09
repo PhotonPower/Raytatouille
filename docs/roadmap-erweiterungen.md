@@ -93,11 +93,11 @@ Huygens-PSF und -MTF (17.5.2, 17.6.2), Beamlet-Propagation (17.9), Faserkopplung
 2. P1 mit M5; O1 und O3 brauchen ADR 0029, O6 braucht einen Formatentscheid.
 3. P2 und P3 mit M6 und M7; W1 setzt #122 voraus (erledigt), W3 die Jones-Pupille aus M6.
 4. P4 mit M8; R2 darf vorgezogen werden, wenn die Systemskizzen es brauchen.
-5. P5 erst nach v1.0; X1 ist der größte Eingriff in den Tracer und beginnt mit dem ADR.
+5. P5 erst nach v1.0; X1 ist der größte Eingriff in den Tracer und beginnt mit dem ADR, der schon vor M8 vorliegen soll.
 
 ## Offene Entscheidungen für den Maintainer
 
-1. GRIN (X1) als v1.x oder v2.
+1. GRIN (X1): **vorgeschlagen v1.x**, direkt nach v1.0 und vor M10. Der ADR (Integrator, Schrittregel, Fehlergrenzen, Determinismus) wird früh geschrieben, damit M5 bis M8 keine Annahme „Strahlen sind zwischen Flächen immer Geraden“ einbauen (Ray Aiming, Analysen, Paraxial). Alternative v2, wenn v1.0 nicht verzögert werden soll. Maintainer-Freigabe steht aus.
 2. Setup-Datei (O6): Abschnitt in `*.rtt.json` oder eigene Datei.
 3. Rayfile-Format (N1).
 4. Richtlinie für Python-Callbacks (O2, F3): nur Laufzeit, nie im Dateiformat. Das hält die Dateien deterministisch.
