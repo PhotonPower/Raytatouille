@@ -168,11 +168,13 @@ struct AimedRay {
 /// object (z_ep < z_obj, #93). Object-space telecentric (EP at infinity, #96): (px, py) are
 /// object-space slopes, d ~ (px u_m, py u_m, 1) with the paraxial marginal slope u_m (NA / n
 /// for object_na, r_stop / |s| for stop_size); the paraxial chief ray is parallel to the axis.
-/// Pupil points are oriented at the reference wavelength: if the EP of `wavelength` lies on the
-/// other side of the object than that of the reference wavelength, (px, py) is used as
-/// -(px, py), so it reaches the same side of the stop (#96).
-/// The target is (px R_s, py R_s) in the local coordinates of the stop surface (first Stop event
-/// of the path), R_s = paraxial stop radius belonging to the entrance pupil. Apertures are
+/// Pupil points are oriented at the stop (ADR 0007, addendum #35 B; replaces the orientation at
+/// the reference wavelength of #96): py > 0 is always the upper half of the stop, for every
+/// wavelength and on both sides of an entrance pupil at infinity, so the rays change
+/// continuously when the EP passes through infinity. Where the image of the stop in the EP is
+/// inverted (paraxial stop_scale < 0), the EP point or slope of (px, py) is taken as -(px, py).
+/// The target is (px |R_s|, py |R_s|) in the local coordinates of the stop surface (first Stop
+/// event of the path), R_s = paraxial stop radius belonging to the entrance pupil. Apertures are
 /// ignored while aiming; vignetting is left to the tracer.
 /// @throws std::invalid_argument if the path, field or wavelength does not exist; px or py is
 ///         not finite; the field type does not fit the object (object height at infinity); a
