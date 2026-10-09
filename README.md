@@ -42,7 +42,7 @@ Beispielsysteme liegen unter `tests/reference/`, mit einem Unterordner je Meilen
 ## Dokumentation
 
 - [Architektur, Konventionen, Roadmap](docs/architecture.md)
-- [Roadmap-Erweiterungen (Entwurf)](docs/roadmap-erweiterungen.md)
+- [Roadmap-Erweiterungen](docs/roadmap-erweiterungen.md)
 - [Systemdateien `.rtt.json` schreiben (Kurzanleitung)](docs/dateiformat.md)
 - [Lehrbeispiele: 16 Systeme mit Messwerten](examples/lehrbeispiele/README.md)
 - [Architekturentscheidungen](docs/adr/README.md)
