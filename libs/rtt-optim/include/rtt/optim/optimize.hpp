@@ -117,6 +117,13 @@ struct OptimResult {
 /// (ADR 0030). Every evaluation sets the values in a copy, compiles every used configuration
 /// and evaluates the operands (MeritFunction). The input is not changed.
 ///
+/// Known limit (ADR 0030, addendum #170): an equality condition stated as an operand with a
+/// large weight together with a residual that cannot vanish (e.g. a fixed EFL and a minimal
+/// RMS spot) makes a narrow, curved valley; the run may then end with ConvergedStep far from the
+/// optimum. Hold such conditions exactly through the parameter table (an expression row binding
+/// the dependent value, ADR 0029), as in tests/reference/m5/singlet_solve.rtt.json; exact
+/// equality constraints in the solver are #196.
+///
 /// @param system    a valid system with at least one variable and one operand or generator
 /// @param materials material library for compile
 /// @param coatings  coating library for compile, or nullptr
