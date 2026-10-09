@@ -6,8 +6,10 @@
 #include <numbers>
 #include <optional>
 #include <random>
+#include <span>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -17,6 +19,7 @@
 #include "rtt/model/model.hpp"
 #include "rtt/paraxial/paraxial.hpp"
 #include "rtt/trace/apply_event.hpp"
+#include "rtt/trace/ray_batch.hpp"
 #include "rtt/trace/sequential.hpp"
 #include "rtt/trace/sources.hpp"
 
@@ -1383,6 +1386,86 @@ TEST_CASE("without a change of the EP side over the wavelengths: rays as before 
       const Vec3 p(0.0, 2.0, -200.0);
       const Vec3 q(px * r_ep, py * r_ep, *fo.entrance_pupil->z);
       REQUIRE(aimed.ray.dir == (q - p).normalized());
+    }
+  }
+}
+
+namespace {
+
+/// Hit of the ray of field `field` and pupil point (px, py) on the detector of `cs`, local x, y.
+std::pair<double, double> image_hit(
+    const CompiledSystem& cs, std::uint16_t field, double px, double py, Aiming aiming) {
+  rtt::trace::RayBatch rays = rtt::trace::make_rays(cs, PathId{0}, std::span(&field, 1), 0,
+                                                    rtt::trace::SinglePupilPoint{px, py}, aiming);
+  static_cast<void>(rtt::trace::SequentialTracer().trace(cs, PathId{0}, rays));
+  REQUIRE(rays.status()[0] == RayStatus::Alive);
+  const std::uint32_t img = cs.path(PathId{0}).events.back().surface;
+  const Vec3 local = cs.surfaces()[img].to_local.apply_point(
+      Vec3(rays.pos_x()[0], rays.pos_y()[0], rays.pos_z()[0]));
+  return {local.x(), local.y()};
+}
+
+}  // namespace
+
+TEST_CASE("pupil labels are continuous through an entrance pupil at infinity (#35 B)",
+          "[sources][aiming][telecentric]") {
+  // The stop at 129 + delta in telecentric_lens and in m2/telecentric_4f (stop in the common
+  // focal plane, object 128 mm before L1): for delta < 0 the entrance pupil lies far out on the
+  // +z side of the object, for delta > 0 far out on its -z side, and at delta = 0 (and within
+  // the rounding threshold of first_order, about 1.4e-12 mm, #35 A) it is at infinity and the
+  // slopes of the telecentric branch apply. Pupil labels are oriented at the stop (ADR 0007,
+  // addendum #35 B): py > 0 is the upper half of the stop on every side, so the rays and their
+  // image points change continuously with delta. Before, stop_scale < 0 on the delta > 0 side
+  // mirrored (px, py) on the stop: the marginal ray of field 2 jumped by 1.14 mm on the image
+  // of telecentric_singlet and by 0.02 mm in the 4f relay (ADR 0030, addendum #167). The singlet
+  has the fields 0, 1 and 2 mm, the relay 0 and 1 mm.
+  //
+  // Tolerance, derived beforehand: real aiming meets the stop target within kAimTolerance =
+  // 1e-9 mm; a stop error e moves the image point by at most about e times the ratio of the
+  // distances from the last lens to the image and from the first lens to the stop (singlet
+  // 353 / 126 = 2.8, 4f about 1), so 2 * 2.8e-9 between two runs. The stop target moves with
+  // delta by u_m |dy/dz| delta (slope of the axial ray at the stop: 0.05 * 0.5625 delta in the
+  // singlet, 0.1 * 1 delta in the 4f), the image point by at most 2.8 times that: 0.3 delta, so
+  // 2 * 0.3 * 1e-9 = 6e-10 for the largest |delta|. Paraxial aiming has no iteration; its start
+  // ray changes with the same bound. The tolerance 1e-7 mm lies more than 10 times above both
+  // and 1e5 times below the jumps.
+  constexpr double kTolerance = 1e-7;
+  const MaterialLibrary lib;
+  const System four_f = rtt::io::load_system(std::string(RTT_REFERENCE_DIR) +
+                                             "/m2/telecentric_4f.rtt.json");
+  const auto make = [&four_f](bool relay, double z_stop) {
+    if (!relay) return telecentric_lens(z_stop);
+    System s = four_f;
+    std::get<Element>(s.root.children[1].value).pose.position[2] = Param(z_stop);
+    return s;
+  };
+  for (const bool relay : {false, true}) {
+    const System base = make(relay, 129.0);
+    const double z_obj = -base.object.distance.value;
+    const CompiledSystem at_infinity = compile(base, lib);
+    REQUIRE_FALSE(rtt::paraxial::first_order(at_infinity, PathId{0}, 0).entrance_pupil->z);
+    for (const double delta : {1e-11, 1e-10, 1e-9}) {
+      for (const double sign : {-1.0, 1.0}) {
+        const CompiledSystem cs = compile(make(relay, 129.0 + sign * delta), lib);
+        // Content guard: the entrance pupil is finite here, on the side that sign says.
+        const auto fo = rtt::paraxial::first_order(cs, PathId{0}, 0);
+        REQUIRE(fo.entrance_pupil->z);
+        REQUIRE((*fo.entrance_pupil->z < z_obj) == (sign > 0.0));
+        for (const Aiming aiming : {Aiming::Real, Aiming::Paraxial}) {
+          for (std::uint16_t field = 0; field < base.fields.points.size(); ++field) {
+            for (const auto& [px, py] : {std::pair{0.0, 1.0}, std::pair{0.0, -1.0},
+                                         std::pair{1.0, 0.0}, std::pair{0.6, -0.8}}) {
+              INFO((relay ? "4f relay" : "singlet")
+                   << ", delta " << sign * delta << ", aiming " << int(aiming) << ", field "
+                   << field << ", p = (" << px << ", " << py << ")");
+              const auto expected = image_hit(at_infinity, field, px, py, aiming);
+              const auto actual = image_hit(cs, field, px, py, aiming);
+              CHECK(std::abs(actual.first - expected.first) <= kTolerance);
+              CHECK(std::abs(actual.second - expected.second) <= kTolerance);
+            }
+          }
+        }
+      }
     }
   }
 }
