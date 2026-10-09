@@ -318,12 +318,19 @@ TEST_CASE("generators G3: rms_wavefront against opd_points of single rays", "[op
 }
 
 TEST_CASE("generators G4: mean squares against a reference integration", "[optim][generators]") {
-  // Defocused paraboloid (0.5 mm), on axis: the Gaussian quadrature with 8 rings is exact for
-  // polynomials in rho^2 up to degree 15, so its mean square is the integral over the pupil up to
-  // the series remainder. References: the variance of opd_map on a 401 grid (uniform points in
-  // the unit circle) and the RMS of analysis::spot on 200 hexapolar rings (bias about 1 / rings
-  // from the outer ring, derived for a spot linear in rho: sum i^3 / N^2 / sum i = (1 + 1/N) / 2
-  // against 1/2), each within 1e-2.
+  // Defocused paraboloid (0.5 mm), on axis. The Gaussian quadrature with 8 rings is exact for
+  // polynomials in u = rho^2 up to degree 15 (DLMF 3.5.15), so its mean square is the integral
+  // over the pupil up to the series remainder of a smooth function of u. References, with their
+  // errors derived beforehand:
+  // - Wavefront: the variance of opd_map on the 401 grid, the lattice points of spacing h = 1/200
+  //   inside the unit circle. Interior: midpoint rule, O(h^2) = 2.5e-5. Edge: the count of
+  //   lattice points in a circle of radius R = 200 h deviates from pi R^2 = 1.26e5 by O(R^(2/3))
+  //   = about 34 points (Gauss circle problem), relative 3e-4; weighted with W^2, largest at the
+  //   edge (at most a few times the mean), about 1e-3.
+  // - Spot: the RMS of analysis::spot on N = 200 hexapolar rings (ring i at rho = i/N with 6i
+  //   rays). For a spot linear in rho the discrete mean of rho^2 is sum i^3 / N^2 / sum i =
+  //   (1 + 1/N) / 2 + O(1/N^2) against 1/2 for the integral: a bias of 1/N = 5e-3.
+  // Both are below the tolerance 1e-2.
   const CompiledSystem cs = compiled(paraboloid(-100.5));
   WavefrontGenerator wave = wavefront_generator();
   wave.rings = 8;
