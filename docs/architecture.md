@@ -58,6 +58,7 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 | 0028 | Relative Platzierung: `Pose.reference` (absolut, relativ zur vorangehenden Fläche oder zum vorangehenden Geschwister) und `Pose.order` (`translate_first` wie bisher, `rotate_first` als Koordinatensprung) (angenommen) |
 | 0029 | Parametertabelle mit Ausdrücken nur über frühere Zeilen, Konfigurationen als Spalten (nur Parameter), Modell-Param verweist mit `{"param": …}` auf eine Zeile, `pickup` entfällt mit Warnung (angenommen) |
 | 0030 | Optimierung: Merit-Funktion als kleinste Quadrate im Abschnitt `optimization`, Operanden und Gauß-Quadratur-Generatoren, Levenberg-Marquardt (Madsen/Nielsen/Tingleff, Dämpfung nach Nielsen, feste Skalierung nach MINPACK-1), zentrale Differenz parallel, Grenzen per MINUIT-Transformation, Abbruch mit bestem Stand, Ergebnis als ein Patch (angenommen) |
+| 0031 | Ideale Linse und ideale Zylinderlinse als Interaktionen `ideal_lens` und `ideal_cylinder_lens` an der Planfläche eines `ThinElement` (f als `Param`, Achse `axis_deg`): Richtung über Steigungen ξ′ = ξ − q/f (kollineare Abbildung, exakt für jeden Strahl), OPL-Beitrag exakt für eine Auslegungs-Konjugierte `object_distance` (`Param`), nur `transmit` (sonst `paths.ideal_lens_event`), P = kleinste Drehung k_ein → k_aus, `weight` unverändert, paraxial φ = |n|/f, Zylinderlinse paraxial abgelehnt; Format mit dem nächsten Schemasprung nach 0.4.0 (angenommen) |
 
 **Konventionen (verbindlich für alle Bibliotheken)**
 
