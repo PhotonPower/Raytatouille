@@ -681,7 +681,7 @@ TEST_CASE("optimize M7: cancellation keeps the last accepted state", "[optim][op
   SECTION("after the first accepted step: that state, bitwise the run with k_max = K") {
     // #193 review, P2-2 (F8: the best state). The request comes with the progress report of the
     // first solve in stage "optimize"; the solver honours it before its next evaluation and
-    // ends with the last accepted state after K solves. The same run without a request but
+    // ends with the last accepted state, reached by solve K. The same run without a request but
     // with max_iterations = K ends in that state too (ADR 0030, point 8, step 7).
     rtt::trace::CancelToken after;
     rtt::trace::RunControl d;
@@ -698,8 +698,15 @@ TEST_CASE("optimize M7: cancellation keeps the last accepted state", "[optim][op
     CHECK(m.system != s);
     CHECK(m.variables[0].changed);
     CHECK(m.operands.empty());  // no final evaluation after the request
+    // A solve that started before the request is discarded (ADR 0030, point 11) but counted in
+    // the history (k counts every solve, point 8); K is the solve of the last accepted state.
+    int k_accepted = 0;
+    for (const auto& it : m.history) {
+      if (it.accepted) k_accepted = it.k;
+    }
+    INFO("iterations " << m.iterations << ", last accepted solve " << k_accepted);
     OptimizeOptions k_max;
-    k_max.max_iterations = m.iterations;
+    k_max.max_iterations = k_accepted;
     const OptimResult limited = optimize(s, lib, nullptr, k_max);
     CHECK(limited.status == LmStatus::MaxIterations);
     CHECK(limited.patch == m.patch);
