@@ -16,9 +16,10 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 from conftest import REFERENCE_EXE
-from optim_systems import gap_merit, singlet_merit
+from optim_systems import gap_merit, singlet_merit, solve_merit
 
 import raytatouille as rt
+from raytatouille.optim import OptimStatus
 
 pytestmark = pytest.mark.skipif(
     REFERENCE_EXE is None,
@@ -84,6 +85,7 @@ Case = Callable[[int], Arrays]
 CASES: dict[str, Case] = {
     "singlet_optimize": lambda t: flatten_result(rt.optim.optimize(singlet_merit(), threads=t)),
     "gap_optimize": lambda t: flatten_result(rt.optim.optimize(gap_merit(), threads=t)),
+    "solve_optimize": lambda t: flatten_result(rt.optim.optimize(solve_merit(), threads=t)),
     "singlet_merit_start": merit_start,
 }
 
@@ -104,7 +106,7 @@ def test_optim_equal_cpp_bitwise(name: str, threads: int, cpp_dir: Path) -> None
 def test_the_cases_have_content() -> None:
     """The compared arrays carry content: both runs take accepted steps and change every
     variable, the merit falls, the patch is not empty, the start evaluation is valid."""
-    for name in ("singlet_optimize", "gap_optimize"):
+    for name in ("singlet_optimize", "gap_optimize", "solve_optimize"):
         a = CASES[name](1)
         assert len(a["k"]) >= 2 and bool(np.any(a["accepted"])), name
         assert bool(np.all(a["var_changed"])), name
@@ -114,3 +116,11 @@ def test_the_cases_have_content() -> None:
     start = CASES["singlet_merit_start"](1)
     assert int(start["ints"][0]) == 1 and len(start["residuals"]) == 1 + 2 * 3 * 6
     assert int(start["gen_rays"][0]) == 18 and float(start["gen_mean_square"][0]) > 0.0
+    # Case 1 of the M5 acceptance (#170): the run converges (default options, so also by the
+    # merit test), and the efl observer (weight 0) shows the EFL held by the parameter table.
+    solve = CASES["solve_optimize"](1)
+    converged = {OptimStatus.CONVERGED_GRADIENT.value, OptimStatus.CONVERGED_STEP.value,
+                 OptimStatus.CONVERGED_MERIT.value}
+    assert int(solve["ints"][0]) in converged
+    assert abs(float(solve["op_value"][0]) - 100.0) <= 1e-8
+    assert float(solve["op_contribution"][0]) == 0.0

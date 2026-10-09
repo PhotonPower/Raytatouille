@@ -114,8 +114,8 @@ double environment_index(const System& s, const MaterialLibrary& lib) {
 }
 
 /// m1/singlet_const: stop, plano-convex L1 (R1 = 51.68 on L1.S1 at z = 5, L1.S2 plane at z = 9),
-/// detector IMG at z = 106.363; object at infinity, EPD 20, fields y = 0, 3.5, 5 mm, three
-/// wavelengths (reference 0.5876 um).
+/// detector IMG at z = 106.363; object at infinity, EPD 20, field angles y = 0, 3.5, 5 degree
+/// (no field type in the file: FieldType::AngleDeg), three wavelengths (reference 0.5876 um).
 System singlet() {
   return load("m1/singlet_const.rtt.json");
 }

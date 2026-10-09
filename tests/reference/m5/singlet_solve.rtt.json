@@ -1,0 +1,93 @@
+{
+  "schema_version": "0.4.0",
+  "name": "Singlet bent for minimal RMS spot at EFL 100 mm, R2 bound to the curvature C1 (constant index 1.5168; D = n - n_air holds for 0.5876 um in the default environment only)",
+  "units": {"length": "mm", "wavelength": "um"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 10.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "parameters": [
+    {"name": "D", "value": 0.5165275671564951},
+    {"name": "K", "expression": "4 * D / 1.5168"},
+    {"name": "P", "value": 0.01},
+    {"name": "C1", "value": 0.009674922600619196, "variable": true},
+    {"name": "C2", "expression": "(P - D * C1) / (D * (K * C1 - 1))"},
+    {"name": "R1", "expression": "1 / C1"},
+    {"name": "R2", "expression": "1 / C2"}
+  ],
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 5.0}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "L1",
+        "pose": {"position": [0.0, 0.0, 5.0]},
+        "material": "CONST:1.5168",
+        "surfaces": [
+          {
+            "id": "L1.S1",
+            "shape": {
+              "base": {
+                "type": "conic",
+                "radius": {"param": "R1"}
+              }
+            },
+            "aperture": {"type": "circular", "radius": 12.7}
+          },
+          {
+            "id": "L1.S2",
+            "pose": {"position": [0.0, 0.0, 4.0]},
+            "shape": {
+              "base": {
+                "type": "conic",
+                "radius": {"param": "R2"}
+              }
+            },
+            "aperture": {"type": "circular", "radius": 12.7}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {
+          "position": [
+            0.0,
+            0.0,
+            {"value": 107.3, "variable": true}
+          ]
+        },
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ],
+  "optimization": {
+    "operands": [
+      {"type": "efl", "path": "main", "target": 100.0, "weight": 0.0}
+    ],
+    "generators": [
+      {"type": "rms_spot", "path": "main"}
+    ]
+  }
+}

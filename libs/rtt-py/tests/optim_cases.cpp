@@ -111,6 +111,8 @@ void run_optim_cases(const fs::path& reference_dir, const fs::path& out, int thr
   const material::MaterialLibrary plain;
   const model::System singlet = io::load_system(reference_dir / "m5/singlet_optim.rtt.json");
   const model::System gap = io::load_system(reference_dir / "m5/two_lens_gap.rtt.json");
+  // Case 1 of the M5 acceptance (#170): the EFL held by the parameter table.
+  const model::System solve = io::load_system(reference_dir / "m5/singlet_solve.rtt.json");
   const MeritFunction merit(singlet, plain, nullptr);
   const std::vector<double> start = merit.start();
 
@@ -118,6 +120,7 @@ void run_optim_cases(const fs::path& reference_dir, const fs::path& out, int thr
   arena.execute([&] {
     write_result(w("singlet_optimize"), optimize(singlet, plain));
     write_result(w("gap_optimize"), optimize(gap, plain));
+    write_result(w("solve_optimize"), optimize(solve, plain));
     write_evaluation(w("singlet_merit_start"), merit.evaluate(start));
   });
 }
