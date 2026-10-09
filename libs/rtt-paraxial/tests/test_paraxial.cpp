@@ -738,14 +738,25 @@ TEST_CASE("afocal threshold: depends on the absolute position of the surfaces",
 // (front.a), the exit pupil (back.d) and the image of a finite object (nu_out). An element that
 // is zero in exact arithmetic comes out as a rounding remainder of about N u S, which would put
 // the pupil or the image some 1e16 mm away instead of at infinity. The thresholds are relative,
-// as for the afocal test: |element| <= 16 N u S with S the same y-nu trace in magnitudes.
+// as for the afocal test: |element| <= T = 16 (N + 1) u S with S the magnitude of the same
+// element from the y-nu trace in magnitudes, N the number of events traced (paraxial.cpp).
 //
 // The test lens: plano-convex, n = 1.5, |R| = 64 mm, d = 3 mm, in VACUUM, f = 128 mm. With the
 // curved side first the rear focal point lies 126 mm behind S2 (z = 129, telecentric_singlet);
 // with the curved side last the front focal point lies 126 mm before S1 (z = -126): a stop or
-// an object there sees the other side at infinity. Moving it by k ulp (|k| <= 16, about 4e-13
-// mm) changes the element by at most 16 ulp(129) / 128 = 3.5e-15, below the threshold of about
-// 1e-14 (derivation in paraxial.cpp); a shift of 1e-6 mm (element 8e-9) stays finite.
+// an object there sees the other side at infinity. Moving it by delta changes the element by
+// |delta| / 128 exactly (front.a = 1 - 1/64 - (z_stop - 3)/128, back.d and the image's d =
+// 1 - (128 -+ delta)/128). Thresholds, derived from the magnitude trace with u = 2^-53:
+// - entrance pupil: N = 2 (S1, S2), S = y of (1, 0): 1 + 3 (1/128)/1.5 + (129 + 3)/128 =
+//   2.046875, so T = 48 u S = 1.09e-14 and the shift at the threshold is 128 T = 1.40e-12 mm =
+//   49 ulp(129) (ulp(129) = 2^-45);
+// - exit pupil and image: N = 2, S = nu of (0, 1): 1 + (126 + 2)/128 = 2, T = 1.07e-14, shift
+//   1.36e-12 mm = 96 ulp(126) (ulp(126) = 2^-46).
+// The computed element differs from the exact one by at most 8 (N + 1) u S = T/2. The cases
+// therefore hold with a margin on both sides: |k| <= 16 ulp gives at most 0.33 T (entrance)
+// and 0.17 T (exit, image), at most 0.83 T computed, so infinity; 148 ulp(129) and 290 ulp(126)
+// give 3.0 T, at least 2.5 T computed, so finite. A threshold ten times too large or too small
+// fails one of them.
 
 namespace {
 
@@ -770,13 +781,17 @@ TEST_CASE("infinity thresholds: a stop in the rear focal plane up to rounding is
     CHECK_FALSE(fo.entrance_pupil->z.has_value());  // entrance pupil at infinity
     CHECK_FALSE(fo.angular_magnification.has_value());
   }
-  // Guard: 1e-6 mm away the entrance pupil is finite (about 1.6e10 mm away).
-  System s = base_system();
-  add(s, lens("L", 0.0, 1.5, 64.0, std::nullopt, 3.0));
-  add(s, stop("STO", 129.0 + 1e-6, 5.0));
-  const FirstOrder fo = first_order_of(s);
-  REQUIRE(fo.entrance_pupil.has_value());
-  CHECK(fo.entrance_pupil->z.has_value());
+  // Guards at 3 T (148 ulp): the entrance pupil is finite (about 4e15 mm away).
+  for (const int k : {-148, 148}) {
+    INFO("stop at 129 + " << k << " ulp");
+    System s = base_system();
+    add(s, lens("L", 0.0, 1.5, 64.0, std::nullopt, 3.0));
+    add(s, stop("STO", ulps_from(129.0, k), 5.0));
+    const FirstOrder fo = first_order_of(s);
+    REQUIRE(fo.entrance_pupil.has_value());
+    CHECK(fo.entrance_pupil->z.has_value());
+    CHECK(fo.angular_magnification.has_value());
+  }
 }
 
 TEST_CASE("infinity thresholds: a stop in the front focal plane up to rounding is telecentric",
@@ -791,12 +806,17 @@ TEST_CASE("infinity thresholds: a stop in the front focal plane up to rounding i
     CHECK_FALSE(fo.exit_pupil->z.has_value());  // exit pupil at infinity
     CHECK_FALSE(fo.exit_pupil->diameter.has_value());
   }
-  System s = base_system();
-  add(s, stop("STO", -126.0 + 1e-6, 5.0));
-  add(s, lens("L", 0.0, 1.5, std::nullopt, -64.0, 3.0));
-  const FirstOrder fo = first_order_of(s);
-  REQUIRE(fo.exit_pupil.has_value());
-  CHECK(fo.exit_pupil->z.has_value());
+  // Guards at 3 T (290 ulp): the exit pupil is finite.
+  for (const int k : {-290, 290}) {
+    INFO("stop at -126 + " << k << " ulp");
+    System s = base_system();
+    add(s, stop("STO", ulps_from(-126.0, k), 5.0));
+    add(s, lens("L", 0.0, 1.5, std::nullopt, -64.0, 3.0));
+    const FirstOrder fo = first_order_of(s);
+    REQUIRE(fo.exit_pupil.has_value());
+    CHECK(fo.exit_pupil->z.has_value());
+    CHECK(fo.exit_pupil->diameter.has_value());
+  }
 }
 
 TEST_CASE(
@@ -812,10 +832,14 @@ TEST_CASE(
     CHECK_FALSE(fo.image_z.has_value());
     CHECK_FALSE(fo.lateral_magnification.has_value());
   }
-  System s = base_system();
-  s.object = {false, Param(126.0 + 1e-6)};
-  add(s, lens("L", 0.0, 1.5, std::nullopt, -64.0, 3.0));
-  const FirstOrder fo = first_order_of(s);
-  CHECK(fo.image_z.has_value());
-  CHECK(fo.lateral_magnification.has_value());
+  // Guards at 3 T (290 ulp): the image is finite.
+  for (const int k : {-290, 290}) {
+    INFO("object distance 126 + " << k << " ulp");
+    System s = base_system();
+    s.object = {false, Param(ulps_from(126.0, k))};
+    add(s, lens("L", 0.0, 1.5, std::nullopt, -64.0, 3.0));
+    const FirstOrder fo = first_order_of(s);
+    CHECK(fo.image_z.has_value());
+    CHECK(fo.lateral_magnification.has_value());
+  }
 }
