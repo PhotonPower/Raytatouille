@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <span>
 #include <stdexcept>
@@ -120,6 +121,16 @@ double solution_tolerance(std::span<const double> d,
 }
 
 }  // namespace
+
+TEST_CASE("merit M9: kMeritPrecision is a power of ten in [eps_M, 1e-6]", "[optim][merit]") {
+  // The value comes from the measurement in test_merit_noise.cpp ([.noise]); above 1e-6 the
+  // finding goes to the coordinator first (plan #167).
+  constexpr double p = rtt::optim::kMeritPrecision;
+  CHECK(p >= std::numeric_limits<double>::epsilon());
+  CHECK(p <= 1e-6);
+  const double exponent = std::log10(p);
+  CHECK(std::pow(10.0, std::round(exponent)) == p);
+}
 
 TEST_CASE("merit M1: every operand is exactly its analysis", "[optim][merit]") {
   System s = singlet();
@@ -514,6 +525,30 @@ TEST_CASE("optimize M7: an invalid trial is a rejected step with a warning", "[o
   std::size_t warnings = 0;
   for (const auto& d : r.diagnostics) warnings += d.code == "optim.evaluation_failed" ? 1 : 0;
   CHECK(warnings == 1);
+}
+
+TEST_CASE("optimize M7: a Jacobian column without a valid evaluation fails the run",
+          "[optim][optimize]") {
+  // Row E = X * 1e308 overflows for X > 1.7976931348623157 (DBL_MAX = 1.7976931348623157e308),
+  // and validate reports a non-finite row (parameters.not_finite), so compile throws. Start
+  // X = 1.79769 is valid; the difference step h = eps_f^(1/3) max(|X|, 1) >= 1e-5 (eps_f <=
+  // 1e-6, ADR 0030 point 9) puts X + h above the limit: the column of X has no valid pair, the
+  // run ends with status Failed and the input (ADR 0030, point 10).
+  System s = singlet();
+  s.parameters = {{"X", 1.79769, true}, {"E", rtt::model::ParameterExpression{"X * 1e308"}}};
+  s.optimization.operands = {efl(80.0)};
+  const MaterialLibrary lib;
+  const OptimResult r = optimize(s, lib);
+  CHECK(r.status == LmStatus::Failed);
+  CHECK(r.patch == "[]");
+  CHECK(r.system == s);
+  CHECK(r.failed_evaluations >= 1);
+  bool reported = false;
+  for (const auto& d : r.diagnostics) {
+    reported =
+        reported || (d.code == "optim.jacobian_failed" && d.location == "/parameters/0/value");
+  }
+  CHECK(reported);
 }
 
 TEST_CASE("optimize M7: cancellation keeps the last accepted state", "[optim][optimize]") {

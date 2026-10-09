@@ -16,7 +16,10 @@ if(RTT_BUILD_TESTS)
   # TBB limits the threads in the determinism test; rtt::io and nlohmann load the reference
   # systems, read the edit form and apply the result patch in the tests only.
   rtt_add_test(rtt_optim_tests
-    SOURCES tests/test_bounds.cpp tests/test_levenberg_marquardt.cpp tests/test_optimize.cpp
-      tests/test_variables.cpp
+    SOURCES tests/test_bounds.cpp tests/test_levenberg_marquardt.cpp tests/test_merit_noise.cpp
+      tests/test_optimize.cpp tests/test_variables.cpp
     LIBS rtt::optim rtt::io rtt::analysis rtt::paraxial TBB::tbb nlohmann_json::nlohmann_json)
+  # Glass catalogues of the reference systems for the noise measurement ([.noise]).
+  target_compile_definitions(rtt_optim_tests PRIVATE
+    RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs")
 endif()
