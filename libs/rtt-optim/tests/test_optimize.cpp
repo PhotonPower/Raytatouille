@@ -5,7 +5,9 @@
 #include <tbb/info.h>
 
 #include <algorithm>
+#include <array>
 #include <catch2/catch_test_macros.hpp>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -143,11 +145,12 @@ double solution_tolerance(std::span<const double> d,
 TEST_CASE("merit M9: kMeritPrecision is a power of ten in [eps_M, 1e-6]", "[optim][merit]") {
   // The value comes from the measurement in test_merit_noise.cpp ([.noise]); above 1e-6 the
   // finding goes to the coordinator first (plan #167).
+  // The powers of ten as literals (correctly rounded by the compiler, unlike std::pow).
+  constexpr std::array<double, 11> kPowers = {1e-16, 1e-15, 1e-14, 1e-13, 1e-12, 1e-11,
+                                              1e-10, 1e-9,  1e-8,  1e-7,  1e-6};
   constexpr double p = rtt::optim::kMeritPrecision;
   CHECK(p >= std::numeric_limits<double>::epsilon());
-  CHECK(p <= 1e-6);
-  const double exponent = std::log10(p);
-  CHECK(std::pow(10.0, std::round(exponent)) == p);
+  CHECK(std::find(kPowers.begin(), kPowers.end(), p) != kPowers.end());
 }
 
 TEST_CASE("m5/two_lens_gap: L2 lies D behind L1.S2, the image 45 mm behind L2.S2",
@@ -222,11 +225,14 @@ TEST_CASE("merit M1: every operand is exactly its analysis", "[optim][merit]") {
   param.common = common(0.0);
   param.parameter = "K";
   ops.emplace_back(param);  // 8
+  rtt::model::RayOperand ray_img_x = ray_img;
+  ray_img_x.coordinate = rtt::model::RayCoordinate::X;
+  ops.emplace_back(ray_img_x);  // 9: ray_x at the image
 
   const MaterialLibrary lib;
   const MeritFunction merit(s, lib, nullptr);
   REQUIRE(merit.variables().empty());
-  REQUIRE(merit.size() == 9);
+  REQUIRE(merit.size() == 10);
   const MeritEvaluation e = merit.evaluate({});
   REQUIRE(e.valid());
 
@@ -248,6 +254,8 @@ TEST_CASE("merit M1: every operand is exactly its analysis", "[optim][merit]") {
   const rtt::math::Vec3 local =
       cs.surfaces()[img].to_local.apply_point({rays.pos_x()[0], rays.pos_y()[0], rays.pos_z()[0]});
   CHECK(e.values[3] == local.y());
+  CHECK(e.values[9] == local.x());
+  CHECK(local.x() != 0.0);  // content guard: px = 0.25 gives a skew ray
   // At the stop real aiming hits the target px R_s = 0.25 * 10 mm within kAimTolerance (the
   // stop is the first surface, so the entrance pupil is the stop, R_s = EPD / 2).
   CHECK(std::abs(e.values[4] - 2.5) <= rtt::trace::kAimTolerance);
@@ -261,6 +269,26 @@ TEST_CASE("merit M1: every operand is exactly its analysis", "[optim][merit]") {
   CHECK(e.values[8] == 2.5);
   // Target 0, weight 1: the residual is the value.
   for (std::size_t i = 0; i < e.values.size(); ++i) CHECK(e.residuals[i] == e.values[i]);
+}
+
+TEST_CASE("merit M1: magnification is first_order's lateral magnification", "[optim][merit]") {
+  // A finite object 500 mm before the global origin (the stop): the singlet images it.
+  System s = singlet();
+  s.object.at_infinity = false;
+  s.object.distance = Param(500.0);
+  FirstOrderOperand m = efl(0.0);
+  m.quantity = FirstOrderQuantity::Magnification;
+  s.optimization.operands = {m};
+  const MaterialLibrary lib;
+  const MeritEvaluation e = MeritFunction(s, lib, nullptr).evaluate({});
+  REQUIRE(e.valid());
+  const rtt::compile::CompiledSystem cs = rtt::compile::compile(s, lib);
+  const std::optional<double> expected =
+      rtt::paraxial::first_order(cs, *cs.find_path("main"), cs.reference_wavelength())
+          .lateral_magnification;
+  REQUIRE(expected.has_value());
+  CHECK(e.values[0] == *expected);
+  CHECK(*expected < 0.0);  // content guard: a real, inverted image
 }
 
 TEST_CASE("merit M1: residual sqrt(w) (v - t)", "[optim][merit]") {
@@ -359,7 +387,9 @@ TEST_CASE("optimize M3: EFL of a plano-convex lens, analytic R1", "[optim][optim
   CHECK(r.diagnostics.empty());
   // The operand table comes from the evaluation of the final state.
   REQUIRE(r.operands.size() == 1);
-  CHECK(r.operands[0].contribution == (r.operands[0].value == 80.0 ? 0.0 : 100.0));
+  // One operand carries the whole merit (100 r^2 / r^2, within a few ulp), or 0 at r = 0.
+  const double share = r.operands[0].value == 80.0 ? 0.0 : 100.0;
+  CHECK(std::abs(r.operands[0].contribution - share) <= 1e-12);
 }
 
 TEST_CASE("optimize M4: two configurations, two independent unknowns", "[optim][optimize]") {
@@ -551,7 +581,7 @@ TEST_CASE("optimize M7: input errors at the start", "[optim][optimize]") {
 }
 
 TEST_CASE("optimize M7: an invalid trial is a rejected step with a warning", "[optim][optimize]") {
-  // EFL = R1 / (n - 1) with target 15 mm wants R1* = 15 (n - 1) = 7.752 mm, but the rim ray
+  // EFL = R1 / (n - n_a) (M3) with target 15 mm wants R1* = 15 (n - n_a) ~ 7.75 mm, but the rim ray
   // (py = 1, height 10 mm at the stop = L1.S1 aperture side) cannot meet a sphere of radius
   // below 10 mm. The first trial, close to the undamped step R1 = 60 -> 7.75 (tau = 1e-3, the
   // problem is linear in R1), therefore has an undefined ray operand: an invalid evaluation,
@@ -578,9 +608,10 @@ TEST_CASE("optimize M7: a Jacobian column without a valid evaluation fails the r
           "[optim][optimize]") {
   // Row E = X * 1e308 overflows for X > 1.7976931348623157 (DBL_MAX = 1.7976931348623157e308),
   // and validate reports a non-finite row (parameters.not_finite), so compile throws. Start
-  // X = 1.79769 is valid; the difference step h = eps_f^(1/3) max(|X|, 1) >= 1e-5 (eps_f <=
-  // 1e-6, ADR 0030 point 9) puts X + h above the limit: the column of X has no valid pair, the
-  // run ends with status Failed and the input (ADR 0030, point 10).
+  // X = 1.79769 is valid. Above it the limit is 3.1e-6 away; the difference step
+  // h = eps_f^(1/3) max(|X|, 1) is at least eps_M^(1/3) * 1.79769 = 1.1e-5 for any eps_f >= eps_M
+  // (ADR 0030, point 9), so X + h overflows: the column of X has no valid pair, the run ends
+  // with status Failed and the input (ADR 0030, point 10).
   System s = singlet();
   s.parameters = {row("X", 1.79769, true), row("E", rtt::model::ParameterExpression{"X * 1e308"})};
   s.optimization.operands = {efl(80.0)};
@@ -612,19 +643,44 @@ TEST_CASE("optimize M7: cancellation keeps the last accepted state", "[optim][op
   CHECK(r.status == LmStatus::Cancelled);
   CHECK(r.patch == "[]");
   CHECK(r.system == s);
+  CHECK(r.evaluations == 0);  // nothing evaluated (ADR 0030, point 11, addendum #167)
+  CHECK(r.operands.empty());
+  REQUIRE(r.variables.size() == 1);
+  CHECK(r.variables[0].end == 60.0);
+  CHECK_FALSE(r.variables[0].changed);
+
+  SECTION("during the first Jacobian: the start state, no final evaluation") {
+    rtt::trace::CancelToken during;
+    rtt::trace::RunControl d;
+    d.cancel = during;
+    d.min_interval = std::chrono::milliseconds{0};
+    d.progress = [during](const rtt::trace::Progress& p) mutable {
+      if (p.stage == "jacobian") during.request_cancel();
+    };
+    const OptimResult m = optimize(s, lib, nullptr, {}, d);
+    CHECK(m.status == LmStatus::Cancelled);
+    CHECK(m.patch == "[]");
+    CHECK(m.system == s);
+    CHECK(m.operands.empty());
+    CHECK(m.evaluations >= 2);  // the start check and the solver's start
+  }
 }
 
 TEST_CASE("optimize M8: a bound that excludes the optimum", "[optim][optimize]") {
   System s = singlet();
   radius(s, 1, 0) = Param(60.0);
   radius(s, 1, 0).variable = true;
-  radius(s, 1, 0).min = 45.0;  // R1* = 41.344 lies below
+  radius(s, 1, 0).min = 45.0;  // R1* = 80 (n - n_a) ~ 41.32 mm lies below (M3)
   s.optimization.operands = {efl(80.0)};
   const MaterialLibrary lib;
   const OptimResult r = optimize(s, lib);
+  // The run converges against the bound; at_bound is the criterion of ADR 0030, point 5
+  // (within 1e-6 max(1, |bound|) of it, bounds.hpp), and the value never leaves the range.
+  CHECK((r.status == LmStatus::ConvergedStep || r.status == LmStatus::ConvergedGradient ||
+         r.status == LmStatus::ConvergedMerit));
   REQUIRE(r.variables.size() == 1);
   CHECK(r.variables[0].at_bound);
-  CHECK(std::abs(r.variables[0].end - 45.0) <= 1e-6);
+  CHECK(r.variables[0].end >= 45.0);
   bool warned = false;
   for (const auto& d : r.diagnostics) {
     warned =

@@ -55,6 +55,19 @@ OptimResult optimize(const model::System& system,
                      const coating::CoatingLibrary* coatings,
                      const OptimizeOptions& options,
                      const trace::RunControl& control) {
+  // ADR 0030, point 11 (addendum #167): a cancellation requested before the start ends the run
+  // before any compile or evaluation, with the input.
+  if (control.cancel && control.cancel->cancelled()) {
+    OptimResult result;
+    result.status = LmStatus::Cancelled;
+    result.system = system;
+    result.patch = "[]";
+    for (const Variable& v : collect_variables(system)) {
+      result.variables.push_back({v.pointer, v.row, v.configuration, v.start, v.start, false,
+                                  at_bound(v.start, v.bounds)});
+    }
+    return result;
+  }
   const MeritFunction merit(system, materials, coatings);
   const std::vector<Variable>& variables = merit.variables();
   // ADR 0030, point 10 (addendum #167): a run without variables or without a merit function is
@@ -104,9 +117,14 @@ OptimResult optimize(const model::System& system,
   result.failed_evaluations = lm.failed_evaluations;
   result.system = with_values(system, variables, lm.p);
 
-  // The final state: operand table and warnings (the last accepted state was valid).
-  const MeritEvaluation end = merit.evaluate(lm.p);
-  result.evaluations = lm.evaluations + 2;  // the start check and the final state
+  // The final state: operand table and warnings (the last accepted state was valid). Not after
+  // a cancellation: no evaluation after the request (ADR 0030, point 11, addendum #167).
+  MeritEvaluation end;
+  result.evaluations = lm.evaluations + 1;  // the start check
+  if (lm.status != LmStatus::Cancelled) {
+    end = merit.evaluate(lm.p);
+    ++result.evaluations;
+  }
 
   double weights = 0.0;
   double squares = 0.0;

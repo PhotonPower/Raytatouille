@@ -44,6 +44,8 @@ struct MeritEvaluation {
   /// dimensionless; see rtt/model/optimization.hpp); NaN if it is not defined at this point.
   std::vector<double> values;
   /// Residual sqrt(weight) (value - target) of each operand, same order (ADR 0030, point 1).
+  /// An undefined value gives a NaN residual also for weight 0: an operand that is only watched
+  /// must still be defined, or the evaluation is invalid (ADR 0030, point 10).
   std::vector<double> residuals;
   /// Why an operand has no value (empty string if it has one), same order: an afocal path for
   /// efl/bfl, no paraxial working F-number, a ray that does not arrive at its surface, ...
@@ -75,7 +77,8 @@ struct MeritEvaluation {
 class MeritFunction {
  public:
   /// Prepares the evaluation and checks the operands at the start (ADR 0030, point 10).
-  /// @param system    a system that passes model::validate (also its section optimization)
+  /// @param system    a system that passes model::validate (also its section optimization); kept
+  ///                  by reference, so it must outlive this object (a temporary is rejected)
   /// @param materials material library for compile; must outlive this object
   /// @param coatings  coating library for compile, or nullptr; must outlive this object
   /// @throws compile::CompileError if the start system does not compile in a used configuration
@@ -86,6 +89,10 @@ class MeritFunction {
   MeritFunction(const model::System& system,
                 const material::MaterialLibrary& materials,
                 const coating::CoatingLibrary* coatings);
+  /// No temporary system: the object keeps a reference to it.
+  MeritFunction(model::System&& system,
+                const material::MaterialLibrary& materials,
+                const coating::CoatingLibrary* coatings) = delete;
 
   /// The variables, in the order of ADR 0030, point 5.
   [[nodiscard]] const std::vector<Variable>& variables() const noexcept { return variables_; }

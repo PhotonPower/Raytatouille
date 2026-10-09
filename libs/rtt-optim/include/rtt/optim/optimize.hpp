@@ -58,8 +58,8 @@ struct OptimIteration {
 struct OperandValue {
   std::string pointer;  ///< /optimization/operands/i
   double value = 0.0;   ///< value of the operand, unit of the operand
-  double target = 0.0;
-  double weight = 0.0;
+  double target = 0.0;  ///< target of the operand, unit of the operand
+  double weight = 0.0;  ///< weight w >= 0, dimensionless
   /// Share w (v - t)^2 / sum_j w_j (v_j - t_j)^2 of the merit, percent; 0 if the sum is 0.
   double contribution = 0.0;
 };
@@ -93,7 +93,7 @@ struct OptimResult {
   std::vector<model::Diagnostic> diagnostics;
   int iterations = 0;  ///< number of solves
   /// Evaluations of the merit function in this call: the solver's, the start check and the
-  /// final state.
+  /// final state (not after a cancellation; 0 if cancelled before the start).
   std::size_t evaluations = 0;
   std::size_t failed_evaluations = 0;  ///< trials that were invalid (ADR 0030, point 10)
 };
@@ -107,7 +107,11 @@ struct OptimResult {
 /// @param coatings  coating library for compile, or nullptr
 /// @param options   solver settings
 /// @param control   cancellation and progress (stages "jacobian" and "optimize"); a
-///                  cancellation ends the run with status Cancelled and the last accepted state
+///                  cancellation ends the run with status Cancelled and the last accepted state.
+///                  Requested before the start, nothing is evaluated and the result is the
+///                  input; after a cancellation the final state is not evaluated again, so
+///                  `operands` and the warnings of the analyses stay empty (ADR 0030, addendum
+///                  #167)
 /// @throws compile::CompileError if the system is invalid or does not compile at the start
 /// @throws OptimError with optim.no_variables and/or optim.no_operands (both if both apply), or
 ///         with merit.operand_unsupported
