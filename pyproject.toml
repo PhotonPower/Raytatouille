@@ -7,7 +7,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "raytatouille"
-version = "0.5.0"
+version = "0.6.0"
 description = "Raytracing engine for optical design"
 readme = "README.md"
 license = "MIT"
