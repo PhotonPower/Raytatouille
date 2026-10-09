@@ -37,12 +37,14 @@ def u8(values: Any) -> npt.NDArray[np.uint64]:
 
 
 def start_rays() -> rt.trace.RayBatch:
-    """As start_rays() in reports_cases.cpp: an axial ray, a ray at y = 5 mm and a ray steeply
-    off axis (lost), all from z = -1 (in front of the stop plane z = 0)."""
+    """As start_rays() in reports_cases.cpp: an axial ray, a ray at y = 5 mm and a steep ray from
+    y = 15 mm (lost: VIGNETTED at the singlet's stop, MISSED in the Cooke triplet), all from
+    z = -1 (in front of the first surface at z = 0)."""
     rays = rt.trace.RayBatch(3)
     for k in range(3):
         rays.pos_z[k] = -1.0
     rays.pos_y[1] = 5.0
+    rays.pos_y[2] = 15.0
     rays.dir_y[2] = 0.8
     rays.dir_z[2] = 0.6
     return rays
@@ -100,7 +102,7 @@ Systems = dict[str, rt.CompiledSystem]
 
 def systems() -> Systems:
     schott = rt.MaterialLibrary()
-    schott.add_catalog(CATALOG_DIR / "schott.agf")
+    schott.add_catalog(CATALOG_DIR / "m2" / "schott.agf")  # with N-LAK9 and N-SF5
     return {
         "singlet": rt.compile(rt.load(REFERENCE_DIR / "m1" / "singlet_const.rtt.json")),
         "cooke": rt.compile(rt.load(REFERENCE_DIR / "m2" / "cooke_triplet.rtt.json"),

@@ -47,7 +47,7 @@ ReadOnlyArray<bool> coaxial_flags(const DimensionSegments& s) {
   const std::size_t shape[1] = {n};
   const bool* values = data.get();
   // The capsule owns the copy from here on and frees it with the array.
-  nb::capsule owner(data.get(), [](void* p) noexcept {
+  const nb::capsule owner(data.get(), [](void* p) noexcept {
     const std::unique_ptr<bool[]> owned(static_cast<bool*>(p));
   });
   static_cast<void>(data.release());

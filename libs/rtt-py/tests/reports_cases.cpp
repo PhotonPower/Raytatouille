@@ -10,8 +10,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <iterator>
 #include <limits>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -44,6 +46,7 @@ class Writer {
   template <typename T, typename Items, typename Get>
   void column(const std::string& array, const char* descr, const Items& items, Get get) const {
     std::vector<T> v;
+    v.reserve(std::size(items));
     for (const auto& item : items) v.push_back(static_cast<T>(get(item)));
     write_column<T>(out_ / (name_ + "." + array + ".npy"), descr, v);
   }
@@ -150,12 +153,14 @@ void write_dimensions(const Writer& w, const DimensionReport& d) {
   w.column<double>("diameter", "<f8", s, [](const SegmentDimensions& x) { return x.diameter; });
 }
 
-/// As start_rays() in test_bitwise_reports.py: an axial ray, a ray at y = 5 mm and a ray
-/// steeply off axis (lost), all from z = -1 (in front of the stop plane z = 0).
+/// As start_rays() in test_bitwise_reports.py: an axial ray, a ray at y = 5 mm and a steep ray
+/// from y = 15 mm (lost: VIGNETTED at the singlet's stop, MISSED in the Cooke triplet), all
+/// from z = -1 (in front of the first surface at z = 0).
 RayBatch start_rays() {
   RayBatch rays(3);
   for (std::size_t k = 0; k < rays.size(); ++k) rays.pos_z()[k] = -1.0;
   rays.pos_y()[1] = 5.0;
+  rays.pos_y()[2] = 15.0;
   rays.dir_y()[2] = 0.8;
   rays.dir_z()[2] = 0.6;
   return rays;
@@ -168,9 +173,9 @@ void run_reports_cases(const fs::path& reference_dir,
                        const fs::path& out,
                        int threads) {
   const auto w = [&](const std::string& name) { return Writer(out, name); };
-  material::MaterialLibrary plain;
-  material::MaterialLibrary schott;
-  schott.add_catalog(catalog_dir / "schott.agf");
+  const material::MaterialLibrary plain;
+  material::MaterialLibrary schott;  // the full catalogue with N-LAK9 and N-SF5
+  schott.add_catalog(catalog_dir / "m2" / "schott.agf");
   const CompiledSystem singlet =
       compile::compile(io::load_system(reference_dir / "m1/singlet_const.rtt.json"), plain);
   const CompiledSystem cooke =
@@ -185,7 +190,9 @@ void run_reports_cases(const fs::path& reference_dir,
   });
   write_system(w("singlet_system"), system_report(singlet, PathId{0}, 1));
   write_system(w("cooke_system"), system_report(cooke, PathId{0}, cooke.reference_wavelength()));
-  write_system(w("grating_system"), system_report(grating, *grating.find_path("order +1"), 0));
+  const std::optional<PathId> order = grating.find_path("order +1");
+  if (!order) throw std::logic_error("grating_transmission: no path 'order +1'");
+  write_system(w("grating_system"), system_report(grating, *order, 0));
   write_dimensions(w("singlet_dimensions"), dimension_report(singlet));
   write_dimensions(w("cooke_dimensions"), dimension_report(cooke));
 }
