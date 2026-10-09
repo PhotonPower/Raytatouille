@@ -61,6 +61,10 @@ Zwei Fehlerquellen, die nur die CI sieht, vorab lokal prüfen:
 - **Bitvergleiche brauchen einen Inhaltswächter.** Liefern C++ und Python beide dasselbe Falsche
   (z. B. alle Strahlen verfehlt), ist der Vergleich trotzdem grün. Jeder neue Fall bekommt deshalb
   eine Prüfung auf den erwarteten Status und auf Werte, die sich unterscheiden.
+- **Startstrahlen nicht in die Ebene der ersten Fläche legen.** Ein Strahl, der genau in der Ebene
+  der Blende oder der ersten Fläche startet, trifft sie nicht (Abstand 0) und endet als verfehlt.
+  In Tests die Startstrahlen vor die erste Fläche legen (z. B. z = −1) und den Status prüfen
+  (#151, #177).
 - **Geänderte Referenzdateien auch durch die Python-Tests.** `test_model_read.py` und die
   Bitvergleiche lesen die Dateien unter `tests/reference/` (z. B. `feature_tour.rtt.json`). Wer eine
   dieser Dateien ändert, lässt die Python-Tests lokal laufen, auch wenn sich keine Bindung ändert;
