@@ -195,6 +195,8 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "first surface of an element placed relatively"},
     {"rays.lost", Severity::Warning, "analysis",
      "more rays lost than the threshold of the analysis (default 50 %)"},
+    {"report.paraxial_unavailable", Severity::Warning, "analysis",
+     "system report without paraxial data for the path"},
     {"shape.asphere_without_coefficients", Severity::Warning, "validate",
      "even asphere without coefficients"},
     {"shape.radius_invalid", Severity::Error, "validate", "radius zero or not finite"},
