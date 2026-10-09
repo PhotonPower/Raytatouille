@@ -146,6 +146,7 @@ RayBatch start_rays(const CompiledSystem& system,
                     const PathOptions& options,
                     const trace::RunControl* control) {
   check_options(options);
+  detail::reject_gauss(options.sampling, "path analysis");
   detail::check_path(system, path);
   detail::check_wavelength(system, wavelength);
   const std::uint16_t fields[] = {field};

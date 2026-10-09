@@ -129,7 +129,9 @@ struct SpotStatistics {
 
 /// Options of a spot diagram.
 struct SpotOptions {
-  trace::PupilSampling sampling = trace::HexapolarPupil{6};  ///< pupil sampling per wavelength
+  /// Pupil sampling per wavelength; not trace::GaussPupil, whose points need their quadrature
+  /// weights (std::invalid_argument, #168).
+  trace::PupilSampling sampling = trace::HexapolarPupil{6};
   trace::Aiming aiming = trace::Aiming::Real;  ///< aiming of all rays, chief ray included
   /// Warning "rays.lost" if more than this fraction of the launched rays is lost (ADR 0023);
   /// in [0, 1]. Vignetting at the field edge is intended, hence the default of one half.

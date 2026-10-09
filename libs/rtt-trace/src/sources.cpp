@@ -13,6 +13,8 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "event_media.hpp"
 #include "rtt/compile/errors.hpp"
@@ -550,7 +552,102 @@ AimedRay aim(const Context& c, const FieldStart& f, double px, double py, Aiming
   return out;
 }
 
+/// Nodes (ascending) and weights of the n-point Gauss-Legendre rule on [-1, 1] (NIST DLMF,
+/// Sec. 3.5(v), Eq. (3.5.21): w(x) = 1; exact for polynomials of degree <= 2n - 1, Eq.
+/// (3.5.20_1)).
+/// - The nodes are the zeros of the monic Legendre polynomial p_n. It follows from the
+///   three-term recurrence x p_m = p_{m+1} + alpha_m p_m + beta_m p_{m-1}, p_{-1} = 0, p_0 = 1
+///   (Eq. (3.5.30)), with alpha_m = 0 and beta_m = m^2 / (4 m^2 - 1) (Eq. (3.5.33_1) for
+///   Jacobi alpha = beta = 0, i.e. Legendre). Newton's method on p_n, with p_n' from the
+///   differentiated recurrence, from the start -cos(pi (k + 3/4) / (n + 1/2)) for node k.
+/// - The weights are w_k = beta_0 v_{k,1}^2 (Eq. (3.5.32)) with the normalized eigenvector v_k of
+///   the Jacobi matrix (3.5.31). By the orthonormal recurrence (3.5.30_5), v_k is proportional
+///   to (q_0, ..., q_{n-1})(x_k) with q_m = p_m / sqrt(h_m), h_0 = beta_0 = 2,
+///   h_m = h_{m-1} beta_m. Hence v_{k,1}^2 = q_0^2 / sum q_m^2 = 1 / (h_0 sum q_m^2) and
+///   w_k = 1 / sum_{m < n} q_m(x_k)^2 (derived here; docs/quellen.md).
+/// The negative nodes are computed and mirrored, so nodes and weights are exactly symmetric, with
+/// the node 0 for odd n.
+struct GaussLegendre {
+  std::vector<double> x;
+  std::vector<double> w;
+};
+
+GaussLegendre gauss_legendre(int n) {
+  const auto beta = [](int m) { return static_cast<double>(m) * m / (4.0 * m * m - 1.0); };
+  // p_n(x) and p_n'(x) from the recurrence.
+  const auto monic = [&](double x) {
+    double p_prev = 0.0;
+    double p = 1.0;
+    double d_prev = 0.0;
+    double d = 0.0;
+    for (int m = 0; m < n; ++m) {
+      const double b = m > 0 ? beta(m) : 0.0;
+      const double p_next = x * p - b * p_prev;
+      const double d_next = p + x * d - b * d_prev;
+      p_prev = p;
+      p = p_next;
+      d_prev = d;
+      d = d_next;
+    }
+    return std::pair{p, d};
+  };
+  // 1 / sum_{m < n} p_m(x)^2 / h_m.
+  const auto weight = [&](double x) {
+    double p_prev = 0.0;
+    double p = 1.0;
+    double h = 2.0;
+    double sum = 0.0;
+    for (int m = 0; m < n; ++m) {
+      sum += p * p / h;
+      const double b = m > 0 ? beta(m) : 0.0;
+      const double p_next = x * p - b * p_prev;
+      p_prev = p;
+      p = p_next;
+      h *= beta(m + 1);
+    }
+    return 1.0 / sum;
+  };
+  GaussLegendre g;
+  g.x.assign(static_cast<std::size_t>(n), 0.0);
+  g.w.assign(static_cast<std::size_t>(n), 0.0);
+  for (int k = 0; k < n / 2; ++k) {
+    double x = -std::cos(std::numbers::pi * (k + 0.75) / (n + 0.5));
+    for (int i = 0; i < 100; ++i) {
+      const auto [p, d] = monic(x);
+      const double dx = p / d;
+      x -= dx;
+      if (std::abs(dx) <= 2.0 * std::numeric_limits<double>::epsilon()) break;
+    }
+    const auto lo = static_cast<std::size_t>(k);
+    const auto hi = static_cast<std::size_t>(n - 1 - k);
+    g.x[lo] = x;
+    g.x[hi] = -x;
+    g.w[lo] = weight(x);
+    g.w[hi] = g.w[lo];
+  }
+  if (n % 2 == 1) g.w[static_cast<std::size_t>(n / 2)] = weight(0.0);
+  return g;
+}
+
+void check_gauss(const GaussPupil& g) {
+  if (g.rings < 1 || g.arms < 1) {
+    throw std::invalid_argument("pupil sampling: gauss needs rings >= 1 and arms >= 1");
+  }
+}
+
 }  // namespace
+
+std::vector<double> gauss_pupil_weights(const GaussPupil& gauss) {
+  check_gauss(gauss);
+  const GaussLegendre g = gauss_legendre(gauss.rings);
+  std::vector<double> q;
+  q.reserve(static_cast<std::size_t>(gauss.rings) * static_cast<std::size_t>(gauss.arms));
+  for (const double w : g.w) {
+    // mean over the disk = (1 / (2 pi)) int dtheta int_0^1 f du; du = dx / 2 and dtheta = 2 pi / A
+    for (int j = 0; j < gauss.arms; ++j) q.push_back(w / (2.0 * gauss.arms));
+  }
+  return q;
+}
 
 std::vector<PupilPoint> pupil_points(const PupilSampling& sampling) {
   return std::visit(
@@ -580,6 +677,16 @@ std::vector<PupilPoint> pupil_points(const PupilSampling& sampling) {
           for (const double x : even_points(s.n)) p.push_back({x, 0.0});
         } else if constexpr (std::is_same_v<S, FanYPupil>) {
           for (const double y : even_points(s.n)) p.push_back({0.0, y});
+        } else if constexpr (std::is_same_v<S, GaussPupil>) {
+          check_gauss(s);
+          // u = rho^2 = (1 + x) / 2 maps [-1, 1] onto [0, 1] (#168).
+          for (const double x : gauss_legendre(s.rings).x) {
+            const double rho = std::sqrt((1.0 + x) / 2.0);
+            for (int j = 0; j < s.arms; ++j) {
+              const double theta = kTwoPi * j / s.arms;
+              p.push_back({rho * std::sin(theta), rho * std::cos(theta)});
+            }
+          }
         } else {
           std::mt19937_64 engine(s.seed);
           p.reserve(s.count);
