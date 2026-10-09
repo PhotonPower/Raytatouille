@@ -185,6 +185,7 @@ MeritFunction::MeritFunction(const model::System& system,
 
   const model::Optimization& merit = system.optimization;
   std::vector<model::Diagnostic> unsupported;
+  unsupported.reserve(merit.generators.size());
   // Generators come with #168; until then they would be ignored, so they are rejected.
   for (std::size_t g = 0; g < merit.generators.size(); ++g) {
     unsupported.push_back(diagnostic("merit.operand_unsupported",
@@ -268,12 +269,15 @@ MeritEvaluation MeritFunction::evaluate(std::span<const double> values) const {
   for (std::size_t i = 0; i < operands.size(); ++i) {
     const model::Operand& op = operands[i];
     Value v;
-    if (rows_[i]) {
-      if (!table) table = model::evaluate_parameters(system);
-      v.value = table->at(*rows_[i], configurations_[i]);
+    if (const std::optional<std::size_t> row = rows_[i]; row.has_value()) {
+      if (!table) table.emplace(model::evaluate_parameters(system));
+      v.value = table.value().at(row.value(), configurations_[i]);
       if (!std::isfinite(v.value)) v.undefined = "the parameter row has no finite value";
     } else {
-      const compile::CompiledSystem& cs = *compiled[configurations_[i]];
+      // Compiled in the loop above: configurations_[i] is in compiled_ for this operand.
+      const std::optional<compile::CompiledSystem>& slot = compiled[configurations_[i]];
+      if (!slot) throw std::logic_error("optimize: configuration of an operand not compiled");
+      const compile::CompiledSystem& cs = *slot;
       if (const auto* f = std::get_if<model::FirstOrderOperand>(&op)) {
         v = first_order_value(cs, *f);
       } else if (const auto* r = std::get_if<model::RayOperand>(&op)) {

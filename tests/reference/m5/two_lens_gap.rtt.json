@@ -54,7 +54,14 @@
       {
         "type": "lens",
         "name": "L2",
-        "pose": {"position": [0.0, 0.0, {"param": "D"}], "reference": "relative_to_preceding"},
+        "pose": {
+          "reference": "relative_to_preceding",
+          "position": [
+            0.0,
+            0.0,
+            {"param": "D"}
+          ]
+        },
         "material": "CONST:1.5168",
         "surfaces": [
           {
@@ -78,8 +85,12 @@
         "type": "detector",
         "name": "image",
         "pose": {
-          "position": [0.0, 0.0, {"value": 45.0, "variable": true}],
-          "reference": "relative_to_preceding"
+          "reference": "relative_to_preceding",
+          "position": [
+            0.0,
+            0.0,
+            {"value": 45.0, "variable": true}
+          ]
         },
         "surfaces": [
           {"id": "IMG"}

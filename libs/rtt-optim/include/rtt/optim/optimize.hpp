@@ -19,11 +19,16 @@
 
 namespace rtt::optim {
 
-/// Relative precision eps_f of a merit evaluation (ADR 0030, point 9), the default of
-/// OptimizeOptions::function_precision. Measured in #167 over the reference systems and the M5
-/// acceptance systems (test_merit_noise.cpp, tag [.noise]): the largest relative noise times 10,
-/// rounded up to a power of ten.
-inline constexpr double kMeritPrecision = 1e-12;  // placeholder until the measurement (#167)
+/// Relative precision eps_f of a merit evaluation (ADR 0030, point 9 and addendum #167), the
+/// default of OptimizeOptions::function_precision; a run option, so a caller with a smoother
+/// problem may set it smaller. Measured in #167 (test_merit_noise.cpp, tag [.noise], GCC 16
+/// Release) over 26 paths of the reference systems, the M5 acceptance systems included: the
+/// largest relative noise is 8.17e-11 (m2/telecentric_4f, opd_rms on axis: rounding noise of a
+/// perfectly corrected afocal relay, whose ||f(theta_0)||_inf is small without an EFL), the
+/// second 3.11e-12 (m1/telecentric_singlet), all others <= 1.5e-13. Times 10 and rounded up to a
+/// power of ten: 1e-9, so the difference step is h = 1e-3 max(|theta|, 1). Pairs with a step or
+/// a kink (telecentric aiming threshold, an RMS at its minimum) are listed, not counted.
+inline constexpr double kMeritPrecision = 1e-9;
 
 /// Settings of the solver (ADR 0030, point 2: run parameters, not part of the file); as
 /// LmOptions, with the measured precision of a merit evaluation as default.

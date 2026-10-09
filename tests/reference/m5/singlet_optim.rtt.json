@@ -34,7 +34,10 @@
           {
             "id": "L1.S1",
             "shape": {
-              "base": {"type": "conic", "radius": {"value": 103.36, "variable": true}}
+              "base": {
+                "type": "conic",
+                "radius": {"value": 103.36, "variable": true}
+              }
             },
             "aperture": {"type": "circular", "radius": 12.7}
           },
@@ -42,7 +45,10 @@
             "id": "L1.S2",
             "pose": {"position": [0.0, 0.0, 4.0]},
             "shape": {
-              "base": {"type": "conic", "radius": {"value": -103.36, "variable": true}}
+              "base": {
+                "type": "conic",
+                "radius": {"value": -103.36, "variable": true}
+              }
             },
             "aperture": {"type": "circular", "radius": 12.7}
           }
@@ -51,7 +57,13 @@
       {
         "type": "detector",
         "name": "image",
-        "pose": {"position": [0.0, 0.0, {"value": 107.3, "variable": true}]},
+        "pose": {
+          "position": [
+            0.0,
+            0.0,
+            {"value": 107.3, "variable": true}
+          ]
+        },
         "surfaces": [
           {"id": "IMG"}
         ]

@@ -80,6 +80,17 @@ FirstOrderOperand efl(double target, std::optional<std::string> configuration = 
   return op;
 }
 
+/// A row of the parameter table without bounds.
+rtt::model::ParameterRow row(std::string name,
+                             rtt::model::ParameterForm form,
+                             bool variable = false) {
+  rtt::model::ParameterRow r;
+  r.name = std::move(name);
+  r.form = std::move(form);
+  r.variable = variable;
+  return r;
+}
+
 /// Makes the first unbound Param whose pointer ends with `suffix` variable; returns its pointer.
 std::string make_variable(System& s, std::string_view suffix) {
   std::string found;
@@ -91,6 +102,12 @@ std::string make_variable(System& s, std::string_view suffix) {
   });
   REQUIRE(!found.empty());
   return found;
+}
+
+/// Real index of the environment at the reference wavelength (compiled media, ADR 0021).
+double environment_index(const System& s, const MaterialLibrary& lib) {
+  const rtt::compile::CompiledSystem cs = rtt::compile::compile(s, lib);
+  return cs.media()[cs.environment_medium()].index[cs.reference_wavelength()].real();
 }
 
 /// m1/singlet_const: stop, plano-convex L1 (R1 = 51.68 on L1.S1 at z = 5, L1.S2 plane at z = 9),
@@ -134,7 +151,7 @@ TEST_CASE("merit M9: kMeritPrecision is a power of ten in [eps_M, 1e-6]", "[opti
 
 TEST_CASE("merit M1: every operand is exactly its analysis", "[optim][merit]") {
   System s = singlet();
-  s.parameters = {{"K", 2.5}};
+  s.parameters = {row("K", 2.5)};
   auto& ops = s.optimization.operands;
   ops.emplace_back(efl(0.0));  // 0
   FirstOrderOperand bfl = efl(0.0);
@@ -232,7 +249,7 @@ TEST_CASE("merit M1: residual sqrt(w) (v - t)", "[optim][merit]") {
 TEST_CASE("merit M2: an evaluation equals the system changed by hand", "[optim][merit]") {
   System s = singlet();
   s.configurations = {{"near"}, {"far"}};
-  s.parameters = {{"Z", 5.0, true}, {"R", std::vector<double>{51.68, 60.0}, true}};
+  s.parameters = {row("Z", 5.0, true), row("R", std::vector<double>{51.68, 60.0}, true)};
   element(s, 1).pose.position[2] = Param::bound("Z");
   radius(s, 1, 0) = Param::bound("R");
   element(s, 2).pose.position[2].variable = true;  // detector z
@@ -256,7 +273,7 @@ TEST_CASE("merit M2: an evaluation equals the system changed by hand", "[optim][
   CHECK(vars[2].pointer == "/parameters/1/values/1");
   CHECK(vars[3].row.empty());
   CHECK(vars[4].row.empty());
-  const std::vector<double> p = {5.5, 50.0, 62.5, 21.0, 104.0};
+  const std::vector<double> p = {5.5, 50.0, 62.5, 19.0, 104.0};
   // vars[3] and vars[4] in edit-form order: the aperture comes before the tree.
   REQUIRE(vars[3].pointer == "/aperture/value/value");
   const MeritEvaluation e = merit.evaluate(p);
@@ -265,7 +282,7 @@ TEST_CASE("merit M2: an evaluation equals the system changed by hand", "[optim][
   System hand = s;
   hand.parameters[0].form = 5.5;
   hand.parameters[1].form = std::vector<double>{50.0, 62.5};
-  hand.aperture.value.value = 21.0;
+  hand.aperture.value.value = 19.0;
   element(hand, 2).pose.position[2].value = 104.0;
   const rtt::compile::CompiledSystem near = rtt::compile::compile(hand, lib, 0);
   const rtt::compile::CompiledSystem far = rtt::compile::compile(hand, lib, 1);
@@ -287,11 +304,12 @@ TEST_CASE("merit M2: an evaluation equals the system changed by hand", "[optim][
 }
 
 TEST_CASE("optimize M3: EFL of a plano-convex lens, analytic R1", "[optim][optimize]") {
-  // Paraxial y-nu trace (Greivenkamp, OPTI-201/202, p. 9-2): a ray parallel to the axis at
-  // height y gets n u' = -y (n - 1) / R1 at L1.S1; L1.S2 is plane (phi = 0), so after it
-  // u'' = -y (n - 1) / R1 for every thickness, and Phi = -u'' / y = (n - 1) / R1 (the focal
-  // length of a single refracting surface, docs/quellen.md). EFL = R1 / (n - 1), linear in R1:
-  // target 80 mm gives R1* = 80 (n - 1) = 41.344 mm, and d = |dEFL/dR1| = 1 / (n - 1).
+  // Paraxial y-nu trace (Greivenkamp, OPTI-201/202, p. 9-2: n'u' = nu - y phi, phi = (n' - n) C)
+  // in the environment index n_a (air at the system's temperature and pressure): a ray parallel
+  // to the axis at height y gets n u' = -y (n - n_a) / R1 at L1.S1; L1.S2 is plane (phi = 0), so
+  // n_a u'' = n u' for every thickness, and Phi = -n_a u'' / y = (n - n_a) / R1 (first_order).
+  // EFL = R1 / (n - n_a), linear in R1: target 80 mm gives R1* = 80 (n - n_a), and
+  // d = |dEFL/dR1| = 1 / (n - n_a).
   System s = singlet();
   radius(s, 1, 0) = Param(60.0);
   radius(s, 1, 0).variable = true;
@@ -299,10 +317,11 @@ TEST_CASE("optimize M3: EFL of a plano-convex lens, analytic R1", "[optim][optim
   OptimizeOptions options;
   options.ftol = 0.0;  // only the step test (or exact zero) ends the run: the bound below holds
   const MaterialLibrary lib;
+  const double n_air = environment_index(s, lib);
   OptimResult r = optimize(s, lib, nullptr, options);
   REQUIRE((r.status == LmStatus::ConvergedStep || r.status == LmStatus::ConvergedGradient));
-  const double r_star = 80.0 * (kN - 1.0);
-  const std::vector<double> d = {1.0 / (kN - 1.0)};
+  const double r_star = 80.0 * (kN - n_air);
+  const std::vector<double> d = {1.0 / (kN - n_air)};
   const double tol = solution_tolerance(
       d, std::vector<double>{r_star}, r.history.empty() ? 0.0 : r.history.back().mu, options.xtol);
   INFO("tolerance = " << tol);
@@ -311,7 +330,7 @@ TEST_CASE("optimize M3: EFL of a plano-convex lens, analytic R1", "[optim][optim
   CHECK(radius(r.system, 1, 0).value == r.variables[0].end);
   CHECK(r.variables[0].changed);
   CHECK(r.diagnostics.empty());
-  // The final state is the solver's state: residual bitwise from the same evaluation.
+  // The operand table comes from the evaluation of the final state.
   REQUIRE(r.operands.size() == 1);
   CHECK(r.operands[0].contribution == (r.operands[0].value == 80.0 ? 0.0 : 100.0));
 }
@@ -319,16 +338,17 @@ TEST_CASE("optimize M3: EFL of a plano-convex lens, analytic R1", "[optim][optim
 TEST_CASE("optimize M4: two configurations, two independent unknowns", "[optim][optimize]") {
   System s = singlet();
   s.configurations = {{"long"}, {"short"}};
-  s.parameters = {{"R", std::vector<double>{60.0, 60.0}, true}};
+  s.parameters = {row("R", std::vector<double>{60.0, 60.0}, true)};
   radius(s, 1, 0) = Param::bound("R");
   s.optimization.operands = {efl(100.0, "long"), efl(80.0, "short")};
   OptimizeOptions options;
   options.ftol = 0.0;
   const MaterialLibrary lib;
+  const double n_air = environment_index(s, lib);
   OptimResult r = optimize(s, lib, nullptr, options);
   REQUIRE((r.status == LmStatus::ConvergedStep || r.status == LmStatus::ConvergedGradient));
-  const std::vector<double> p_star = {100.0 * (kN - 1.0), 80.0 * (kN - 1.0)};
-  const std::vector<double> d = {1.0 / (kN - 1.0), 1.0 / (kN - 1.0)};
+  const std::vector<double> p_star = {100.0 * (kN - n_air), 80.0 * (kN - n_air)};
+  const std::vector<double> d = {1.0 / (kN - n_air), 1.0 / (kN - n_air)};
   REQUIRE(!r.history.empty());
   const double tol = solution_tolerance(d, p_star, r.history.back().mu, options.xtol);
   INFO("tolerance = " << tol);
@@ -346,7 +366,7 @@ TEST_CASE("optimize M4: two configurations, two independent unknowns", "[optim][
 TEST_CASE("optimize M5: the result patch", "[optim][optimize]") {
   System s = singlet();
   s.configurations = {{"long"}, {"short"}};
-  s.parameters = {{"R", std::vector<double>{60.0, 60.0}, true}};
+  s.parameters = {row("R", std::vector<double>{60.0, 60.0}, true)};
   radius(s, 1, 0) = Param::bound("R");
   element(s, 2).pose.position[2].variable = true;
   rtt::model::RayOperand ray;
@@ -379,7 +399,7 @@ TEST_CASE("optimize M6: bitwise for 1, 4 and all threads, with and without RunCo
           "[optim][optimize]") {
   System s = singlet();
   s.configurations = {{"long"}, {"short"}};
-  s.parameters = {{"R", std::vector<double>{60.0, 60.0}, true}};
+  s.parameters = {row("R", std::vector<double>{60.0, 60.0}, true)};
   radius(s, 1, 0) = Param::bound("R");
   element(s, 2).pose.position[2].variable = true;
   rtt::model::SpotRmsOperand spot;
@@ -535,7 +555,7 @@ TEST_CASE("optimize M7: a Jacobian column without a valid evaluation fails the r
   // 1e-6, ADR 0030 point 9) puts X + h above the limit: the column of X has no valid pair, the
   // run ends with status Failed and the input (ADR 0030, point 10).
   System s = singlet();
-  s.parameters = {{"X", 1.79769, true}, {"E", rtt::model::ParameterExpression{"X * 1e308"}}};
+  s.parameters = {row("X", 1.79769, true), row("E", rtt::model::ParameterExpression{"X * 1e308"})};
   s.optimization.operands = {efl(80.0)};
   const MaterialLibrary lib;
   const OptimResult r = optimize(s, lib);
