@@ -256,6 +256,26 @@ TEST_CASE("misplaced or overlong continuation lines are errors with file and lin
   }
 }
 
+TEST_CASE("a single TD line with more than 7 values is an error with file and line (#35)",
+          "[agf]") {
+  // TD has 7 values (D0 D1 D2 E0 E1 Ltk Temp). Over a continuation line the parser already
+  // rejected an eighth value at that line; a single TD line with 8 values passed the parser
+  // and failed only later in CatalogMaterial, without file and line.
+  const std::string text = "CC c\nNM A 2 1 1.5 60\nCD 1 2\nTD 1 2 3 4 5 6 20 7\n";
+  const AgfError e =
+      agf_error([&] { [[maybe_unused]] const AgfCatalog c = parse_agf(text, "TEST", "bad.agf"); });
+  REQUIRE(e.file() == "bad.agf");
+  REQUIRE(e.line() == 4);
+  REQUIRE_THAT(e.what(), ContainsSubstring("bad.agf:4"));
+  REQUIRE_THAT(e.what(), ContainsSubstring("more than 7"));
+  // Exactly 7 values on one line stay valid.
+  const AgfCatalog seven =
+      parse_agf("CC c\nNM A 2 1 1.5 60\nCD 1 2\nTD 1 2 3 4 5 6 20\n", "TEST", "ok.agf");
+  REQUIRE(seven.glasses.size() == 1);
+  REQUIRE(seven.glasses[0].thermal.has_value());
+  REQUIRE(seven.glasses[0].thermal->size() == 7);
+}
+
 // ------------------------------------------------------------ formula mapping -----
 
 TEST_CASE("AGF formula 1 is Schott a0..a5, formula 2 is Sellmeier 1 K1 L1 K2 L2 K3 L3", "[agf]") {
