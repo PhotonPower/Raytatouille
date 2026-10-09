@@ -16,7 +16,7 @@ if(RTT_BUILD_TESTS)
             tests/test_chromatic.cpp tests/test_m2_acceptance.cpp tests/test_m3_acceptance.cpp
             tests/test_no_stop.cpp tests/test_error_context.cpp tests/test_losses.cpp
             tests/test_warnings.cpp tests/test_loss_counter.cpp tests/test_run_control.cpp
-            tests/test_paths.cpp tests/test_ghost_ranking.cpp
+            tests/test_paths.cpp tests/test_ghost_ranking.cpp tests/test_m4_acceptance.cpp
     LIBS rtt::analysis rtt::io rtt::polar rtt::coating TBB::tbb)
   target_compile_definitions(rtt_analysis_tests PRIVATE
     RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs")

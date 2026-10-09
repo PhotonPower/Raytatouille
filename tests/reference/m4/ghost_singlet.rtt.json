@@ -1,0 +1,60 @@
+{
+  "schema_version": "0.3.0",
+  "name": "M4 acceptance: ghost of a plano-convex singlet (n = 1.5, R1 = 64 mm), paraxial ghost focus from y-nu",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 4.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "singlet",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 5.0}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "L",
+        "pose": {"position": [0.0, 0.0, 10.0]},
+        "material": "CONST:1.5",
+        "surfaces": [
+          {
+            "id": "L.S1",
+            "shape": {
+              "base": {"type": "conic", "radius": 64.0}
+            }
+          },
+          {
+            "id": "L.S2",
+            "pose": {"position": [0.0, 0.0, 3.0]}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 140.0]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}

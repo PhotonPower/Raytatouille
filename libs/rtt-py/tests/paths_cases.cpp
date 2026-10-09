@@ -167,6 +167,9 @@ struct Systems {
   CompiledSystem singlet;
   compile::GhostSystem plate;
   compile::GhostSystem cooke;
+  compile::GhostSystem ghost_plates;   // M4 acceptance (#135)
+  compile::GhostSystem ghost_singlet;  // M4 acceptance (#135)
+  CompiledSystem tour;                 // feature tour, refract with order at G.S1 (#135)
 };
 
 model::Element& element(model::System& s, std::size_t child) {
@@ -178,15 +181,29 @@ Systems load_systems(const fs::path& reference_dir, const fs::path& catalog_dir)
   const coating::CoatingLibrary no_coatings;
   material::MaterialLibrary schott;
   schott.add_catalog(catalog_dir / "m2" / "schott.agf");
+  material::MaterialLibrary schott_bk7;  // N-BK7 of the feature tour
+  schott_bk7.add_catalog(catalog_dir / "schott.agf");
+  // The feature tour shows every format element and does not compile as it is: without the
+  // Zernike term of A.S1 (M8) and with a bare Fresnel A.S1 instead of the coating "AR_VIS"
+  // (no catalog), as in test_m4_acceptance.cpp.
+  model::System tour = io::load_system(reference_dir / "m0/feature_tour.rtt.json");
+  element(tour, 2).surfaces[0].shape.terms.clear();
+  element(tour, 2).surfaces[0].interaction = model::Fresnel{};
   const model::System michelson = io::load_system(reference_dir / "m4/michelson_offset.rtt.json");
   model::System small = michelson;
   element(small, 3).surfaces[0].aperture = model::CircularAperture{1.0, 0.0};  // test mirror
-  return {compile::compile(michelson, plain), compile::compile(small, plain),
+  return {compile::compile(michelson, plain),
+          compile::compile(small, plain),
           compile::compile(io::load_system(reference_dir / "m1/singlet_const.rtt.json"), plain),
           compile::compile_with_ghosts(io::load_system(reference_dir / "m3/fresnel_bk7.rtt.json"),
                                        "main", plain, no_coatings),
           compile::compile_with_ghosts(io::load_system(reference_dir / "m2/cooke_triplet.rtt.json"),
-                                       "main", schott, no_coatings)};
+                                       "main", schott, no_coatings),
+          compile::compile_with_ghosts(io::load_system(reference_dir / "m4/ghost_plates.rtt.json"),
+                                       "main", plain, no_coatings),
+          compile::compile_with_ghosts(io::load_system(reference_dir / "m4/ghost_singlet.rtt.json"),
+                                       "main", plain, no_coatings),
+          compile::compile(tour, schott_bk7)};
 }
 
 PathId path(const CompiledSystem& s, const char* name) {
@@ -238,6 +255,17 @@ void run_paths_cases(const fs::path& reference_dir,
     cooke_options.resolution_radius = 0.01;
     write_ranking(w("cooke_ranking"),
                   ghost_ranking(s.cooke, 1, s.cooke.system.reference_wavelength(), cooke_options));
+    // M4 acceptance (#135): the ghost reference files with the default options, and the path
+    // "first order" of the feature tour (refract with order 1 at G.S1) for the start rays. Its
+    // hand-made ghost path loses every ray of this bundle at A.S2, so it is not compared.
+    write_ghosts(w("ghost_plates_ghosts"), s.ghost_plates);
+    write_ranking(w("ghost_plates_ranking"),
+                  ghost_ranking(s.ghost_plates, 0, s.ghost_plates.system.reference_wavelength()));
+    write_ghosts(w("ghost_singlet_ghosts"), s.ghost_singlet);
+    write_ranking(w("ghost_singlet_ranking"),
+                  ghost_ranking(s.ghost_singlet, 0, s.ghost_singlet.system.reference_wavelength()));
+    write_transmission(w("tour_first_order"),
+                       path_transmission(s.tour, path(s.tour, "first order"), start));
   });
 }
 

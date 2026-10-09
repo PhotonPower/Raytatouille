@@ -1,0 +1,68 @@
+{
+  "schema_version": "0.3.0",
+  "name": "M4 acceptance: ghosts of two plane plates (n = 1.5 and 2.0) in a collimated beam, rho = Fresnel products",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 4.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "two plates",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 5.0}
+          }
+        ]
+      },
+      {
+        "type": "plate",
+        "name": "A",
+        "pose": {"position": [0.0, 0.0, 10.0]},
+        "material": "CONST:1.5",
+        "surfaces": [
+          {"id": "A.S1"},
+          {
+            "id": "A.S2",
+            "pose": {"position": [0.0, 0.0, 5.0]}
+          }
+        ]
+      },
+      {
+        "type": "plate",
+        "name": "B",
+        "pose": {"position": [0.0, 0.0, 20.0]},
+        "material": "CONST:2.0",
+        "surfaces": [
+          {"id": "B.S1"},
+          {
+            "id": "B.S2",
+            "pose": {"position": [0.0, 0.0, 5.0]}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 40.0]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}
