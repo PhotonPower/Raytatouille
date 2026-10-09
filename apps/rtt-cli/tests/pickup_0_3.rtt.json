@@ -1,0 +1,25 @@
+{
+  "schema_version": "0.3.0",
+  "units": {"length": "mm", "wavelength": "um"},
+  "wavelengths": [{"um": 0.55, "reference": true}],
+  "aperture": {"type": "epd", "value": 10.0},
+  "fields": {"points": [{}]},
+  "root": {
+    "type": "assembly",
+    "name": "r",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [{"id": "STO", "aperture": {"type": "circular", "radius": 5.0}}]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, {"value": 6.0, "pickup": "2 * 3"}]},
+        "surfaces": [{"id": "IMG"}]
+      }
+    ]
+  },
+  "paths": [{"name": "main", "events": "auto"}]
+}

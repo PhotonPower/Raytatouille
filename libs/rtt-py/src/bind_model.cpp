@@ -119,7 +119,7 @@ void bind_model(nb::module_& m) {
       .def(nb::init<>())
       .def_rw("name", &model::System::name)
       .def_ro("schema_version", &model::System::schema_version,
-              "File format version of the model, e.g. \"0.3.0\".")
+              "File format version of the model, e.g. \"0.4.0\".")
       .def_rw("environment", &model::System::environment,
               "Surroundings; changes act on this System.")
       .def_prop_ro(
@@ -138,6 +138,12 @@ void bind_model(nb::module_& m) {
           "the result in a variable instead of reading it again in a loop.")
       .def_prop_ro(
           "paths", [](const model::System& s) { return s.paths; }, "Ray paths in order (copies).")
+      .def_prop_ro(
+          "configurations", [](const model::System& s) { return s.configurations; },
+          "Configurations (copies, ADR 0029); empty for only the nominal configuration.")
+      .def_prop_ro(
+          "parameters", [](const model::System& s) { return s.parameters; },
+          "Rows of the parameter table in evaluation order (copies, ADR 0029).")
       .def("to_dict", &edit_dict, nb::sig("def to_dict(self) -> dict[str, typing.Any]"),
            "The edit form (ADR 0024) as Python objects: the system file with every value written "
            "(defaults included) and every Param as {\"value\": ..., \"variable\": ...}, keys in "
@@ -160,8 +166,19 @@ void bind_model(nb::module_& m) {
            "is none.")
       .def("to_json", &io::to_json,
            "Canonical JSON text (2-space indent, LF, trailing newline, defaults omitted).")
-      .def_static("from_json", &io::parse_system, "text"_a,
-                  "Parses a system from JSON text.\n\nRaises ParseError for structural errors.")
+      .def_static(
+          "from_json",
+          [](std::string_view text) {
+            std::vector<model::Diagnostic> warnings;
+            model::System s = io::parse_system(text, warnings);
+            warn(warnings);
+            return s;
+          },
+          "text"_a,
+          "Parses a system from JSON text. A file of an older schema version is migrated; what "
+          "the migration drops (the pickups of a file before 0.4) is issued as "
+          "RaytatouilleWarning with code io.pickup_dropped and the pointer into the text.\n\n"
+          "Raises ParseError for structural errors.")
       .def(
           "save",
           [](const model::System& s, const std::filesystem::path& file) {
@@ -177,11 +194,16 @@ void bind_model(nb::module_& m) {
   m.def(
       "load",
       [](const std::filesystem::path& file) {
-        return with_os_error([&] { return io::load_system(file); });
+        std::vector<model::Diagnostic> warnings;
+        model::System s = with_os_error([&] { return io::load_system(file, warnings); });
+        warn(warnings);
+        return s;
       },
       "file"_a,
-      "Reads a system file (*.rtt.json).\n\nRaises ParseError for structural errors and OSError "
-      "if the file cannot be read.");
+      "Reads a system file (*.rtt.json). A file of an older schema version is migrated; what the "
+      "migration drops (the pickups of a file before 0.4) is issued as RaytatouilleWarning with "
+      "code io.pickup_dropped and the pointer into the file.\n\nRaises ParseError for "
+      "structural errors and OSError if the file cannot be read.");
   m.def(
       "save",
       [](const model::System& s, const std::filesystem::path& file) {

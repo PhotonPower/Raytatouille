@@ -11,6 +11,7 @@
 #include <set>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "rtt/coating/catalog.hpp"
@@ -106,6 +107,14 @@ System singlet() {
   System s = rtt::model::test::make_singlet();
   element(s, 1).material = "CONST:1.5168";
   return s;
+}
+
+/// Row of the parameter table (ADR 0029).
+rtt::model::ParameterRow row(std::string name, rtt::model::ParameterForm form) {
+  rtt::model::ParameterRow r;
+  r.name = std::move(name);
+  r.form = std::move(form);
+  return r;
 }
 
 /// Lens L1 as a cemented doublet with three plane surfaces in CONST:1.5 and CONST:1.7.
@@ -427,6 +436,60 @@ std::vector<Case> cases() {
                             false,
                             {{SurfaceId("L1.S1"), EventKind::Refract, 0},
                              {SurfaceId("L1.S2"), EventKind::Refract, 0}}});
+       }},
+      // --- schema 0.4 (#162): relative placement (ADR 0028), parameter table (ADR 0029)
+      {"pose.relative_first_surface", "/root/children/1/surfaces/0/pose/reference",
+       [](System& s) {
+         element(s, 1).surfaces[0].pose.reference = PoseReference::RelativeToSibling;
+       }},
+      {"pose.no_preceding", "/root/children/0/pose/reference",
+       [](System& s) { element(s, 0).pose.reference = PoseReference::RelativeToPreceding; }},
+      {"pose.no_sibling", "/root/children/0/pose/reference",
+       [](System& s) { element(s, 0).pose.reference = PoseReference::RelativeToSibling; }},
+      {"parameters.name_invalid", "/parameters/0/name",
+       [](System& s) { s.parameters = {row("2D", 1.0)}; }},
+      {"parameters.name_duplicate", "/parameters/1/name",
+       [](System& s) { s.parameters = {row("D", 1.0), row("D", 2.0)}; }},
+      {"parameters.values_count", "/parameters/0/values",
+       [](System& s) { s.parameters = {row("D", std::vector<double>{1.0, 2.0})}; }},
+      {"parameters.variable_expression", "/parameters/1/variable",
+       [](System& s) {
+         s.parameters = {row("D", 1.0), row("E", ParameterExpression{"2 * D"})};
+         s.parameters[1].variable = true;
+       }},
+      {"param.unknown_parameter", "/root/children/2/pose/position/2/param",
+       [](System& s) { element(s, 2).pose.position[2] = Param::bound("D"); }},
+      {"param.bound_conflict", "/root/children/2/pose/position/2",
+       [](System& s) {
+         s.parameters = {row("D", 106.363)};
+         Param p = Param::bound("D");
+         p.variable = true;
+         element(s, 2).pose.position[2] = p;
+       }},
+      {"bounds.invalid", "/parameters/0/min",
+       [](System& s) {
+         s.parameters = {row("D", 1.0)};
+         s.parameters[0].min = 2.0;
+         s.parameters[0].max = 0.0;
+       }},
+      {"bounds.value_outside", "/parameters/0/value",
+       [](System& s) {
+         s.parameters = {row("D", 1.0)};
+         s.parameters[0].max = 0.5;
+       }},
+      {"configurations.name_invalid", "/configurations/0/name",
+       [](System& s) { s.configurations = {{""}}; }},
+      {"configurations.name_duplicate", "/configurations/1/name",
+       [](System& s) { s.configurations = {{"a"}, {"a"}}; }},
+      {"value.not_finite", "/root/children/1/pose/pivot/2",
+       [](System& s) { element(s, 1).pose.pivot[2] = kNaN; }},
+      // compile, interim state until #163/#165 (removed there with these cases)
+      {"pose.reference_unsupported", "/root/children/1/pose/reference",
+       [](System& s) { element(s, 1).pose.reference = PoseReference::RelativeToPreceding; }},
+      {"param.unresolved", "/root/children/2/pose/position/2",
+       [](System& s) {
+         s.parameters = {row("D", 106.363)};
+         element(s, 2).pose.position[2] = Param::bound("D");
        }},
   };
 }

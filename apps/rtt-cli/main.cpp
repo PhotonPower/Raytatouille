@@ -33,11 +33,20 @@ std::string read_text(const std::string& path) {
   return s.str();
 }
 
+/// Warnings of the reader (e.g. io.pickup_dropped when a file before schema 0.4 is migrated) go
+/// to stderr, so that nothing a file contained disappears silently (#162).
+void print_read_warnings(const std::string& file, const std::vector<rtt::model::Diagnostic>& w) {
+  for (const auto& d : w) std::cerr << file << ": " << rtt::model::to_string(d) << "\n";
+}
+
 int validate(const std::vector<std::string>& files) {
   int result = kOk;
   for (const std::string& file : files) {
     try {
-      const auto diagnostics = rtt::model::validate(rtt::io::load_system(file));
+      std::vector<rtt::model::Diagnostic> read_warnings;
+      const rtt::model::System system = rtt::io::load_system(file, read_warnings);
+      print_read_warnings(file, read_warnings);
+      const auto diagnostics = rtt::model::validate(system);
       for (const auto& d : diagnostics)
         std::cout << file << ": " << rtt::model::to_string(d) << "\n";
       if (rtt::model::has_errors(diagnostics)) {
@@ -58,7 +67,10 @@ int format(const std::vector<std::string>& files, bool check_only) {
   for (const std::string& file : files) {
     try {
       const std::string original = read_text(file);
-      const std::string canonical = rtt::io::to_json(rtt::io::parse_system(original));
+      std::vector<rtt::model::Diagnostic> read_warnings;
+      const std::string canonical =
+          rtt::io::to_json(rtt::io::parse_system(original, read_warnings));
+      print_read_warnings(file, read_warnings);
       if (canonical == original) continue;
       if (check_only) {
         std::cout << file << ": not in canonical form (run 'rtt format')\n";

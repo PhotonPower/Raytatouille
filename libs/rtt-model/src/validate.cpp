@@ -2,6 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <optional>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -20,6 +23,23 @@ bool finite_positive(double v) {
   return std::isfinite(v) && v > 0.0;
 }
 
+/// [A-Za-z_][A-Za-z0-9_]* in ASCII (ADR 0029, point 1).
+bool valid_row_name(const std::string& name) {
+  const auto letter = [](char c) {
+    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_';
+  };
+  const auto digit = [](char c) { return c >= '0' && c <= '9'; };
+  if (name.empty() || !letter(name[0])) return false;
+  return std::all_of(name.begin() + 1, name.end(), [&](char c) { return letter(c) || digit(c); });
+}
+
+/// Empty or only ASCII white space.
+bool blank(const std::string& text) {
+  return std::all_of(text.begin(), text.end(), [](char c) {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v';
+  });
+}
+
 bool nonzero_axis(const std::array<double, 3>& a) {
   return std::isfinite(a[0]) && std::isfinite(a[1]) && std::isfinite(a[2]) &&
          (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]) > 1e-24;
@@ -30,11 +50,13 @@ class Validator {
   explicit Validator(const System& system) : system_(system) {}
 
   std::vector<Diagnostic> run() {
+    check_configurations();
+    check_parameters();
     check_wavelengths();
     check_aperture();
     check_fields();
     check_object_and_environment();
-    check_assembly(system_.root, "/root");
+    check_assembly(system_.root, "/root", false);
     check_stops();
     check_paths();
     return std::move(out_);
@@ -69,12 +91,15 @@ class Validator {
   }
 
   void check_aperture() {
-    if (system_.aperture.type != SystemApertureType::StopSize &&
-        !finite_positive(system_.aperture.value.value)) {
+    const Param& v = system_.aperture.value;
+    const bool checked = system_.aperture.type != SystemApertureType::StopSize;
+    check_param(v, "/aperture/value", checked);
+    if (v.is_bound()) return;  // its value comes from the table (ADR 0029, point 3)
+    if (checked && !finite_positive(v.value)) {
       report("aperture.value_invalid", "/aperture/value", "aperture value must be finite and > 0");
     }
-    if (system_.aperture.type == SystemApertureType::ObjectSpaceNA &&
-        system_.aperture.value.value >= 1.0 && system_.environment.medium == "AIR") {
+    if (system_.aperture.type == SystemApertureType::ObjectSpaceNA && v.value >= 1.0 &&
+        system_.environment.medium == "AIR") {
       report("aperture.na_not_physical", "/aperture/value",
              "object-space NA >= 1 in air is not physical");
     }
@@ -95,7 +120,9 @@ class Validator {
   }
 
   void check_object_and_environment() {
-    if (!system_.object.at_infinity && !finite_positive(system_.object.distance.value)) {
+    const Param& d = system_.object.distance;
+    check_param(d, "/object/distance", !system_.object.at_infinity);
+    if (!system_.object.at_infinity && !d.is_bound() && !finite_positive(d.value)) {
       report("object.distance_invalid", "/object/distance",
              "finite object distance must be > 0 mm");
     }
@@ -112,18 +139,147 @@ class Validator {
       report("environment.medium_empty", "/environment/medium", "medium must not be empty");
   }
 
-  void check_assembly(const Assembly& a, const std::string& loc) {
+  /// `has_sibling`: the node is not the first child of its assembly (ADR 0028, point 5).
+  void check_assembly(const Assembly& a, const std::string& loc, bool has_sibling) {
     if (a.name.empty()) report("node.name_empty", loc + "/name", "assembly name must not be empty");
     check_name(a.name, loc);
+    check_node_pose(a.pose, loc, has_sibling);
     for (std::size_t i = 0; i < a.children.size(); ++i) {
       const std::string child_loc = idx(loc + "/children", i);
       const auto& v = a.children[i].value;
       if (const auto* sub = std::get_if<Assembly>(&v)) {
-        check_assembly(*sub, child_loc);
+        check_assembly(*sub, child_loc, i > 0);
       } else {
-        check_element(std::get<Element>(v), child_loc);
+        check_element(std::get<Element>(v), child_loc, i > 0);
       }
     }
+  }
+
+  /// Reference of an assembly or element pose (ADR 0028, point 5): the preceding surface in tree
+  /// order (pre-order, so surfaces_seen_ counts the surfaces before the node) or the preceding
+  /// sibling must exist.
+  void check_node_pose(const Pose& pose, const std::string& loc, bool has_sibling) {
+    const std::string rloc = loc + "/pose/reference";
+    if (pose.reference == PoseReference::RelativeToPreceding && surfaces_seen_ == 0) {
+      report("pose.no_preceding", rloc, "no surface precedes this node in tree order");
+    }
+    if (pose.reference == PoseReference::RelativeToSibling && !has_sibling) {
+      report("pose.no_sibling", rloc, "the first node of an assembly has no preceding sibling");
+    }
+    check_pose_values(pose, loc + "/pose");
+  }
+
+  /// Params and pivot of a pose.
+  void check_pose_values(const Pose& pose, const std::string& loc) {
+    for (std::size_t k = 0; k < 3; ++k) {
+      check_param(pose.position[k], idx(loc + "/position", k), false);
+      check_param(pose.rotation_deg[k], idx(loc + "/rotation_deg", k), false);
+      if (!std::isfinite(pose.pivot[k])) {
+        report("value.not_finite", idx(loc + "/pivot", k), "pivot must be finite");
+      }
+    }
+  }
+
+  // ------------------------------------------------- parameter table (ADR 0029) -----
+
+  void check_configurations() {
+    std::unordered_set<std::string> names;
+    for (std::size_t k = 0; k < system_.configurations.size(); ++k) {
+      const std::string& name = system_.configurations[k].name;
+      const std::string loc = idx("/configurations", k) + "/name";
+      if (blank(name)) {
+        report("configurations.name_invalid", loc, "configuration name must not be blank");
+      } else if (!names.insert(name).second) {
+        report("configurations.name_duplicate", loc, "duplicate configuration name '" + name + "'");
+      }
+    }
+  }
+
+  void check_parameters() {
+    const std::size_t columns = std::max<std::size_t>(1, system_.configurations.size());
+    for (std::size_t i = 0; i < system_.parameters.size(); ++i) {
+      const ParameterRow& row = system_.parameters[i];
+      const std::string loc = idx("/parameters", i);
+      if (!valid_row_name(row.name)) {
+        report("parameters.name_invalid", loc + "/name",
+               "row name '" + row.name + "' is not of the form [A-Za-z_][A-Za-z0-9_]*");
+      } else if (!row_names_.insert(row.name).second) {
+        report("parameters.name_duplicate", loc + "/name", "duplicate row name '" + row.name + "'");
+      }
+      if (const auto* value = std::get_if<double>(&row.form)) {
+        check_value(*value, loc + "/value");
+        check_bounds(row.min, row.max, loc, {{*value, loc + "/value"}});
+      } else if (const auto* values = std::get_if<std::vector<double>>(&row.form)) {
+        if (values->size() != columns) {
+          report("parameters.values_count", loc + "/values",
+                 "expected " + std::to_string(columns) + " values (one per configuration), found " +
+                     std::to_string(values->size()));
+        }
+        std::vector<std::pair<double, std::string>> located;
+        for (std::size_t k = 0; k < values->size(); ++k) {
+          check_value((*values)[k], idx(loc + "/values", k));
+          located.emplace_back((*values)[k], idx(loc + "/values", k));
+        }
+        check_bounds(row.min, row.max, loc, located);
+      } else {
+        // A derived row follows its inputs (ADR 0029, point 4).
+        if (row.variable) {
+          report("parameters.variable_expression", loc + "/variable",
+                 "a row with an expression cannot be variable");
+        }
+        if (row.min || row.max) {
+          report("bounds.invalid", loc + (row.min ? "/min" : "/max"),
+                 "bounds are only allowed at rows with value or values");
+        }
+      }
+    }
+  }
+
+  void check_value(double v, const std::string& loc) {
+    if (!std::isfinite(v)) report("value.not_finite", loc, "value must be finite");
+  }
+
+  /// min < max if both are set; values outside are a warning (a start value may lie outside).
+  void check_bounds(const std::optional<double>& min,
+                    const std::optional<double>& max,
+                    const std::string& loc,
+                    const std::vector<std::pair<double, std::string>>& values) {
+    bool finite = true;
+    if (min && !std::isfinite(*min)) {
+      report("value.not_finite", loc + "/min", "bound must be finite");
+      finite = false;
+    }
+    if (max && !std::isfinite(*max)) {
+      report("value.not_finite", loc + "/max", "bound must be finite");
+      finite = false;
+    }
+    if (!finite) return;
+    if (min && max && !(*min < *max)) {
+      report("bounds.invalid", loc + "/min", "min must be below max");
+      return;
+    }
+    for (const auto& [v, at] : values) {
+      if (std::isfinite(v) && ((min && v < *min) || (max && v > *max))) {
+        report("bounds.value_outside", at, "value lies outside its bounds");
+      }
+    }
+  }
+
+  /// Every Param (ADR 0029, point 3): a bound one names an existing row and has neither
+  /// variable nor bounds; an unbound one has a finite value (`checked`: the field has its own
+  /// check of the value, which keeps its code) and valid bounds.
+  void check_param(const Param& p, const std::string& loc, bool checked) {
+    if (const std::optional<std::string>& name = p.param) {
+      if (!row_names_.contains(*name)) {
+        report("param.unknown_parameter", loc + "/param", "no parameter row '" + *name + "'");
+      }
+      if (p.variable || p.min || p.max) {
+        report("param.bound_conflict", loc, "a bound Param has neither variable nor bounds");
+      }
+      return;
+    }
+    if (!checked) check_value(p.value, loc + "/value");
+    check_bounds(p.min, p.max, loc, {{p.value, loc + "/value"}});
   }
 
   void check_name(const std::string& name, const std::string& loc) {
@@ -134,9 +290,10 @@ class Validator {
              "duplicate node name '" + name + "' (first at " + it->second + ")");
   }
 
-  void check_element(const Element& e, const std::string& loc) {
+  void check_element(const Element& e, const std::string& loc, bool has_sibling) {
     if (e.name.empty()) report("node.name_empty", loc + "/name", "element name must not be empty");
     check_name(e.name, loc);
+    check_node_pose(e.pose, loc, has_sibling);
     const std::size_t n = e.surfaces.size();
     switch (e.kind) {
       case ElementKind::Lens:
@@ -184,7 +341,17 @@ class Validator {
     if (e.material && e.material->empty())
       report("element.material_empty", loc + "/material", "material must not be empty");
     check_crystal(e, loc);
-    for (std::size_t i = 0; i < n; ++i) check_surface(e.surfaces[i], idx(loc + "/surfaces", i));
+    for (std::size_t i = 0; i < n; ++i) {
+      const std::string sloc = idx(loc + "/surfaces", i);
+      // The first surface defines the element's frame (ADR 0028, point 5); its reference would
+      // lie outside the element. One diagnostic for both kinds.
+      if (i == 0 && e.surfaces[0].pose.reference != PoseReference::Absolute) {
+        report("pose.relative_first_surface", sloc + "/pose/reference",
+               "the first surface of an element must be placed absolutely");
+      }
+      check_pose_values(e.surfaces[i].pose, sloc + "/pose");
+      check_surface(e.surfaces[i], sloc);
+    }
   }
 
   /// Crystal material and optic axis (ADR 0026, points 1 and 2).
@@ -242,6 +409,7 @@ class Validator {
   }
 
   void check_surface(const Surface& s, const std::string& loc) {
+    ++surfaces_seen_;
     if (s.id.empty()) {
       report("surface.id_empty", loc + "/id", "surface id must not be empty");
     } else {
@@ -290,6 +458,8 @@ class Validator {
   }
 
   void check_radius(const Param& r, const std::string& loc) {
+    check_param(r, loc, true);
+    if (r.is_bound()) return;  // its value comes from the table
     if (!std::isfinite(r.value) || r.value == 0.0) {
       report("shape.radius_invalid", loc,
              "radius must be finite and non-zero (use a plane for flat surfaces)");
@@ -300,8 +470,13 @@ class Validator {
     const std::string base = loc + "/base";
     if (const auto* c = std::get_if<Conic>(&shape.base)) {
       check_radius(c->radius, base + "/radius");
+      check_param(c->conic, base + "/conic", false);
     } else if (const auto* a = std::get_if<EvenAsphere>(&shape.base)) {
       check_radius(a->radius, base + "/radius");
+      check_param(a->conic, base + "/conic", false);
+      for (std::size_t k = 0; k < a->coefficients.size(); ++k) {
+        check_param(a->coefficients[k], idx(base + "/coefficients", k), false);
+      }
       if (a->coefficients.empty())
         report("shape.asphere_without_coefficients", base + "/coefficients",
                "asphere without coefficients");
@@ -309,7 +484,11 @@ class Validator {
     for (std::size_t i = 0; i < shape.terms.size(); ++i) {
       const auto& z = std::get<ZernikeSag>(shape.terms[i]);
       const std::string t = idx(loc + "/terms", i);
-      if (!finite_positive(z.normalization_radius.value)) {
+      check_param(z.normalization_radius, t + "/normalization_radius", true);
+      for (std::size_t k = 0; k < z.coefficients.size(); ++k) {
+        check_param(z.coefficients[k], idx(t + "/coefficients", k), false);
+      }
+      if (!z.normalization_radius.is_bound() && !finite_positive(z.normalization_radius.value)) {
         report("shape.zernike_radius_invalid", t + "/normalization_radius",
                "normalization radius must be > 0 mm");
       }
@@ -341,10 +520,17 @@ class Validator {
 
   void check_phase(const PhaseLayer& p, const std::string& loc) {
     if (const auto* g = std::get_if<LinearGrating>(&p)) {
-      if (!finite_positive(g->lines_per_mm.value))
+      check_param(g->lines_per_mm, loc + "/lines_per_mm", true);
+      if (!std::isfinite(g->orientation_deg))
+        report("value.not_finite", loc + "/orientation_deg", "orientation must be finite");
+      if (!g->lines_per_mm.is_bound() && !finite_positive(g->lines_per_mm.value))
         report("phase.lines_per_mm_invalid", loc + "/lines_per_mm", "must be > 0");
     } else if (const auto* r = std::get_if<RadialPhase>(&p)) {
-      if (!finite_positive(r->normalization_radius.value)) {
+      check_param(r->normalization_radius, loc + "/normalization_radius", true);
+      for (std::size_t k = 0; k < r->coefficients.size(); ++k) {
+        check_param(r->coefficients[k], idx(loc + "/coefficients", k), false);
+      }
+      if (!r->normalization_radius.is_bound() && !finite_positive(r->normalization_radius.value)) {
         report("phase.radius_invalid", loc + "/normalization_radius",
                "normalization radius must be > 0 mm");
       }
@@ -421,6 +607,8 @@ class Validator {
   std::unordered_set<std::string> phase_surfaces_;  // ids of surfaces with a phase layer
   std::unordered_map<std::string, std::string> node_names_;
   std::vector<std::string> stops_;
+  std::unordered_set<std::string> row_names_;  // names of the parameter rows (ADR 0029)
+  std::size_t surfaces_seen_ = 0;              // surfaces before the node in tree order
 };
 
 }  // namespace

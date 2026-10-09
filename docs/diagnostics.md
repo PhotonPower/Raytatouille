@@ -2,7 +2,7 @@
 
 Jede Diagnose (`rtt::model::Diagnostic`, in Python `rt.Diagnostic`) trägt einen stabilen Code in Punktnotation `<gruppe>.<was>` (ADR 0022). Dazu kommen Schwere, JSON-Pointer und Meldung. Der Code ist die maschinenlesbare Ursache; die Meldung ist für Menschen und darf sich ändern.
 
-**Stabilitätsversprechen:** Ein Code wird nie umbenannt, wiederverwendet oder umgedeutet. Neue Codes kommen nur hinzu. Ein Code, der nicht mehr erzeugt wird, bleibt in dieser Liste und wird als „nicht mehr erzeugt“ markiert.
+**Stabilitätsversprechen:** Ein Code wird nie umbenannt, wiederverwendet oder umgedeutet. Neue Codes kommen nur hinzu. Ein Code, der nicht mehr erzeugt wird, bleibt in dieser Liste und wird als „nicht mehr erzeugt“ markiert. Ausnahme: Ein Zwischencode zwischen zwei Releases (in der Bedeutung als „Zwischenstand“ markiert, z. B. `pose.reference_unsupported`, `param.unresolved`) darf vor dem nächsten Release wieder entfallen, weil er nie stabil veröffentlicht war (ADR 0022).
 
 **Registry:** `libs/rtt-diagnostics/include/rtt/diagnostics/codes.hpp` (Schicht Basis, header-only), in Python `rt.diagnostics.CODES`.
 - Ein Erzeuger kann nur registrierte Codes verwenden. Der Typ `DiagnosticCode` prüft das beim Kompilieren, ein Tippfehler ist ein Compile-Fehler.
@@ -17,6 +17,7 @@ Jede Diagnose (`rtt::model::Diagnostic`, in Python `rt.Diagnostic`) trägt einen
 - `compile`: `rtt::compile::compile`, als `CompileError` bzw. Warnung in `CompiledSystem::diagnostics()`.
 - `analysis`: Spot, Strahlfächer, OPD-Karte und OPD-Fächer (`rtt-analysis`), als Warnung im Feld `warnings` des Ergebnisses (ADR 0023).
 - `edit`: `rtt::io::apply_patch` (JSON Patch auf der Bearbeitungsform, ADR 0024), als `rtt::io::EditError` mit `code()`, `location()` (Pointer in die Bearbeitungsform) und `op_index()`. Fügt ein Patch Fehler von `validate` hinzu, trägt `EditError` deren Code und Ort (z. B. `surface.id_duplicate`).
+- `io`: der Leser von `rtt-io` (`parse_system`, `load_system` mit Warnliste), als Diagnose mit Schwere Warnung; die Überladungen ohne Warnliste verwerfen sie. `rtt validate` und `rtt format` schreiben sie nach stderr, Python (`rt.load`, `System.from_json`) gibt sie als `RaytatouilleWarning` aus.
 - `agf`: der AGF-Leser von `rtt-material` (`parse_agf`, `MaterialLibrary::add_catalog`, `add_catalog_text`), als `rtt::material::LoadWarning{code, file, line, message}` in `AgfCatalog::warnings` und `MaterialLibrary::load_warnings()` (#71); Ort ist Datei und Zeile.
 - Warnungen von `compile()`, den Analysen und dem AGF-Leser gibt Python zusätzlich als `RaytatouilleWarning` mit `code` und `location` aus (beim AGF-Leser `datei:zeile`).
 
@@ -31,6 +32,8 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `aperture.na_not_physical` | Warnung | objektseitige NA ≥ 1 in Luft | validate | `/aperture/value` |
 | `aperture.stop_missing` | Fehler | Aperturtyp `stop_size` ohne Blendenelement | validate | `/aperture/type` |
 | `aperture.value_invalid` | Fehler | Wert der Systemapertur nicht endlich oder ≤ 0 | validate | `/aperture/value` |
+| `bounds.invalid` | Fehler | `min` nicht kleiner als `max`, oder Grenzen an einer abgeleiteten Zeile (nur über die API) | validate | `…/min` (bei einer Zeile ohne `min`: `…/max`) |
+| `bounds.value_outside` | Warnung | Wert eines ungebundenen Params oder einer Zeile außerhalb seiner Grenzen (ein Startwert darf außerhalb liegen) | validate | `…/value` bzw. `/parameters/i/values/k` |
 | `coating.design_wavelength_out_of_range` | Fehler | QWOT-Designwellenlänge außerhalb des Bereichs des Schichtmaterials | compile | `…/s/interaction/name` |
 | `coating.layer_material_unknown` | Fehler | Material einer Schicht nicht auflösbar | compile | `…/s/interaction/name` |
 | `coating.no_substrate` | Fehler | Beschichtung auf Linse, Platte oder Spiegel ohne Material | compile | `…/s/interaction` |
@@ -39,6 +42,8 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `coating.thickness_invalid` | Fehler | Schichtdicke nicht berechenbar (z. B. QWOT mit Re n ≤ 0) | compile | `…/s/interaction/name` |
 | `coating.unknown` | Fehler | Beschichtungsreferenz nicht auflösbar | compile | `…/s/interaction/name` |
 | `coating.wavelength_out_of_range` | Fehler | Systemwellenlänge außerhalb des Bereichs eines Schichtmaterials | compile | `…/s/interaction/name` |
+| `configurations.name_duplicate` | Fehler | Name einer Konfiguration doppelt | validate | `/configurations/k/name` (zweites Vorkommen) |
+| `configurations.name_invalid` | Fehler | Name einer Konfiguration leer oder nur Leerraum | validate | `/configurations/k/name` |
 | `crystal.absorbing` | Fehler | Teil eines Kristalls mit κ ≠ 0 bei einer Systemwellenlänge (in M4 nicht unterstützt, ADR 0026) | compile | `…/el/material/ordinary` bzw. `…/extraordinary` |
 | `crystal.interaction_unsupported` | Fehler | andere Interaktion als `fresnel` oder `ideal_anti_reflection` an einer Kristallfläche | compile | `…/s/interaction` |
 | `crystal.kind_not_allowed` | Fehler | Kristallmaterial an einem Element, das keine Linse und keine Platte ist (ADR 0026) | validate | `…/el/material` |
@@ -72,11 +77,19 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `interaction.extinction_ratio_invalid` | Fehler | Extinktionsverhältnis des Polarisators außerhalb [0, 1] | validate | `…/s/interaction/extinction_ratio` |
 | `interaction.reflectance_invalid` | Fehler | Reflexionsgrad des Strahlteilers außerhalb [0, 1] | validate | `…/s/interaction` |
 | `interaction.retardance_invalid` | Fehler | Verzögerung nicht endlich | validate | `…/s/interaction/retardance_waves` |
+| `io.pickup_dropped` | Warnung | `pickup` eines Params aus einer Datei vor Schema 0.4 beim Lesen verworfen, der Wert bleibt (ADR 0029, Punkt 6); der Text steht in der Meldung | io | `…/pickup` in der gelesenen Datei |
 | `material.unknown` | Fehler | Materialreferenz nicht auflösbar | compile | `/environment/medium`, `…/el/material`, `…/el/material/i`, `…/el/material/ordinary`, `…/el/material/extraordinary` |
 | `material.wavelength_out_of_range` | Fehler | Systemwellenlänge außerhalb des Bereichs eines Materials auf einem Pfad | compile | `/environment/medium`, `…/el/material`, `…/el/material/i` |
 | `node.name_duplicate` | Fehler | Name einer Baugruppe oder eines Elements doppelt | validate | `…/name` |
 | `node.name_empty` | Fehler | leerer Name einer Baugruppe oder eines Elements | validate | `…/name` |
 | `object.distance_invalid` | Fehler | endlicher Objektabstand nicht endlich oder ≤ 0 mm | validate | `/object/distance` |
+| `param.bound_conflict` | Fehler | gebundenes Param (`param`) mit `variable` oder Grenzen (nur über die API) | validate | Pointer des Params |
+| `param.unknown_parameter` | Fehler | Param an eine Zeile gebunden, die es nicht gibt | validate | `…/param` |
+| `param.unresolved` | Fehler | Zwischenstand bis #165: gebundenes Param, das compile noch nicht auswertet | compile | Pointer des Params |
+| `parameters.name_duplicate` | Fehler | Name einer Zeile der Parametertabelle doppelt | validate | `/parameters/i/name` (zweites Vorkommen) |
+| `parameters.name_invalid` | Fehler | Name einer Zeile nicht von der Form `[A-Za-z_][A-Za-z0-9_]*` | validate | `/parameters/i/name` |
+| `parameters.values_count` | Fehler | `values` mit einer anderen Anzahl als Konfigurationen | validate | `/parameters/i/values` |
+| `parameters.variable_expression` | Fehler | Zeile mit `expression` als `variable` markiert | validate | `/parameters/i/variable` |
 | `paths.crystal_mode_required` | Fehler | Eintritt in einen Kristall mit `refract` statt `ordinary` oder `extraordinary` (ADR 0026) | compile | `/paths/i/events/k` |
 | `paths.empty` | Fehler | kein Pfad | validate | `/paths` |
 | `paths.events_empty` | Fehler | expliziter Pfad ohne Ereignisse | validate | `/paths/i/events` |
@@ -90,6 +103,10 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `paths.unknown_surface` | Fehler | Ereignis an einer unbekannten Flächen-ID | validate | `/paths/i/events/k/surface` |
 | `phase.lines_per_mm_invalid` | Fehler | Liniendichte des Gitters nicht endlich oder ≤ 0 | validate | `…/s/phases/i/lines_per_mm` |
 | `phase.radius_invalid` | Fehler | Normierungsradius der Phase nicht endlich oder ≤ 0 mm | validate | `…/s/phases/i/normalization_radius` |
+| `pose.no_preceding` | Fehler | `relative_to_preceding`, aber in Baumreihenfolge steht keine Fläche davor | validate | `…/pose/reference` |
+| `pose.no_sibling` | Fehler | `relative_to_sibling` am ersten Kind oder an der Wurzel | validate | `…/pose/reference` |
+| `pose.reference_unsupported` | Fehler | Zwischenstand bis #163: relative Pose, die compile noch nicht auswertet | compile | `…/pose/reference` |
+| `pose.relative_first_surface` | Fehler | erste Fläche eines Elements relativ platziert (beide Arten; einzige Diagnose an diesem Ort) | validate | `…/s/pose/reference` |
 | `rays.lost` | Warnung | mehr Strahlen verloren als die Schwelle `lost_warning_fraction` der Analyse (Standard 50 %; Vignettierung am Feldrand ist gewollt) | analysis | Fläche, an der die meisten verlorenen Strahlen enden (`…/s`), sonst leer |
 | `shape.asphere_without_coefficients` | Warnung | gerade Asphäre ohne Koeffizienten | validate | `…/s/shape/base/coefficients` |
 | `shape.radius_invalid` | Fehler | Radius null oder nicht endlich | validate | `…/s/shape/base/radius` |
@@ -107,6 +124,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `surface_aperture.inner_radius_invalid` | Fehler | Innenradius nicht endlich, < 0 oder ≥ Radius | validate | `…/s/aperture/inner_radius` |
 | `surface_aperture.radius_invalid` | Fehler | Radius der Kreisapertur nicht endlich oder ≤ 0 mm | validate | `…/s/aperture/radius` |
 | `surface_aperture.semi_axis_invalid` | Fehler | Halbachse der elliptischen Apertur nicht endlich oder ≤ 0 mm | validate | `…/s/aperture` |
+| `value.not_finite` | Fehler | Zahl des Modells ohne eigene Prüfung nicht endlich (Param-Werte, Grenzen, Pivot, `orientation_deg`, Werte der Parametertabelle; nur über die API, JSON kennt keine nicht endlichen Zahlen) | validate | Pointer der Zahl, bei einem Param `…/value` |
 | `wavelengths.empty` | Fehler | keine Wellenlänge | validate | `/wavelengths` |
 | `wavelengths.reference_count` | Fehler | nicht genau eine Referenzwellenlänge | validate | `/wavelengths` |
 | `wavelengths.too_many` | Fehler | mehr als 65535 Wellenlängen | compile | `/wavelengths` |

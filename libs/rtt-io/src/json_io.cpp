@@ -8,12 +8,17 @@
 #include <initializer_list>
 #include <limits>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
+#include <string>
 #include <utility>
+#include <variant>
+#include <vector>
 
 #include "json_format.hpp"
 #include "json_tree.hpp"
+#include "rtt/diagnostics/codes.hpp"
 #include "rtt/json/strict.hpp"
 
 namespace rtt::io {
@@ -56,6 +61,17 @@ const EnumTable<SystemApertureType> kApertureTypes = {
     {"stop_size", SystemApertureType::StopSize},
 };
 
+const EnumTable<PoseReference> kPoseReferences = {
+    {"absolute", PoseReference::Absolute},
+    {"relative_to_preceding", PoseReference::RelativeToPreceding},
+    {"relative_to_sibling", PoseReference::RelativeToSibling},
+};
+
+const EnumTable<PoseOrder> kPoseOrders = {
+    {"translate_first", PoseOrder::TranslateFirst},
+    {"rotate_first", PoseOrder::RotateFirst},
+};
+
 template <class E>
 std::string_view enum_name(E value, const EnumTable<E>& table) {
   for (const auto& [name, v] : table) {
@@ -77,6 +93,7 @@ class Ctx {
   }
   [[nodiscard]] Ctx at(std::size_t i) const { return Ctx(pointer_ + "/" + std::to_string(i)); }
   [[noreturn]] void fail(const std::string& message) const { throw ParseError(pointer_, message); }
+  [[nodiscard]] const std::string& pointer() const noexcept { return pointer_; }
 
  private:
   std::string pointer_;
@@ -163,14 +180,20 @@ E read_enum(const Json& j, const Ctx& c, const EnumTable<E>& table) {
   c.fail("unknown value '" + s + "', expected one of: " + allowed);
 }
 
-/// Param: either a plain number or {"value": n, "variable": b, "pickup": "expr"}.
+/// Param (ADR 0029, point 3): a plain number, {"value": n, "variable": b, "min": n, "max": n}
+/// (only value required) or a reference {"param": "NAME"} without anything else.
 Param read_param(const Json& j, const Ctx& c) {
   if (j.is_number()) return Param(j.get<double>());
   if (!j.is_object()) c.fail("expected a number or a parameter object");
-  expect_object(j, c, {"value", "variable", "pickup"});
+  if (const Json* name = find(j, "param")) {
+    expect_object(j, c, {"param"});
+    return Param::bound(read_string(*name, c.at("param")));
+  }
+  expect_object(j, c, {"value", "variable", "min", "max"});
   Param p(read_number(require(j, "value", c), c.at("value")));
   if (const Json* v = find(j, "variable")) p.variable = read_bool(*v, c.at("variable"));
-  if (const Json* v = find(j, "pickup")) p.pickup = read_string(*v, c.at("pickup"));
+  if (const Json* v = find(j, "min")) p.min = read_number(*v, c.at("min"));
+  if (const Json* v = find(j, "max")) p.max = read_number(*v, c.at("max"));
   return p;
 }
 
@@ -203,8 +226,12 @@ void read_opt(const Json& j, std::string_view key, const Ctx& c, T& target, F re
 }
 
 Pose read_pose(const Json& j, const Ctx& c) {
-  expect_object(j, c, {"position", "rotation_deg", "pivot"});
+  expect_object(j, c, {"reference", "order", "position", "rotation_deg", "pivot"});
   Pose p;
+  if (const Json* r = find(j, "reference")) {
+    p.reference = read_enum(*r, c.at("reference"), kPoseReferences);
+  }
+  if (const Json* o = find(j, "order")) p.order = read_enum(*o, c.at("order"), kPoseOrders);
   read_opt(j, "position", c, p.position, read_param3);
   read_opt(j, "rotation_deg", c, p.rotation_deg, read_param3);
   read_opt(j, "pivot", c, p.pivot, read_vec3);
@@ -513,35 +540,142 @@ void check_material_forms(const Json& node, const Ctx& c, bool lists_allowed) {
   }
 }
 
-/// Checks the schema version of `j` and migrates supported older versions to the current one;
-/// returns true for a file before 0.3. Pre-1.0 rule: major and minor must match a supported
-/// version, patch may differ. The reader then reads `j` as a current file and the writer writes
-/// kSchemaVersion.
+/// Which migrations a file needs.
+struct Migration {
+  bool before_0_3 = false;  ///< the event kind "diffract" existed
+  bool before_0_4 = false;  ///< Params could carry a pickup; no 0.4 forms
+};
+
+/// Checks the schema version of `j` and tells which migrations to the current version it needs.
+/// Pre-1.0 rule: major and minor must match a supported version, patch may differ. The reader
+/// then reads `j` (after migrate_0_4 for files before 0.4) as a current file and the writer
+/// writes kSchemaVersion.
 /// - 0.1 -> 0.2 (ADR 0017): content unchanged, only material lists are new.
 /// - 0.2 -> 0.3 (ADR 0025, 0026): the event kind "diffract" is read as "transmit" (read_path);
 ///   crystals, the optic axis and diffraction efficiencies are new.
-bool migrate(const Json& j, const std::string& version, const Ctx& c) {
+/// - 0.3 -> 0.4 (ADR 0028, 0029): the pickup of a Param is dropped with io.pickup_dropped;
+///   Pose.reference/order, the parameter table, configurations and bounds are new.
+Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
   const std::string ours(kSchemaVersion);
   const std::string mm = major_minor(version);
-  if (!mm.empty() && mm == major_minor(ours)) return false;
+  if (!mm.empty() && mm == major_minor(ours)) return {};
   if (mm == "0.1" || mm == "0.2") {
     if (const Json* root = find(j, "root")) {
       check_material_forms(*root, Ctx().at("root"), mm == "0.2");
     }
-    return true;
+    return {true, true};
   }
+  if (mm == "0.3") return {false, true};
   c.fail("incompatible schema_version '" + version + "', this build reads " + ours +
-         " and migrates 0.1 and 0.2");
+         " and migrates 0.1, 0.2 and 0.3");
 }
 
-System read_system_tree(const Json& j) {
+/// A Param object: no "type" (the system aperture {"type", "value"} has one) and "value" or
+/// "param".
+bool param_object(const Json& j) {
+  return j.is_object() && !j.contains("type") && (j.contains("value") || j.contains("param"));
+}
+
+/// Files before 0.4 (ADR 0029, point 6): drops every pickup, keeping value and variable, with
+/// the warning io.pickup_dropped at its pointer in the file; a 0.4 form (Pose.reference or
+/// .order, a bound Param or bounds, the parameter table or configurations) is an error, so that
+/// a version is never silently upgraded.
+void migrate_0_4(Json& j, const Ctx& c, std::vector<Diagnostic>* warnings, bool top) {
+  const auto newer = [](const Ctx& at, std::string_view what) {
+    at.fail(std::string(what) + " needs schema_version 0.4 or later");
+  };
+  if (j.is_array()) {
+    for (std::size_t i = 0; i < j.size(); ++i) migrate_0_4(j[i], c.at(i), warnings, false);
+    return;
+  }
+  if (!j.is_object()) return;
+  if (top) {
+    if (j.contains("configurations")) newer(c.at("configurations"), "configurations");
+    if (j.contains("parameters")) newer(c.at("parameters"), "a parameter table");
+  }
+  if (param_object(j)) {
+    for (const char* key : {"param", "min", "max"}) {
+      if (j.contains(key)) newer(c.at(key), "'" + std::string(key) + "' at a parameter");
+    }
+    if (const auto it = j.find("pickup"); it != j.end()) {
+      const std::string text = it->is_string() ? it->get<std::string>() : it->dump();
+      if (warnings != nullptr) {
+        constexpr diagnostics::DiagnosticCode kCode = "io.pickup_dropped";
+        warnings->push_back(
+            {kCode.severity(), c.at("pickup").pointer(),
+             "pickup '" + text + "' dropped: schema 0.4 has a parameter table instead (ADR 0029)",
+             std::string(kCode.str())});
+      }
+      j.erase(it);
+    }
+    return;
+  }
+  if (const auto pose = j.find("pose"); pose != j.end() && pose->is_object()) {
+    for (const char* key : {"reference", "order"}) {
+      if (pose->contains(key)) newer(c.at("pose").at(key), "'" + std::string(key) + "' of a pose");
+    }
+  }
+  for (auto& [key, value] : j.items()) migrate_0_4(value, c.at(key), warnings, false);
+}
+
+/// Rows of the parameter table (ADR 0029, point 1): a name and exactly one of value, values,
+/// expression; variable at every row; min and max only at value and values rows.
+ParameterRow read_parameter_row(const Json& j, const Ctx& c) {
+  expect_object(j, c, {"name", "value", "values", "expression", "variable", "min", "max"});
+  ParameterRow r;
+  r.name = read_string(require(j, "name", c), c.at("name"));
+  const Json* value = find(j, "value");
+  const Json* values = find(j, "values");
+  const Json* expression = find(j, "expression");
+  const int forms =
+      (value != nullptr ? 1 : 0) + (values != nullptr ? 1 : 0) + (expression != nullptr ? 1 : 0);
+  if (forms != 1) c.fail("a parameter row needs exactly one of value, values, expression");
+  if (value != nullptr) {
+    r.form = read_number(*value, c.at("value"));
+  } else if (values != nullptr) {
+    const Ctx vc = c.at("values");
+    expect_array(*values, vc);
+    std::vector<double> v;
+    v.reserve(values->size());
+    for (std::size_t k = 0; k < values->size(); ++k)
+      v.push_back(read_number((*values)[k], vc.at(k)));
+    r.form = std::move(v);
+  } else {
+    for (const char* key : {"min", "max"}) {
+      if (find(j, key) != nullptr) {
+        c.at(key).fail("bounds are only allowed at rows with value or values");
+      }
+    }
+    r.form = ParameterExpression{read_string(*expression, c.at("expression"))};
+  }
+  if (const Json* v = find(j, "variable")) r.variable = read_bool(*v, c.at("variable"));
+  if (const Json* v = find(j, "min")) r.min = read_number(*v, c.at("min"));
+  if (const Json* v = find(j, "max")) r.max = read_number(*v, c.at("max"));
+  return r;
+}
+
+System read_migrated(const Json& j, const Migration& m);
+
+/// `warnings` may be null: the warnings of the migration are dropped.
+System read_system_tree(const Json& j, std::vector<Diagnostic>* warnings) {
   const Ctx c;
+  if (!j.is_object()) c.fail("expected an object, got " + std::string(type_name(j)));
+  const std::string version = read_string(require(j, "schema_version", c), c.at("schema_version"));
+  const Migration m = migrate(j, version, c.at("schema_version"));
+  if (!m.before_0_4) return read_migrated(j, m);
+  Json current = j;
+  migrate_0_4(current, c, warnings, true);
+  return read_migrated(current, m);
+}
+
+/// Reads `j` as a current file; `m` tells the reader which older forms to accept.
+System read_migrated(const Json& j, const Migration& m) {
+  const Ctx c;
+  const bool before_0_3 = m.before_0_3;
   expect_object(j, c,
                 {"schema_version", "name", "units", "environment", "object", "wavelengths",
-                 "aperture", "fields", "root", "paths"});
+                 "aperture", "fields", "configurations", "parameters", "root", "paths"});
   System s;
-  s.schema_version = read_string(require(j, "schema_version", c), c.at("schema_version"));
-  const bool before_0_3 = migrate(j, s.schema_version, c.at("schema_version"));
   s.schema_version = std::string(kSchemaVersion);
   read_opt(j, "name", c, s.name, read_string);
 
@@ -615,6 +749,26 @@ System read_system_tree(const Json& j) {
     }
   }
 
+  if (const Json* a = find(j, "configurations")) {
+    const Ctx cc = c.at("configurations");
+    expect_array(*a, cc);
+    if (a->empty()) cc.fail("a configurations section is not empty; omit it for one configuration");
+    for (std::size_t k = 0; k < a->size(); ++k) {
+      const Ctx kc = cc.at(k);
+      expect_object((*a)[k], kc, {"name"});
+      s.configurations.push_back({read_string(require((*a)[k], "name", kc), kc.at("name"))});
+    }
+  }
+
+  if (const Json* a = find(j, "parameters")) {
+    const Ctx pc = c.at("parameters");
+    expect_array(*a, pc);
+    s.parameters.reserve(a->size());
+    for (std::size_t i = 0; i < a->size(); ++i) {
+      s.parameters.push_back(read_parameter_row((*a)[i], pc.at(i)));
+    }
+  }
+
   {
     const Ctx rc = c.at("root");
     const Json& r = require(j, "root", c);
@@ -637,7 +791,9 @@ System read_system_tree(const Json& j) {
 // Two forms (json_tree.hpp): the canonical form omits values equal to their defaults and writes
 // a plain Param as a number; the edit form (ADR 0024) writes every value and every Param as an
 // object. Optional members without a value (surface aperture, diffraction efficiency, element
-// material, optic axis, pickup) are missing in both.
+// material, optic axis, bounds) are missing in both. A bound Param is {"param": …} in both, without
+// a value; the edit form writes configurations only if there are any (an empty section is not
+// readable, ADR 0029) and parameters always.
 
 OJson num(double v) {
   if (!std::isfinite(v)) throw std::invalid_argument("cannot write non-finite number to JSON");
@@ -703,6 +859,17 @@ class Writer {
     fields["points"] = std::move(pts);
     o["fields"] = std::move(fields);
 
+    if (!s.configurations.empty()) {
+      OJson cs = OJson::array();
+      for (const Configuration& c : s.configurations) cs.push_back(OJson{{"name", c.name}});
+      o["configurations"] = std::move(cs);
+    }
+    if (edit_ || !s.parameters.empty()) {
+      OJson rows = OJson::array();
+      for (const ParameterRow& r : s.parameters) rows.push_back(parameter_row(r));
+      o["parameters"] = std::move(rows);
+    }
+
     o["root"] = assembly(s.root);
 
     OJson paths = OJson::array();
@@ -713,11 +880,32 @@ class Writer {
 
  private:
   OJson param(const Param& p) const {
+    // A bound Param has no value of its own (ADR 0029, point 3): only the reference.
+    if (const std::optional<std::string>& name = p.param) return OJson{{"param", *name}};
     if (!edit_ && p.is_plain()) return num(p.value);
     OJson o;
     o["value"] = num(p.value);
     if (edit_ || p.variable) o["variable"] = p.variable;
-    if (p.pickup) o["pickup"] = *p.pickup;
+    if (p.min) o["min"] = num(*p.min);
+    if (p.max) o["max"] = num(*p.max);
+    return o;
+  }
+
+  OJson parameter_row(const ParameterRow& r) const {
+    OJson o;
+    o["name"] = r.name;
+    if (const auto* value = std::get_if<double>(&r.form)) {
+      o["value"] = num(*value);
+    } else if (const auto* values = std::get_if<std::vector<double>>(&r.form)) {
+      OJson a = OJson::array();
+      for (const double v : *values) a.push_back(num(v));
+      o["values"] = std::move(a);
+    } else {
+      o["expression"] = std::get<ParameterExpression>(r.form).text;
+    }
+    if (edit_ || r.variable) o["variable"] = r.variable;
+    if (r.min) o["min"] = num(*r.min);
+    if (r.max) o["max"] = num(*r.max);
     return o;
   }
 
@@ -739,6 +927,9 @@ class Writer {
     if (!edit_ && p.is_identity()) return;
     const Pose d;
     OJson j;
+    if (edit_ || p.reference != d.reference)
+      j["reference"] = std::string(enum_name(p.reference, kPoseReferences));
+    if (edit_ || p.order != d.order) j["order"] = std::string(enum_name(p.order, kPoseOrders));
     if (edit_ || p.position != d.position) j["position"] = param3(p.position);
     if (edit_ || p.rotation_deg != d.rotation_deg) j["rotation_deg"] = param3(p.rotation_deg);
     if (edit_ || p.pivot != d.pivot) j["pivot"] = vec3(p.pivot);
@@ -947,7 +1138,9 @@ OJson write_tree(const System& s, detail::Form form) {
 
 }  // namespace
 
-model::System parse_system(std::string_view json_text) {
+namespace {
+
+System parse_with(std::string_view json_text, std::vector<Diagnostic>* warnings) {
   Json j;
   try {
     // Duplicate keys, syntax errors and number overflow (ADR 0008 addendum, ADR 0020).
@@ -955,15 +1148,38 @@ model::System parse_system(std::string_view json_text) {
   } catch (const rtt::json::StrictParseError& e) {
     throw ParseError(e.pointer(), e.message());
   }
-  return read_system_tree(j);
+  return read_system_tree(j, warnings);
 }
 
-model::System load_system(const std::filesystem::path& file) {
+std::string read_file(const std::filesystem::path& file) {
   const std::ifstream in(file, std::ios::binary);
   if (!in) throw std::runtime_error("cannot open '" + file.string() + "'");
   std::ostringstream buffer;
   buffer << in.rdbuf();
-  return parse_system(buffer.str());
+  return buffer.str();
+}
+
+}  // namespace
+
+model::System parse_system(std::string_view json_text, std::vector<model::Diagnostic>& warnings) {
+  // Appended only when reading succeeds, so that `warnings` is unchanged if it throws.
+  std::vector<Diagnostic> found;
+  System s = parse_with(json_text, &found);
+  warnings.insert(warnings.end(), found.begin(), found.end());
+  return s;
+}
+
+model::System parse_system(std::string_view json_text) {
+  return parse_with(json_text, nullptr);
+}
+
+model::System load_system(const std::filesystem::path& file,
+                          std::vector<model::Diagnostic>& warnings) {
+  return parse_system(read_file(file), warnings);
+}
+
+model::System load_system(const std::filesystem::path& file) {
+  return parse_system(read_file(file));
 }
 
 std::string to_json(const model::System& system) {
@@ -971,7 +1187,7 @@ std::string to_json(const model::System& system) {
 }
 
 model::System detail::read_system(const nlohmann::json& j) {
-  return read_system_tree(j);
+  return read_system_tree(j, nullptr);
 }
 
 nlohmann::ordered_json detail::write_system(const model::System& s, Form form) {

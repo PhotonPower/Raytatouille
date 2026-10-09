@@ -79,15 +79,15 @@ TEST_CASE("schema 0.3: diffract of a 0.1 or 0.2 file is read as transmit with it
   // ADR 0025, point 4: both kept the medium, so the migration does not change the path.
   const System s = grating_singlet();
   const std::string current = rtt::io::to_json(s);
-  REQUIRE_THAT(current, ContainsSubstring(R"("schema_version": "0.3.0")"));
+  REQUIRE_THAT(current, ContainsSubstring(R"("schema_version": "0.4.0")"));
   for (const std::string version : {"0.2.0", "0.1.0"}) {
     INFO(version);
-    const std::string old = replace_once(replace_once(current, R"("schema_version": "0.3.0")",
+    const std::string old = replace_once(replace_once(current, R"("schema_version": "0.4.0")",
                                                       R"("schema_version": ")" + version + R"(")"),
                                          kTransmitFirst, kDiffractFirst);
     const System back = rtt::io::parse_system(old);
     REQUIRE(back == s);
-    REQUIRE(back.schema_version == "0.3.0");
+    REQUIRE(back.schema_version == "0.4.0");
     REQUIRE(rtt::io::to_json(back) == current);
   }
 }
@@ -105,7 +105,7 @@ TEST_CASE("schema 0.3: a migrated order at a surface without phase layer is a va
   System s = grating_singlet();
   element(s, 1).surfaces[0].phases.clear();
   const std::string old =
-      replace_once(replace_once(rtt::io::to_json(s), R"("schema_version": "0.3.0")",
+      replace_once(replace_once(rtt::io::to_json(s), R"("schema_version": "0.4.0")",
                                 R"("schema_version": "0.2.0")"),
                    kTransmitFirst, kDiffractFirst);
   const System back = rtt::io::parse_system(old);
@@ -150,7 +150,7 @@ TEST_CASE("schema 0.3: a crystal object in a 0.1 or 0.2 file is an error", "[io]
   const std::string current = rtt::io::to_json(crystal_singlet());
   for (const std::string version : {"0.2.0", "0.1.0"}) {
     INFO(version);
-    const std::string old = replace_once(current, R"("schema_version": "0.3.0")",
+    const std::string old = replace_once(current, R"("schema_version": "0.4.0")",
                                          R"("schema_version": ")" + version + R"(")");
     REQUIRE(error_pointer(old) == "/root/children/1/material");
     REQUIRE_THROWS_WITH(rtt::io::parse_system(old),

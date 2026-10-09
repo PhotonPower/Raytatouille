@@ -1,8 +1,9 @@
 # Systemdateien `.rtt.json` erzeugen
 
 Kurzanleitung für das Dateiformat, das die Engine, die CLI (`rtt`) und der Raytatouille Explorer
-laden. Alle Beispiele hier wurden gegen Schema `0.3.x` geprüft (Bibliothek 0.6.0). Dateien
-mit Schema 0.1 und 0.2 liest `rtt` weiter und schreibt sie mit `rtt format` als 0.3.
+laden. Alle Beispiele hier wurden gegen Schema `0.4.x` geprüft. Dateien mit Schema 0.1, 0.2 und
+0.3 liest `rtt` weiter und schreibt sie mit `rtt format` als 0.4; ein `pickup` aus einer Datei vor
+0.4 fällt dabei weg, mit der Warnung `io.pickup_dropped` (siehe „Parametertabelle“).
 Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/architecture.md`.
 
 > Hinweis: Der Raytatouille Explorer (Streamlit-Oberfläche `rtt_explorer.py`) ist nicht Teil dieses
@@ -14,9 +15,11 @@ Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/a
 - Einheiten sind fest: Längen in **mm**, Wellenlängen in **µm**, Winkel in **Grad**.
 - Koordinaten sind rechtshändig, die optische Achse ist **+z**.
 - Das System ist ein Baum: **Baugruppe → Element → Fläche**. Jede Ebene hat eine optionale Pose.
-  Die Position einer Fläche gilt relativ zu ihrem Element, die eines Elements relativ zur Baugruppe.
+  Ohne weitere Angabe gilt die Position einer Fläche relativ zu ihrem Element, die eines Elements
+  relativ zur Baugruppe (siehe „Relative Platzierung“ für die anderen Bezüge).
 - Die Pose besteht aus `position` [x, y, z] in mm und `rotation_deg` [rx, ry, rz]. Die Rotationen
-  laufen intrinsisch X → Y → Z, mit optionalem `pivot`.
+  laufen intrinsisch X → Y → Z, mit optionalem `pivot`. Standard ist: erst verschieben, dann um
+  den Pivot drehen (`"order": "translate_first"`).
 - Radien haben das Vorzeichen der Standardkonvention: positiv, wenn der Krümmungsmittelpunkt
   bei +z liegt. Ein fehlendes `shape` bedeutet eine Planfläche.
 - Jede Fläche braucht eine eindeutige `id`. Auf sie beziehen sich Pfade, Ergebnisse und
@@ -28,7 +31,7 @@ Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/a
 
 | Feld | Pflicht | Inhalt |
 | --- | --- | --- |
-| `schema_version` | ja | `"0.3.0"` (Muster `0.3.x`) |
+| `schema_version` | ja | `"0.4.0"` (Muster `0.4.x`) |
 | `name` | nein | Anzeigename |
 | `units` | ja | genau `{"length": "mm", "wavelength": "um"}` |
 | `environment` | nein | `temperature_c`, `pressure_atm`, `medium` (Standard: Luft nach Ciddor, 20 °C, 1 atm) |
@@ -36,6 +39,8 @@ Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/a
 | `wavelengths` | ja | Liste von `{"um": …, "weight": …, "reference": true}`. **Genau eine** Wellenlänge ist `reference`. `weight` ≥ 0. |
 | `aperture` | ja | `{"type": "epd" \| "image_fnumber" \| "object_na" \| "stop_size", "value": …}`. `epd`: Durchmesser der Eintrittspupille in mm. `image_fnumber`: F-Zahl bei unendlichen Konjugierten, EPD = |EFL| / F#, auch bei endlichem Objekt. `object_na`: objektseitige numerische Apertur, nur bei endlichem Objekt, **paraxial gelesen**: die paraxiale Randstrahlsteigung vom axialen Objektpunkt ist u = NA / n, n der Brechungsindex des Objektraums (Greivenkamp, OPTI-502, Abschn. 9, S. 9-34: NA = n sin U ≈ n u; ein realer Randstrahl mit n sin U = NA weicht bei großer NA ab). Bei paraxialer Zielung hat der Randstrahl tan U = NA / n; bei realer Zielung trifft er den paraxialen Blendenrand R_s, und sein tan U weicht um die Pupillenaberration davon ab. Bei objektseitiger Telezentrie legen nur `object_na` und `stop_size` das Bündel fest. `stop_size` braucht kein `value` (die Blendengröße kommt aus der Apertur der Blende) |
 | `fields` | ja | `{"type": "angle_deg" \| "object_height" \| "paraxial_image_height", "points": [{"x":…, "y":…, "weight":…}]}`. `{}` ist der Achspunkt. `weight` ≥ 0. |
+| `configurations` | nein | Konfigurationen (ADR 0029), z. B. `[{"name": "wide"}, {"name": "tele"}]`; fehlt der Abschnitt, gibt es nur die Nominalkonfiguration. Nie leer. |
+| `parameters` | nein | Parametertabelle (ADR 0029), siehe unten |
 | `root` | ja | die oberste Baugruppe |
 | `paths` | ja | mindestens ein Pfad, meist `{"name": "main", "events": "auto"}` |
 
@@ -86,14 +91,68 @@ braucht das Substrat, ohne `material` ist es ein Kompilierfehler.
 | `diffraction_efficiency` | nur an Flächen mit `phases`: Leistungsanteil je Beugungsordnung, z. B. `[{"order": 1, "efficiency": 0.8}]`; fehlt das Feld, hat jede Ordnung 1, sonst haben nicht aufgeführte Ordnungen 0 |
 | `interaction` | `fresnel` (Standard), `ideal_mirror`, `ideal_anti_reflection`, `absorber`, `ideal_beam_splitter` (`reflectance_s`, `reflectance_p`), `ideal_polarizer` (`transmission_axis`, `extinction_ratio`), `ideal_retarder` (`fast_axis`, `retardance_waves`) oder `{"type": "coating", "name": "KATALOG:NAME"}`. Die Achsen von Polarisator und Retarder stehen in Elementkoordinaten. |
 
-Zahlenwerte dürfen auch als `{"value": …, "variable": true}` stehen, das markiert sie später als
-Optimierungsvariable (`pickup` ist ebenfalls vorgesehen). Zernike-Terme (`shape.terms`) kennt das
+Zahlenwerte dürfen auch als `{"value": …, "variable": true, "min": …, "max": …}` stehen: Das
+markiert sie als Optimierungsvariable mit Grenzen (beide optional, in der Einheit des Werts). Ein
+Zahlenwert kann stattdessen an eine Zeile der Parametertabelle gebunden sein,
+`{"param": "NAME"}`, ohne eigenen Wert (siehe unten). Zernike-Terme (`shape.terms`) kennt das
 Schema, die Engine kompiliert sie in Version 0.4.0 aber noch nicht (Meldung: "not supported before
 M8"). Gitter und Phasenflächen (`phases`) übernimmt die Kompilierung; der Tracer verfolgt seit #127
 jede Beugungsordnung `order` nach der lokalen Gittergleichung (ADR 0025) und rechnet
 `diffraction_efficiency` in das Gewicht ein; evaneszente Ordnungen enden mit dem Status
-`Evanescent`. Die Ereignisse `ordinary` und `extraordinary` beenden den Strahl bis #132 mit dem
-Status `EventImpossible`.
+`Evanescent`. Kristalle mit `ordinary` und `extraordinary` verfolgt der Tracer seit #132
+(ADR 0026).
+
+## Relative Platzierung (ab Schema 0.4, ADR 0028)
+
+Jede Pose kann einen anderen Bezug als den Elternknoten haben und die Reihenfolge von Drehung und
+Verschiebung umkehren. Dann ist eine Luftdicke ein einziger Wert, und alles danach wandert mit.
+
+| Feld der Pose | Werte |
+| --- | --- |
+| `reference` | `absolute` (Standard: der Elternknoten), `relative_to_preceding` (die letzte Fläche davor in Baumreihenfolge, auch über Element- und Baugruppengrenzen), `relative_to_sibling` (das vorangehende Geschwister in derselben Baugruppe bzw. demselben Element) |
+| `order` | `translate_first` (Standard: erst verschieben, dann um den Pivot im eigenen KS drehen), `rotate_first` (erst um den Pivot im KS des Bezugs drehen, dann längs der gedrehten Achsen verschieben: ein Koordinatensprung, z. B. hinter einem Faltspiegel) |
+
+```json
+{"type": "lens", "name": "L2",
+ "pose": {"reference": "relative_to_preceding", "position": [0, 0, 12.5]}, "...": "..."}
+```
+
+Die erste Fläche eines Elements bleibt absolut, sie legt das KS des Elements fest. Die Prüfung
+meldet `pose.relative_first_surface`, `pose.no_preceding` und `pose.no_sibling`. Bis #163 wertet
+die Kompilierung relative Posen noch nicht aus und meldet `pose.reference_unsupported`.
+
+## Parametertabelle und Konfigurationen (ab Schema 0.4, ADR 0029)
+
+Die Tabelle `parameters` steht vor `root`. Jede Zeile hat einen `name` (`[A-Za-z_][A-Za-z0-9_]*`,
+eindeutig) und genau eine Form:
+
+| Form | Bedeutung |
+| --- | --- |
+| `"value": 40.0` | derselbe Wert in allen Konfigurationen |
+| `"values": [20.0, 5.0]` | ein Wert je Konfiguration, in der Reihenfolge von `configurations` |
+| `"expression": "TOTAL - G"` | aus früheren Zeilen berechnet (`+ - * /`, Klammern, unäres Minus; nur Namen weiter oben) |
+
+Dazu optional `variable` (Optimierungsvariable, nicht bei `expression`) und `min`/`max` (nicht bei
+`expression`). Ein Zahlenwert im Baum bindet sich mit `{"param": "NAME"}` an eine Zeile:
+
+```json
+"configurations": [{"name": "wide"}, {"name": "tele"}],
+"parameters": [
+  {"name": "TOTAL", "value": 40.0},
+  {"name": "G", "values": [20.0, 5.0], "variable": true, "min": 2.0, "max": 30.0},
+  {"name": "B", "expression": "TOTAL - G"}
+],
+"root": {"type": "assembly", "name": "zoom", "children": [
+  {"type": "lens", "name": "L2",
+   "pose": {"reference": "relative_to_preceding", "position": [0.0, 0.0, {"param": "G"}]},
+   "...": "..."}
+]}
+```
+
+`pickup` gibt es nicht mehr: Beim Lesen einer Datei vor 0.4 fällt er weg, der Wert bleibt, und
+`rtt validate`, `rtt format` und `rt.load` melden die Warnung `io.pickup_dropped` mit der Stelle.
+In einer 0.4-Datei ist `pickup` ein Fehler. Bis #164/#165 wertet die Bibliothek die Ausdrücke
+noch nicht aus; die Kompilierung meldet gebundene Werte als `param.unresolved`.
 
 ## Pfade
 
@@ -121,7 +180,7 @@ dahinter, der Detektor im paraxialen Fokus bei z = 106,442 mm.
 
 ```json
 {
-  "schema_version": "0.3.0",
+  "schema_version": "0.4.0",
   "name": "Plankonvex-Singlet",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": true}, {"um": 0.6563}],
@@ -202,7 +261,7 @@ def singlet(r1, r2, dicke, glas="CONST:1.5168", epd=20.0, bild_abstand=95.0, hal
 
     z_linse = 5.0
     return {
-        "schema_version": "0.3.0", "name": f"Singlet R1={r1} R2={r2}",
+        "schema_version": "0.4.0", "name": f"Singlet R1={r1} R2={r2}",
         "units": {"length": "mm", "wavelength": "um"},
         "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": True}, {"um": 0.6563}],
         "aperture": {"type": "epd", "value": epd},

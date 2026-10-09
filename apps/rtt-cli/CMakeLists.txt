@@ -21,4 +21,11 @@ if(RTT_BUILD_TESTS)
   set_tests_properties(cli.validate.code.exit PROPERTIES WILL_FAIL TRUE)
   add_test(NAME cli.format.check
     COMMAND rtt_cli format --check ${RTT_REFERENCE_DIR}/m0/michelson.rtt.json)
+  # A pickup dropped by the migration 0.3 -> 0.4 is reported, not lost silently (#162); the
+  # file stays valid (warnings only).
+  add_test(NAME cli.validate.pickup_dropped
+    COMMAND rtt_cli validate ${CMAKE_CURRENT_SOURCE_DIR}/tests/pickup_0_3.rtt.json)
+  set_tests_properties(cli.validate.pickup_dropped PROPERTIES
+    PASS_REGULAR_EXPRESSION
+    "pickup_0_3\\.rtt\\.json: warning \\[io\\.pickup_dropped\\] /root/children/1/pose/position/2/pickup: pickup '2 \\* 3'")
 endif()

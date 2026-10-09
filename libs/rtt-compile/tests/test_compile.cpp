@@ -510,11 +510,31 @@ TEST_CASE("compiled system is independent of the model and const-only", "[compil
   REQUIRE(cs->media()[medium_index(*cs, "CONST:1.5168")].index[0] == Complex(1.5168, 0.0));
 }
 
-TEST_CASE("pickups are not evaluated in M1: the value is used", "[compile]") {
-  System s = load("m1/singlet_const.rtt.json");
-  auto& lens = std::get<Element>(s.root.children[1].value);
-  lens.pose.position[2].pickup = "some_expression";
+TEST_CASE("interim state until #163/#165: relative poses and bound Params are rejected",
+          "[compile]") {
+  // Schema 0.4 reads them (#162), compile evaluates them only with #163 (relative placement)
+  // and #165 (parameter table). Until then compile rejects them instead of using the parent as
+  // reference or the meaningless value 0 of a bound Param. These cases go with #163 and #165.
   const MaterialLibrary lib;
+  System s = load("m1/singlet_const.rtt.json");
+  std::get<Element>(s.root.children[1].value).pose.reference =
+      rtt::model::PoseReference::RelativeToPreceding;
+  REQUIRE(has_error_at(compile_error(s), "/root/children/1/pose/reference"));
+  REQUIRE_THAT(compile_error(s).what(), ContainsSubstring("pose.reference_unsupported"));
+
+  s = load("m1/singlet_const.rtt.json");
+  rtt::model::ParameterRow d;
+  d.name = "D";
+  d.form = 5.0;
+  s.parameters = {d};
+  std::get<Element>(s.root.children[1].value).pose.position[2] = Param::bound("D");
+  REQUIRE(has_error_at(compile_error(s), "/root/children/1/pose/position/2"));
+  REQUIRE_THAT(compile_error(s).what(), ContainsSubstring("param.unresolved"));
+
+  // rotate_first needs no evaluation beyond to_isometry: it compiles already.
+  s = load("m1/singlet_const.rtt.json");
+  auto& lens = std::get<Element>(s.root.children[1].value);
+  lens.pose.order = rtt::model::PoseOrder::RotateFirst;
   const CompiledSystem cs = compile(s, lib);
   REQUIRE_THAT(cs.surfaces()[1].to_global.translation().z(), WithinAbs(5.0, kTol));
 }
