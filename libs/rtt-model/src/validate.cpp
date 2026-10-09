@@ -3,12 +3,14 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "rtt/model/parameters.hpp"
@@ -63,6 +65,7 @@ class Validator {
     check_assembly(system_.root, "/root", false);
     check_stops();
     check_paths();
+    check_optimization();
     return std::move(out_);
   }
 
@@ -603,6 +606,170 @@ class Validator {
         }
       }
     }
+  }
+
+  // ------------------------------------------------ merit function (ADR 0030) -----
+
+  /// The section "optimization" (ADR 0030, points 2-4; #162 part B): names, indices, surfaces on
+  /// the path, weights, sampling and finite numbers. Whether an operand can be evaluated on its
+  /// path (merit.operand_unsupported) is decided when the optimization starts (#167).
+  void check_optimization() {
+    const Optimization& o = system_.optimization;
+    for (std::size_t i = 0; i < o.operands.size(); ++i) {
+      const std::string loc = idx("/optimization/operands", i);
+      std::visit([&](const auto& op) { check_operand(op, loc); }, o.operands[i]);
+    }
+    for (std::size_t i = 0; i < o.generators.size(); ++i) {
+      const std::string loc = idx("/optimization/generators", i);
+      std::visit([&](const auto& g) { check_generator(g, loc); }, o.generators[i]);
+    }
+  }
+
+  void check_common(const OperandCommon& c, const std::string& loc) {
+    if (!std::isfinite(c.target)) report("value.not_finite", loc + "/target", "must be finite");
+    check_weight(c.weight, loc);
+    check_configuration(c.configuration, loc);
+  }
+
+  void check_weight(double weight, const std::string& loc) {
+    if (!std::isfinite(weight) || weight < 0.0) {
+      report("merit.weight_invalid", loc + "/weight", "weight must be finite and >= 0");
+    }
+  }
+
+  void check_configuration(const std::optional<std::string>& name, const std::string& loc) {
+    if (!name) return;
+    const auto& cs = system_.configurations;
+    if (std::none_of(cs.begin(), cs.end(), [&](const Configuration& c) { return c.name == *name; }))
+      report("merit.unknown_configuration", loc + "/configuration",
+             "unknown configuration '" + *name + "'");
+  }
+
+  /// The path of that name, or none (reported as merit.unknown_path).
+  const Path* check_path(const std::string& name, const std::string& loc) {
+    const auto& ps = system_.paths;
+    const auto it =
+        std::find_if(ps.begin(), ps.end(), [&](const Path& p) { return p.name == name; });
+    if (it != ps.end()) return &*it;
+    report("merit.unknown_path", loc + "/path", "unknown path '" + name + "'");
+    return nullptr;
+  }
+
+  void check_field(std::uint16_t field, const std::string& loc) {
+    if (field >= system_.fields.points.size()) {
+      report("merit.index_out_of_range", loc,
+             "field " + std::to_string(field) + " does not exist (" +
+                 std::to_string(system_.fields.points.size()) + " fields)");
+    }
+  }
+
+  void check_wavelength(std::uint16_t wavelength, const std::string& loc) {
+    if (wavelength >= system_.wavelengths.size()) {
+      report("merit.index_out_of_range", loc,
+             "wavelength " + std::to_string(wavelength) + " does not exist (" +
+                 std::to_string(system_.wavelengths.size()) + " wavelengths)");
+    }
+  }
+
+  void check_sampling(int n, const std::string& loc) {
+    if (n < 1) report("merit.sampling_invalid", loc, "must be at least 1");
+  }
+
+  void check_operand(const FirstOrderOperand& op, const std::string& loc) {
+    check_common(op.common, loc);
+    check_path(op.path, loc);
+    if (op.wavelength) check_wavelength(*op.wavelength, loc + "/wavelength");
+  }
+
+  void check_operand(const RayOperand& op, const std::string& loc) {
+    check_common(op.common, loc);
+    if (const Path* p = check_path(op.path, loc)) check_ray_surface(*p, op, loc);
+    check_field(op.field, loc + "/field");
+    if (!std::isfinite(op.px)) report("value.not_finite", loc + "/px", "must be finite");
+    if (!std::isfinite(op.py)) report("value.not_finite", loc + "/py", "must be finite");
+    if (op.wavelength) check_wavelength(*op.wavelength, loc + "/wavelength");
+  }
+
+  /// The surface of a ray operand must be on its path; `occurrence` picks one of several events
+  /// at it. An automatic path meets every surface of the system once.
+  void check_ray_surface(const Path& p, const RayOperand& op, const std::string& loc) {
+    const std::string& id = op.surface.str();
+    std::size_t count = 0;
+    if (p.automatic) {
+      count = surface_ids_.contains(id) ? 1 : 0;
+    } else {
+      count = static_cast<std::size_t>(
+          std::count_if(p.events.begin(), p.events.end(),
+                        [&](const Event& e) { return e.surface == op.surface; }));
+    }
+    if (count == 0) {
+      report("merit.surface_not_on_path", loc + "/surface",
+             "path '" + p.name + "' does not meet surface '" + id + "'");
+    } else if (op.occurrence && *op.occurrence >= count) {
+      report("merit.surface_not_on_path", loc + "/occurrence",
+             "path '" + p.name + "' meets surface '" + id + "' " + std::to_string(count) +
+                 " time(s); occurrence is 0-based");
+    } else if (!op.occurrence && count > 1) {
+      report("merit.surface_ambiguous", loc + "/surface",
+             "path '" + p.name + "' meets surface '" + id + "' " + std::to_string(count) +
+                 " times; set occurrence");
+    }
+  }
+
+  void check_operand(const SpotRmsOperand& op, const std::string& loc) {
+    check_common(op.common, loc);
+    check_path(op.path, loc);
+    check_field(op.field, loc + "/field");
+    if (op.wavelength) {
+      if (op.polychromatic) {
+        report("merit.polychromatic_wavelength", loc + "/wavelength",
+               "a polychromatic spot uses all wavelengths; it has no wavelength");
+      } else {
+        check_wavelength(*op.wavelength, loc + "/wavelength");
+      }
+    }
+    check_sampling(op.rings, loc + "/rings");
+  }
+
+  void check_operand(const OpdRmsOperand& op, const std::string& loc) {
+    check_common(op.common, loc);
+    check_path(op.path, loc);
+    check_field(op.field, loc + "/field");
+    if (op.wavelength) check_wavelength(*op.wavelength, loc + "/wavelength");
+    check_sampling(op.grid, loc + "/grid");
+  }
+
+  void check_operand(const ParamValueOperand& op, const std::string& loc) {
+    check_common(op.common, loc);
+    if (!row_names_.contains(op.parameter)) {
+      report("merit.unknown_parameter", loc + "/parameter",
+             "unknown parameter row '" + op.parameter + "'");
+    }
+  }
+
+  template <class G>
+  void check_generator(const G& g, const std::string& loc) {
+    check_path(g.path, loc);
+    check_configuration(g.configuration, loc);
+    check_selection(g.fields, loc + "/fields",
+                    [&](std::uint16_t k, const std::string& at) { check_field(k, at); });
+    check_selection(g.wavelengths, loc + "/wavelengths",
+                    [&](std::uint16_t k, const std::string& at) { check_wavelength(k, at); });
+    check_sampling(g.rings, loc + "/rings");
+    check_sampling(g.arms, loc + "/arms");
+    check_weight(g.weight, loc);
+  }
+
+  template <class F>
+  void check_selection(const std::optional<std::vector<std::uint16_t>>& list,
+                       const std::string& loc,
+                       F check) {
+    if (!list) return;
+    if (list->empty()) {
+      report("merit.selection_empty", loc, "a selection is not empty; omit it for all");
+      return;
+    }
+    for (std::size_t k = 0; k < list->size(); ++k) check((*list)[k], idx(loc, k));
   }
 
   const System& system_;

@@ -5,6 +5,7 @@
 
 #include "rtt/model/element.hpp"
 #include "rtt/model/ids.hpp"
+#include "rtt/model/optimization.hpp"
 #include "rtt/model/param.hpp"
 #include "rtt/model/parameters.hpp"
 #include "rtt/model/path.hpp"

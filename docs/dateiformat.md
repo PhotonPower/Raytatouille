@@ -43,6 +43,7 @@ Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/a
 | `parameters` | nein | Parametertabelle (ADR 0029), siehe unten |
 | `root` | ja | die oberste Baugruppe |
 | `paths` | ja | mindestens ein Pfad, meist `{"name": "main", "events": "auto"}` |
+| `optimization` | nein | Merit-Funktion (ADR 0030), siehe unten; fehlt ohne Merit-Funktion |
 
 ## Elemente (`type`)
 
@@ -154,6 +155,55 @@ Dazu optional `variable` (Optimierungsvariable, nicht bei `expression`) und `min
 In einer 0.4-Datei ist `pickup` ein Fehler. compile wertet die Tabelle für die gewählte
 Konfiguration aus (`compile(system, materials, coatings, configuration)`, #165); ein Index jenseits
 der Konfigurationen ist `config.unknown`.
+
+## Merit-Funktion `optimization` (ab Schema 0.4, ADR 0030)
+
+Der Abschnitt steht nach `paths` und hat zwei Listen, `operands` und `generators`; eine leere Liste
+und der ganze Abschnitt ohne Einträge fallen weg. Ein Operand liefert einen Wert v, sein Residuum ist
+√w·(v − t). Ein Generator erzeugt Residuen je Strahl mit dem Ziel 0. Die Einstellungen des Lösers
+(Toleranzen, Iterationen) stehen nicht in der Datei, sie sind Argumente des Laufs.
+
+Gemeinsame Schlüssel:
+
+- `target` (Pflicht bei Operanden, Einheit des Werts; Generatoren haben kein `target`);
+- `weight` (Standard 1, ≥ 0);
+- `configuration` (Name einer Konfiguration; fehlt: Konfiguration 0, also die erste bzw. die
+  Nominalkonfiguration);
+- `path` (Name eines Pfads; nicht bei `param_value`).
+- **Indizes:** `field` ist ein Index in `fields.points` (Standard 0), `wavelength` ein Index in
+  `wavelengths`; fehlt `wavelength`, gilt die Referenzwellenlänge.
+- **Pupillenkoordinaten** `px`, `py` (Standard 0) sind normiert wie bei `make_rays`: Der
+  Einheitskreis ist der Rand der paraxialen Eintrittspupille, +y ist meridional.
+
+| `type` | Wert | Eigene Schlüssel (Standard) |
+| --- | --- | --- |
+| `efl`, `bfl` | paraxiale Brenn- bzw. Schnittweite, mm | `wavelength` |
+| `image_fnumber`, `magnification` | bildseitige F-Zahl bzw. Abbildungsmaßstab, dimensionslos | `wavelength` |
+| `ray_x`, `ray_y` | x bzw. y eines realen Strahls im lokalen KS einer Fläche, mm | `surface` (Pflicht), `occurrence`, `field`, `px`, `py`, `wavelength` |
+| `spot_rms` | RMS-Spotradius eines Felds, mm | `field`, `wavelength`, `polychromatic` (false), `reference` (`centroid` oder `chief`), `rings` (6, hexapolar) |
+| `opd_rms` | RMS der Wellenfront eines Felds, Wellen | `field`, `wavelength`, `grid` (33) |
+| `param_value` | Wert einer Zeile der Parametertabelle | `parameter` (Pflicht) |
+
+Generatoren `rms_spot` (zwei Residuen je Strahl, Bezug `reference`) und `rms_wavefront` (eines je
+Strahl, in Wellen) tasten die Pupille mit Gauß-Quadratur ab: `rings` (3) Ringe in ρ², `arms` (6) Arme
+je Ring. `fields` und `wavelengths` wählen Felder bzw. Wellenlängen per Index; fehlen sie, gelten alle
+mit ihren Gewichten. Eine leere Liste ist ein Fehler.
+
+`occurrence` (0-basiert) wählt bei `ray_x`/`ray_y` das Ereignis, wenn der Pfad die Fläche mehrmals
+trifft (Doppeldurchgang, Geisterbild); ein automatischer Pfad trifft jede Fläche einmal.
+`polychromatic: true` nimmt alle Wellenlängen mit ihren Gewichten und verträgt kein `wavelength`.
+Die Namen, Indexbereiche, Gewichte und Abtastungen prüft `rtt validate` (Codes `merit.*`).
+
+```json
+"optimization": {
+  "operands": [
+    {"type": "efl", "path": "main", "target": 100.0},
+    {"type": "ray_y", "path": "main", "surface": "IMG", "field": 1, "py": 1.0, "target": 0.0},
+    {"type": "param_value", "parameter": "G", "configuration": "tele", "target": 5.0, "weight": 0.1}
+  ],
+  "generators": [{"type": "rms_spot", "path": "main", "fields": [0, 1]}]
+}
+```
 
 ## Pfade
 

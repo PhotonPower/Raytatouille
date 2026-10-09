@@ -5,7 +5,9 @@ model. The classes below have no constructor and only read-only attributes; a co
 reference to its System and stays valid when the System changes or is freed. Units: lengths in
 mm, angles in degree where the name ends in ``_deg``; a Param has the unit of the attribute
 that holds it. Variants (shape, aperture, phase, interaction) appear as the object of the active
-alternative, e.g. ``Conic`` or ``Plane``.
+alternative, e.g. ``Conic`` or ``Plane``. ``System.optimization`` holds the merit function
+(ADR 0030): operands such as ``FirstOrderOperand`` or ``SpotRmsOperand`` and the generators
+``SpotGenerator`` and ``WavefrontGenerator``.
 
 Example::
 
@@ -34,6 +36,8 @@ from ._core import (
     EvenAsphere,
     FieldSet,
     FieldType,
+    FirstOrderOperand,
+    FirstOrderQuantity,
     Fresnel,
     IdealAntiReflection,
     IdealBeamSplitter,
@@ -42,7 +46,10 @@ from ._core import (
     IdealRetarder,
     LinearGrating,
     ObjectSpace,
+    OpdRmsOperand,
+    Optimization,
     Param,
+    ParamValueOperand,
     ParameterRow,
     Path,
     Plane,
@@ -50,11 +57,17 @@ from ._core import (
     PoseOrder,
     PoseReference,
     RadialPhase,
+    RayCoordinate,
+    RayOperand,
     RectangularAperture,
     ShapeStack,
+    SpotGenerator,
+    SpotReference,
+    SpotRmsOperand,
     Surface,
     SystemAperture,
     SystemApertureType,
+    WavefrontGenerator,
     ZernikeSag,
 )
 
@@ -75,6 +88,8 @@ __all__ = [
     "EventKind",
     "FieldSet",
     "FieldType",
+    "FirstOrderOperand",
+    "FirstOrderQuantity",
     "Fresnel",
     "IdealAntiReflection",
     "IdealBeamSplitter",
@@ -83,7 +98,10 @@ __all__ = [
     "IdealRetarder",
     "LinearGrating",
     "ObjectSpace",
+    "OpdRmsOperand",
+    "Optimization",
     "Param",
+    "ParamValueOperand",
     "ParameterRow",
     "Path",
     "Plane",
@@ -91,10 +109,16 @@ __all__ = [
     "PoseOrder",
     "PoseReference",
     "RadialPhase",
+    "RayCoordinate",
+    "RayOperand",
     "RectangularAperture",
     "ShapeStack",
+    "SpotGenerator",
+    "SpotReference",
+    "SpotRmsOperand",
     "Surface",
     "SystemAperture",
     "SystemApertureType",
+    "WavefrontGenerator",
     "ZernikeSag",
 ]

@@ -91,9 +91,143 @@
       "items": {"$ref": "#/$defs/parameter_row"}
     },
     "root": {"$ref": "#/$defs/assembly"},
-    "paths": {"type": "array", "items": {"$ref": "#/$defs/path"}}
+    "paths": {"type": "array", "items": {"$ref": "#/$defs/path"}},
+    "optimization": {
+      "description": "Merit function (ADR 0030): operands and generators. Omitted without a merit function. Paths, configurations, parameter rows and surfaces are named; field and wavelength are indices into fields.points and wavelengths (missing wavelength: the reference wavelength). The names and the index ranges are checked by validate (merit.*), not here.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "operands": {"type": "array", "items": {"$ref": "#/$defs/operand"}},
+        "generators": {"type": "array", "items": {"$ref": "#/$defs/generator"}}
+      }
+    }
   },
   "$defs": {
+    "index": {"type": "integer", "minimum": 0, "maximum": 65535},
+    "selection": {
+      "description": "Field or wavelength indices of a generator; omitted for all (with their weights); never empty.",
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/index"}
+    },
+    "operand": {
+      "description": "One operand (ADR 0030, points 1 and 3): residual sqrt(weight) (value - target). target is required; weight defaults to 1; configuration names a configuration (missing: configuration 0).",
+      "type": "object",
+      "required": ["type", "target"],
+      "oneOf": [
+        {
+          "description": "Paraxial quantity of a path: efl and bfl in mm, image_fnumber and magnification dimensionless.",
+          "additionalProperties": false,
+          "required": ["path"],
+          "properties": {
+            "type": {"enum": ["efl", "bfl", "image_fnumber", "magnification"]},
+            "path": {"type": "string"},
+            "configuration": {"type": "string"},
+            "wavelength": {"$ref": "#/$defs/index"},
+            "target": {"type": "number"},
+            "weight": {"type": "number"}
+          }
+        },
+        {
+          "description": "x or y of a real ray in mm in the local coordinates of a surface of the path. occurrence (0-based) picks the event if the path meets the surface more than once. px, py: normalised pupil coordinates as in make_rays (unit circle = rim of the paraxial entrance pupil, +y meridional), default 0.",
+          "additionalProperties": false,
+          "required": ["path", "surface"],
+          "properties": {
+            "type": {"enum": ["ray_x", "ray_y"]},
+            "path": {"type": "string"},
+            "configuration": {"type": "string"},
+            "surface": {"type": "string"},
+            "occurrence": {"type": "integer", "minimum": 0},
+            "field": {"$ref": "#/$defs/index"},
+            "px": {"type": "number"},
+            "py": {"type": "number"},
+            "wavelength": {"$ref": "#/$defs/index"},
+            "target": {"type": "number"},
+            "weight": {"type": "number"}
+          }
+        },
+        {
+          "description": "RMS spot radius of one field in mm, hexapolar pupil with rings (default 6), about the centroid (default) or the chief ray; polychromatic: all wavelengths with their weights, then without wavelength.",
+          "additionalProperties": false,
+          "required": ["path"],
+          "properties": {
+            "type": {"const": "spot_rms"},
+            "path": {"type": "string"},
+            "configuration": {"type": "string"},
+            "field": {"$ref": "#/$defs/index"},
+            "wavelength": {"$ref": "#/$defs/index"},
+            "polychromatic": {"type": "boolean"},
+            "reference": {"enum": ["centroid", "chief"]},
+            "rings": {"type": "integer"},
+            "target": {"type": "number"},
+            "weight": {"type": "number"}
+          },
+          "if": {"required": ["polychromatic"], "properties": {"polychromatic": {"const": true}}},
+          "then": {"properties": {"wavelength": false}}
+        },
+        {
+          "description": "RMS wavefront error of one field in waves, pupil grid of grid x grid points (default 33).",
+          "additionalProperties": false,
+          "required": ["path"],
+          "properties": {
+            "type": {"const": "opd_rms"},
+            "path": {"type": "string"},
+            "configuration": {"type": "string"},
+            "field": {"$ref": "#/$defs/index"},
+            "wavelength": {"$ref": "#/$defs/index"},
+            "grid": {"type": "integer"},
+            "target": {"type": "number"},
+            "weight": {"type": "number"}
+          }
+        },
+        {
+          "description": "Value of a row of the parameter table in a configuration, unit of the row.",
+          "additionalProperties": false,
+          "required": ["parameter"],
+          "properties": {
+            "type": {"const": "param_value"},
+            "parameter": {"type": "string"},
+            "configuration": {"type": "string"},
+            "target": {"type": "number"},
+            "weight": {"type": "number"}
+          }
+        }
+      ]
+    },
+    "generator": {
+      "description": "Generator (ADR 0030, point 4): residuals per ray with Gaussian quadrature in the pupil, rings (default 3) in rho^2 and arms (default 6) per ring; target 0, no target key.",
+      "type": "object",
+      "required": ["type", "path"],
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "rms_spot"},
+            "path": {"type": "string"},
+            "configuration": {"type": "string"},
+            "fields": {"$ref": "#/$defs/selection"},
+            "wavelengths": {"$ref": "#/$defs/selection"},
+            "reference": {"enum": ["centroid", "chief"]},
+            "rings": {"type": "integer"},
+            "arms": {"type": "integer"},
+            "weight": {"type": "number"}
+          }
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "rms_wavefront"},
+            "path": {"type": "string"},
+            "configuration": {"type": "string"},
+            "fields": {"$ref": "#/$defs/selection"},
+            "wavelengths": {"$ref": "#/$defs/selection"},
+            "rings": {"type": "integer"},
+            "arms": {"type": "integer"},
+            "weight": {"type": "number"}
+          }
+        }
+      ]
+    },
     "param": {
       "description": "A number, a value with optimizer flags and bounds, or a reference to a row of the parameter table without a value of its own (ADR 0029).",
       "oneOf": [

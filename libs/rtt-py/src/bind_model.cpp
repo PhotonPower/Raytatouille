@@ -144,6 +144,10 @@ void bind_model(nb::module_& m) {
       .def_prop_ro(
           "parameters", [](const model::System& s) { return s.parameters; },
           "Rows of the parameter table in evaluation order (copies, ADR 0029).")
+      .def_prop_ro(
+          "optimization", [](const model::System& s) { return s.optimization; },
+          "The merit function (copy, ADR 0030): operands and generators; both empty without "
+          "one.")
       .def("to_dict", &edit_dict, nb::sig("def to_dict(self) -> dict[str, typing.Any]"),
            "The edit form (ADR 0024) as Python objects: the system file with every value written "
            "(defaults included) and every Param as {\"value\": ..., \"variable\": ...}, keys in "

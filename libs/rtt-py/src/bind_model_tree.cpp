@@ -17,6 +17,7 @@
 
 #include "bindings.hpp"
 #include "rtt/model/element.hpp"
+#include "rtt/model/optimization.hpp"
 #include "rtt/model/param.hpp"
 #include "rtt/model/path.hpp"
 #include "rtt/model/pose.hpp"
@@ -47,6 +48,132 @@ std::vector<std::variant<model::Assembly, model::Element>> children(const model:
         [](const auto& v) -> std::variant<model::Assembly, model::Element> { return v; }, n.value));
   }
   return out;
+}
+
+/// target, weight and configuration of an operand as attributes of its own (file keys of the
+/// same names, ADR 0030 point 2).
+template <typename T>
+void common_attributes(nb::class_<T>& cls) {
+  cls.def_prop_ro(
+         "target", [](const T& o) { return o.common.target; },
+         "Target in the unit of the operand's value.")
+      .def_prop_ro(
+          "weight", [](const T& o) { return o.common.weight; },
+          "Weight w >= 0 of the residual sqrt(w) (value - target).")
+      .def_prop_ro(
+          "configuration", [](const T& o) { return o.common.configuration; },
+          "Name of a configuration; None: configuration 0.");
+}
+
+/// The merit function (ADR 0030, points 2-4; #162 part B). The defaults are those of
+/// rtt/model/optimization.hpp.
+void bind_optimization(nb::module_& m) {
+  nb::enum_<model::FirstOrderQuantity>(m, "FirstOrderQuantity",
+                                       "Paraxial quantity of a first-order operand.")
+      .value("EFL", model::FirstOrderQuantity::Efl, "effective focal length, mm (file: \"efl\")")
+      .value("BFL", model::FirstOrderQuantity::Bfl, "back focal length, mm (file: \"bfl\")")
+      .value("IMAGE_F_NUMBER", model::FirstOrderQuantity::ImageFNumber,
+             "image-space F-number, dimensionless (file: \"image_fnumber\")")
+      .value("MAGNIFICATION", model::FirstOrderQuantity::Magnification,
+             "paraxial magnification, dimensionless (file: \"magnification\")");
+  nb::enum_<model::RayCoordinate>(m, "RayCoordinate", "Coordinate of a ray operand.")
+      .value("X", model::RayCoordinate::X, "x in mm (file: \"ray_x\")")
+      .value("Y", model::RayCoordinate::Y, "y in mm (file: \"ray_y\")");
+  nb::enum_<model::SpotReference>(m, "SpotReference", "Reference point of a spot RMS.")
+      .value("CENTROID", model::SpotReference::Centroid, "the centroid (file: \"centroid\")")
+      .value("CHIEF", model::SpotReference::Chief, "the chief ray (file: \"chief\")");
+
+  auto first_order = read_only_class<model::FirstOrderOperand>(
+      m, "FirstOrderOperand",
+      "A paraxial quantity of a path (file types efl, bfl, image_fnumber, magnification; "
+      "read-only copy).");
+  common_attributes(first_order);
+  first_order.def_ro("quantity", &model::FirstOrderOperand::quantity, "The quantity.")
+      .def_ro("path", &model::FirstOrderOperand::path, "Name of a path.")
+      .def_ro("wavelength", &model::FirstOrderOperand::wavelength,
+              "Wavelength index; None: the reference wavelength.");
+
+  auto ray = read_only_class<model::RayOperand>(
+      m, "RayOperand",
+      "x or y of a real ray in mm in the local coordinates of a surface (file types ray_x, "
+      "ray_y; read-only copy).");
+  common_attributes(ray);
+  ray.def_ro("coordinate", &model::RayOperand::coordinate, "X or Y.")
+      .def_ro("path", &model::RayOperand::path, "Name of a path.")
+      .def_prop_ro(
+          "surface", [](const model::RayOperand& o) { return o.surface.str(); },
+          "Id of a surface on the path.")
+      .def_ro("occurrence", &model::RayOperand::occurrence,
+              "Which event at the surface (0-based) if the path meets it more than once; None: "
+              "it meets it once.")
+      .def_ro("field", &model::RayOperand::field, "Field index.")
+      .def_ro("px", &model::RayOperand::px,
+              "Normalised pupil x (unit circle: rim of the paraxial entrance pupil).")
+      .def_ro("py", &model::RayOperand::py, "Normalised pupil y, +y meridional.")
+      .def_ro("wavelength", &model::RayOperand::wavelength,
+              "Wavelength index; None: the reference wavelength.");
+
+  auto spot = read_only_class<model::SpotRmsOperand>(
+      m, "SpotRmsOperand",
+      "RMS spot radius of one field in mm (file type spot_rms; read-only copy).");
+  common_attributes(spot);
+  spot.def_ro("path", &model::SpotRmsOperand::path, "Name of a path.")
+      .def_ro("field", &model::SpotRmsOperand::field, "Field index.")
+      .def_ro("wavelength", &model::SpotRmsOperand::wavelength,
+              "Wavelength index; None: the reference wavelength, or all if polychromatic.")
+      .def_ro("polychromatic", &model::SpotRmsOperand::polychromatic,
+              "True: all wavelengths with their weights.")
+      .def_ro("reference", &model::SpotRmsOperand::reference, "Centroid or chief ray.")
+      .def_ro("rings", &model::SpotRmsOperand::rings, "Rings of the hexapolar pupil.");
+
+  auto opd = read_only_class<model::OpdRmsOperand>(
+      m, "OpdRmsOperand",
+      "RMS wavefront error of one field in waves (file type opd_rms; read-only copy).");
+  common_attributes(opd);
+  opd.def_ro("path", &model::OpdRmsOperand::path, "Name of a path.")
+      .def_ro("field", &model::OpdRmsOperand::field, "Field index.")
+      .def_ro("wavelength", &model::OpdRmsOperand::wavelength,
+              "Wavelength index; None: the reference wavelength.")
+      .def_ro("grid", &model::OpdRmsOperand::grid, "Points per side of the pupil grid.");
+
+  auto value = read_only_class<model::ParamValueOperand>(
+      m, "ParamValueOperand",
+      "Value of a parameter row in a configuration (file type param_value; read-only copy).");
+  common_attributes(value);
+  value.def_ro("parameter", &model::ParamValueOperand::parameter, "Name of a parameter row.");
+
+  read_only_class<model::SpotGenerator>(
+      m, "SpotGenerator",
+      "Spot generator: two residuals per ray, target 0 (file type rms_spot; read-only copy).")
+      .def_ro("path", &model::SpotGenerator::path, "Name of a path.")
+      .def_ro("configuration", &model::SpotGenerator::configuration,
+              "Name of a configuration; None: configuration 0.")
+      .def_ro("fields", &model::SpotGenerator::fields, "Field indices; None: all fields.")
+      .def_ro("wavelengths", &model::SpotGenerator::wavelengths,
+              "Wavelength indices; None: all wavelengths.")
+      .def_ro("reference", &model::SpotGenerator::reference, "Centroid or chief ray.")
+      .def_ro("rings", &model::SpotGenerator::rings, "Gauss-Legendre rings in rho^2.")
+      .def_ro("arms", &model::SpotGenerator::arms, "Arms per ring.")
+      .def_ro("weight", &model::SpotGenerator::weight, "Weight >= 0.");
+
+  read_only_class<model::WavefrontGenerator>(
+      m, "WavefrontGenerator",
+      "Wavefront generator: one residual per ray in waves, target 0 (file type rms_wavefront; "
+      "read-only copy).")
+      .def_ro("path", &model::WavefrontGenerator::path, "Name of a path.")
+      .def_ro("configuration", &model::WavefrontGenerator::configuration,
+              "Name of a configuration; None: configuration 0.")
+      .def_ro("fields", &model::WavefrontGenerator::fields, "Field indices; None: all fields.")
+      .def_ro("wavelengths", &model::WavefrontGenerator::wavelengths,
+              "Wavelength indices; None: all wavelengths.")
+      .def_ro("rings", &model::WavefrontGenerator::rings, "Gauss-Legendre rings in rho^2.")
+      .def_ro("arms", &model::WavefrontGenerator::arms, "Arms per ring.")
+      .def_ro("weight", &model::WavefrontGenerator::weight, "Weight >= 0.");
+
+  read_only_class<model::Optimization>(m, "Optimization",
+                                       "The merit function (ADR 0030; read-only copy).")
+      .def_ro("operands", &model::Optimization::operands, "Operands in file order.")
+      .def_ro("generators", &model::Optimization::generators, "Generators in file order.");
 }
 
 }  // namespace
@@ -428,6 +555,8 @@ void bind_model_tree(nb::module_& m) {
       .def_ro("distance", &model::ObjectSpace::distance,
               "Distance from the object to the global origin along -z in mm; used only if not "
               "at_infinity (Param).");
+
+  bind_optimization(m);
 }
 
 }  // namespace rtt::py
