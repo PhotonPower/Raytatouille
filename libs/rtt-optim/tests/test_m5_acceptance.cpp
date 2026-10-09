@@ -15,9 +15,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <iomanip>
 #include <limits>
 #include <optional>
 #include <span>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <variant>
@@ -382,18 +384,6 @@ Mat hessian_at(const rtt::optim::MeritFunction& merit,
   return a;
 }
 
-/// Frobenius norm of the inverse of a small matrix (column by column).
-double inverse_norm(const Mat& a) {
-  double s = 0.0;
-  for (std::size_t c = 0; c < a.size(); ++c) {
-    Vec e(a.size(), 0.0);
-    e[c] = 1.0;
-    const Vec x = solve_n(a, e);
-    for (const double v : x) s += v * v;
-  }
-  return std::sqrt(s);
-}
-
 /// The 1-D bending reference of m5/singlet_optim (radii free in the model): a coarse grid over
 /// R1 for the bracket, then the golden section.
 Bending bending_reference(const System& base, const MaterialLibrary& lib) {
@@ -442,10 +432,13 @@ OptimResult check_against_prediction(const System& s,
     for (std::size_t c = 0; c < n; ++c) bias_g[c] += (j_solver[i][c] - j_pred[i][c]) * f_pred[i];
   }
   const Vec delta_fd = solve_n(hess, bias_g);
+  std::ostringstream terms;
+  terms << std::setprecision(6);
   for (std::size_t c = 0; c < n; ++c) {
-    INFO("variable " << c << ": reference " << p_ref[c] << ", Newton correction " << delta_n[c]
-                     << ", remainder " << delta_2[c] << ", FD bias " << delta_fd[c]);
+    terms << "variable " << c << ": reference " << p_ref[c] << ", Newton correction " << delta_n[c]
+          << ", remainder " << delta_2[c] << ", FD bias " << delta_fd[c] << "; ";
   }
+  INFO(terms.str());
   if (w_efl) {
     // The EFL residual of the least-squares optimum: e = f_0 / sqrt(w) at p_pred. The issue
     // requires EFL relative 1e-10 (1e-8 mm): the predicted residual must lie well below.
@@ -471,18 +464,33 @@ OptimResult check_against_prediction(const System& s,
     for (std::size_t c = 0; c < n; ++c) d[c] += row[c] * row[c];
   }
   for (double& v : d) v = std::sqrt(v);
-  Mat a_mu(n, Vec(n, 0.0));
+  // In the scaled variables z = D theta of the solver: h_z = -(A_z + mu I)^-1 g~_z at the stop and
+  // e_z = H_z^-1 g~_z, so e_z = -H_z^-1 (A_z + mu I) h_z and ||e_z|| <= ||M||_F ||D h|| with
+  // M = H_z^-1 (A_z + mu I), H_z = D^-1 H D^-1, A_z = D^-1 J^T J D^-1; per variable
+  // |e_j| <= ||e_z|| / d_j.
+  Mat h_z(n, Vec(n, 0.0));
+  Mat am_z(n, Vec(n, 0.0));
   for (std::size_t rr = 0; rr < n; ++rr) {
     for (std::size_t c = 0; c < n; ++c) {
-      for (const Vec& row : j_pred) a_mu[rr][c] += row[rr] * row[c];
+      h_z[rr][c] = hess[rr][c] / (d[rr] * d[c]);
+      double a = 0.0;
+      for (const Vec& row : j_pred) a += row[rr] * row[c];
+      am_z[rr][c] = a / (d[rr] * d[c]);
     }
-    a_mu[rr][rr] += r.history.back().mu * d[rr] * d[rr];
+    am_z[rr][rr] += r.history.back().mu;
   }
-  const double h_norm = r.history.back().step_norm / *std::min_element(d.begin(), d.end());
-  const double e_stop = inverse_norm(hess) * frobenius(a_mu) * h_norm;
-  INFO("stop bound " << e_stop << " (||D h|| = " << r.history.back().step_norm << ")");
+  Mat m_z(n, Vec(n, 0.0));
   for (std::size_t c = 0; c < n; ++c) {
-    const double tol = e_stop + std::abs(delta_fd[c]) + 2.0 * std::abs(delta_2[c]) +
+    Vec column(n, 0.0);
+    for (std::size_t rr = 0; rr < n; ++rr) column[rr] = am_z[rr][c];
+    const Vec x = solve_n(h_z, column);
+    for (std::size_t rr = 0; rr < n; ++rr) m_z[rr][c] = x[rr];
+  }
+  const double e_z = frobenius(m_z) * r.history.back().step_norm;
+  INFO("stop: ||M||_F = " << frobenius(m_z) << ", ||D h|| = " << r.history.back().step_norm
+                          << ", ||e_z|| <= " << e_z);
+  for (std::size_t c = 0; c < n; ++c) {
+    const double tol = e_z / d[c] + std::abs(delta_fd[c]) + 2.0 * std::abs(delta_2[c]) +
                        64.0 * kEps * std::abs(p_pred[c]);
     INFO("variable " << c << ": result " << r.variables[c].end << ", predicted " << p_pred[c]
                      << ", tolerance " << tol);
