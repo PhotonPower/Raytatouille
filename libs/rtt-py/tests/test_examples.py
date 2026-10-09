@@ -140,3 +140,12 @@ def test_reports_example(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> 
     assert namespace["main"](str(tmp_path)) == 0
     for name in ("dimensions", "system", "raytrace"):
         assert (tmp_path / f"cooke_{name}.csv").stat().st_size > 0
+
+
+def test_optimize_singlet_example(capsys: pytest.CaptureFixture[str]) -> None:
+    # main() returns 1 if the patch does not give the result or undo does not restore the input.
+    namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "optimize_singlet.py"))
+    assert namespace["main"]() == 0
+    out = capsys.readouterr().out
+    assert "Status CONVERGED_" in out and "EFL 100.0" in out
+    assert "patch applied: True, undo restores the input: True" in out

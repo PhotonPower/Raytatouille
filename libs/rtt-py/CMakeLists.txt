@@ -36,13 +36,14 @@ nanobind_add_module(_core NB_STATIC NB_SUPPRESS_WARNINGS
   src/bind_analysis.cpp
   src/bind_paths.cpp
   src/bind_reports.cpp
+  src/bind_optim.cpp
   src/bind_polar.cpp
   src/bind_results.cpp
   src/polar_batch.cpp
   src/bind_layout.cpp)
 target_link_libraries(_core PRIVATE
   rtt::io rtt::diagnostics rtt::model rtt::material rtt::coating rtt::compile rtt::paraxial
-  rtt::trace rtt::analysis
+  rtt::trace rtt::analysis rtt::optim
   rtt::polar TBB::tbb)
 rtt_target_defaults(_core)
 # The $<1:...> keeps multi-config generators from appending a configuration directory.
@@ -60,6 +61,7 @@ set(RTT_PY_SOURCES
   python/raytatouille/layout.py
   python/raytatouille/materials.py
   python/raytatouille/model.py
+  python/raytatouille/optim.py
   python/raytatouille/paraxial.py
   python/raytatouille/plot.py
   python/raytatouille/polar.py
@@ -125,11 +127,12 @@ if(RTT_BUILD_TESTS)
   # src/polar_batch.cpp: the same polarization quantities as raytatouille.polar (#62).
   add_executable(rtt_py_reference tests/rtt_py_reference.cpp tests/analysis_cases.cpp
     tests/paths_cases.cpp tests/diffraction_cases.cpp tests/crystal_cases.cpp
-    tests/configuration_cases.cpp tests/reports_cases.cpp src/polar_batch.cpp)
+    tests/configuration_cases.cpp tests/reports_cases.cpp tests/optim_cases.cpp
+    src/polar_batch.cpp)
   target_include_directories(rtt_py_reference PRIVATE src)
   target_link_libraries(rtt_py_reference PRIVATE
     rtt::io rtt::material rtt::coating rtt::compile rtt::paraxial rtt::trace rtt::analysis
-    rtt::polar TBB::tbb)
+    rtt::optim rtt::polar TBB::tbb)
   rtt_target_defaults(rtt_py_reference)
 
   add_test(NAME rtt_py_pytest

@@ -1,0 +1,136 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.7",
+ "type": "OptimResult",
+ "data": {
+  "status": "CONVERGED_STEP",
+  "patch": "[{\"op\":\"replace\",\"path\":\"/parameters/0/value\",\"value\":19.564727703597345},{\"op\":\"replace\",\"path\":\"/root/children/3/pose/position/2/value\",\"value\":40.794972631198775}]",
+  "history": {
+   "k": {
+    "dtype": "int32",
+    "shape": [
+     4
+    ],
+    "values": [
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   "phi": {
+    "dtype": "float64",
+    "shape": [
+     4
+    ],
+    "values": [
+     0.015422830593753205,
+     1.7935749767076564e-07,
+     1.9032993425613123e-15,
+     1.9032993425613123e-15
+    ]
+   },
+   "mu": {
+    "dtype": "float64",
+    "shape": [
+     4
+    ],
+    "values": [
+     0.001,
+     0.0003333333333333333,
+     0.0001111111111111111,
+     3.703703703703703e-05
+    ]
+   },
+   "rho": {
+    "dtype": "float64",
+    "shape": [
+     4
+    ],
+    "values": [
+     0.996303504443879,
+     0.999988439310676,
+     0.9999999979178466,
+     "NaN"
+    ]
+   },
+   "step_norm": {
+    "dtype": "float64",
+    "shape": [
+     4
+    ],
+    "values": [
+     2.921741779664322,
+     0.15551290298401965,
+     0.0005435508368597563,
+     5.686280231464575e-08
+    ]
+   },
+   "accepted": {
+    "dtype": "bool",
+    "shape": [
+     4
+    ],
+    "values": [
+     true,
+     true,
+     true,
+     false
+    ]
+   },
+   "evaluations": {
+    "dtype": "uint64",
+    "shape": [
+     4
+    ],
+    "values": [
+     10,
+     15,
+     20,
+     20
+    ]
+   }
+  },
+  "operands": [
+   {
+    "pointer": "/optimization/operands/0",
+    "value": 55.00000006110164,
+    "target": 55.0,
+    "weight": 1.0,
+    "contribution": 98.07732354654813
+   },
+   {
+    "pointer": "/optimization/operands/1",
+    "value": 8.555032238177773e-09,
+    "target": 0.0,
+    "weight": 1.0,
+    "contribution": 1.9226764534518648
+   }
+  ],
+  "generators": [],
+  "variables": [
+   {
+    "pointer": "/parameters/0/value",
+    "row": "D",
+    "configuration": null,
+    "start": 10.0,
+    "end": 19.564727703597345,
+    "changed": true,
+    "at_bound": false
+   },
+   {
+    "pointer": "/root/children/3/pose/position/2/value",
+    "row": "",
+    "configuration": null,
+    "start": 45.0,
+    "end": 40.794972631198775,
+    "changed": true,
+    "at_bound": false
+   }
+  ],
+  "diagnostics": [],
+  "iterations": 4,
+  "evaluations": 22,
+  "failed_evaluations": 0
+ }
+}

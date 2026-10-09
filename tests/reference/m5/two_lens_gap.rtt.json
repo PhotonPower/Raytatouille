@@ -100,5 +100,17 @@
   },
   "paths": [
     {"name": "main", "events": "auto"}
-  ]
+  ],
+  "optimization": {
+    "operands": [
+      {"type": "efl", "path": "main", "target": 55.0},
+      {
+        "type": "ray_y",
+        "path": "main",
+        "surface": "IMG",
+        "py": 1.0,
+        "target": 0.0
+      }
+    ]
+  }
 }

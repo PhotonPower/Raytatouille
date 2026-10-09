@@ -37,6 +37,8 @@
         "RaytraceReport",
         "SystemReport",
         "DimensionReport",
+        "OptimResult",
+        "MeritEvaluation",
         "FirstOrder",
         "Seidel",
         "Prescription",
@@ -350,6 +352,55 @@
           "data": {
             "required": [
               "segments"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "OptimResult"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "status",
+              "patch",
+              "history",
+              "operands",
+              "generators",
+              "variables",
+              "diagnostics",
+              "iterations",
+              "evaluations",
+              "failed_evaluations"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "MeritEvaluation"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "values",
+              "residuals",
+              "undefined",
+              "warnings",
+              "generators"
             ]
           }
         }

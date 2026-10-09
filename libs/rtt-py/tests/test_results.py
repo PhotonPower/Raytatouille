@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 
 from conftest import REFERENCE_DIR
+from optim_systems import gap_merit, singlet_merit
 
 import raytatouille as rt
 
@@ -82,6 +83,12 @@ def singlet_ghosts() -> rt.GhostSystem:
     return rt.compile_with_ghosts(rt.load(REFERENCE_DIR / "m1" / "singlet_const.rtt.json"), "main")
 
 
+def merit_at_start() -> rt.optim.MeritEvaluation:
+    """The merit function of the M5 singlet at its start values (#169)."""
+    merit = rt.optim.MeritFunction(singlet_merit())
+    return merit.evaluate(merit.start())
+
+
 PRODUCERS: dict[str, Callable[[rt.CompiledSystem, rt.MaterialLibrary], Any]] = {
     "SpotDiagram": lambda cs, lib: rt.analysis.spot(cs, field=1, rays="hexapolar:3"),
     "RayFan": lambda cs, lib: rt.analysis.ray_fan(cs, field=2, points=7),
@@ -103,6 +110,9 @@ PRODUCERS: dict[str, Callable[[rt.CompiledSystem, rt.MaterialLibrary], Any]] = {
         cs, start=rt.trace.make_rays(cs, rt.trace.FanYPupil(3), fields=[2])),
     "SystemReport": lambda cs, lib: rt.analysis.system_report(cs),
     "DimensionReport": lambda cs, lib: rt.analysis.dimension_report(cs),
+    # optimization (#169): the M5 gap system with EFL and focus, the singlet's merit at start
+    "OptimResult": lambda cs, lib: rt.optim.optimize(gap_merit()),
+    "MeritEvaluation": lambda cs, lib: merit_at_start(),
     "FirstOrder": lambda cs, lib: rt.paraxial.first_order(cs),
     "Seidel": lambda cs, lib: rt.paraxial.seidel(cs, pair=(0, 2)),
     "Prescription": lambda cs, lib: rt.paraxial.prescription(cs),
@@ -142,10 +152,10 @@ def test_round_trip_is_bit_identical(name: str, singlet: rt.CompiledSystem,
     envelope = json.loads(text, parse_constant=no_constants)  # standard JSON only
     assert list(envelope) == ["format", "schema_version", "type", "data"]
     assert envelope["format"] == "raytatouille-result"
-    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.6"
+    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.7"
     assert envelope["type"] == name
     loaded = rt.results.load_json(text)
-    assert (loaded.type, loaded.schema_version) == (name, "0.1.6")
+    assert (loaded.type, loaded.schema_version) == (name, "0.1.7")
     same(loaded.data, data)
 
 
@@ -363,7 +373,7 @@ def test_trace_stats_carry_the_evanescent_status(singlet: rt.CompiledSystem) -> 
     rays.status[1] = int(rt.trace.RayStatus.EVANESCENT)
     stats = rt.trace.trace(singlet, rays, path="main")
     loaded = rt.results.load_json(stats.to_json())
-    assert loaded.schema_version == rt.results.SCHEMA_VERSION == "0.1.6"
+    assert loaded.schema_version == rt.results.SCHEMA_VERSION == "0.1.7"
     counts = list(loaded.data["rays"])
     assert len(counts) == 8
     assert counts[int(rt.trace.RayStatus.EVANESCENT)] == 1

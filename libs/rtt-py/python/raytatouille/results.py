@@ -54,10 +54,11 @@ __all__ = [
 ]
 
 FORMAT = "raytatouille-result"
-SCHEMA_VERSION = "0.1.6"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
+SCHEMA_VERSION = "0.1.7"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
 # 0.1.3: status Evanescent, status arrays one entry longer (#127); 0.1.4: PathTransmission,
 # PathOplDifference, GhostRanking (#133); 0.1.5: RayBatch wave_x/y/z, mode_index (#134);
-# 0.1.6: RaytraceReport, SystemReport, DimensionReport (#177)
+# 0.1.6: RaytraceReport, SystemReport, DimensionReport (#177);
+# 0.1.7: OptimResult, MeritEvaluation (#169)
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a
@@ -120,6 +121,16 @@ _FIELDS: dict[str, tuple[str, ...]] = {
                           "semi_diameter_first", "semi_diameter_second", "aperture_first",
                           "aperture_second", "edge_thickness", "diameter"),
     "DimensionReport": ("segments",),
+    # optimization (#169); OptimResult.system is not data (ADR 0023, addendum #169)
+    "OptimIterations": ("k", "phi", "mu", "rho", "step_norm", "accepted", "evaluations"),
+    "OperandValue": ("pointer", "value", "target", "weight", "contribution"),
+    "GeneratorValue": ("pointer", "rms", "weight", "contribution", "rays_launched",
+                       "rays_lost"),
+    "VariableValue": ("pointer", "row", "configuration", "start", "end", "changed", "at_bound"),
+    "OptimResult": ("status", "patch", "history", "operands", "generators", "variables",
+                    "diagnostics", "iterations", "evaluations", "failed_evaluations"),
+    "GeneratorStats": ("rays_launched", "rays_lost", "mean_square", "undefined"),
+    "MeritEvaluation": ("values", "residuals", "undefined", "warnings", "generators"),
     # paraxial
     "ChromaticPair": ("first", "second"),
     "Pupil": ("z", "diameter"),
@@ -158,6 +169,7 @@ TYPES: tuple[str, ...] = (
     "DistortionSweep", "DistortionPoint", "FieldCurvatureSweep", "FieldCurvaturePoint",
     "PathTransmission", "PathOplDifference", "GhostRanking",
     "RaytraceReport", "SystemReport", "DimensionReport",
+    "OptimResult", "MeritEvaluation",
     "FirstOrder", "Seidel", "Prescription", "TraceStats", "RayBatch", "RayPaths",
     "Diattenuation", "Diattenuations", "Retardance", "Retardances",
     "GlassInfo", "GlassMap", "SurfaceLayout", "CompiledElement", "Diagnostic", "LoadWarning",

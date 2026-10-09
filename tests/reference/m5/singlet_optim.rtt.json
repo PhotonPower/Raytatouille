@@ -72,5 +72,13 @@
   },
   "paths": [
     {"name": "main", "events": "auto"}
-  ]
+  ],
+  "optimization": {
+    "operands": [
+      {"type": "efl", "path": "main", "target": 100.0, "weight": 10000.0}
+    ],
+    "generators": [
+      {"type": "rms_spot", "path": "main"}
+    ]
+  }
 }
