@@ -1,7 +1,7 @@
 # Systemdateien `.rtt.json` erzeugen
 
 Kurzanleitung für das Dateiformat, das die Engine, die CLI (`rtt`) und der Raytatouille Explorer
-laden. Alle Beispiele hier wurden gegen Schema `0.3.x` geprüft (Bibliothek nach 0.5.0). Dateien
+laden. Alle Beispiele hier wurden gegen Schema `0.3.x` geprüft (Bibliothek 0.6.0). Dateien
 mit Schema 0.1 und 0.2 liest `rtt` weiter und schreibt sie mit `rtt format` als 0.3.
 Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/architecture.md`.
 

@@ -6,6 +6,115 @@ Neue Einträge stehen bis zum nächsten Release als Fragmente in [`changelog.d/`
 
 ## [Unreleased]
 
+## [0.6.0] – M4 Multi-Path
+
+### Hinzugefügt
+- `rtt-analysis`: Pfadauswertung (`rtt/analysis/paths.hpp`): Transmission je Pfad
+  (`path_transmission`) und OPL-Differenz zweier Pfade (`opl_difference`) für vorgegebene
+  Startstrahlen, auch in gefalteten Systemen, oder über `make_rays` in rotationssymmetrischen;
+  mit Verlustzählung und Abbruch/Fortschritt. Referenzdatei
+  `tests/reference/m4/michelson_offset.rtt.json` (#122).
+- `rtt-compile`: Ghost-Generator (`rtt/compile/ghosts.hpp`, ADR 0027): `ghost_paths` erzeugt
+  aus einem Pfad alle Zweifach-Reflexions-Ghosts als explizite Pfade (N Refract-Ereignisse
+  ergeben N(N − 1)/2), `compile_with_ghosts` kompiliert eine Kopie des Systems mit ihnen und
+  nennt je Ghost Basispfad und Reflexionsflächen. Keine Formatänderung (#123).
+- `rtt-analysis`: Ghost-Ranking (`rtt/analysis/ghosts.hpp`, Nachtrag zu ADR 0027):
+  `ghost_ranking` verfolgt alle Ghosts eines Basispfads mit dessen Startstrahlen und sortiert
+  sie nach der Bestrahlungsstärke am Bild relativ zum Nutzbild, mit Auflösungsgrenze des
+  Detektors (Standard 5 µm); dazu paraxiale Fokuslage und Unschärfe je Ghost (#124).
+- Dateiformat: Flächenfeld `diffraction_efficiency` (Leistungsanteil je Beugungsordnung, ADR 0025)
+  mit Code `surface.efficiency_invalid`; Python `Surface.diffraction_efficiency` und
+  `model.DiffractionEfficiency` (#125).
+- `rtt-geom`: Phasenfunktionen der Phasenschichten (`rtt/geom/phase.hpp`, ADR 0025):
+  `LinearGratingPhase` und `RadialPhasePolynomial` mit Phase in rad und Gradient in rad/mm,
+  Summe der Schichten einer Fläche und `tangential_gradient` für die Projektion in die
+  Tangentialebene, geprüft gegen Mansuripur (2007), Gl. (9)–(11) (#126).
+- `rtt-trace`: neuer Strahlstatus `RayStatus::Evanescent` (ADR 0025, Punkt 7) für Beugungsordnungen
+  ohne reelle Richtung, hinten an das Enum angehängt (`kRayStatusCount` = 8); in Python
+  `RayStatus.EVANESCENT`. `TraceStats.rays` und `RayLosses.by_status` haben einen Eintrag mehr,
+  Ergebnisformat 0.1.3 (verträglicher Zusatz, ADR 0023) (#127).
+- `rtt-trace`: Beugungsordnungen an Flächen mit Phasenschicht (ADR 0025): lokale
+  Gittergleichung für `refract`, `reflect` und `transmit` mit `order`, Status `Evanescent` für
+  Ordnungen ohne reelle Richtung (Tir der Ordnung 0 zuerst), OPL-Beitrag m φ λ₀/(2π),
+  Polarisation P = R(k₀ → k_m)·P₀, Effizienz je Ordnung (`diffraction_efficiency`) im Gewicht.
+  `first_order` nimmt Phasenflächen mit Ordnung 0 an, und Ray Aiming geht durch solche Flächen
+  vor der Blende (auch mit Effizienzen); für Ordnungen ≠ 0 braucht ein Pfad eigene Startstrahlen
+  (ADR 0025, Punkt 4). Neues Referenzsystem `tests/reference/m4/grating_transmission.rtt.json` (#127).
+- Dateiformat: einachsige Kristalle als Material `{"ordinary": …, "extraordinary": …}` und
+  Elementfeld `optic_axis` (ADR 0026), mit den validate-Codes `crystal.*`; Python
+  `Element.crystal`, `Element.optic_axis` und `model.CrystalMaterial` (#128).
+- `rtt-material`: `UniaxialMaterial` für einachsige Kristalle aus zwei Materialien für n_O und
+  n_E (ADR 0026) und `MaterialLibrary::resolve_uniaxial(ordinary, extraordinary)`, z. B. für das
+  Katalogpaar `X` / `X-E`; Wellenlängenbereich als Schnittmenge beider Teile (#129).
+- `rtt-polar`: Brechung in ein einachsiges Medium und aus ihm heraus (`rtt/polar/birefringence.hpp`,
+  ADR 0026): Wellennormale, Energierichtung mit Walk-off, Brechzahl der o- und e-Mode nach Lam
+  (2.11), (2.39), (2.41), Eigenpolarisationen und PRT-Matrizen beim Ein- und Austritt im
+  Projektionsmodell von M4 (#130).
+- `rtt-compile`: Kristallelemente kompilieren (ADR 0026): eigenes Medium je Kristall mit n_O, n_E
+  und globaler optischer Achse, `CompiledEvent::crystal_mode`, Pfadregeln für `ordinary` und
+  `extraordinary` mit den Codes `paths.crystal_mode_required`, `paths.mode_without_crystal`,
+  `crystal.unsupported`, `crystal.interaction_unsupported` und `crystal.absorbing` (#131).
+- `rtt-trace`: Strahlen durch einachsige Kristalle (ADR 0026): Eintritt mit `ordinary` oder
+  `extraordinary`, Walk-off des e-Strahls entlang des Poynting-Vektors, optischer Weg nach Lam
+  Gl. (2.17), Austritt mit `refract`, auch mit Beugungsordnung. `RayBatch` hat die Spalten
+  `wave_x`, `wave_y`, `wave_z` (Wellennormale) und `mode_index`; ein Batch, der nur `dir` setzt,
+  bleibt gültig. Abnahme: `tests/reference/m4/calcite_walkoff.rtt.json`. Grenze in M4: `first_order`
+  und alles darauf (`make_rays` mit Ray Aiming, OPD, Komfortformen der Analysen) lehnen Pfade in
+  einen Kristall ab; solche Pfade brauchen eigene Startstrahlen (#132).
+- `rtt-py`: Pfadauswertung und Ghosts aus Python: `rt.analysis.path_transmission` und
+  `rt.analysis.opl_difference` mit Startstrahlen (`start=`, auch für gefaltete Pfade) oder über
+  `make_rays` (`field`, `wavelength`, `rays`, `aiming`), `rt.compile_with_ghosts`,
+  `rt.ghost_paths` und `rt.analysis.ghost_ranking`; Ergebnisse `PathTransmission`,
+  `PathOplDifference`, `GhostSystem`, `GhostRanking` mit Spalten als NumPy-Kopien, NaN für
+  fehlende Diagnosewerte; Beispiel `examples/python/ghosts.py` (#133).
+- Ergebnisformat `raytatouille-result` 0.1.4: `PathTransmission`, `PathOplDifference` und
+  `GhostRanking` haben `to_dict()` und `to_json()` (ADR 0023, Nachtrag) (#133).
+- `rtt-py`: Beugungsordnungen aus Python bitgleich zu C++ (Gitterbank `m4/grating_transmission`
+  mit den Ordnungen −1, 0, +1 und der evaneszenten Ordnung +6, Reflexionsgitter,
+  Beugungseffizienzen) und gegen die Gittergleichung geprüft; Beispiel
+  `examples/python/grating_orders.py` (#134).
+- `rtt-py`: einachsige Kristalle aus Python: `RayBatch.wave_x`/`wave_y`/`wave_z` und
+  `mode_index` als beschreibbare NumPy-Ansichten, `CompiledMedium.is_crystal`,
+  `reference_extraordinary`, `index_extraordinary` und `optic_axis`; Calcit-Platte bitgleich zu
+  C++ und gegen die geschlossenen Formen geprüft; Beispiel
+  `examples/python/calcite_double_image.py` (#134).
+- Ergebnisformat `raytatouille-result` 0.1.5: `RayBatch` mit `wave_x`, `wave_y`, `wave_z` und
+  `mode_index`; ältere Dateien bleiben gültig und laden mit wave = dir, mode_index = 0
+  (ADR 0023, Nachtrag) (#134).
+- Abnahme M4 Multi-Path (`libs/rtt-analysis/tests/test_m4_acceptance.cpp`, Tag `[m4]`):
+  Michelson-Bilanz, Calcit-Walk-off (t·tan ρ), Gittergleichung mit Evaneszenz, Ghost-Ranking an
+  zwei Platten und am Singlet sowie die erste
+  Beugungsordnung der Feature-Tour gegen Mansuripur (7b), jeweils durch den Tracer mit
+  Referenzsystem und analytischem Sollwert. Neue Referenzsysteme
+  `tests/reference/m4/ghost_plates.rtt.json` und `ghost_singlet.rtt.json`; Python bitgleich zu C++
+  für sie und für die Feature-Tour (#135).
+
+### Geändert
+- JSON-Schema: `weight` von Wellenlängen und Feldpunkten muss ≥ 0 sein, wie `validate` es schon
+  verlangt; keine neue Schema-Version, weil das Modell unverändert bleibt (#35).
+- `rtt-paraxial`: Ein Pfad gilt als afokal, wenn seine Brechkraft bis auf die Rundung null
+  ist (|Φ| ≤ 16·N·u·S, S aus demselben y-nu-Trace in Beträgen), statt bei der festen Schwelle
+  1e−14 /mm. Kleine, fast afokale Systeme werden damit nicht mehr fälschlich fokal, sehr
+  schwache Linsen (EFL > 1e14 mm) nicht mehr fälschlich afokal (#35).
+- Dateiformat: Schema 0.3.0 (ADR 0025, ADR 0026). Beugungsordnungen `order` an jedem Ereignis
+  einer Fläche mit Phasenschicht; an Flächen ohne Phasenschicht meldet `validate` weiter
+  `paths.order_not_allowed`. Dateien mit Schema 0.1 und 0.2 werden gelesen und migriert
+  (`diffract` → `transmit` mit derselben Ordnung, die Medien bleiben gleich); `rtt format`
+  schreibt sie als 0.3.0 (#125).
+- `tests/reference/m0/feature_tour.rtt.json`: Die Beugungsordnungen an der Gitterfläche `G.S1` sind
+  jetzt `refract` mit `order` statt `transmit` (ADR 0025, Punkt 4; Freigabe des Maintainers): Der
+  Strahl tritt gebeugt in die Gitterplatte ein, statt außen zu bleiben (#135).
+
+### Behoben
+- AGF: Eine einzelne TD-Zeile mit mehr als 7 Werten ist jetzt ein `AgfError` mit Datei und Zeile,
+  wie schon bei einer TD-Folgezeile; bisher scheiterte sie erst in `CatalogMaterial` ohne Ort
+  (#35).
+
+### Entfernt
+- Ereignisart `diffract` (`EventKind::Diffract`, Python `EventKind.DIFFRACT`) entfernt; eine
+  Beugungsordnung steht jetzt als `order` am Ereignis selbst (ADR 0025). Ältere Dateien lesen
+  weiter über die Migration (#125).
+
 ## [0.5.0] – GUI-Grundlagen
 
 ### Hinzugefügt
