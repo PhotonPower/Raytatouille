@@ -132,8 +132,11 @@ TEST_CASE("node frames: every node of every reference system, in pre-order", "[c
       }
     }
     if (!cs) continue;
+    // Bound Params (tests/reference/m5/zoom.rtt.json) carry their value only after
+    // resolve_parameters, as compile uses them.
+    const System resolved = rtt::model::resolve_parameters(s, cs->configuration());
     std::vector<ModelNode> nodes;
-    collect(s.root, "/root", nodes);
+    collect(resolved.root, "/root", nodes);
     REQUIRE(cs->node_frames().size() == nodes.size());
     for (std::size_t i = 0; i < nodes.size(); ++i) {
       const NodeFrame& f = cs->node_frames()[i];

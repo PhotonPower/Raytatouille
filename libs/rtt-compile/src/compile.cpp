@@ -481,9 +481,9 @@ class Compiler {
   }
 
   /// The global frame a pose is given in (ADR 0028, point 2), see place().
-  [[nodiscard]] const math::Isometry3& reference_of(const model::Pose& pose,
-                                                    const math::Isometry3& parent,
-                                                    const math::Isometry3* sibling) const {
+  [[nodiscard]] math::Isometry3 reference_of(const model::Pose& pose,
+                                             const math::Isometry3& parent,
+                                             const math::Isometry3* sibling) const {
     switch (pose.reference) {
       case model::PoseReference::Absolute:
         return parent;

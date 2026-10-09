@@ -53,7 +53,7 @@ def flatten(cs: rt.CompiledSystem, threads: int) -> Arrays:
     return out
 
 
-CASES = {"zoom_wide": 0, "zoom_tele": "tele"}
+CASES: dict[str, int | str] = {"zoom_wide": 0, "zoom_tele": "tele"}
 
 
 @pytest.mark.parametrize("threads", [1, 4], ids=lambda t: f"py{t}threads")

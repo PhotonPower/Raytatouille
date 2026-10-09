@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <limits>
 #include <optional>
+#include <set>
 #include <string>
 #include <variant>
 #include <vector>
@@ -90,6 +91,9 @@ System compilable_tour() {
   a_s1.interaction = rtt::model::Fresnel{};
   return tour;
 }
+
+/// The reference files that use relative poses themselves (#163, #169).
+const std::set<std::string> kRelativeFiles = {"feature_tour.rtt.json", "zoom.rtt.json"};
 
 /// True if a pose of the system uses a field of schema 0.4 (reference or order).
 bool uses_relative_fields(const System& s) {
@@ -197,9 +201,10 @@ TEST_CASE("relative placement: absolute poses are bitwise the formula before sch
     const System s =
         file.filename() == "feature_tour.rtt.json" ? compilable_tour() : rtt::io::load_system(file);
     if (uses_relative_fields(s)) {
-      // Only the feature tour shows the fields of schema 0.4 (#163: the image placed relative
-      // to the dump mirror); its geometry is checked in a test of its own below.
-      REQUIRE(file.filename() == "feature_tour.rtt.json");
+      // Only these files show the fields of schema 0.4: the feature tour (#163: the image placed
+      // relative to the dump mirror; its geometry is checked in a test of its own below) and
+      // the zoom of #169 (relative placement with the parameter table, test_configurations).
+      REQUIRE(kRelativeFiles.contains(file.filename().string()));
       continue;
     }
     const std::optional<CompiledSystem> cs = libs.compile_any(s);
@@ -213,7 +218,7 @@ TEST_CASE("relative placement: absolute poses are bitwise the formula before sch
     }
     ++compared;
   }
-  REQUIRE(compared + 1 == reference_files().size());
+  REQUIRE(compared + kRelativeFiles.size() == reference_files().size());
 }
 
 TEST_CASE(
@@ -238,7 +243,7 @@ TEST_CASE(
   std::size_t sibling = 0;
   std::size_t rotate_first = 0;
   for (const fs::path& file : reference_files()) {
-    if (file.filename() == "feature_tour.rtt.json") continue;  // relative already (test above)
+    if (kRelativeFiles.contains(file.filename().string())) continue;  // relative already
     INFO(file.filename().string());
     const System s = rtt::io::load_system(file);
     const rtt::model::test::RelativeSystem r = rtt::model::test::to_relative(s);
