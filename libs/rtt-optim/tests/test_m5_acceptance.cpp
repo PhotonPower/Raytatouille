@@ -258,6 +258,259 @@ TEST_CASE("M5 acceptance, case 1: the 1-D bending reference and Coddington's sha
   CHECK(ref.s > 0.0);  // content guard: a real spot, not a perfect image
 }
 
+namespace {
+
+// --- Small dense helpers for case 1 (3 variables) ------------------------------------------------
+
+using Vec = std::vector<double>;
+using Mat = std::vector<std::vector<double>>;  // rows
+
+Vec residuals_at(const rtt::optim::MeritFunction& merit, const Vec& p) {
+  const rtt::optim::MeritEvaluation e = merit.evaluate(p);
+  REQUIRE(e.valid());
+  return e.residuals;
+}
+
+/// Jacobian (m x n) of the residuals at p by central differences with the steps `h` (no bounds:
+/// theta = p).
+Mat jacobian_at(const rtt::optim::MeritFunction& merit, const Vec& p, const Vec& h) {
+  const std::size_t n = p.size();
+  Mat j(merit.size(), Vec(n, 0.0));
+  for (std::size_t c = 0; c < n; ++c) {
+    Vec plus = p;
+    Vec minus = p;
+    plus[c] += h[c];
+    minus[c] -= h[c];
+    const Vec fp = residuals_at(merit, plus);
+    const Vec fm = residuals_at(merit, minus);
+    const double denominator = plus[c] - minus[c];
+    for (std::size_t i = 0; i < j.size(); ++i) j[i][c] = (fp[i] - fm[i]) / denominator;
+  }
+  return j;
+}
+
+Vec steps(const Vec& p, double relative) {
+  Vec h;
+  for (const double v : p) h.push_back(relative * std::max(std::abs(v), 1.0));
+  return h;
+}
+
+/// J^T f.
+Vec gradient(const Mat& j, const Vec& f) {
+  Vec g(j[0].size(), 0.0);
+  for (std::size_t i = 0; i < j.size(); ++i) {
+    for (std::size_t c = 0; c < g.size(); ++c) g[c] += j[i][c] * f[i];
+  }
+  return g;
+}
+
+/// Solves the 3 x 3 system a x = b (Cramer's rule; the test's own small solver).
+Vec solve3(const Mat& a, const Vec& b) {
+  const auto det = [](const Mat& m) {
+    return m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) -
+           m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) +
+           m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+  };
+  const double d = det(a);
+  REQUIRE(d != 0.0);
+  Vec x(3, 0.0);
+  for (std::size_t c = 0; c < 3; ++c) {
+    Mat m = a;
+    for (std::size_t r = 0; r < 3; ++r) m[r][c] = b[r];
+    x[c] = det(m) / d;
+  }
+  return x;
+}
+
+double frobenius(const Mat& a) {
+  double s = 0.0;
+  for (const Vec& row : a) {
+    for (const double v : row) s += v * v;
+  }
+  return std::sqrt(s);
+}
+
+double norm(const Vec& v) {
+  double s = 0.0;
+  for (const double x : v) s += x * x;
+  return std::sqrt(s);
+}
+
+/// Hessian of F = 1/2 f^T f at p: J^T J + sum_i f_i d2f_i, the second part from central
+/// differences of J contracted with f (so the large EFL row, whose residual is about 0 at the
+/// reference, does not enter through second differences of F).
+Mat hessian_at(const rtt::optim::MeritFunction& merit,
+               const Vec& p,
+               const Mat& j,
+               const Vec& f,
+               const Vec& h_j,
+               const Vec& h_h) {
+  const std::size_t n = p.size();
+  Mat a(n, Vec(n, 0.0));
+  for (std::size_t r = 0; r < n; ++r) {
+    for (std::size_t c = 0; c < n; ++c) {
+      for (std::size_t i = 0; i < j.size(); ++i) a[r][c] += j[i][r] * j[i][c];
+    }
+  }
+  for (std::size_t k = 0; k < n; ++k) {
+    Vec plus = p;
+    Vec minus = p;
+    plus[k] += h_h[k];
+    minus[k] -= h_h[k];
+    const Mat jp = jacobian_at(merit, plus, h_j);
+    const Mat jm = jacobian_at(merit, minus, h_j);
+    for (std::size_t r = 0; r < n; ++r) {
+      double s = 0.0;
+      for (std::size_t i = 0; i < j.size(); ++i) {
+        s += f[i] * (jp[i][r] - jm[i][r]) / (plus[k] - minus[k]);
+      }
+      a[r][k] += s;
+    }
+  }
+  // Symmetrize the difference quotient.
+  for (std::size_t r = 0; r < n; ++r) {
+    for (std::size_t c = r + 1; c < n; ++c) {
+      const double m = 0.5 * (a[r][c] + a[c][r]);
+      a[r][c] = m;
+      a[c][r] = m;
+    }
+  }
+  return a;
+}
+
+/// Frobenius norm of the inverse of a 3 x 3 matrix (column by column).
+double inverse_norm(const Mat& a) {
+  double s = 0.0;
+  for (std::size_t c = 0; c < 3; ++c) {
+    Vec e(3, 0.0);
+    e[c] = 1.0;
+    const Vec x = solve3(a, e);
+    for (const double v : x) s += v * v;
+  }
+  return std::sqrt(s);
+}
+
+}  // namespace
+
+TEST_CASE("M5 acceptance, case 1: singlet to EFL 100 mm and minimal RMS spot", "[optim][m5]") {
+  // m5/singlet_optim: R1, R2 and the detector position variable; efl 100 mm with weight 1e4 and
+  // rms_spot (centroid, GaussPupil{3, 6}). The reference is the 1-D bending of the test above
+  // (independent of rtt-optim). The tolerances are derived from the reference before the run:
+  // - The least-squares optimum is not exactly the constrained reference (the EFL is weighted,
+  //   and the golden section has a finite width): one Newton step on F = 1/2 f^T f from the
+  //   reference, p_pred = p_ref - H^-1 g, with g = J^T f and H = J^T J + sum_i f_i d2f_i; a
+  //   second step bounds the remainder (tol_rem = 2 |H^-1 g(p_pred)|).
+  // - The difference step of the solver, h = eps_f^(1/3) max(|theta|, 1) with
+  //   eps_f = kMeritPrecision = 1e-9 (ADR 0030, point 9), moves the fixed point to J~^T f = 0:
+  //   delta_FD = -H^-1 (J~ - J)^T f at p_pred, J~ with the solver's step, J with a small one.
+  // - The run ends with the step test (ftol = 0, default xtol): ||D h|| <= xtol (||D theta|| +
+  //   xtol), h not applied, h = -(A + mu D^2)^-1 g~, so the remaining error is at most
+  //   ||H^-1|| ||A + mu D^2|| ||h|| (Frobenius norms as upper bounds of the spectral norms).
+  // The default xtol (not 1e-12 as in case 2): with a residual left (the spot) the gradient noise
+  // gives steps of about H^-1 J^T noise in the flat bending direction, which a step test of
+  // 1e-12 would never accept.
+  const System s = load("m5/singlet_optim.rtt.json");
+  const MaterialLibrary lib;
+  REQUIRE(s.optimization.generators.size() == 1);
+  const Bending ref = [&] {
+    double best_r1 = 40.0;
+    double best_s = std::numeric_limits<double>::infinity();
+    for (double r1 = 40.0; r1 <= 100.0; r1 += 5.0) {
+      const Bending b = bending(s, lib, r1);
+      if (b.s < best_s) {
+        best_s = b.s;
+        best_r1 = r1;
+      }
+    }
+    return golden_section(s, lib, best_r1 - 5.0, best_r1 + 5.0, 1e-6);
+  }();
+
+  const rtt::optim::MeritFunction merit(s, lib, nullptr);
+  const auto& vars = merit.variables();
+  REQUIRE(vars.size() == 3);  // R1, R2, detector z in edit-form order
+  for (const auto& v : vars) REQUIRE(!v.bounds.min.has_value());
+  const Vec p_ref = {ref.r1, ref.r2, ref.z_image};
+  const double w_efl =
+      std::get<rtt::model::FirstOrderOperand>(s.optimization.operands[0]).common.weight;
+  REQUIRE(w_efl == 1e4);
+
+  // Newton correction from the reference.
+  const Vec h_acc_ref = steps(p_ref, 1e-6);
+  const Vec f_ref = residuals_at(merit, p_ref);
+  const Mat j_ref = jacobian_at(merit, p_ref, h_acc_ref);
+  const Mat hess = hessian_at(merit, p_ref, j_ref, f_ref, h_acc_ref, steps(p_ref, 1e-4));
+  const Vec delta_n = solve3(hess, gradient(j_ref, f_ref));
+  Vec p_pred = p_ref;
+  for (std::size_t c = 0; c < 3; ++c) p_pred[c] -= delta_n[c];
+  const Vec f_pred = residuals_at(merit, p_pred);
+  const Mat j_pred = jacobian_at(merit, p_pred, steps(p_pred, 1e-6));
+  const Vec delta_2 = solve3(hess, gradient(j_pred, f_pred));
+  // Solver's difference step and its bias.
+  const double h_rel = std::cbrt(rtt::optim::kMeritPrecision);
+  const Mat j_solver = jacobian_at(merit, p_pred, steps(p_pred, h_rel));
+  Vec bias_g(3, 0.0);
+  for (std::size_t i = 0; i < f_pred.size(); ++i) {
+    for (std::size_t c = 0; c < 3; ++c) bias_g[c] += (j_solver[i][c] - j_pred[i][c]) * f_pred[i];
+  }
+  const Vec delta_fd = solve3(hess, bias_g);
+  // The EFL residual of the least-squares optimum: e = f_0 / sqrt(w) at p_pred.
+  const double e_pred = f_pred[0] / std::sqrt(w_efl);
+  INFO("reference R1 " << ref.r1 << " R2 " << ref.r2 << " z " << ref.z_image);
+  INFO("Newton correction " << delta_n[0] << " " << delta_n[1] << " " << delta_n[2]
+                            << ", remainder " << delta_2[0] << " " << delta_2[1] << " "
+                            << delta_2[2]);
+  INFO("FD bias " << delta_fd[0] << " " << delta_fd[1] << " " << delta_fd[2]
+                  << ", EFL residual e = " << e_pred << " mm");
+  // The issue requires EFL relative 1e-10 (1e-8 mm): the predicted residual lies well below.
+  REQUIRE(std::abs(e_pred) <= 1e-9);
+
+  // --- The run ---
+  OptimizeOptions options;
+  options.ftol = 0.0;
+  const OptimResult r = optimize(s, lib, nullptr, options);
+  INFO("status " << static_cast<int>(r.status) << ", iterations " << r.iterations);
+  REQUIRE(r.status == LmStatus::ConvergedStep);
+  REQUIRE(r.variables.size() == 3);
+
+  // Stopping bound from the last solve: D from the start Jacobian with the solver's step.
+  const Vec p0 = merit.start();
+  const Mat j0 = jacobian_at(merit, p0, steps(p0, h_rel));
+  Vec d(3, 0.0);
+  for (const Vec& row : j0) {
+    for (std::size_t c = 0; c < 3; ++c) d[c] += row[c] * row[c];
+  }
+  for (double& v : d) v = std::sqrt(v);
+  Mat a_mu(3, Vec(3, 0.0));
+  for (std::size_t rr = 0; rr < 3; ++rr) {
+    for (std::size_t c = 0; c < 3; ++c) {
+      for (const Vec& row : j_pred) a_mu[rr][c] += row[rr] * row[c];
+    }
+    a_mu[rr][rr] += r.history.back().mu * d[rr] * d[rr];
+  }
+  const double h_norm = r.history.back().step_norm / *std::min_element(d.begin(), d.end());
+  const double e_stop = inverse_norm(hess) * frobenius(a_mu) * h_norm;
+  INFO("stop bound " << e_stop << " (||D h|| = " << r.history.back().step_norm << ")");
+
+  for (std::size_t c = 0; c < 3; ++c) {
+    const double tol = e_stop + std::abs(delta_fd[c]) + 2.0 * std::abs(delta_2[c]) +
+                       64.0 * kEps * std::abs(p_pred[c]);
+    INFO("variable " << c << ": result " << r.variables[c].end << ", predicted " << p_pred[c]
+                     << ", tolerance " << tol);
+    CHECK(std::abs(r.variables[c].end - p_pred[c]) <= tol);
+  }
+
+  // The EFL of the result, from the analysis: relative 1e-10 (the issue).
+  const CompiledSystem cs = rtt::compile::compile(r.system, lib);
+  const double efl =
+      *rtt::paraxial::first_order(cs, *cs.find_path("main"), cs.reference_wavelength()).efl;
+  CHECK(std::abs(efl - 100.0) <= 1e-10 * 100.0);
+  // The generator table: every ray arrived, a real spot (content guard).
+  REQUIRE(r.generators.size() == 1);
+  CHECK(r.generators[0].rays_lost == 0);
+  CHECK(r.generators[0].rms > 0.0);
+  INFO("RMS result " << r.generators[0].rms << ", reference " << std::sqrt(ref.s));
+}
+
 TEST_CASE("M5 acceptance, case 2: air gap D from Gullstrand's equation", "[optim][m5]") {
   const System s = load("m5/two_lens_gap.rtt.json");
   const MaterialLibrary lib;
