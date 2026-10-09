@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <cmath>
+#include <limits>
 #include <optional>
 #include <string>
 #include <utility>
@@ -730,4 +731,90 @@ TEST_CASE("afocal threshold: depends on the absolute position of the surfaces",
     REQUIRE(first_order_at(z, 1.0, clear).efl.has_value());
     REQUIRE_FALSE(first_order_at(z, 10.0, 60.0).efl.has_value());
   }
+}
+
+// ----------------------------- infinity thresholds of pupils and image (#35, rest of B9) -----
+// first_order decides three cases "at infinity" from one matrix element each: the entrance pupil
+// (front.a), the exit pupil (back.d) and the image of a finite object (nu_out). An element that
+// is zero in exact arithmetic comes out as a rounding remainder of about N u S, which would put
+// the pupil or the image some 1e16 mm away instead of at infinity. The thresholds are relative,
+// as for the afocal test: |element| <= 16 N u S with S the same y-nu trace in magnitudes.
+//
+// The test lens: plano-convex, n = 1.5, |R| = 64 mm, d = 3 mm, in VACUUM, f = 128 mm. With the
+// curved side first the rear focal point lies 126 mm behind S2 (z = 129, telecentric_singlet);
+// with the curved side last the front focal point lies 126 mm before S1 (z = -126): a stop or
+// an object there sees the other side at infinity. Moving it by k ulp (|k| <= 16, about 4e-13
+// mm) changes the element by at most 16 ulp(129) / 128 = 3.5e-15, below the threshold of about
+// 1e-14 (derivation in paraxial.cpp); a shift of 1e-6 mm (element 8e-9) stays finite.
+
+namespace {
+
+/// x moved by k units in the last place (k < 0: towards -infinity).
+double ulps_from(double x, int k) {
+  const double to = (k < 0 ? -1.0 : 1.0) * std::numeric_limits<double>::infinity();
+  for (int i = 0; i < std::abs(k); ++i) x = std::nextafter(x, to);
+  return x;
+}
+
+}  // namespace
+
+TEST_CASE("infinity thresholds: a stop in the rear focal plane up to rounding is telecentric",
+          "[paraxial][b9]") {
+  for (int k = -16; k <= 16; ++k) {
+    INFO("stop at 129 + " << k << " ulp");
+    System s = base_system();
+    add(s, lens("L", 0.0, 1.5, 64.0, std::nullopt, 3.0));
+    add(s, stop("STO", ulps_from(129.0, k), 5.0));
+    const FirstOrder fo = first_order_of(s);
+    REQUIRE(fo.entrance_pupil.has_value());
+    CHECK_FALSE(fo.entrance_pupil->z.has_value());  // entrance pupil at infinity
+    CHECK_FALSE(fo.angular_magnification.has_value());
+  }
+  // Guard: 1e-6 mm away the entrance pupil is finite (about 1.6e10 mm away).
+  System s = base_system();
+  add(s, lens("L", 0.0, 1.5, 64.0, std::nullopt, 3.0));
+  add(s, stop("STO", 129.0 + 1e-6, 5.0));
+  const FirstOrder fo = first_order_of(s);
+  REQUIRE(fo.entrance_pupil.has_value());
+  CHECK(fo.entrance_pupil->z.has_value());
+}
+
+TEST_CASE("infinity thresholds: a stop in the front focal plane up to rounding is telecentric",
+          "[paraxial][b9]") {
+  for (int k = -16; k <= 16; ++k) {
+    INFO("stop at -126 + " << k << " ulp");
+    System s = base_system();
+    add(s, stop("STO", ulps_from(-126.0, k), 5.0));
+    add(s, lens("L", 0.0, 1.5, std::nullopt, -64.0, 3.0));
+    const FirstOrder fo = first_order_of(s);
+    REQUIRE(fo.exit_pupil.has_value());
+    CHECK_FALSE(fo.exit_pupil->z.has_value());  // exit pupil at infinity
+    CHECK_FALSE(fo.exit_pupil->diameter.has_value());
+  }
+  System s = base_system();
+  add(s, stop("STO", -126.0 + 1e-6, 5.0));
+  add(s, lens("L", 0.0, 1.5, std::nullopt, -64.0, 3.0));
+  const FirstOrder fo = first_order_of(s);
+  REQUIRE(fo.exit_pupil.has_value());
+  CHECK(fo.exit_pupil->z.has_value());
+}
+
+TEST_CASE("infinity thresholds: an object in the front focal plane up to rounding has its image "
+          "at infinity",
+          "[paraxial][b9]") {
+  for (int k = -16; k <= 16; ++k) {
+    INFO("object distance 126 + " << k << " ulp");
+    System s = base_system();
+    s.object = {false, Param(ulps_from(126.0, k))};
+    add(s, lens("L", 0.0, 1.5, std::nullopt, -64.0, 3.0));
+    const FirstOrder fo = first_order_of(s);
+    CHECK_FALSE(fo.image_z.has_value());
+    CHECK_FALSE(fo.lateral_magnification.has_value());
+  }
+  System s = base_system();
+  s.object = {false, Param(126.0 + 1e-6)};
+  add(s, lens("L", 0.0, 1.5, std::nullopt, -64.0, 3.0));
+  const FirstOrder fo = first_order_of(s);
+  CHECK(fo.image_z.has_value());
+  CHECK(fo.lateral_magnification.has_value());
 }
