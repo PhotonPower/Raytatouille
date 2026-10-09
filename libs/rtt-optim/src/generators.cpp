@@ -95,8 +95,8 @@ trace::RayBatch traced(const compile::CompiledSystem& cs,
                        std::uint16_t field,
                        std::uint16_t wavelength,
                        const trace::PupilSampling& sampling) {
-  const std::uint16_t fields[] = {field};
-  trace::RayBatch rays = trace::make_rays(cs, path, fields, wavelength, sampling);
+  trace::RayBatch rays =
+      trace::make_rays(cs, path, std::span<const std::uint16_t>(&field, 1), wavelength, sampling);
   static_cast<void>(trace::SequentialTracer().trace(cs, path, rays));
   return rays;
 }

@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -115,9 +116,9 @@ double sum_of_squares(const std::vector<double>& r) {
 std::optional<std::pair<double, double>> hit(
     const CompiledSystem& cs, std::uint16_t field, std::uint16_t wavelength, double px, double py) {
   const PathId path{0};
-  const std::uint16_t fields[] = {field};
   rtt::trace::RayBatch rays =
-      rtt::trace::make_rays(cs, path, fields, wavelength, rtt::trace::SinglePupilPoint{px, py});
+      rtt::trace::make_rays(cs, path, std::span<const std::uint16_t>(&field, 1), wavelength,
+                            rtt::trace::SinglePupilPoint{px, py});
   static_cast<void>(rtt::trace::SequentialTracer().trace(cs, path, rays));
   const std::uint32_t image = cs.path(path).events.back().surface;
   if (rays.status()[0] != rtt::trace::RayStatus::Alive || rays.last_surface()[0] != image) {
