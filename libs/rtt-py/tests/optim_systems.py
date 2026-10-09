@@ -23,6 +23,13 @@ def gap_merit() -> rt.System:
     return rt.load(REFERENCE_DIR / "m5" / "two_lens_gap.rtt.json")
 
 
+def solve_merit() -> rt.System:
+    """m5/singlet_solve (#170, case 1 of the M5 acceptance): the curvature C1 and the image
+    distance variable, R2 bound by the parameter table so that the EFL is 100 mm; the RMS spot
+    generator, the efl operand only as an observer (weight 0)."""
+    return rt.load(REFERENCE_DIR / "m5" / "singlet_solve.rtt.json")
+
+
 def with_merit(relative: str, optimization: dict[str, Any] | None) -> rt.System:
     """The reference system `relative` with its section "optimization" replaced (None: none)."""
     data = json.loads((REFERENCE_DIR / relative).read_text(encoding="utf-8"))
