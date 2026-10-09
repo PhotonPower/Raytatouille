@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(Raytatouille
-  VERSION 0.6.0
+  VERSION 0.7.0
   DESCRIPTION "Raytracing engine for optical design"
   LANGUAGES CXX)
 

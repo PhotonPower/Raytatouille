@@ -504,7 +504,7 @@ Nach M1 können bis zu drei Agenten parallel arbeiten. M4 und M6 brauchen M2 und
 | **M3 Polarisation** ✅ | P-Matrix, Fresnel mit ñ, Transfermatrix-Coatings, ideale Coatings, Polarisator, Retarder | Fresnel, Brewster, TIR, AR, Malus, λ/4, λ/2, Metallspiegel |
 | **GUI-Grundlagen** ✅ (0.5.0) | G1–G5, G9, G10 aus `docs/feedback/gui-anforderungen.md`: Strahlpfade, Geometrie-Export, Modell lesen und ändern mit Undo (ADR 0024), Abbruch und Fortschritt, Prescription-Daten, Materialbibliothek, Diagnosecodes und Ergebnisformat (ADR 0022, 0023); telezentrische Systeme, paralleles Ray Aiming | Abnahmekriterien der Issues #80–#86, #93, #96, #102, #119 |
 | **M4 Multi-Path** ✅ (0.6.0) | explizite Pfade, Strahlteiler, einachsige Kristalle, Gitter, Ghost-Generator | Michelson-Bilanz, Calcit-Walk-off, Gittergleichung, Ghost-Ranking |
-| M5 Optimierung | Parameter-Pfade, Operanden, Merit-Generatoren, LM, Grenzen, Pickups, Konfigurationen | Singlet auf EFL + minimalen RMS-Spot; reproduzierbar |
+| **M5 Optimierung** ✅ (0.7.0) | Parameter-Pfade, Operanden, Merit-Generatoren, LM, Grenzen, Pickups, Konfigurationen | Singlet auf EFL + minimalen RMS-Spot; reproduzierbar |
 | M6 Beugung | Zernike-Fit, FFT-PSF/MTF, Encircled Energy, Jones-Pupille, Retardance-Karten | Airy-Nullstelle, analytische MTF, Jones-Pupille eines Faltspiegels |
 | M7 Toleranzierung | Toleranzen auf allen Ebenen, Kompensatoren, Sensitivität, Monte Carlo | Baugruppen-Kippung bewegt alle Kinder; Monte Carlo reproduzierbar |
 | M8 Release v1.0 | Forbes-, Zernike-, XY-, Grid-Flächen, ZMX-Import, CLI komplett, Doku, Beispiele | alle Referenzfälle grün; Benchmark-Ziel; ZMX-Testdateien korrekt importiert |
