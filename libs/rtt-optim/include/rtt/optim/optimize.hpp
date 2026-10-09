@@ -1,0 +1,118 @@
+#pragma once
+
+/// @file optimize.hpp
+/// Optimization of a system against its merit function (ADR 0030, points 10-12; #167):
+/// Levenberg-Marquardt (levenberg_marquardt.hpp) over the variables of the system
+/// (variables.hpp) with the residuals of its operands (merit.hpp).
+
+#include <cstddef>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "rtt/coating/catalog.hpp"
+#include "rtt/material/material.hpp"
+#include "rtt/model/system.hpp"
+#include "rtt/model/validate.hpp"
+#include "rtt/optim/levenberg_marquardt.hpp"
+#include "rtt/trace/run_control.hpp"
+
+namespace rtt::optim {
+
+/// Relative precision eps_f of a merit evaluation (ADR 0030, point 9), the default of
+/// OptimizeOptions::function_precision. Measured in #167 over the reference systems and the M5
+/// acceptance systems (test_merit_noise.cpp, tag [.noise]): the largest relative noise times 10,
+/// rounded up to a power of ten.
+inline constexpr double kMeritPrecision = 1e-12;  // placeholder until the measurement (#167)
+
+/// Settings of the solver (ADR 0030, point 2: run parameters, not part of the file); as
+/// LmOptions, with the measured precision of a merit evaluation as default.
+struct OptimizeOptions {
+  int max_iterations = 100;                     ///< k_max, number of solves (point 8)
+  double ftol = 1.4901161193847656e-8;          ///< merit test, sqrt(eps_M) (point 8)
+  double xtol = 1.4901161193847656e-8;          ///< step test, sqrt(eps_M) (point 8)
+  double gtol = 0.0;                            ///< scaled gradient test, off (point 8)
+  double tau = 1e-3;                            ///< mu_0 = tau max diag(J^T J) (point 7)
+  double function_precision = kMeritPrecision;  ///< eps_f for the difference step (point 9)
+};
+
+/// One solve of the run (ADR 0030, point 12).
+struct OptimIteration {
+  int k = 0;  ///< number of this solve (1, 2, ...)
+  /// Normalised merit phi = 2 F / sum of the operand weights, of the current (last accepted)
+  /// state after this solve; the mean of w (v - t)^2. 0 if all weights are 0.
+  double phi = 0.0;
+  double mu = 0.0;              ///< damping of this solve
+  double rho = 0.0;             ///< gain ratio; NaN without a valid trial
+  double step_norm = 0.0;       ///< ||D h|| in scaled internal variables; NaN if no step
+  bool accepted = false;        ///< the trial was accepted
+  std::size_t evaluations = 0;  ///< evaluations of the solver so far (cumulative)
+};
+
+/// One operand in the final state.
+struct OperandValue {
+  std::string pointer;  ///< /optimization/operands/i
+  double value = 0.0;   ///< value of the operand, unit of the operand
+  double target = 0.0;
+  double weight = 0.0;
+  /// Share w (v - t)^2 / sum_j w_j (v_j - t_j)^2 of the merit, percent; 0 if the sum is 0.
+  double contribution = 0.0;
+};
+
+/// One variable in the final state.
+struct VariableValue {
+  std::string pointer;  ///< JSON pointer of the value in the edit form (Variable::pointer)
+  std::string row;      ///< name of the table row; empty for a model Param
+  std::optional<std::size_t> configuration;  ///< column of a `values` row
+  double start = 0.0;                        ///< input value
+  double end = 0.0;                          ///< result value (bitwise the input if unchanged)
+  bool changed = false;                      ///< the run changed this variable
+  bool at_bound = false;                     ///< the result lies at a bound (bounds.hpp)
+};
+
+/// Result of optimize() (ADR 0030, point 12).
+struct OptimResult {
+  LmStatus status = LmStatus::MaxIterations;
+  /// The input with the result values of the changed variables; everything else, bound
+  /// Params and unchanged variables included, is bitwise the input.
+  model::System system;
+  /// RFC 6902 patch from the input to `system`: one "replace" per changed variable, numbers in
+  /// the shortest round-trip form; "[]" if nothing changed.
+  std::string patch;
+  std::vector<OptimIteration> history;   ///< one entry per solve
+  std::vector<OperandValue> operands;    ///< final state, file order
+  std::vector<VariableValue> variables;  ///< order of ADR 0030, point 5
+  /// optim.parameter_at_bound (per variable), optim.evaluation_failed, optim.jacobian_failed
+  /// (status Failed, error), then the warnings of the analyses in the final state (rays.lost,
+  /// stop.clips_beam).
+  std::vector<model::Diagnostic> diagnostics;
+  int iterations = 0;  ///< number of solves
+  /// Evaluations of the merit function in this call: the solver's, the start check and the
+  /// final state.
+  std::size_t evaluations = 0;
+  std::size_t failed_evaluations = 0;  ///< trials that were invalid (ADR 0030, point 10)
+};
+
+/// Optimizes the variables of `system` against its merit function System::optimization
+/// (ADR 0030). Every evaluation sets the values in a copy, compiles every used configuration
+/// and evaluates the operands (MeritFunction). The input is not changed.
+///
+/// Without operands the merit is 0 everywhere: the run ends with ConvergedGradient at the start.
+/// @param system    a valid system with at least one variable
+/// @param materials material library for compile
+/// @param coatings  coating library for compile, or nullptr
+/// @param options   solver settings
+/// @param control   cancellation and progress (stages "jacobian" and "optimize"); a
+///                  cancellation ends the run with status Cancelled and the last accepted state
+/// @throws compile::CompileError if the system is invalid or does not compile at the start
+/// @throws OptimError with optim.no_variables or merit.operand_unsupported
+/// @throws the exception of an analysis at the start (ParaxialError, AnalysisError,
+///         NoStopError), or std::invalid_argument naming the operand if its value is not
+///         defined at the start (ADR 0030, point 10)
+[[nodiscard]] OptimResult optimize(const model::System& system,
+                                   const material::MaterialLibrary& materials,
+                                   const coating::CoatingLibrary* coatings = nullptr,
+                                   const OptimizeOptions& options = {},
+                                   const trace::RunControl& control = {});
+
+}  // namespace rtt::optim
