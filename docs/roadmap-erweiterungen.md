@@ -100,5 +100,5 @@ Huygens-PSF und -MTF (17.5.2, 17.6.2), Beamlet-Propagation (17.9), Faserkopplung
 1. GRIN (X1): **vorgeschlagen v1.x**, direkt nach v1.0 und vor M10. Der ADR (Integrator, Schrittregel, Fehlergrenzen, Determinismus) wird früh geschrieben, damit M5 bis M8 keine Annahme „Strahlen sind zwischen Flächen immer Geraden“ einbauen (Ray Aiming, Analysen, Paraxial). Alternative v2, wenn v1.0 nicht verzögert werden soll. Maintainer-Freigabe steht aus.
 2. Setup (O6): **vorgeschlagen als optionaler Abschnitt in `*.rtt.json`**, keine Nebendatei. Maintainer-Freigabe steht aus.
 3. Rayfile (N1): **vorgeschlagen: eigenes Austauschformat zuerst**, Export von Anfang an, Fremdformate als Import nach Bedarf der realen Quellen. Maintainer-Freigabe steht aus.
-4. Richtlinie für Python-Callbacks (O2, F3): nur Laufzeit, nie im Dateiformat. Das hält die Dateien deterministisch.
+4. Python-Callbacks (O2, F3): **vorgeschlagen**: nur über die Python-API, nie im Dateiformat, nur vektorisiert (ein Aufruf je NumPy-Array), in der Doku als Prototyping ausgewiesen. In der Datei stehen nur Ausdrücke (ADR 0029) und Daten (Grid-Sag), kein Code; ein fehlender Callback beim Laden ergibt einen Diagnosecode. Das hält die Dateien deterministisch, sicher und sprachunabhängig. Maintainer-Freigabe steht aus.
 5. Ob R2 (ideale Linse) in M5 vorgezogen wird.
