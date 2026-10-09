@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <string>
 #include <variant>
 
@@ -16,8 +17,8 @@ using model::EventKind;
 /// z axis that still count as rotationally symmetric (decided for #7).
 constexpr double kSymmetryTolerance = 1e-12;
 
-/// |Phi| at or below this value (1/mm) counts as afocal (EFL > 1e14 mm).
-constexpr double kAfocalPower = 1e-14;
+/// Factor k of the afocal threshold |Phi| <= k N u S (power_scale(), #35 B9).
+constexpr double kAfocalFactor = 16.0;
 
 /// One event of the path reduced to what the y-nu trace needs.
 struct Step {
@@ -146,6 +147,41 @@ Matrix propagate(const std::vector<Step>& steps,
   return {r1.y, r2.y, r1.nu, r2.nu, r1.n};
 }
 
+/// Scale S of the power for the afocal test (#35, item B9): the y-nu trace of the ray
+/// (y, nu) = (1, 0) of propagate() with every term by its magnitude, |y| += (|z'| + |z|) |nu| / |n|
+/// and |nu| += |y| |phi|, so S is the sum of the magnitudes of the terms that make up Phi.
+///
+/// Derivation (no literature source; docs/quellen.md): in the rounding model of IEEE double,
+/// fl(a op b) = (a op b)(1 + delta) with |delta| <= u = 2^-53, apply() rounds four times for y
+/// (difference z' - z, division by n, product, sum) and four times for nu (difference n' - n,
+/// two products, difference); the inputs z and c are themselves known only to relative u
+/// (z comes from composed poses, so its error is about u |z|, not u |z' - z|, hence |z'| + |z|).
+/// The index n counts as exact: its value from the dispersion formula defines the system. Then
+/// n' - n is exact for 1/2 <= n'/n <= 2 (Sterbenz: both operands lie within a factor 2, so the
+/// difference is a multiple of the last place of the smaller one and no larger than it, hence
+/// representable), and -2 n at a mirror is exact. Counting n with an error u |n| instead would
+/// put u |n| into |n' - n|, which S does not hold for nearly index-matched cemented surfaces.
+/// To first order every term of the computed Phi then carries a relative error of at most 8 u
+/// per step, so |fl(Phi) - Phi| <= 8 N u S for N steps. The threshold k = 16 is twice that
+/// bound. Measured with the same operations for 1999 nearly afocal thick lenses
+/// (R = +-r, n = 1.5, d = 6 r, r from 0.7 um to 1.4 mm, at z = 0, 10 and 1000 mm): at most
+/// |Phi| = 0.30 N u S, so the threshold lies more than 50 times above the rounding.
+double power_scale(const std::vector<Step>& steps, double z_in, double n_in) {
+  double y = 1.0;
+  double nu = 0.0;
+  double z = z_in;
+  double n = n_in;
+  for (const Step& step : steps) {
+    y += (std::abs(step.z) + std::abs(z)) * nu / std::abs(n);
+    z = step.z;
+    const double direction = n > 0.0 ? 1.0 : -1.0;
+    const double n_after = step.kind == EventKind::Reflect ? -n : direction * step.n_after;
+    nu += y * std::abs(step.c * (n_after - n));
+    n = n_after;
+  }
+  return nu;
+}
+
 bool changes_ray(const Step& step, double n_before) {
   return step.kind == EventKind::Reflect || step.n_after != n_before;
 }
@@ -223,7 +259,12 @@ FirstOrder first_order(const compile::CompiledSystem& system,
   // - Principal points: the focal lengths f = n1/Phi and f' = |n'|/Phi are the distances H -> F
   //   and H' -> F' along the propagation direction: z_H = z_F + n1/Phi, z_H' = z_F' - n'/Phi.
   fo.power = -m.c;
-  if (std::abs(fo.power) > kAfocalPower) {
+  // Afocal if Phi is zero up to the rounding of the trace and of the coordinates (#35, B9):
+  // |Phi| <= 16 N u S, see power_scale().
+  const double afocal_threshold = kAfocalFactor * static_cast<double>(steps.size()) *
+                                  std::numeric_limits<double>::epsilon() / 2.0 *
+                                  power_scale(steps, z_v1, n1);
+  if (std::abs(fo.power) > afocal_threshold) {
     const double phi = fo.power;
     fo.efl = 1.0 / phi;
     fo.front_focal_length = n1 / phi;

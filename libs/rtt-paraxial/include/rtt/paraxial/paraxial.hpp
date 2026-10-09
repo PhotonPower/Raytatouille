@@ -97,7 +97,8 @@ struct FirstOrder {
   /// +1 if light leaves the system towards +z, -1 towards -z (odd number of reflections).
   int image_direction = 1;
 
-  /// Power Phi = -n'_K u'_K / y_1 for a ray from infinity, 1/mm; 0 for afocal systems.
+  /// Power Phi = -n'_K u'_K / y_1 for a ray from infinity, 1/mm, as computed; for an afocal
+  /// system 0 up to rounding (below the afocal threshold of first_order()).
   double power = 0.0;
   std::optional<double> efl;                 ///< 1/Phi, mm; none if afocal
   std::optional<double> front_focal_length;  ///< |n| / Phi in object space (H -> F), mm
@@ -126,7 +127,13 @@ struct FirstOrder {
 ///
 /// - Vertices: the first and last events that change the ray (reflection or change of index);
 ///   transmit events (stop, detector, thin elements) do not count.
-/// - Afocal: |Phi| <= 1e-14 / mm.
+/// - Afocal: |Phi| <= 16 N u S with u = 2^-53, N the number of events and S the power of the
+///   same y-nu trace with every term by its magnitude and the coordinates |z| in place of the
+///   distances (#35): Phi is zero up to the rounding of the trace and of the coordinates.
+///   The threshold depends on the absolute position of the path, because a coordinate z carries
+///   a rounding of about u |z|: a lens with Phi = 5e-13 / mm (R = +-1 mm) is focal at
+///   z = 10 mm and afocal at z = 1000 mm. It is cautious for very small systems: a lens of
+///   R = +-3 um at z = 10 mm counts as afocal for |Phi| up to about 1.3e-9 / mm.
 /// - Stop: the first event at a surface of a Stop element. Its aperture must be circular (an
 ///   annulus counts with its outer radius). Entrance pupil = paraxial image of the stop through
 ///   the surfaces before it, exit pupil = through the surfaces after it.
