@@ -799,9 +799,10 @@ TEST_CASE("infinity thresholds: a stop in the front focal plane up to rounding i
   CHECK(fo.exit_pupil->z.has_value());
 }
 
-TEST_CASE("infinity thresholds: an object in the front focal plane up to rounding has its image "
-          "at infinity",
-          "[paraxial][b9]") {
+TEST_CASE(
+    "infinity thresholds: an object in the front focal plane up to rounding has its image "
+    "at infinity",
+    "[paraxial][b9]") {
   for (int k = -16; k <= 16; ++k) {
     INFO("object distance 126 + " << k << " ulp");
     System s = base_system();
