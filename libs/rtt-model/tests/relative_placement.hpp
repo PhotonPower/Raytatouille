@@ -58,6 +58,18 @@ inline std::vector<math::Isometry3> old_surface_globals(const System& s) {
   return out;
 }
 
+/// The pose of an assembly or element node (without std::visit and a temporary visitor, whose
+/// returned reference GCC 13 reports as possibly dangling).
+inline const Pose& pose_of(const Node& n) {
+  if (const auto* a = std::get_if<Assembly>(&n.value)) return a->pose;
+  return std::get<Element>(n.value).pose;
+}
+
+inline Pose& pose_of(Node& n) {
+  if (auto* a = std::get_if<Assembly>(&n.value)) return a->pose;
+  return std::get<Element>(n.value).pose;
+}
+
 /// An absolutely placed system rewritten to relative poses (ADR 0028), and what was rewritten.
 struct RelativeSystem {
   System system;
@@ -114,10 +126,8 @@ inline RelativeSystem to_relative(const System& s) {
       for (std::size_t i = 0; i < in.children.size(); ++i) {
         const Node& child = in.children[i];
         Node& rewritten = out.children[i];
-        const Pose& pose =
-            std::visit([](const auto& n) -> const Pose& { return n.pose; }, child.value);
-        const math::Isometry3 child_global = global * old_pose(pose);
-        Pose& target = std::visit([](auto& n) -> Pose& { return n.pose; }, rewritten.value);
+        const math::Isometry3 child_global = global * old_pose(pose_of(child));
+        Pose& target = pose_of(rewritten);
         if (previous && i % 2 == 1) {
           target = relative(*previous, child_global);
           target.reference = PoseReference::RelativeToSibling;

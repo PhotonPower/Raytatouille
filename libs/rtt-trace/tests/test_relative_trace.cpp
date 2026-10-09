@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -127,11 +128,12 @@ TEST_CASE("relative trace: the calcite plate placed relative to a rotated elemen
   const CompiledSystem cs = rtt::compile::compile(s, lib);
   const CompiledSystem reference = rtt::compile::compile(original, lib);
   const auto crystal_axis = [](const CompiledSystem& c) {
+    std::optional<Vec3> axis;
     for (const auto& m : c.media()) {
-      if (m.optic_axis) return *m.optic_axis;
+      if (m.optic_axis && !axis) axis = *m.optic_axis;
     }
-    FAIL("no crystal medium");
-    return Vec3(0.0, 0.0, 0.0);
+    REQUIRE(axis.has_value());  // a crystal medium exists
+    return *axis;
   };
   REQUIRE((crystal_axis(cs) - crystal_axis(reference)).norm() <= 1e-12);
   REQUIRE(std::abs(crystal_axis(cs).x()) > 0.5);  // (1, 0, 1)/sqrt(2), not turned onto y
