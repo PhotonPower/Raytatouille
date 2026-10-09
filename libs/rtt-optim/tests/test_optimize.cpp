@@ -29,6 +29,7 @@
 #include "rtt/model/parameters.hpp"
 #include "rtt/optim/merit.hpp"
 #include "rtt/optim/optimize.hpp"
+#include "rtt/optim/variables.hpp"
 #include "rtt/paraxial/paraxial.hpp"
 #include "rtt/paraxial/prescription.hpp"
 #include "rtt/trace/ray_batch.hpp"
@@ -147,6 +148,32 @@ TEST_CASE("merit M9: kMeritPrecision is a power of ten in [eps_M, 1e-6]", "[opti
   CHECK(p <= 1e-6);
   const double exponent = std::log10(p);
   CHECK(std::pow(10.0, std::round(exponent)) == p);
+}
+
+TEST_CASE("m5/two_lens_gap: L2 lies D behind L1.S2, the image 45 mm behind L2.S2",
+          "[optim][reference]") {
+  // ADR 0028 (relative_to_preceding) and ADR 0029 (the row D bound to the z position of L2):
+  // L1.S2 at 5 + 4 = 9 mm, L2.S1 at 9 + D, L2.S2 4 mm behind it, IMG 45 mm behind L2.S2. All
+  // positions are small integers or halves, so the sums are exact.
+  const System s = load("m5/two_lens_gap.rtt.json");
+  const MaterialLibrary lib;
+  const auto z_of = [](const rtt::compile::CompiledSystem& cs, const char* id) {
+    return cs.surfaces()[*cs.find_surface(rtt::model::SurfaceId{id})].to_global.translation().z();
+  };
+  const rtt::compile::CompiledSystem cs = rtt::compile::compile(s, lib);
+  CHECK(z_of(cs, "L1.S2") == 9.0);
+  CHECK(z_of(cs, "L2.S1") == 19.0);  // D = 10
+  CHECK(z_of(cs, "L2.S2") == 23.0);
+  CHECK(z_of(cs, "IMG") == 68.0);
+  // The variables of the run: D first (table), then the image distance (model Param).
+  const std::vector<rtt::optim::Variable> vars = rtt::optim::collect_variables(s);
+  REQUIRE(vars.size() == 2);
+  CHECK(vars[0].pointer == "/parameters/0/value");
+  CHECK(vars[0].bounds.min == std::optional<double>(1.0));
+  const rtt::compile::CompiledSystem moved =
+      rtt::compile::compile(rtt::optim::with_values(s, vars, std::vector<double>{12.5, 45.0}), lib);
+  CHECK(z_of(moved, "L2.S1") == 21.5);
+  CHECK(z_of(moved, "IMG") == 70.5);
 }
 
 TEST_CASE("merit M1: every operand is exactly its analysis", "[optim][merit]") {

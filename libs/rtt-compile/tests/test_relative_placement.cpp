@@ -92,8 +92,9 @@ System compilable_tour() {
   return tour;
 }
 
-/// The reference files that use relative poses themselves (#163, #169).
-const std::set<std::string> kRelativeFiles = {"feature_tour.rtt.json", "zoom.rtt.json"};
+/// The reference files that use relative poses themselves (#163, #169, #167).
+const std::set<std::string> kRelativeFiles = {"feature_tour.rtt.json", "zoom.rtt.json",
+                                              "two_lens_gap.rtt.json"};
 
 /// True if a pose of the system uses a field of schema 0.4 (reference or order).
 bool uses_relative_fields(const System& s) {
