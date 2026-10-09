@@ -109,3 +109,13 @@ def test_ghosts_example(capsys: pytest.CaptureFixture[str]) -> None:
     assert "15 ghosts of 'main'" in out and "main ghost " in out
     assert "reference arm: transmission 0.250 (3 of 3 rays)" in out
     assert "OPL(test arm) - OPL(reference arm) = 15.000000 mm" in out
+
+
+def test_grating_orders_example(capsys: pytest.CaptureFixture[str]) -> None:
+    # main() returns 1 if a direction or a transmission deviates from its closed form by more
+    # than 1e-12.
+    namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "grating_orders.py"))
+    assert namespace["main"]() == 0
+    out = capsys.readouterr().out
+    assert "lambda0 G = 0.17628" in out and "order +6  EVANESCENT" in out
+    assert "order +1  transmission 0.400" in out
