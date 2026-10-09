@@ -152,10 +152,10 @@ def test_round_trip_is_bit_identical(name: str, singlet: rt.CompiledSystem,
     envelope = json.loads(text, parse_constant=no_constants)  # standard JSON only
     assert list(envelope) == ["format", "schema_version", "type", "data"]
     assert envelope["format"] == "raytatouille-result"
-    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.6"
+    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.7"
     assert envelope["type"] == name
     loaded = rt.results.load_json(text)
-    assert (loaded.type, loaded.schema_version) == (name, "0.1.6")
+    assert (loaded.type, loaded.schema_version) == (name, "0.1.7")
     same(loaded.data, data)
 
 
@@ -373,7 +373,7 @@ def test_trace_stats_carry_the_evanescent_status(singlet: rt.CompiledSystem) -> 
     rays.status[1] = int(rt.trace.RayStatus.EVANESCENT)
     stats = rt.trace.trace(singlet, rays, path="main")
     loaded = rt.results.load_json(stats.to_json())
-    assert loaded.schema_version == rt.results.SCHEMA_VERSION == "0.1.6"
+    assert loaded.schema_version == rt.results.SCHEMA_VERSION == "0.1.7"
     counts = list(loaded.data["rays"])
     assert len(counts) == 8
     assert counts[int(rt.trace.RayStatus.EVANESCENT)] == 1
