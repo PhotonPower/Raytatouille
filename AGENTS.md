@@ -47,6 +47,14 @@ Zwei Fehlerquellen, die nur die CI sieht, vorab lokal prüfen:
 - **GCC mit Optimierung.** Manche Warnungen (`-Wnull-dereference`, `-Wrange-loop-construct`) meldet
   GCC nur bei `-O2`, nicht bei `-fsyntax-only` oder im Debug-Build. Geänderte Übersetzungseinheiten
   einmal mit `-O2 -Werror` und den Projektwarnungen übersetzen (Release-Build oder `g++ -c`).
+- **Python-Tests über ctest, nicht direkt mit pytest.** Die Bitvergleiche gegen C++
+  (`test_bitwise*.py`) brauchen `RTT_PY_REFERENCE_EXE`, `RTT_REFERENCE_DIR` und `RTT_CATALOG_DIR`;
+  ctest setzt sie (`ctest -R rtt_py`). Ohne sie werden die Bitvergleiche still übersprungen, und
+  pytest ist trotzdem grün. Wer pytest direkt startet, setzt die drei Variablen wie
+  `libs/rtt-py/CMakeLists.txt` und prüft, dass kein Bitvergleich übersprungen wurde.
+- **Bitvergleiche brauchen einen Inhaltswächter.** Liefern C++ und Python beide dasselbe Falsche
+  (z. B. alle Strahlen verfehlt), ist der Vergleich trotzdem grün. Jeder neue Fall bekommt deshalb
+  eine Prüfung auf den erwarteten Status und auf Werte, die sich unterscheiden.
 
 ## Aufbau
 
