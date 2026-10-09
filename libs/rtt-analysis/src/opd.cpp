@@ -121,6 +121,10 @@ std::vector<OpdPoint> opd_points(const CompiledSystem& system,
                                  const trace::RunControl& control) {
   const std::uint32_t image = image_surface(system, path);
   const auto& last = system.path(path).events.back();
+  // Isotropic image medium only. A crystal (ADR 0026) cannot be the image medium here:
+  // make_reference and make_rays call paraxial::first_order, which rejects the ordinary and
+  // extraordinary events that lead into a crystal (guard test in test_opd.cpp). An OPD inside a
+  // crystal needs the index of the mode and is a follow-up after M4 (#35).
   const double n_image = std::abs(system.media()[last.medium_after].index[wavelength].real());
 
   // Reference ray: chief ray of the same wavelength (W(0, 0) = 0, decided for #29).
