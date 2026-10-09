@@ -37,6 +37,7 @@ Neue Entscheidungen bekommen die nächste Nummer. Bestehende ADRs werden nicht u
 | [0031](0031.md) | Ideale Linse und ideale Zylinderlinse | angenommen |
 | [0032](0032.md) | Pupillenfunktion und Wellenfront-Auswertung (Zernike-Fit, Strehl, Through-Focus) | angenommen |
 | [0033](0033.md) | FFT-Beugung: PSF, MTF, Encircled Energy | angenommen |
+| [0034](0034.md) | Polarisation in der Pupille (P je Ereignis, akkumuliertes Q, Jones-Pupille) | angenommen |
 
 ## Vorlage
 
