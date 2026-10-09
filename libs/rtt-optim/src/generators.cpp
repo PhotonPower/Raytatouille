@@ -101,17 +101,25 @@ trace::RayBatch traced(const compile::CompiledSystem& cs,
   return rays;
 }
 
-/// Hit point of ray i in the local coordinates of the image surface; none if it did not arrive
-/// Alive there (as analysis::spot: the image surface is that of the last event).
-std::optional<math::Vec3> local_hit(const compile::CompiledSystem& cs,
-                                    const trace::RayBatch& rays,
-                                    std::size_t i,
-                                    std::uint32_t image) {
-  if (rays.status()[i] != trace::RayStatus::Alive || rays.last_surface()[i] != image) {
-    return std::nullopt;
-  }
-  return cs.surfaces()[image].to_local.apply_point(
+/// A point on the image surface in its local coordinates, mm; `arrived` false if there is none.
+/// Plain values instead of std::optional<Vec3>: GCC at -O2 reports the Eigen payload of
+/// an optional as maybe uninitialized.
+struct Point {
+  bool arrived = false;
+  double x = 0.0;
+  double y = 0.0;
+};
+
+/// Hit point of ray i in the local coordinates of the image surface; not arrived if the ray did
+/// not end Alive there (as analysis::spot: the image surface is that of the last event).
+Point local_hit(const compile::CompiledSystem& cs,
+                const trace::RayBatch& rays,
+                std::size_t i,
+                std::uint32_t image) {
+  if (rays.status()[i] != trace::RayStatus::Alive || rays.last_surface()[i] != image) return {};
+  const math::Vec3 p = cs.surfaces()[image].to_local.apply_point(
       math::Vec3(rays.pos_x()[i], rays.pos_y()[i], rays.pos_z()[i]));
+  return {true, p.x(), p.y()};
 }
 
 /// Choice and weights of one generator in one compiled system.
@@ -133,9 +141,11 @@ Expansion expand(const model::Generator& g, const compile::CompiledSystem& cs) {
   e.fields = chosen(*spec.fields, cs.fields().points.size(), "field");
   e.wavelengths = chosen(*spec.wavelengths, cs.wavelengths_um().size(), "wavelength");
   std::vector<double> w;
+  w.reserve(e.fields.size());
   for (const std::uint16_t f : e.fields) w.push_back(cs.fields().points[f].weight);
   e.wf = normalised(w, "fields");
   w.clear();
+  w.reserve(e.wavelengths.size());
   for (const std::uint16_t l : e.wavelengths) w.push_back(cs.wavelength_weights()[l]);
   e.wl = normalised(w, "wavelengths");
   e.gauss = gauss_of(spec);
@@ -156,7 +166,7 @@ void spot_residuals(const model::SpotGenerator& g,
   std::size_t o = 0;
   for (std::size_t f = 0; f < e.fields.size(); ++f) {
     // Hits in the order wavelengths, then pupil points.
-    std::vector<std::optional<math::Vec3>> hits;
+    std::vector<Point> hits;
     hits.reserve(e.wavelengths.size() * n);
     for (const std::uint16_t l : e.wavelengths) {
       const trace::RayBatch rays = traced(cs, e.path, e.fields[f], l, e.gauss);
@@ -164,7 +174,7 @@ void spot_residuals(const model::SpotGenerator& g,
     }
     // Reference: centroid weighted with W_l q_k over the arrived rays, or the chief ray of the
     // reference wavelength (as analysis::spot).
-    std::optional<math::Vec3> reference;
+    Point reference;
     std::string why;
     if (g.reference == model::SpotReference::Centroid) {
       double sw = 0.0;
@@ -172,16 +182,16 @@ void spot_residuals(const model::SpotGenerator& g,
       double cy = 0.0;
       for (std::size_t l = 0; l < e.wavelengths.size(); ++l) {
         for (std::size_t k = 0; k < n; ++k) {
-          const std::optional<math::Vec3>& h = hits[l * n + k];
-          if (!h) continue;
+          const Point& h = hits[l * n + k];
+          if (!h.arrived) continue;
           const double c = e.wl[l] * e.q[k];
           sw += c;
-          cx += c * h->x();
-          cy += c * h->y();
+          cx += c * h.x;
+          cy += c * h.y;
         }
       }
       if (sw > 0.0) {
-        reference = math::Vec3(cx / sw, cy / sw, 0.0);
+        reference = {true, cx / sw, cy / sw};
       } else {
         why = "no ray of field " + std::to_string(e.fields[f]) + " reaches the image surface";
       }
@@ -189,44 +199,43 @@ void spot_residuals(const model::SpotGenerator& g,
       const trace::RayBatch chief = traced(cs, e.path, e.fields[f], cs.reference_wavelength(),
                                            trace::SinglePupilPoint{0.0, 0.0});
       reference = local_hit(cs, chief, 0, image);
-      if (!reference) {
+      if (!reference.arrived) {
         why = "the chief ray of field " + std::to_string(e.fields[f]) +
               " does not reach the image surface";
       }
       const bool any =
-          std::any_of(hits.begin(), hits.end(),
-                      [](const std::optional<math::Vec3>& h) { return h.has_value(); });
-      if (reference && !any) {
-        reference.reset();
+          std::any_of(hits.begin(), hits.end(), [](const Point& h) { return h.arrived; });
+      if (reference.arrived && !any) {
+        reference = {};
         why = "no ray of field " + std::to_string(e.fields[f]) + " reaches the image surface";
       }
     }
     for (std::size_t l = 0; l < e.wavelengths.size(); ++l) {
       for (std::size_t k = 0; k < n; ++k) {
-        const std::optional<math::Vec3>& h = hits[l * n + k];
+        const Point& h = hits[l * n + k];
         ++stats.rays_launched;
-        if (!reference) {
-          if (!h) ++stats.rays_lost;
+        if (!reference.arrived) {
+          if (!h.arrived) ++stats.rays_lost;
           out[o++] = kNaN;
           out[o++] = kNaN;
           continue;
         }
-        if (!h) {
+        if (!h.arrived) {
           ++stats.rays_lost;
           out[o++] = 0.0;
           out[o++] = 0.0;
           continue;
         }
         const double c = e.wf[f] * e.wl[l] * e.q[k];
-        const double dx = h->x() - reference->x();
-        const double dy = h->y() - reference->y();
+        const double dx = h.x - reference.x;
+        const double dy = h.y - reference.y;
         const double s = std::sqrt(e.weight * c);
         out[o++] = s * dx;
         out[o++] = s * dy;
         stats.mean_square += c * (dx * dx + dy * dy);
       }
     }
-    if (!reference) {
+    if (!reference.arrived) {
       stats.mean_square = kNaN;
       if (stats.undefined.empty()) stats.undefined = why;
     }

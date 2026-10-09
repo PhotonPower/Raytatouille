@@ -68,7 +68,7 @@ System singlet(std::optional<rtt::model::CircularAperture> lens = std::nullopt) 
 /// wavelength. `detector_z` moves the detector (defocus).
 System paraboloid(double detector_z = -100.0) {
   System s = load("m2/paraboloid_stop.rtt.json");
-  s.root.children[2].pose.position[2] = detector_z;
+  element(s, 2).pose.position[2] = detector_z;
   return s;
 }
 
@@ -429,6 +429,7 @@ TEST_CASE("generators G6: deterministic, also across thread counts", "[optim][ge
     }
     const std::vector<double> again = residuals(g, cs, st);
     REQUIRE(one.size() == four.size());
+    CHECK(largest(one) > 1e-4);  // content guard: zeros would also be deterministic
     for (std::size_t i = 0; i < one.size(); ++i) {
       CHECK(same(one[i], four[i]));
       CHECK(same(one[i], again[i]));
