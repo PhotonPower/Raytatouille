@@ -316,11 +316,11 @@ TEST_CASE("the edit form writes every value", "[io][edit]") {
   CHECK(is_param_object(lens["surfaces"][0]["shape"]["base"]["radius"]));
   const json events = e["paths"][0]["events"];
   CHECK((events == "auto" || (events[0].contains("kind") && events[0].contains("order"))));
-  // A plain value is an object with value and variable; an unset optional member is missing.
-  // (Until 0.3 this value carried the pickup "2 * 3"; since 0.4 it is the table row A_S2_Z.)
+  // A bound Param is only its reference; an unset optional member is missing. (Until 0.3 this
+  // value carried the pickup "2 * 3"; since #165 it is bound to the table row A_S2_Z.)
   const json tour = json::parse(rtt::io::to_edit_json(load("m0/feature_tour.rtt.json")));
   const json z = tour["root"]["children"][2]["surfaces"][1]["pose"]["position"][2];
-  CHECK(z == json::parse(R"({"value": 6.0, "variable": false})"));
+  CHECK(z == json::parse(R"({"param": "A_S2_Z"})"));
   CHECK(!tour["root"]["children"][5]["surfaces"][0].contains("aperture"));
   CHECK(!tour["root"]["children"][5].contains("material"));
 }

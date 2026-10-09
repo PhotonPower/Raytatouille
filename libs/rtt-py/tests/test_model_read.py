@@ -152,6 +152,12 @@ def check(expected: Any, actual: Any, where: str) -> None:
     if isinstance(actual, model.Param) and not isinstance(expected, dict):
         expected = {"value": expected}  # a plain number is a Param with the defaults
     assert isinstance(expected, dict), where
+    if isinstance(actual, model.Param) and "param" in expected:
+        # A bound Param (ADR 0029, point 3; the feature tour since #165): only the reference,
+        # no value of its own (None in Python), never variable, no bounds.
+        assert (actual.param, actual.value, actual.variable, actual.min, actual.max) == (
+            expected["param"], None, False, None, None), where
+        return
     if isinstance(actual, model.ParameterRow):
         # Exactly one of three forms (ADR 0029, point 1), so no single default row fits all:
         # compared field by field, the other forms are None.
