@@ -9,7 +9,7 @@ Neue Entscheidungen bekommen die nächste Nummer. Bestehende ADRs werden nicht u
 | [0003](0003.md) | Eigen und double | angenommen |
 | [0004](0004.md) | Parallelität mit oneTBB | angenommen |
 | [0005](0005.md) | Strahlen als Structure-of-Arrays | angenommen |
-| [0006](0006.md) | Physik-Templates über den Skalartyp | angenommen |
+| [0006](0006.md) | Physik-Templates über den Skalartyp | angenommen, präzisiert durch [0014](0014.md), [0015](0015.md) |
 | [0007](0007.md) | Ableitungen per finiter Differenz in v1 | angenommen |
 | [0008](0008.md) | JSON-Dateiformat mit strengem Parser | angenommen |
 | [0009](0009.md) | Fehlerbehandlung | angenommen |
@@ -17,9 +17,9 @@ Neue Entscheidungen bekommen die nächste Nummer. Bestehende ADRs werden nicht u
 | [0011](0011.md) | Plattformen und Compiler | angenommen |
 | [0012](0012.md) | GUI in Python | angenommen |
 | [0013](0013.md) | Keine GPU in v1 | angenommen |
-| [0014](0014.md) | Laufzeit-Interface für Materialien in double | angenommen |
-| [0015](0015.md) | Real umfasst nur double | angenommen |
-| [0016](0016.md) | CompiledSystem in eigener Bibliothek rtt-compile | angenommen |
+| [0014](0014.md) | Laufzeit-Interface für Materialien in double | angenommen, ergänzt 0006 |
+| [0015](0015.md) | Real umfasst nur double | angenommen, präzisiert 0006 |
+| [0016](0016.md) | CompiledSystem in eigener Bibliothek rtt-compile | angenommen, präzisiert die Schichten in `docs/architecture.md` (kein früheres ADR) |
 | [0017](0017.md) | Kittglieder: Material je Segment | angenommen |
 | [0018](0018.md) | Python-Build-Abhängigkeiten über pyproject.toml statt vcpkg | angenommen |
 | [0019](0019.md) | Coating-Kataloge als eigene JSON-Dateien | angenommen |

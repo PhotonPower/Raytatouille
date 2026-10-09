@@ -78,6 +78,21 @@ def test_event_order_is_an_int():
         assert not VALIDATOR.is_valid(_with_order(order)), order
 
 
+def test_weights_are_not_negative():
+    # model::validate rejects negative weights (wavelengths.weight_invalid,
+    # fields.weight_invalid); the schema says the same (#35). Zero stays allowed.
+    def with_weights(wavelength, field):
+        doc = copy.deepcopy(load(ROOT / "tests" / "reference" / "m0" / "singlet.rtt.json"))
+        doc["wavelengths"][0]["weight"] = wavelength
+        doc["fields"]["points"][0]["weight"] = field
+        return doc
+
+    for wavelength, field in ((0.0, 0.0), (1.0, 2.5)):
+        assert VALIDATOR.is_valid(with_weights(wavelength, field)), (wavelength, field)
+    for wavelength, field in ((-1.0, 1.0), (1.0, -0.5)):
+        assert not VALIDATOR.is_valid(with_weights(wavelength, field)), (wavelength, field)
+
+
 @pytest.mark.parametrize(
     "mutate",
     [
