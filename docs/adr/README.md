@@ -31,7 +31,7 @@ Neue Entscheidungen bekommen die nächste Nummer. Bestehende ADRs werden nicht u
 | [0025](0025.md) | Gitter als Phasenschicht (Ordnung, Effizienz, Evaneszenz) | angenommen |
 | [0026](0026.md) | Kristallmodell (einachsig, optische Achse, Strahlzustand) | angenommen |
 | [0027](0027.md) | Ghost-Generator (Zweifachreflexions-Pfade als erzeugte explizite Pfade) | angenommen |
-| [0028](0028.md) | Relative Platzierung (Pose.reference, Pose.order) | vorgeschlagen |
+| [0028](0028.md) | Relative Platzierung (Pose.reference, Pose.order) | angenommen |
 
 ## Vorlage
 
