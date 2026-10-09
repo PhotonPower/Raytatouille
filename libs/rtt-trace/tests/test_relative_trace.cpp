@@ -112,18 +112,23 @@ TEST_CASE("relative trace: the calcite plate placed relative to a rotated elemen
   // compiled optic axis is that of the absolute file to 1e-12.
   const System original =
       rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m4/calcite_walkoff.rtt.json");
-  System s = original;
   Surface f_surface;
   f_surface.id = SurfaceId("F.S");
   Element f{"F", ElementKind::ThinElement, Pose::along_z(4.0), std::nullopt, {f_surface}};
   f.pose.rotation_deg[2] = Param(90.0);
-  auto& plate = std::get<Element>(s.root.children[0].value);
+  Element plate = std::get<Element>(original.root.children[0].value);
   plate.pose = Pose{};
   plate.pose.reference = PoseReference::RelativeToPreceding;
   plate.pose.order = PoseOrder::RotateFirst;
   plate.pose.rotation_deg[2] = Param(-90.0);
   plate.pose.position[2] = Param(6.0);
-  s.root.children.insert(s.root.children.begin(), {f});
+  // The children are rebuilt in order with push_back, not with an insert at the front: GCC 13
+  // reports a false -Wnull-dereference inside <variant> for the shifting insert at -O3.
+  System s = original;
+  s.root.children.clear();
+  s.root.children.push_back({f});
+  s.root.children.push_back({plate});
+  s.root.children.push_back(original.root.children[1]);
   const MaterialLibrary lib;
   const CompiledSystem cs = rtt::compile::compile(s, lib);
   const CompiledSystem reference = rtt::compile::compile(original, lib);
