@@ -97,15 +97,15 @@ struct OptimResult {
 /// (ADR 0030). Every evaluation sets the values in a copy, compiles every used configuration
 /// and evaluates the operands (MeritFunction). The input is not changed.
 ///
-/// Without operands the merit is 0 everywhere: the run ends with ConvergedGradient at the start.
-/// @param system    a valid system with at least one variable
+/// @param system    a valid system with at least one variable and one operand or generator
 /// @param materials material library for compile
 /// @param coatings  coating library for compile, or nullptr
 /// @param options   solver settings
 /// @param control   cancellation and progress (stages "jacobian" and "optimize"); a
 ///                  cancellation ends the run with status Cancelled and the last accepted state
 /// @throws compile::CompileError if the system is invalid or does not compile at the start
-/// @throws OptimError with optim.no_variables or merit.operand_unsupported
+/// @throws OptimError with optim.no_variables and/or optim.no_operands (both if both apply), or
+///         with merit.operand_unsupported
 /// @throws the exception of an analysis at the start (ParaxialError, AnalysisError,
 ///         NoStopError), or std::invalid_argument naming the operand if its value is not
 ///         defined at the start (ADR 0030, point 10)

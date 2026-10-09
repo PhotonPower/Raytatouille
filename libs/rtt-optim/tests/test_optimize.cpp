@@ -412,6 +412,27 @@ TEST_CASE("optimize M7: input errors at the start", "[optim][optimize]") {
       CHECK(e.diagnostics()[0].code == "optim.no_variables");
     }
   }
+  SECTION("no operand and no generator") {
+    System s = singlet();
+    radius(s, 1, 0).variable = true;
+    try {
+      static_cast<void>(optimize(s, lib));
+      FAIL("no OptimError");
+    } catch (const OptimError& e) {
+      REQUIRE(e.diagnostics().size() == 1);
+      CHECK(e.diagnostics()[0].code == "optim.no_operands");
+    }
+  }
+  SECTION("neither variables nor operands: both codes") {
+    try {
+      static_cast<void>(optimize(singlet(), lib));
+      FAIL("no OptimError");
+    } catch (const OptimError& e) {
+      REQUIRE(e.diagnostics().size() == 2);
+      CHECK(e.diagnostics()[0].code == "optim.no_variables");
+      CHECK(e.diagnostics()[1].code == "optim.no_operands");
+    }
+  }
   SECTION("magnification with the object at infinity") {
     System s = singlet();
     radius(s, 1, 0).variable = true;

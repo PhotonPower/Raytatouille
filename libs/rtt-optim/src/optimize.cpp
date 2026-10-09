@@ -57,10 +57,19 @@ OptimResult optimize(const model::System& system,
                      const trace::RunControl& control) {
   const MeritFunction merit(system, materials, coatings);
   const std::vector<Variable>& variables = merit.variables();
+  // ADR 0030, point 10 (addendum #167): a run without variables or without a merit function is
+  // an input error, never a silent "converged".
+  std::vector<model::Diagnostic> errors;
   if (variables.empty()) {
-    throw OptimError({diagnostic("optim.no_variables", "",
-                                 "no variable Param and no variable row of the parameter table")});
+    errors.push_back(diagnostic("optim.no_variables", "",
+                                "no variable Param and no variable row of the parameter table"));
   }
+  if (system.optimization.empty()) {
+    errors.push_back(
+        diagnostic("optim.no_operands", "",
+                   "the system has no operand and no generator (section optimization)"));
+  }
+  if (!errors.empty()) throw OptimError(std::move(errors));
   const std::vector<double> p0 = merit.start();
   std::vector<Bounds> bounds;
   bounds.reserve(variables.size());
@@ -78,30 +87,16 @@ OptimResult optimize(const model::System& system,
     }
   }
 
-  LmResult lm;
-  if (merit.size() == 0) {
-    // No operand: F = 0 for every p, so g = 0 and the gradient test holds at the start
-    // (ADR 0030, point 8, step 1); the solver needs m >= 1.
-    lm.status = LmStatus::ConvergedGradient;
-    lm.p = p0;
-    lm.changed.assign(p0.size(), 0);
-    lm.at_bound.resize(p0.size());
-    for (std::size_t j = 0; j < p0.size(); ++j) {
-      lm.at_bound[j] = at_bound(p0[j], bounds[j]) ? 1 : 0;
-    }
-    lm.F = 0.0;
-  } else {
-    const LmOptions lm_options{options.max_iterations, options.ftol, options.xtol,
-                               options.gtol,           options.tau,  options.function_precision};
-    lm = levenberg_marquardt(
-        [&merit](std::span<const double> p, std::span<double> f) {
-          // Exceptions and non-finite residuals are invalid evaluations of the solver.
-          const MeritEvaluation e = merit.evaluate(p);
-          std::copy(e.residuals.begin(), e.residuals.end(), f.begin());
-          return true;
-        },
-        merit.size(), p0, bounds, lm_options, control);
-  }
+  const LmOptions lm_options{options.max_iterations, options.ftol, options.xtol,
+                             options.gtol,           options.tau,  options.function_precision};
+  const LmResult lm = levenberg_marquardt(
+      [&merit](std::span<const double> p, std::span<double> f) {
+        // Exceptions and non-finite residuals are invalid evaluations of the solver.
+        const MeritEvaluation e = merit.evaluate(p);
+        std::copy(e.residuals.begin(), e.residuals.end(), f.begin());
+        return true;
+      },
+      merit.size(), p0, bounds, lm_options, control);
 
   OptimResult result;
   result.status = lm.status;

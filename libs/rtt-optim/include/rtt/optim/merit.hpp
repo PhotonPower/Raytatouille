@@ -22,9 +22,10 @@
 namespace rtt::optim {
 
 /// Thrown at the start of an optimization for an input the run cannot use, with diagnostics
-/// carrying stable codes (ADR 0022): `optim.no_variables` (no variable in the system) and
-/// `merit.operand_unsupported` (an operand on a path its analysis rejects, ADR 0030, points 3
-/// and 10), with JSON pointers into the system file.
+/// carrying stable codes (ADR 0022): `optim.no_variables` (no variable in the system),
+/// `optim.no_operands` (no operand and no generator) and `merit.operand_unsupported` (an
+/// operand on a path its analysis rejects, ADR 0030, points 3 and 10), with JSON pointers into
+/// the system file.
 class OptimError : public std::invalid_argument {
  public:
   explicit OptimError(std::vector<model::Diagnostic> diagnostics);
