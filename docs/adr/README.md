@@ -35,6 +35,7 @@ Neue Entscheidungen bekommen die nächste Nummer. Bestehende ADRs werden nicht u
 | [0029](0029.md) | Parametertabelle und Konfigurationen | angenommen |
 | [0030](0030.md) | Optimierung (Merit-Funktion, Operanden, Levenberg-Marquardt) | angenommen |
 | [0031](0031.md) | Ideale Linse und ideale Zylinderlinse | angenommen |
+| [0032](0032.md) | Pupillenfunktion und Wellenfront-Auswertung (Zernike-Fit, Strehl, Through-Focus) | vorgeschlagen |
 
 ## Vorlage
 
