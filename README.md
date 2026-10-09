@@ -6,16 +6,15 @@ C++20 mit Python-API, Linux und Windows, MIT-Lizenz.
 
 **Stand:** Version 0.6.0, Multi-Path erreicht (M4): explizite Pfade durch Strahlteiler
 (Michelson-Bilanz, OPL-Differenz zweier Pfade), Ghost-Generator und Ghost-Ranking, Gitter und
-diffraktive Flächen als Phasenschichten mit Beugungsordnungen, Effizienz und evaneszenten Ordnungen,
-einachsige Kristalle mit o- und e-Strahl (Walk-off). Davor: Sequenzielles Raytracing mit Ray Aiming und
-paraxialer Analyse (M1); Glaskataloge (AGF), Luft und dn/dT, Spot, Ray Fans, OPD, Verzeichnung,
-Seidel und Python-API (M2); Polarisations-Raytracing mit Fresnel (komplexer Index), Coatings
-(Transfermatrix, Kataloge), idealen Polarisatoren und Retardern (M3). Für eine GUI: Strahlpfade
-und Geometrie-Export, Modell lesen und ändern mit Undo (JSON Patch), Abbruch und Fortschritt,
-Prescription-Daten, durchsuchbare Materialbibliothek, stabile Diagnosecodes und ein JSON-
-Ergebnisformat, telezentrische Systeme (GUI-Grundlagen, 0.5.0). Als Nächstes: Optimierung (M5).
-Der Plan steht in
-[docs/architecture.md](docs/architecture.md).
+diffraktive Flächen als Phasenschichten mit Beugungsordnungen, Effizienz und evaneszenten
+Ordnungen, einachsige Kristalle mit o- und e-Strahl (Walk-off). Davor: sequenzielles Raytracing
+mit Ray Aiming und paraxialer Analyse (M1); Glaskataloge (AGF), Luft und dn/dT, Spot, Ray Fans,
+OPD, Verzeichnung, Seidel und Python-API (M2); Polarisations-Raytracing mit Fresnel (komplexer
+Index), Coatings (Transfermatrix, Kataloge), idealen Polarisatoren und Retardern (M3). Für eine
+GUI: Strahlpfade und Geometrie-Export, Modell lesen und ändern mit Undo (JSON Patch), Abbruch und
+Fortschritt, Prescription-Daten, durchsuchbare Materialbibliothek, stabile Diagnosecodes und ein
+JSON-Ergebnisformat, telezentrische Systeme (GUI-Grundlagen, 0.5.0). Als Nächstes: Optimierung
+(M5). Der Plan steht in [docs/architecture.md](docs/architecture.md).
 
 ## Bauen
 
