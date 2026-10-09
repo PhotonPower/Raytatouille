@@ -58,7 +58,9 @@ Neue Einträge stehen bis zum nächsten Release als Fragmente in [`changelog.d/`
   `extraordinary`, Walk-off des e-Strahls entlang des Poynting-Vektors, optischer Weg nach Lam
   Gl. (2.17), Austritt mit `refract`, auch mit Beugungsordnung. `RayBatch` hat die Spalten
   `wave_x`, `wave_y`, `wave_z` (Wellennormale) und `mode_index`; ein Batch, der nur `dir` setzt,
-  bleibt gültig. Abnahme: `tests/reference/m4/calcite_walkoff.rtt.json` (#132).
+  bleibt gültig. Abnahme: `tests/reference/m4/calcite_walkoff.rtt.json`. Grenze in M4: `first_order`
+  und alles darauf (`make_rays` mit Ray Aiming, OPD, Komfortformen der Analysen) lehnen Pfade in
+  einen Kristall ab; solche Pfade brauchen eigene Startstrahlen (#132).
 - `rtt-py`: Pfadauswertung und Ghosts aus Python: `rt.analysis.path_transmission` und
   `rt.analysis.opl_difference` mit Startstrahlen (`start=`, auch für gefaltete Pfade) oder über
   `make_rays` (`field`, `wavelength`, `rays`, `aiming`), `rt.compile_with_ghosts`,
@@ -79,8 +81,9 @@ Neue Einträge stehen bis zum nächsten Release als Fragmente in [`changelog.d/`
 - Ergebnisformat `raytatouille-result` 0.1.5: `RayBatch` mit `wave_x`, `wave_y`, `wave_z` und
   `mode_index`; ältere Dateien bleiben gültig und laden mit wave = dir, mode_index = 0
   (ADR 0023, Nachtrag) (#134).
-- Abnahme M4 Multi-Path (`libs/rtt-analysis/tests/test_m4_acceptance.cpp`, Tag `[m4]`): Michelson-Bilanz,
-  Gittergleichung mit Evaneszenz, Ghost-Ranking an zwei Platten und am Singlet sowie die erste
+- Abnahme M4 Multi-Path (`libs/rtt-analysis/tests/test_m4_acceptance.cpp`, Tag `[m4]`):
+  Michelson-Bilanz, Calcit-Walk-off (t·tan ρ), Gittergleichung mit Evaneszenz, Ghost-Ranking an
+  zwei Platten und am Singlet sowie die erste
   Beugungsordnung der Feature-Tour gegen Mansuripur (7b), jeweils durch den Tracer mit
   Referenzsystem und analytischem Sollwert. Neue Referenzsysteme
   `tests/reference/m4/ghost_plates.rtt.json` und `ghost_singlet.rtt.json`; Python bitgleich zu C++
