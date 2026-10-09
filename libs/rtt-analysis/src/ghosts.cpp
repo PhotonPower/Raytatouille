@@ -109,6 +109,7 @@ GhostRanking rank(const compile::GhostSystem& ghosts,
   if (!(options.lost_warning_fraction >= 0.0 && options.lost_warning_fraction <= 1.0)) {
     throw std::invalid_argument("analysis: lost_warning_fraction must lie in [0, 1]");
   }
+  detail::reject_gauss(options.sampling, "ghost ranking");
   if (ghosts.ghosts.empty()) {
     throw std::invalid_argument("ghost ranking: the system has no ghosts");
   }

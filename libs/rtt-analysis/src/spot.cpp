@@ -86,6 +86,7 @@ SpotDiagram spot(const compile::CompiledSystem& system,
                  std::optional<std::uint16_t> wavelength,
                  const SpotOptions& options,
                  const trace::RunControl& control) {
+  detail::reject_gauss(options.sampling, "spot");
   check_path(system, path);
   if (field >= system.fields().points.size()) {
     throw std::invalid_argument("analysis: field index " + std::to_string(field) +

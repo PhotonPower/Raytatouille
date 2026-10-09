@@ -42,7 +42,8 @@ namespace rtt::analysis {
 
 /// Options of the path evaluations.
 struct PathOptions {
-  /// Convenience form only: pupil sampling of the rays from trace::make_rays.
+  /// Convenience form only: pupil sampling of the rays from trace::make_rays; not
+  /// trace::GaussPupil, whose points need their quadrature weights (std::invalid_argument, #168).
   trace::PupilSampling sampling = trace::HexapolarPupil{6};
   trace::Aiming aiming = trace::Aiming::Real;  ///< convenience form only: aiming of the rays
   /// Warning "rays.lost" if more than this fraction of the launched rays is lost on a path

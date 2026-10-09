@@ -32,8 +32,10 @@ namespace rtt::analysis {
 
 /// Options of the ghost ranking.
 struct GhostRankingOptions {
-  trace::PupilSampling sampling = trace::HexapolarPupil{6};  ///< start rays of the base path
-  trace::Aiming aiming = trace::Aiming::Real;                ///< aiming of the start rays
+  /// Start rays of the base path; not trace::GaussPupil, whose points need their quadrature weights
+  /// (std::invalid_argument, #168).
+  trace::PupilSampling sampling = trace::HexapolarPupil{6};
+  trace::Aiming aiming = trace::Aiming::Real;  ///< aiming of the start rays
   /// Resolution radius r0 of the detector in mm (> 0): spots smaller than this do not get
   /// brighter. A model choice, see the file comment.
   double resolution_radius = 0.005;

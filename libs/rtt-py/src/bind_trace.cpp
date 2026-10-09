@@ -205,6 +205,24 @@ void bind_trace(nb::module_& m) {
           "count"_a = 100, "seed"_a = 0)
       .def_rw("count", &trace::RandomPupil::count)
       .def_rw("seed", &trace::RandomPupil::seed);
+  nb::class_<trace::GaussPupil>(
+      m, "GaussPupil",
+      "Gaussian quadrature in the pupil (#168): `rings` rings at the Gauss-Legendre nodes in "
+      "u = rho^2 (ascending) and `arms` arms per ring at 2 pi j / arms from +y towards +x. Use "
+      "the weights of gauss_pupil_weights() for means over the pupil; spot, the path analyses "
+      "and the ghost ranking reject this sampling.")
+      .def(
+          "__init__",
+          [](trace::GaussPupil* t, int rings, int arms) { new (t) trace::GaussPupil{rings, arms}; },
+          "rings"_a = 3, "arms"_a = 6)
+      .def_rw("rings", &trace::GaussPupil::rings)
+      .def_rw("arms", &trace::GaussPupil::arms);
+  m.def(
+      "gauss_pupil_weights", &trace::gauss_pupil_weights, "gauss"_a,
+      "Quadrature weights of the points of `gauss` in the order of its rays (they sum to 1): "
+      "sum q f approximates the mean of f over the unit pupil, exactly for polynomials in "
+      "rho^2 up to degree 2 rings - 1 and angular orders below arms. Not the ray weights (power). "
+      "Raises ValueError for rings or arms < 1.");
 
   nb::class_<RayBatch> batch(
       m, "RayBatch",

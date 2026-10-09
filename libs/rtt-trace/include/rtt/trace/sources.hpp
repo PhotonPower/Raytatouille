@@ -101,9 +101,28 @@ struct RandomPupil {
   std::uint64_t seed = 0;
 };
 
+/// Gaussian quadrature in the pupil (#168, ADR 0030 point 4): `rings` rings at the Gauss-Legendre
+/// nodes in u = rho^2 and `arms` evenly spaced arms per ring. Ring k has radius
+/// rho_k = sqrt((1 + x_k) / 2), x_k the k-th node of the `rings`-point Gauss-Legendre rule on
+/// [-1, 1] in ascending order (NIST DLMF, Eqs. (3.5.15), (3.5.21)); arm j has the angle
+/// theta_j = 2 pi j / arms from +y towards +x, so (px, py) = (rho_k sin theta_j, rho_k cos
+/// theta_j). Order: ring-major, rings with ascending rho. The quadrature weights are
+/// gauss_pupil_weights(); with them the mean of f over the unit disk is exact for f = u^p e^{i m
+/// theta} with p <= 2 rings - 1 and |m| < arms. The analyses that average over their rays without
+/// these weights (spot, ghost ranking, path analyses) reject this sampling.
+struct GaussPupil {
+  int rings = 3;  ///< >= 1
+  int arms = 6;   ///< >= 1
+};
+
 /// Pupil sampling of one field.
-using PupilSampling =
-    std::variant<SinglePupilPoint, HexapolarPupil, GridPupil, FanXPupil, FanYPupil, RandomPupil>;
+using PupilSampling = std::variant<SinglePupilPoint,
+                                   HexapolarPupil,
+                                   GridPupil,
+                                   FanXPupil,
+                                   FanYPupil,
+                                   RandomPupil,
+                                   GaussPupil>;
 
 /// Normalised pupil coordinates.
 struct PupilPoint {
@@ -112,8 +131,18 @@ struct PupilPoint {
 };
 
 /// Points of a pupil sampling in the documented order.
-/// @throws std::invalid_argument for rings < 0 or n < 1
+/// @throws std::invalid_argument for rings < 0 (hexapolar), n < 1, or rings or arms < 1 (gauss)
 [[nodiscard]] std::vector<PupilPoint> pupil_points(const PupilSampling& sampling);
+
+/// Quadrature weights of the points of `gauss` in the order of pupil_points(): q = w_k / (2 arms)
+/// for every point of ring k, w_k the Gauss-Legendre weight of node x_k (sum of w_k = 2), so the
+/// weights sum to 1 and sum q f(p) approximates the mean of f over the unit disk. Dimensionless.
+/// They are quadrature weights, not ray powers: make_rays() leaves the ray weight at the power
+/// (ADR 0021). Nodes and weights from the monic Legendre recurrence (DLMF (3.5.30), (3.5.33_1))
+/// and w_k = 1 / sum_{m < n} q_m(x_k)^2 with the orthonormal q_m (derived from DLMF (3.5.30_5)
+/// to (3.5.32); docs/quellen.md).
+/// @throws std::invalid_argument for rings or arms < 1
+[[nodiscard]] std::vector<double> gauss_pupil_weights(const GaussPupil& gauss);
 
 /// Result of aiming one ray.
 struct AimedRay {

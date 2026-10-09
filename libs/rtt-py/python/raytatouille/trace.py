@@ -2,7 +2,8 @@
 
 ``make_rays`` creates a RayBatch for a pupil sampling, ``trace`` traces it in place. The
 columns of a RayBatch are NumPy views without a copy. ``trace(..., record_path=True)`` also
-records the path of every ray (RayPaths) for drawing rays in a layout.
+records the path of every ray (RayPaths) for drawing rays in a layout. ``GaussPupil`` samples
+the pupil for Gaussian quadrature; its weights are ``gauss_pupil_weights`` (#168).
 
 Long runs can be cancelled and report progress (#83): pass ``cancel=CancelToken()`` and call
 its cancel() from another thread (raises raytatouille.errors.Cancelled), and ``progress``, a
@@ -29,6 +30,7 @@ from ._core import (
     CompiledSystem,
     FanXPupil,
     FanYPupil,
+    GaussPupil,
     GridPupil,
     HexapolarPupil,
     RandomPupil,
@@ -37,6 +39,7 @@ from ._core import (
     RayStatus,
     SinglePupilPoint,
     TraceStats,
+    gauss_pupil_weights,
     make_rays,
 )
 
@@ -45,7 +48,7 @@ ProgressCallback = Callable[[int, int, str], None]
 
 #: Any of the pupil samplings accepted by make_rays.
 PupilSampling = Union[
-    SinglePupilPoint, HexapolarPupil, GridPupil, FanXPupil, FanYPupil, RandomPupil
+    SinglePupilPoint, HexapolarPupil, GridPupil, FanXPupil, FanYPupil, RandomPupil, GaussPupil
 ]
 
 __all__ = [
@@ -55,6 +58,7 @@ __all__ = [
     "CancelToken",
     "FanXPupil",
     "FanYPupil",
+    "GaussPupil",
     "GridPupil",
     "HexapolarPupil",
     "ProgressCallback",
@@ -65,6 +69,7 @@ __all__ = [
     "RayStatus",
     "SinglePupilPoint",
     "TraceStats",
+    "gauss_pupil_weights",
     "make_rays",
     "trace",
 ]

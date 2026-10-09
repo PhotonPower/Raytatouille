@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "rtt/analysis/spot.hpp"
@@ -38,6 +39,17 @@ inline void check_wavelength(const CompiledSystem& system, std::uint16_t wavelen
   if (wavelength >= system.wavelengths_um().size()) {
     throw std::invalid_argument("analysis: wavelength index " + std::to_string(wavelength) +
                                 " does not exist");
+  }
+}
+
+/// The Gaussian pupil sampling needs its quadrature weights (trace::gauss_pupil_weights, #168).
+/// The analyses that average over their rays without them reject it (coordinator's decision):
+/// an unweighted mean over Gauss points is not the mean over the pupil.
+inline void reject_gauss(const trace::PupilSampling& sampling, const std::string& analysis) {
+  if (std::holds_alternative<trace::GaussPupil>(sampling)) {
+    throw std::invalid_argument(analysis +
+                                ": the gauss pupil sampling needs quadrature weights, which this "
+                                "analysis does not use; take another sampling");
   }
 }
 
