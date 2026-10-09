@@ -8,7 +8,7 @@ Jede Diagnose (`rtt::model::Diagnostic`, in Python `rt.Diagnostic`) trägt einen
 - Ein Erzeuger kann nur registrierte Codes verwenden. Der Typ `DiagnosticCode` prüft das beim Kompilieren, ein Tippfehler ist ein Compile-Fehler.
 - Die Schwere einer Diagnose ist immer die ihres Registry-Eintrags.
 - Ein pytest gleicht diese Tabelle mit der Registry ab (Code, Schwere und Erzeuger).
-- Catch2-Tests erzeugen jeden Code an seinem Ort: `libs/rtt-compile/tests/test_diagnostic_codes.cpp` die Codes von validate und compile (bei mehreren Erzeugungsorten jeden), `libs/rtt-analysis/tests/test_warnings.cpp` die der Analysen.
+- Catch2-Tests erzeugen jeden Code an seinem Ort: `libs/rtt-compile/tests/test_diagnostic_codes.cpp` die Codes von validate und compile (bei mehreren Erzeugungsorten jeden), `libs/rtt-analysis/tests/test_warnings.cpp` die der Analysen, `libs/rtt-optim/tests/test_optimize.cpp` die von `optimize` (außer `optim.rays_lost`, das erst die Generatoren aus #168 erzeugen).
 
 **Ausgabe:** `to_string` und `rtt validate` schreiben `error [code] /pointer: Meldung`, z. B. `error [material.unknown] /root/children/1/material: …`.
 
@@ -18,6 +18,7 @@ Jede Diagnose (`rtt::model::Diagnostic`, in Python `rt.Diagnostic`) trägt einen
 - `analysis`: Spot, Strahlfächer, OPD-Karte und OPD-Fächer (`rtt-analysis`), als Warnung im Feld `warnings` des Ergebnisses (ADR 0023).
 - `edit`: `rtt::io::apply_patch` (JSON Patch auf der Bearbeitungsform, ADR 0024), als `rtt::io::EditError` mit `code()`, `location()` (Pointer in die Bearbeitungsform) und `op_index()`. Fügt ein Patch Fehler von `validate` hinzu, trägt `EditError` deren Code und Ort (z. B. `surface.id_duplicate`).
 - `io`: der Leser von `rtt-io` (`parse_system`, `load_system` mit Warnliste), als Diagnose mit Schwere Warnung; die Überladungen ohne Warnliste verwerfen sie. `rtt validate` und `rtt format` schreiben sie nach stderr, Python (`rt.load`, `System.from_json`) gibt sie als `RaytatouilleWarning` aus.
+- `optim`: `rtt::optim::optimize` (ADR 0030). Startfehler kommen als `rtt::optim::OptimError` mit `diagnostics()`; Meldungen des Laufs stehen in `OptimResult::diagnostics`, zusammen mit den Warnungen der Analysen am Endstand.
 - `agf`: der AGF-Leser von `rtt-material` (`parse_agf`, `MaterialLibrary::add_catalog`, `add_catalog_text`), als `rtt::material::LoadWarning{code, file, line, message}` in `AgfCatalog::warnings` und `MaterialLibrary::load_warnings()` (#71); Ort ist Datei und Zeile.
 - Warnungen von `compile()`, den Analysen und dem AGF-Leser gibt Python zusätzlich als `RaytatouilleWarning` mit `code` und `location` aus (beim AGF-Leser `datei:zeile`).
 
@@ -82,6 +83,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `material.unknown` | Fehler | Materialreferenz nicht auflösbar | compile | `/environment/medium`, `…/el/material`, `…/el/material/i`, `…/el/material/ordinary`, `…/el/material/extraordinary` |
 | `material.wavelength_out_of_range` | Fehler | Systemwellenlänge außerhalb des Bereichs eines Materials auf einem Pfad | compile | `/environment/medium`, `…/el/material`, `…/el/material/i` |
 | `merit.index_out_of_range` | Fehler | Feld- oder Wellenlängenindex der Merit-Funktion außerhalb des Systems | validate | `…/field`, `…/wavelength`, `…/fields/k`, `…/wavelengths/k` |
+| `merit.operand_unsupported` | Fehler | Operand oder Generator, den die Optimierung beim Start nicht auswerten kann: ein Generator (bis #168), `magnification` bei Objekt im Unendlichen, ein Operand außer `param_value` auf einem Pfad, den `first_order` ablehnt (Kristall, Ordnung ≠ 0, nicht rotationssymmetrisch; ADR 0030, Punkt 3) | optim | `/optimization/operands/i`, `/optimization/generators/i` |
 | `merit.polychromatic_wavelength` | Fehler | polychromatischer `spot_rms` mit `wavelength` (in einer Datei ein Lesefehler) | validate | `…/wavelength` |
 | `merit.sampling_invalid` | Fehler | `rings`, `arms` oder `grid` < 1 | validate | `…/rings`, `…/arms`, `…/grid` |
 | `merit.selection_empty` | Fehler | leere Liste `fields` oder `wavelengths` eines Generators (in einer Datei ein Lesefehler) | validate | `…/fields`, `…/wavelengths` |
@@ -94,6 +96,12 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `node.name_duplicate` | Fehler | Name einer Baugruppe oder eines Elements doppelt | validate | `…/name` |
 | `node.name_empty` | Fehler | leerer Name einer Baugruppe oder eines Elements | validate | `…/name` |
 | `object.distance_invalid` | Fehler | endlicher Objektabstand nicht endlich oder ≤ 0 mm | validate | `/object/distance` |
+| `optim.evaluation_failed` | Warnung | Auswertungen der Merit-Funktion sind im Lauf gescheitert (Analysefehler oder nicht definierter Wert); diese Versuche galten als abgelehnt (ADR 0030, Punkt 10) | optim | `/optimization` |
+| `optim.jacobian_failed` | Fehler | eine Spalte der Jacobi-Matrix hat kein gültiges Auswertungspaar; der Lauf endet mit Status `failed` und dem letzten angenommenen Stand | optim | Pointer der Variablen (kleinster Index) |
+| `optim.no_operands` | Fehler | Optimierung ohne Operanden und ohne Generatoren (ADR 0030, Nachtrag #167) | optim | leer |
+| `optim.no_variables` | Fehler | Optimierung ohne variables Param und ohne variable Tabellenzeile | optim | leer |
+| `optim.parameter_at_bound` | Warnung | Ergebniswert einer Variablen liegt an ihrer Grenze | optim | Pointer der Variablen |
+| `optim.rays_lost` | Warnung | Strahlen eines Generators gingen am Endstand verloren (erzeugt ab #168) | optim | `/optimization/generators/i` |
 | `param.bound_conflict` | Fehler | gebundenes Param (`param`) mit `variable` oder Grenzen (nur über die API) | validate | Pointer des Params |
 | `param.unknown_parameter` | Fehler | Param an eine Zeile gebunden, die es nicht gibt | validate | `…/param` |
 | `parameters.expression_syntax` | Fehler | Ausdruck einer Zeile nicht nach der Grammatik von ADR 0029 (Zeichenposition in der Meldung), länger als 1000 Zeichen, tiefer als 64 geschachtelt oder mit einem Literal, das weder 0 noch ein endliches normales double ist (Überlauf, Unterlauf, subnormal) | validate | `/parameters/i/expression` |
