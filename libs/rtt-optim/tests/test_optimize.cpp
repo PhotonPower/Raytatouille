@@ -229,7 +229,12 @@ TEST_CASE("merit M1: every operand is exactly its analysis", "[optim][merit]") {
   ray_img_x.coordinate = rtt::model::RayCoordinate::X;
   ops.emplace_back(ray_img_x);  // 9: ray_x at the image
 
-  const MaterialLibrary lib;
+  // A dispersive glass (#193 review, P2-1): an operand that ignored its wavelength, field or
+  // polychromatic flag would differ from the analysis by the dispersion of N-BK7, not only by
+  // that of air (the CONST lens of singlet_const).
+  element(s, 1).material = "SCHOTT:N-BK7";
+  MaterialLibrary lib;
+  lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/schott.agf");
   const MeritFunction merit(s, lib, nullptr);
   REQUIRE(merit.variables().empty());
   REQUIRE(merit.size() == 10);
@@ -269,6 +274,12 @@ TEST_CASE("merit M1: every operand is exactly its analysis", "[optim][merit]") {
   CHECK(e.values[8] == 2.5);
   // Target 0, weight 1: the residual is the value.
   for (std::size_t i = 0; i < e.values.size(); ++i) CHECK(e.residuals[i] == e.values[i]);
+  // Guards: the same analysis at another wavelength, field or monochromatic differs, so an
+  // operand that ignored these settings fails above (#193 review, P2-1).
+  CHECK(e.values[1] != *fo.bfl);
+  CHECK(e.values[5] != rtt::analysis::spot(cs, main, 2, ref, so).stats.rms_centroid);
+  CHECK(e.values[6] != rtt::analysis::spot(cs, main, 2, ref, so).stats.rms_chief);
+  CHECK(e.values[7] != rtt::analysis::opd_map(cs, main, 1, ref, oo).rms);
 }
 
 TEST_CASE("merit M1: magnification is first_order's lateral magnification", "[optim][merit]") {
@@ -298,7 +309,9 @@ TEST_CASE("merit M1: residual sqrt(w) (v - t)", "[optim][merit]") {
   s.optimization.operands.emplace_back(op);
   const MaterialLibrary lib;
   const MeritEvaluation e = MeritFunction(s, lib, nullptr).evaluate({});
+  REQUIRE(e.valid());
   CHECK(e.residuals[0] == 2.0 * (e.values[0] - 80.0));
+  CHECK(e.values[0] != 80.0);  // content guard: a non-zero residual
 }
 
 TEST_CASE("merit M2: an evaluation equals the system changed by hand", "[optim][merit]") {
@@ -663,6 +676,34 @@ TEST_CASE("optimize M7: cancellation keeps the last accepted state", "[optim][op
     CHECK(m.system == s);
     CHECK(m.operands.empty());
     CHECK(m.evaluations >= 2);  // the start check and the solver's start
+  }
+
+  SECTION("after the first accepted step: that state, bitwise the run with k_max = K") {
+    // #193 review, P2-2 (F8: the best state). The request comes with the progress report of the
+    // first solve in stage "optimize"; the solver honours it before its next evaluation and
+    // ends with the last accepted state after K solves. The same run without a request but
+    // with max_iterations = K ends in that state too (ADR 0030, point 8, step 7).
+    rtt::trace::CancelToken after;
+    rtt::trace::RunControl d;
+    d.cancel = after;
+    d.min_interval = std::chrono::milliseconds{0};
+    d.progress = [after](const rtt::trace::Progress& p) mutable {
+      if (p.stage == "optimize" && p.done >= 1) after.request_cancel();
+    };
+    const OptimResult m = optimize(s, lib, nullptr, {}, d);
+    CHECK(m.status == LmStatus::Cancelled);
+    REQUIRE(!m.history.empty());
+    REQUIRE(m.history.front().accepted);  // content guard: the first step was taken
+    CHECK(m.patch != "[]");
+    CHECK(m.system != s);
+    CHECK(m.variables[0].changed);
+    CHECK(m.operands.empty());  // no final evaluation after the request
+    OptimizeOptions k_max;
+    k_max.max_iterations = m.iterations;
+    const OptimResult limited = optimize(s, lib, nullptr, k_max);
+    CHECK(limited.status == LmStatus::MaxIterations);
+    CHECK(limited.patch == m.patch);
+    CHECK(limited.variables[0].end == m.variables[0].end);
   }
 }
 
