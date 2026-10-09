@@ -457,6 +457,19 @@ std::vector<Case> cases() {
          s.parameters = {row("D", 1.0), row("E", ParameterExpression{"2 * D"})};
          s.parameters[1].variable = true;
        }},
+      // evaluating codes of the table (#164)
+      {"parameters.expression_syntax", "/parameters/0/expression",
+       [](System& s) { s.parameters = {row("D", ParameterExpression{"2 +"})}; }},
+      {"parameters.unknown_name", "/parameters/0/expression",
+       [](System& s) { s.parameters = {row("D", ParameterExpression{"2 * E"})}; }},
+      {"parameters.forward_reference", "/parameters/0/expression",
+       [](System& s) { s.parameters = {row("D", ParameterExpression{"2 * E"}), row("E", 1.0)}; }},
+      {"parameters.not_finite", "/parameters/1/expression",
+       [](System& s) {
+         s.configurations = {{"a"}, {"b"}};
+         s.parameters = {row("D", std::vector<double>{1.0, 0.0}),
+                         row("E", ParameterExpression{"1 / D"})};
+       }},
       {"param.unknown_parameter", "/root/children/2/pose/position/2/param",
        [](System& s) { element(s, 2).pose.position[2] = Param::bound("D"); }},
       {"param.bound_conflict", "/root/children/2/pose/position/2",

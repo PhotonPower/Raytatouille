@@ -11,6 +11,8 @@
 #include <utility>
 #include <vector>
 
+#include "rtt/model/parameters.hpp"
+
 namespace rtt::model {
 
 namespace {
@@ -52,6 +54,8 @@ class Validator {
   std::vector<Diagnostic> run() {
     check_configurations();
     check_parameters();
+    // The evaluating codes of the table (#164): expressions and non-finite results.
+    static_cast<void>(evaluate_parameters(system_, &out_));
     check_wavelengths();
     check_aperture();
     check_fields();
