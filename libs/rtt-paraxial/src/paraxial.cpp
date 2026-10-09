@@ -154,8 +154,13 @@ Matrix propagate(const std::vector<Step>& steps,
 /// Derivation (no literature source; docs/quellen.md): in the rounding model of IEEE double,
 /// fl(a op b) = (a op b)(1 + delta) with |delta| <= u = 2^-53, apply() rounds four times for y
 /// (difference z' - z, division by n, product, sum) and four times for nu (difference n' - n,
-/// two products, difference); the inputs z, c and n are themselves known only to relative u
+/// two products, difference); the inputs z and c are themselves known only to relative u
 /// (z comes from composed poses, so its error is about u |z|, not u |z' - z|, hence |z'| + |z|).
+/// The index n counts as exact: its value from the dispersion formula defines the system. Then
+/// n' - n is exact for 1/2 <= n'/n <= 2 (Sterbenz: both operands lie within a factor 2, so the
+/// difference is a multiple of the last place of the smaller one and no larger than it, hence
+/// representable), and -2 n at a mirror is exact. Counting n with an error u |n| instead would
+/// put u |n| into |n' - n|, which S does not hold for nearly index-matched cemented surfaces.
 /// To first order every term of the computed Phi then carries a relative error of at most 8 u
 /// per step, so |fl(Phi) - Phi| <= 8 N u S for N steps. The threshold k = 16 is twice that
 /// bound. Measured with the same operations for 1999 nearly afocal thick lenses
