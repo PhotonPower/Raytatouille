@@ -153,6 +153,28 @@ void bind_layout(nb::module_& m) {
               "only these have outlines.");
 
   m.def(
+      "layout_node_frames",
+      [](const CompiledSystem& s) {
+        const auto matrix = [](const math::Isometry3& t) {
+          std::vector<double> v(16, 0.0);
+          for (int i = 0; i < 3; ++i) {
+            for (int j = 0; j < 3; ++j) v[static_cast<std::size_t>(4 * i + j)] = t.rotation()(i, j);
+            v[static_cast<std::size_t>(4 * i + 3)] = t.translation()(i);
+          }
+          v[15] = 1.0;
+          return owned(std::move(v), {4, 4});
+        };
+        nb::list out;
+        for (const compile::NodeFrame& f : s.node_frames()) {
+          out.append(nb::make_tuple(f.location, matrix(f.reference), matrix(f.to_global)));
+        }
+        return out;
+      },
+      "system"_a,
+      "Frames of every node in pre-order as (pointer, reference, to_global), homogeneous 4 x 4 "
+      "matrices (raytatouille.layout.node_frames).");
+
+  m.def(
       "layout_elements", [](const CompiledSystem& s) { return s.elements(); }, "system"_a,
       "Elements of the system in tree order (raytatouille.layout.elements).");
 

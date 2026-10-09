@@ -1,0 +1,115 @@
+{
+  "schema_version": "0.4.0",
+  "name": "M5 example: two-lens zoom with configurations wide and tele (ADR 0028, ADR 0029)",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 4.0},
+  "fields": {
+    "points": [
+      {},
+      {"y": 2.0}
+    ]
+  },
+  "configurations": [
+    {"name": "wide"},
+    {"name": "tele"}
+  ],
+  "parameters": [
+    {"name": "TOTAL", "value": 40.0},
+    {
+      "name": "G",
+      "values": [20.0, 5.0],
+      "variable": true,
+      "min": 2.0,
+      "max": 30.0
+    },
+    {"name": "B", "expression": "TOTAL - G"}
+  ],
+  "root": {
+    "type": "assembly",
+    "name": "zoom",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 3.0}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "L1",
+        "pose": {"position": [0.0, 0.0, 10.0]},
+        "material": "CONST:1.5",
+        "surfaces": [
+          {
+            "id": "L1.S1",
+            "shape": {
+              "base": {"type": "conic", "radius": 40.0}
+            },
+            "aperture": {"type": "circular", "radius": 6.0}
+          },
+          {
+            "id": "L1.S2",
+            "pose": {"position": [0.0, 0.0, 3.0]},
+            "aperture": {"type": "circular", "radius": 6.0}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "L2",
+        "pose": {
+          "reference": "relative_to_preceding",
+          "position": [
+            0.0,
+            0.0,
+            {"param": "G"}
+          ]
+        },
+        "material": "CONST:1.5",
+        "surfaces": [
+          {
+            "id": "L2.S1",
+            "shape": {
+              "base": {"type": "conic", "radius": 30.0}
+            },
+            "aperture": {"type": "circular", "radius": 6.0}
+          },
+          {
+            "id": "L2.S2",
+            "pose": {"position": [0.0, 0.0, 2.0]},
+            "aperture": {"type": "circular", "radius": 6.0}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {
+          "reference": "relative_to_preceding",
+          "position": [
+            0.0,
+            0.0,
+            {"param": "B"}
+          ]
+        },
+        "surfaces": [
+          {
+            "id": "IMG",
+            "aperture": {"type": "circular", "radius": 20.0}
+          }
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}

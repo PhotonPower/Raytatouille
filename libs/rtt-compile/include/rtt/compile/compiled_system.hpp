@@ -268,6 +268,37 @@ class CompiledSystem;
                                      const material::MaterialLibrary& materials,
                                      std::size_t configuration = 0);
 
+/// Index of the configuration called `name` (ADR 0029, point 5; #169).
+/// @throws CompileError with config.unknown at "/configurations" ("" without a configurations
+///         section), the name in the message, if the system has no configuration of that name
+[[nodiscard]] std::size_t configuration_index(const model::System& system, std::string_view name);
+
+/// compile() for the configuration called `configuration` (configuration_index()). A literal 0
+/// or any integer chooses the index overloads above: a standard conversion beats the
+/// conversion to std::string_view.
+/// @throws CompileError as configuration_index() and as compile()
+[[nodiscard]] CompiledSystem compile(const model::System& system,
+                                     const material::MaterialLibrary& materials,
+                                     const coating::CoatingLibrary& coatings,
+                                     std::string_view configuration);
+
+/// compile() with an empty CoatingLibrary for the configuration called `configuration`.
+[[nodiscard]] CompiledSystem compile(const model::System& system,
+                                     const material::MaterialLibrary& materials,
+                                     std::string_view configuration);
+
+/// Frames of one node of the model tree (assembly, element or surface) in a compiled system
+/// (ADR 0028, points 2 and 6; #169): the global transform of the frame its pose is given in
+/// (the parent for an absolute pose, the last surface before it in tree order for
+/// relative_to_preceding, the preceding sibling for relative_to_sibling, the identity for the
+/// root) and its own global transform, to_global = reference * to_isometry(pose). A GUI needs
+/// both to move a node in 3D and to turn an absolute pose into a relative one.
+struct NodeFrame {
+  std::string location;       ///< JSON pointer of the node, e.g. "/root/children/1/surfaces/0"
+  math::Isometry3 reference;  ///< frame of the pose -> global
+  math::Isometry3 to_global;  ///< node coordinates -> global
+};
+
 /// Immutable compiled system. Only const access; safe to read from many threads.
 class CompiledSystem {
  public:
@@ -322,6 +353,10 @@ class CompiledSystem {
     return configuration_name_;
   }
 
+  /// Frames of every node of the model tree in pre-order (an element before its surfaces), see
+  /// NodeFrame; the to_global of a surface equals CompiledSurface::to_global bit for bit.
+  [[nodiscard]] const std::vector<NodeFrame>& node_frames() const noexcept { return node_frames_; }
+
   /// Warnings found while compiling (model::validate), with code and JSON pointer (ADR 0022).
   [[nodiscard]] const std::vector<model::Diagnostic>& diagnostics() const noexcept {
     return diagnostics_;
@@ -349,6 +384,7 @@ class CompiledSystem {
   std::vector<model::Diagnostic> diagnostics_;
   std::size_t configuration_ = 0;
   std::string configuration_name_;
+  std::vector<NodeFrame> node_frames_;
 };
 
 }  // namespace rtt::compile

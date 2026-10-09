@@ -4,17 +4,20 @@
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/string_view.h>
 #include <nanobind/stl/tuple.h>
+#include <nanobind/stl/variant.h>
 #include <nanobind/stl/vector.h>
 
 #include <filesystem>
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <variant>
 #include <vector>
 
 #include "bindings.hpp"
 #include "rtt/diagnostics/codes.hpp"
 #include "rtt/io/json_io.hpp"
+#include "rtt/model/parameters.hpp"
 #include "rtt/model/system.hpp"
 #include "rtt/model/validate.hpp"
 
@@ -168,6 +171,36 @@ void bind_model(nb::module_& m) {
       .def("locate_path", &locate_path, "name"_a,
            "Current JSON pointer of the path with this name, e.g. \"/paths/0\"; None if there "
            "is none.")
+      .def(
+          "locate_parameter",
+          [](const model::System& s, std::string_view name) -> std::optional<std::string> {
+            if (const auto i = model::find_parameter(s, name)) {
+              return "/parameters/" + std::to_string(*i);
+            }
+            return std::nullopt;
+          },
+          "name"_a,
+          "Current JSON pointer of the parameter row with this name, e.g. \"/parameters/1\"; "
+          "None if there is none (ADR 0029: row names are stable anchors).")
+      .def(
+          "resolved",
+          [](const model::System& s, const std::variant<std::size_t, std::string>& configuration) {
+            std::size_t k = 0;
+            if (const auto* name = std::get_if<std::string>(&configuration)) {
+              const auto found = model::find_configuration(s, *name);
+              if (!found) throw std::invalid_argument("no configuration '" + *name + "'");
+              k = *found;
+            } else {
+              k = std::get<std::size_t>(configuration);
+            }
+            return model::resolve_parameters(s, k);
+          },
+          "configuration"_a = std::variant<std::size_t, std::string>{std::size_t{0}},
+          "The System of one configuration (index or name; ADR 0029, point 3): a copy in which "
+          "every Param bound to a row of the parameter table has the row's value in that "
+          "configuration as a plain value. The table and the configurations stay; saved, it is "
+          "a file with fixed numbers.\n\nRaises ValueError for an unknown configuration or an "
+          "error of the table (the diagnostic of validate in the message).")
       .def("to_json", &io::to_json,
            "Canonical JSON text (2-space indent, LF, trailing newline, defaults omitted).")
       .def_static(
