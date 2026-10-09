@@ -558,7 +558,8 @@ AimedRay aim(const Context& c, const FieldStart& f, double px, double py, Aiming
 /// - The nodes are the zeros of the monic Legendre polynomial p_n. It follows from the
 ///   three-term recurrence x p_m = p_{m+1} + alpha_m p_m + beta_m p_{m-1}, p_{-1} = 0, p_0 = 1
 ///   (Eq. (3.5.30)), with alpha_m = 0 and beta_m = m^2 / (4 m^2 - 1) (Eq. (3.5.33_1) for
-///   Jacobi alpha = beta = 0, i.e. Legendre). Newton's method on p_n, with p_n' from the
+///   Jacobi alpha = beta = 0, i.e. Legendre; there alpha_0 is 0/0, and alpha_m = 0 for all m
+///   follows from the symmetry of w = 1 on [-1, 1]). Newton's method on p_n, with p_n' from the
 ///   differentiated recurrence, from the start -cos(pi (k + 3/4) / (n + 1/2)) for node k.
 /// - The weights are w_k = beta_0 v_{k,1}^2 (Eq. (3.5.32)) with the normalized eigenvector v_k of
 ///   the Jacobi matrix (3.5.31). By the orthonormal recurrence (3.5.30_5), v_k is proportional
