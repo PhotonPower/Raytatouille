@@ -12,6 +12,7 @@ if(RTT_BUILD_TESTS)
     SOURCES tests/test_roundtrip.cpp tests/test_parse_errors.cpp tests/test_segment_materials.cpp
             tests/test_json_patch.cpp tests/test_patch_fuzz.cpp tests/test_edit.cpp
             tests/test_format_0_3.cpp tests/test_for_each_param.cpp tests/test_format_0_4.cpp
+            tests/test_format_optimization.cpp
     LIBS rtt::io rtt::json rtt::diagnostics rtt::model_test_support nlohmann_json::nlohmann_json)
 endif()
 

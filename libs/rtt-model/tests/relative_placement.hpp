@@ -93,7 +93,9 @@ struct RelativeSystem {
 /// rewritten pose uses rotate_first with Q = 0, so p_ref = R (t + p) and t = R^T T.t; the others
 /// translate_first, p_ref = t + R p. Throws std::invalid_argument for a pose that is not absolute
 /// translate_first in the input, and for a rotation near the gimbal lock (|cos b| < 0.1), where
-/// the angles would lose accuracy.
+/// the angles would lose accuracy. The bound "a few ulp per angle" of test_relative_placement.cpp
+/// relies on this limit: a and c come from atan2 of entries scaled by cos b, so their rounding
+/// grows by at most 1 / |cos b| <= 10.
 inline RelativeSystem to_relative(const System& s) {
   struct Rewrite {
     RelativeSystem r;

@@ -228,5 +228,75 @@
         {"surface": "IMG", "kind": "transmit"}
       ]
     }
-  ]
+  ],
+  "optimization": {
+    "operands": [
+      {"type": "efl", "path": "first order", "target": 50.0},
+      {
+        "type": "bfl",
+        "path": "first order",
+        "configuration": "far",
+        "wavelength": 1,
+        "target": 30.0,
+        "weight": 0.5
+      },
+      {"type": "image_fnumber", "path": "first order", "target": 4.0},
+      {"type": "magnification", "path": "first order", "target": -0.5},
+      {
+        "type": "ray_x",
+        "path": "ghost G.S2-A.S2",
+        "surface": "A.S2",
+        "occurrence": 1,
+        "field": 1,
+        "px": 0.5,
+        "target": 0.0
+      },
+      {
+        "type": "ray_y",
+        "path": "first order",
+        "surface": "IMG",
+        "py": 1.0,
+        "target": 0.0
+      },
+      {
+        "type": "spot_rms",
+        "path": "first order",
+        "field": 1,
+        "polychromatic": true,
+        "reference": "chief",
+        "rings": 4,
+        "target": 0.0
+      },
+      {
+        "type": "opd_rms",
+        "path": "first order",
+        "wavelength": 0,
+        "grid": 17,
+        "target": 0.0
+      },
+      {
+        "type": "param_value",
+        "parameter": "FOCUS",
+        "configuration": "far",
+        "target": 0.25
+      }
+    ],
+    "generators": [
+      {
+        "type": "rms_spot",
+        "path": "first order",
+        "fields": [0, 1],
+        "wavelengths": [0],
+        "reference": "chief",
+        "rings": 4,
+        "arms": 8,
+        "weight": 2.0
+      },
+      {
+        "type": "rms_wavefront",
+        "path": "first order",
+        "configuration": "near"
+      }
+    ]
+  }
 }
