@@ -403,11 +403,17 @@ Bending bending_reference(const System& base, const MaterialLibrary& lib) {
 /// optimum predicted from the reference point p_ref, with the tolerance derived before the run
 /// (see the test of case 1). `w_efl`: weight of the efl operand in row 0 if it enters the merit
 /// (then its predicted residual must lie below 1e-9 mm); none if it is only an observer.
+/// `golden_width0`: for a reference from the golden section over variable 0 with the other
+/// variable (n = 2) in closed form for it, the width of the final bracket in the units of
+/// variable 0. Then the reference is checked to lie at the optimum of the merit function
+/// before the run (review of #197, P2): |delta_n| against a bound from that width and the
+/// rounding of a flat minimum, and |delta_2| << |delta_n| for the Newton prediction.
 /// Returns the result for further checks.
 OptimResult check_against_prediction(const System& s,
                                      const MaterialLibrary& lib,
                                      const Vec& p_ref,
-                                     std::optional<double> w_efl) {
+                                     std::optional<double> w_efl,
+                                     std::optional<double> golden_width0 = std::nullopt) {
   const std::size_t n = p_ref.size();
   const rtt::optim::MeritFunction merit(s, lib, nullptr);
   const auto& vars = merit.variables();
@@ -439,6 +445,37 @@ OptimResult check_against_prediction(const System& s,
           << ", remainder " << delta_2[c] << ", FD bias " << delta_fd[c] << "; ";
   }
   INFO(terms.str());
+  if (golden_width0) {
+    // The independent reference lies at the optimum of the merit function (review of #197, P2):
+    // otherwise a fault that moves the optimum (e.g. a wrong weighting in the generator) would
+    // move p_pred and the run alike. Bounds, all from the reference before the run:
+    // - variable 0 (golden section): the bracket width, plus the uncertainty of the minimum of a
+    //   flat function sqrt(2 sigma_F / H_00), with the noise of F = 1/2 f^T f at most
+    //   sigma_F = ||f|| sigma_f and sigma_f = kMeritPrecision ||f(p0)||inf (ADR 0030, point 9;
+    //   ten times the measured noise);
+    // - variable 1 (closed form for the reference's variable 0): an error dc of variable 0 moves
+    //   its optimum along the valley dF/dtheta_1 = 0 by (H_10 / H_11) dc, plus its own flat term.
+    REQUIRE(n == 2);
+    double f_inf0 = 0.0;
+    for (const double v : residuals_at(merit, merit.start()))
+      f_inf0 = std::max(f_inf0, std::abs(v));
+    double f_norm = 0.0;
+    for (const double v : f_ref) f_norm += v * v;
+    const double sigma_f_merit = std::sqrt(f_norm) * rtt::optim::kMeritPrecision * f_inf0;
+    const double flat0 = std::sqrt(2.0 * sigma_f_merit / hess[0][0]);
+    const double flat1 = std::sqrt(2.0 * sigma_f_merit / hess[1][1]);
+    const double bound0 = *golden_width0 + flat0;
+    const double bound1 = std::abs(hess[1][0] / hess[1][1]) * bound0 + flat1;
+    INFO("reference at the optimum: |delta_n| <= " << bound0 << ", " << bound1 << " (golden width "
+                                                   << *golden_width0 << ", flat " << flat0 << ", "
+                                                   << flat1 << ")");
+    CHECK(std::abs(delta_n[0]) <= bound0);
+    CHECK(std::abs(delta_n[1]) <= bound1);
+    // The Newton prediction is valid: its second step is small against the first.
+    for (std::size_t c = 0; c < n; ++c) {
+      CHECK(std::abs(delta_2[c]) <= 0.1 * std::abs(delta_n[c]) + 64.0 * kEps * std::abs(p_ref[c]));
+    }
+  }
   if (w_efl) {
     // The EFL residual of the least-squares optimum: e = f_0 / sqrt(w) at p_pred. The issue
     // requires EFL relative 1e-10 (1e-8 mm): the predicted residual must lie well below.
@@ -523,7 +560,11 @@ TEST_CASE("M5 acceptance, case 1: singlet bent for minimal RMS spot at EFL 100 m
   //   (golden-section width), a second step bounds the remainder;
   // - the solver's difference step h = eps_f^(1/3) max(|theta|, 1), eps_f = kMeritPrecision =
   //   1e-9 (ADR 0030, point 9), moves the fixed point by delta_FD = -H^-1 (J~ - J)^T f;
-  // - the step test (ftol = 0, default xtol) leaves at most ||H^-1|| ||A + mu D^2|| ||h||.
+  // - the step test (ftol = 0, default xtol) leaves at most ||H_z^-1 (A_z + mu I)||_F ||D h|| / d_j
+  //   in the scaled variables z = D theta: an a posteriori bound with a formula derived before
+  //   the run (mu and ||D h|| come from the last solve, as in the step-test bounds of #166);
+  // - the reference itself lies at the optimum of the merit function: |delta_n| within the
+  //   golden-section width and the rounding of a flat minimum, |delta_2| << |delta_n|.
   // The default xtol: with a residual left (the spot) the gradient noise gives steps in the
   // flat bending direction that a step test of 1e-12 would never accept.
   const System s = load("m5/singlet_solve.rtt.json");
@@ -537,8 +578,10 @@ TEST_CASE("M5 acceptance, case 1: singlet bent for minimal RMS spot at EFL 100 m
   }
   const Bending ref = bending_reference(load("m5/singlet_optim.rtt.json"), lib);
   INFO("reference R1 " << ref.r1 << " R2 " << ref.r2 << " z " << ref.z_image);
-  const OptimResult r =
-      check_against_prediction(s, lib, Vec{1.0 / ref.r1, ref.z_image}, std::nullopt);
+  // The golden section over R1 ends with a bracket of 1e-6 mm, in C1 = 1/R1 a width of
+  // 1e-6 / R1*^2.
+  const OptimResult r = check_against_prediction(s, lib, Vec{1.0 / ref.r1, ref.z_image},
+                                                 std::nullopt, 1e-6 / (ref.r1 * ref.r1));
 
   // The EFL of the result: relative 1e-10 (the issue), from the analysis and in the operand
   // table (the observer).
