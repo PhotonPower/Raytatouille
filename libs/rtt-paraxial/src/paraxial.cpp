@@ -182,6 +182,51 @@ double power_scale(const std::vector<Step>& steps, double z_in, double n_in) {
   return nu;
 }
 
+/// Magnitudes (y, nu) of a y-nu trace for the infinity tests of first_order (#35, rest of B9):
+/// the trace of propagate() for the start ray (y0, nu0) from the plane z_in (index n_in, signed)
+/// through steps [first, last) to the plane z_out, with every term by its magnitude as in
+/// power_scale(): |y| += (|z'| + |z|) |nu| / |n|, |nu| += |y| |phi|. The rounding model of
+/// power_scale() applies unchanged: each step rounds y and nu at most 8 times relative to these
+/// magnitudes, the final transfer y 4 more times, so an element of the matrix that is zero in
+/// exact arithmetic comes out with at most 8 (N + 1) u times its magnitude for N steps.
+struct Magnitudes {
+  double y = 0.0;
+  double nu = 0.0;
+};
+
+Magnitudes magnitude_trace(const std::vector<Step>& steps,
+                           std::size_t first,
+                           std::size_t last,
+                           double z_in,
+                           double n_in,
+                           double z_out,
+                           double y0,
+                           double nu0) {
+  double y = std::abs(y0);
+  double nu = std::abs(nu0);
+  double z = z_in;
+  double n = n_in;
+  for (std::size_t i = first; i < last; ++i) {
+    const Step& step = steps[i];
+    y += (std::abs(step.z) + std::abs(z)) * nu / std::abs(n);
+    z = step.z;
+    const double direction = n > 0.0 ? 1.0 : -1.0;
+    const double n_after = step.kind == EventKind::Reflect ? -n : direction * step.n_after;
+    nu += y * std::abs(step.c * (n_after - n));
+    n = n_after;
+  }
+  y += (std::abs(z_out) + std::abs(z)) * nu / std::abs(n);
+  return {y, nu};
+}
+
+/// True if `value`, an element of a matrix traced through `steps` events, is zero up to the
+/// rounding of the trace: |value| <= 16 (N + 1) u S with the magnitude S of magnitude_trace(),
+/// twice the bound of its rounding model, as the afocal threshold (#35, rest of B9).
+bool zero_up_to_rounding(double value, std::size_t steps, double scale) {
+  return std::abs(value) <= kAfocalFactor * static_cast<double>(steps + 1) *
+                                std::numeric_limits<double>::epsilon() / 2.0 * scale;
+}
+
 bool changes_ray(const Step& step, double n_before) {
   return step.kind == EventKind::Reflect || step.n_after != n_before;
 }
@@ -292,7 +337,9 @@ FirstOrder first_order(const compile::CompiledSystem& system,
     // Axial ray (y, nu) = (0, n1 * 1) at the object.
     const double y_out = o.b * n1;
     const double nu_out = o.d * n1;
-    if (nu_out != 0.0) {
+    // Image at infinity if d is zero up to rounding (#35, rest of B9): the axial ray (0, 1).
+    const double d_scale = magnitude_trace(steps, 0, steps.size(), z_obj, n1, z_last, 0.0, 1.0).nu;
+    if (!zero_up_to_rounding(o.d, steps.size(), d_scale)) {
       fo.image_z = z_last - y_out * n_img / nu_out;
       fo.lateral_magnification = n1 / nu_out;
     }
@@ -322,6 +369,14 @@ FirstOrder first_order(const compile::CompiledSystem& system,
   // Object space -> stop plane, and stop plane -> image space (the stop itself only transmits).
   const Matrix front = propagate(steps, 0, stop, z_first, n1, z_stop);
   const Matrix back = propagate(steps, stop + 1, steps.size(), z_stop, front.n_out, z_last);
+  // Pupils at infinity if front.a or back.d is zero up to rounding (#35, rest of B9): a with the
+  // magnitudes of the ray (1, 0) from z_first to the stop, d with those of (0, 1) from the stop.
+  const bool ep_finite = !zero_up_to_rounding(
+      front.a, stop, magnitude_trace(steps, 0, stop, z_first, n1, z_stop, 1.0, 0.0).y);
+  const std::size_t after_stop = steps.size() - stop - 1;
+  const bool xp_finite = !zero_up_to_rounding(
+      back.d, after_stop,
+      magnitude_trace(steps, stop + 1, steps.size(), z_stop, front.n_out, z_last, 0.0, 1.0).nu);
 
   // Entrance pupil, derived from the y-nu equations with front = [[a, b], [c, d]] from z_first
   // (object space) to the stop plane:
@@ -332,13 +387,13 @@ FirstOrder first_order(const compile::CompiledSystem& system,
   //   b = 0 (conjugate planes), so y_stop = a y_pupil: the stop radius r appears as r / |a|.
   Pupil ep;
   Pupil xp;
-  if (front.a != 0.0) ep.z = z_first + front.b * n1 / front.a;
+  if (ep_finite) ep.z = z_first + front.b * n1 / front.a;
   // Exit pupil with back = [[a, b], [c, d]] from the stop plane to z_last (image space, n'):
   // - Position: the ray from the stop centre (0, nu_s) leaves with (b nu_s, d nu_s) and meets
   //   the axis at z_last - b n' / d.
   // - Size: in the conjugate pupil plane the matrix is [[1/d, 0], [c, d]] (det = 1), so the
   //   stop radius r appears as r / |d|.
-  if (back.d != 0.0) xp.z = z_last - back.b * n_img / back.d;
+  if (xp_finite) xp.z = z_last - back.b * n_img / back.d;
 
   const double value = system.aperture().value.value;
   switch (system.aperture().type) {
@@ -346,7 +401,7 @@ FirstOrder first_order(const compile::CompiledSystem& system,
       ep.diameter = value;
       break;
     case model::SystemApertureType::StopSize:
-      if (front.a != 0.0) ep.diameter = 2.0 * circle->radius / std::abs(front.a);
+      if (ep_finite) ep.diameter = 2.0 * circle->radius / std::abs(front.a);
       break;
     case model::SystemApertureType::ImageSpaceFNumber:
       // F-number at infinite conjugates, EPD = EFL / F#, also for finite objects (#7).
@@ -361,7 +416,7 @@ FirstOrder first_order(const compile::CompiledSystem& system,
       break;
   }
   // Stop radius actually used = EP radius * |a|; the exit pupil shows it magnified by 1 / |d|.
-  if (ep.diameter && back.d != 0.0) {
+  if (ep.diameter && xp_finite) {
     xp.diameter = *ep.diameter * std::abs(front.a) / std::abs(back.d);
   }
   fo.entrance_pupil = ep;
@@ -371,7 +426,7 @@ FirstOrder first_order(const compile::CompiledSystem& system,
   // above) the stop is reached with nu_s = c y0 + d n1 u = n1 u (a d - b c) / a = n1 u / a, and
   // the system leaves with nu' = d_back nu_s. Slopes measured along the propagation direction
   // (u' sign(n') / u) give the ratio n1 d_back / (|n'| a).
-  if (front.a != 0.0) {
+  if (ep_finite) {
     fo.angular_magnification = n1 * back.d / (fo.image_index * front.a);
   }
   return fo;
