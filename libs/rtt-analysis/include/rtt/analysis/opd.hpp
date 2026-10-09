@@ -102,6 +102,50 @@ struct OpdFan {
   std::vector<model::Diagnostic> warnings;
 };
 
+/// OPD at the points of an arbitrary pupil sampling (#168; ADR 0030, addendum of #168): the
+/// conventions above, without statistics.
+struct OpdPupilPoints {
+  std::uint16_t field = 0;       ///< index into CompiledSystem::fields().points
+  std::uint16_t wavelength = 0;  ///< index into CompiledSystem::wavelengths_um()
+  ReferenceSphere sphere;
+  /// One point per point of the sampling, in the order of trace::pupil_points(); W = 0 and the
+  /// status of the ray for a ray that does not arrive or misses the reference sphere.
+  std::vector<OpdPoint> points;
+  /// Rays of the sampling by the final status of their points, worst loss surface (ADR 0023).
+  RayLosses losses;
+  /// Warnings with stable codes (ADR 0022, 0023): "rays.lost" above lost_warning_fraction,
+  /// "stop.clips_beam" if rays end Vignetted at the stop surface.
+  std::vector<model::Diagnostic> warnings;
+};
+
+/// OPD of `field` at `wavelength` at the points of `sampling` (any trace::PupilSampling, also
+/// trace::GaussPupil; ADR 0030, addendum of #168), with the conventions of opd_map(): reference
+/// sphere about the chief ray of the reference wavelength, the chief ray of `wavelength` as
+/// reference (W(0, 0) = 0), waves at the reference wavelength. No statistics and no exception if
+/// no ray arrives; a consumer weights the points itself (e.g. with trace::gauss_pupil_weights).
+/// opd_map() computes its points with the same function, so a GridPupil gives them bit for bit.
+/// options.aiming and options.lost_warning_fraction apply; grid and fan_points are not used.
+/// @throws std::invalid_argument for an invalid path or wavelength, options.lost_warning_fraction
+///         outside [0, 1] (and as rtt::trace::make_rays, e.g. for an invalid field or sampling)
+/// @throws rtt::paraxial::ParaxialError, rtt::compile::NoStopError and AnalysisError for the
+///         reference sphere as opd_map() (chief ray lost or missing the sphere)
+[[nodiscard]] OpdPupilPoints opd_points(const compile::CompiledSystem& system,
+                                        compile::PathId path,
+                                        std::uint16_t field,
+                                        std::uint16_t wavelength,
+                                        const trace::PupilSampling& sampling,
+                                        const OpdOptions& options = {});
+
+/// opd_points() with cancellation and progress (#83), stages "aim" and "trace"; with an empty
+/// control the same points bit for bit.
+[[nodiscard]] OpdPupilPoints opd_points(const compile::CompiledSystem& system,
+                                        compile::PathId path,
+                                        std::uint16_t field,
+                                        std::uint16_t wavelength,
+                                        const trace::PupilSampling& sampling,
+                                        const OpdOptions& options,
+                                        const trace::RunControl& control);
+
 /// OPD map of `field` at `wavelength`.
 /// @throws std::invalid_argument for an invalid path, field, wavelength, grid < 1 or
 ///         options.lost_warning_fraction outside [0, 1] (and as rtt::trace::make_rays)

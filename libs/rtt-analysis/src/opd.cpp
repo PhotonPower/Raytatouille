@@ -109,16 +109,17 @@ std::optional<double> opl_to_sphere(const trace::RayBatch& rays,
   return rays.opl()[i] - n_image * (b + ref.branch * q / (root + radius));
 }
 
-/// OPD of every ray of `sampling` at `wavelength`, in waves at the reference wavelength.
-std::vector<OpdPoint> opd_points(const CompiledSystem& system,
-                                 PathId path,
-                                 std::uint16_t field,
-                                 std::uint16_t wavelength,
-                                 const trace::PupilSampling& sampling,
-                                 trace::Aiming aiming,
-                                 const Reference& ref,
-                                 detail::LossCounter& losses,
-                                 const trace::RunControl& control) {
+/// OPD of every ray of `sampling` at `wavelength` against `ref`, in waves at the reference
+/// wavelength.
+std::vector<OpdPoint> points_against(const CompiledSystem& system,
+                                     PathId path,
+                                     std::uint16_t field,
+                                     std::uint16_t wavelength,
+                                     const trace::PupilSampling& sampling,
+                                     trace::Aiming aiming,
+                                     const Reference& ref,
+                                     detail::LossCounter& losses,
+                                     const trace::RunControl& control) {
   const std::uint32_t image = image_surface(system, path);
   const auto& last = system.path(path).events.back();
   // Isotropic image medium only. A crystal (ADR 0026) cannot be the image medium here:
@@ -166,6 +167,37 @@ std::vector<OpdPoint> opd_points(const CompiledSystem& system,
 
 }  // namespace
 
+OpdPupilPoints opd_points(const compile::CompiledSystem& system,
+                          compile::PathId path,
+                          std::uint16_t field,
+                          std::uint16_t wavelength,
+                          const trace::PupilSampling& sampling,
+                          const OpdOptions& options) {
+  return opd_points(system, path, field, wavelength, sampling, options, trace::RunControl{});
+}
+
+OpdPupilPoints opd_points(const compile::CompiledSystem& system,
+                          compile::PathId path,
+                          std::uint16_t field,
+                          std::uint16_t wavelength,
+                          const trace::PupilSampling& sampling,
+                          const OpdOptions& options,
+                          const trace::RunControl& control) {
+  check_path(system, path);
+  check_wavelength(system, wavelength);
+  OpdPupilPoints result;
+  result.field = field;
+  result.wavelength = wavelength;
+  const Reference ref = make_reference(system, path, field, options.aiming);
+  result.sphere = ref.sphere;
+  detail::LossCounter losses(system, path, options.lost_warning_fraction);
+  result.points = points_against(system, path, field, wavelength, sampling, options.aiming, ref,
+                                 losses, control);
+  result.losses = losses.result();
+  result.warnings = losses.warnings();
+  return result;
+}
+
 OpdMap opd_map(const compile::CompiledSystem& system,
                compile::PathId path,
                std::uint16_t field,
@@ -189,8 +221,8 @@ OpdMap opd_map(const compile::CompiledSystem& system,
   const Reference ref = make_reference(system, path, field, options.aiming);
   map.sphere = ref.sphere;
   detail::LossCounter losses(system, path, options.lost_warning_fraction);
-  map.points = opd_points(system, path, field, wavelength, trace::GridPupil{options.grid},
-                          options.aiming, ref, losses, control);
+  map.points = points_against(system, path, field, wavelength, trace::GridPupil{options.grid},
+                              options.aiming, ref, losses, control);
   map.losses = losses.result();
   map.warnings = losses.warnings();
 
@@ -243,10 +275,12 @@ OpdFan opd_fan(const compile::CompiledSystem& system,
   const Reference ref = make_reference(system, path, field, options.aiming);
   fan.sphere = ref.sphere;
   detail::LossCounter losses(system, path, options.lost_warning_fraction);
-  fan.tangential = opd_points(system, path, field, wavelength, trace::FanYPupil{options.fan_points},
-                              options.aiming, ref, losses, control);
-  fan.sagittal = opd_points(system, path, field, wavelength, trace::FanXPupil{options.fan_points},
-                            options.aiming, ref, losses, control);
+  fan.tangential =
+      points_against(system, path, field, wavelength, trace::FanYPupil{options.fan_points},
+                     options.aiming, ref, losses, control);
+  fan.sagittal =
+      points_against(system, path, field, wavelength, trace::FanXPupil{options.fan_points},
+                     options.aiming, ref, losses, control);
   fan.losses = losses.result();
   fan.warnings = losses.warnings();
   return fan;
