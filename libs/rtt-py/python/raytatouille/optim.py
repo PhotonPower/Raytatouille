@@ -87,6 +87,8 @@ def optimize(
     """Optimizes the variables of ``system`` against its merit function (ADR 0030) with
     Levenberg-Marquardt. ``materials`` (None: only VACUUM, AIR and CONST:) and ``coatings``
     as in rt.compile; ``options`` the solver settings (None: the defaults of OptimizeOptions).
+    The system is copied before the run; the libraries are used by reference, so do not add
+    catalogues to them from another thread during the run (as for every analysis).
 
     The result has the new ``system``, the ``patch`` from the input to it, the ``history`` of
     the solves (normalised merit ``phi`` per solve), the final values of the ``operands``,

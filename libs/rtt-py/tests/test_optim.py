@@ -101,6 +101,8 @@ def test_cancelled_before_the_start_returns_the_input() -> None:
 
 
 def test_cancel_from_progress_keeps_the_last_accepted_state() -> None:
+    full = rt.optim.optimize(singlet_merit())
+    assert full.iterations >= 2  # else "fewer solves than the full run" below is empty
     token = rt.CancelToken()
     stages: list[str] = []
     lock = threading.Lock()
@@ -114,7 +116,10 @@ def test_cancel_from_progress_keeps_the_last_accepted_state() -> None:
     result = rt.optim.optimize(singlet_merit(), cancel=token, progress=progress)
     assert result.status == OptimStatus.CANCELLED
     assert {"jacobian", "optimize"} <= set(stages)
-    # The state is a valid system: the patch still turns the input into it.
+    # Ended early with an accepted step (review of #195): the result is the last accepted state,
+    # not the input, and it is a valid system that the patch turns the input into.
+    assert 1 <= result.iterations < full.iterations
+    assert bool(result.history.accepted[0]) and result.patch != "[]"
     assert rt.apply_patch(singlet_merit(), result.patch).to_json() == result.system.to_json()
 
 
@@ -139,8 +144,10 @@ def test_a_variable_at_its_bound_warns() -> None:
     codes = [w.message.code for w in caught if isinstance(w.message, rt.RaytatouilleWarning)]
     assert "optim.parameter_at_bound" in codes
     [image_var] = [v for v in result.variables if v.pointer.startswith("/root/children/2")]
-    # At the bound within the rounding of the bound transformation (bounds.hpp clamps to it).
-    assert image_var.at_bound and 100.0 - 1e-6 <= image_var.end <= 100.0
+    # At the bound in the sense of ADR 0030, point 5 (one bound b: |p - b| <= 1e-6 max(1, |b|)),
+    # and never beyond it.
+    assert image_var.at_bound
+    assert 100.0 - 1e-6 * max(1.0, 100.0) <= image_var.end <= 100.0
 
 
 def test_to_dict_leaves_out_the_system() -> None:

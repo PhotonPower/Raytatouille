@@ -174,7 +174,8 @@ void bind_optim(nb::module_& m) {
            "system"_a, "materials"_a.none() = nb::none(), "coatings"_a.none() = nb::none(),
            nb::keep_alive<1, 3>(), nb::keep_alive<1, 4>(),
            "Prepares the evaluation and checks the operands (ADR 0030, point 10). Without "
-           "`materials` only VACUUM, AIR and CONST: resolve.")
+           "`materials` only VACUUM, AIR and CONST: resolve. The system is copied; `materials` "
+           "and `coatings` are kept by reference and must not change while the object is used.")
       .def_prop_ro(
           "variables", [](const Merit& f) { return f.get().variables(); },
           "The variables, in the order of ADR 0030, point 5.")
@@ -288,15 +289,21 @@ void bind_optim(nb::module_& m) {
          std::optional<int> threads, const std::optional<trace::CancelToken>& cancel,
          const std::optional<nb::callable>& progress) {
         const trace::RunControl control = run_control(cancel, progress);
+        // A copy while the GIL is held: rt.System is mutable from Python (name, environment), and
+        // another thread could change it during the run (review of #195). The libraries stay
+        // references, as in every analysis; the documentation forbids changing them meanwhile.
+        // NOLINTNEXTLINE(performance-unnecessary-copy-initialization): the copy is the point
+        const model::System input = system;
         const material::MaterialLibrary default_materials;
         const material::MaterialLibrary& library =
             materials != nullptr ? *materials : default_materials;
         return released(threads,
-                        [&] { return optimize(system, library, coatings, options, control); });
+                        [&] { return optimize(input, library, coatings, options, control); });
       },
       "system"_a, "materials"_a.none(), "coatings"_a.none(), "options"_a, "threads"_a.none(),
       "cancel"_a.none(), "progress"_a.none(),
-      "Optimizes the variables of `system` against its merit function (ADR 0030).");
+      "Optimizes the variables of `system` (copied) against its merit function (ADR 0030). "
+      "`materials` and `coatings` must not change during the run.");
 }
 
 }  // namespace rtt::py

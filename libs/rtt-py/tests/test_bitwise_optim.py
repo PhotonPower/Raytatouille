@@ -106,9 +106,10 @@ def test_the_cases_have_content() -> None:
     variable, the merit falls, the patch is not empty, the start evaluation is valid."""
     for name in ("singlet_optimize", "gap_optimize"):
         a = CASES[name](1)
-        assert len(a["k"]) >= 1 and bool(np.any(a["accepted"])), name
+        assert len(a["k"]) >= 2 and bool(np.any(a["accepted"])), name
         assert bool(np.all(a["var_changed"])), name
-        assert bool(np.all(np.diff(a["phi"]) <= 0.0)), name  # phi of the accepted state
+        # phi of the accepted state never rises and falls overall (review of #195: strict).
+        assert bool(np.all(np.diff(a["phi"]) <= 0.0)) and a["phi"][-1] < a["phi"][0], name
         assert bytes(a["patch"]) != b"[]", name
     start = CASES["singlet_merit_start"](1)
     assert int(start["ints"][0]) == 1 and len(start["residuals"]) == 1 + 2 * 3 * 6
