@@ -117,6 +117,21 @@ rtt::model::ParameterRow row(std::string name, rtt::model::ParameterForm form) {
   return r;
 }
 
+/// RMS spot operand on `path`, field 0, target 0 (ADR 0030).
+rtt::model::SpotRmsOperand spot_rms(const std::string& path) {
+  rtt::model::SpotRmsOperand o;
+  o.path = path;
+  return o;
+}
+
+/// Ray operand y on path "main" at `surface`, field 0, chief ray (ADR 0030).
+rtt::model::RayOperand ray_y(const std::string& surface) {
+  rtt::model::RayOperand o;
+  o.path = "main";
+  o.surface = SurfaceId(surface);
+  return o;
+}
+
 /// Lens L1 as a cemented doublet with three plane surfaces in CONST:1.5 and CONST:1.7.
 void make_doublet(System& s) {
   Element& lens = element(s, 1);
@@ -497,6 +512,61 @@ std::vector<Case> cases() {
        [](System& s) { s.configurations = {{"a"}, {"a"}}; }},
       {"value.not_finite", "/root/children/1/pose/pivot/2",
        [](System& s) { element(s, 1).pose.pivot[2] = kNaN; }},
+      // validate, merit function (ADR 0030, #162 part B)
+      {"merit.unknown_path", "/optimization/operands/0/path",
+       [](System& s) { s.optimization.operands = {spot_rms("other")}; }},
+      {"merit.unknown_configuration", "/optimization/operands/0/configuration",
+       [](System& s) {
+         rtt::model::SpotRmsOperand o = spot_rms("main");
+         o.common.configuration = "far";
+         s.optimization.operands = {o};
+       }},
+      {"merit.unknown_parameter", "/optimization/operands/0/parameter",
+       [](System& s) { s.optimization.operands = {rtt::model::ParamValueOperand{{}, "D"}}; }},
+      {"merit.surface_not_on_path", "/optimization/operands/0/surface",
+       [](System& s) { s.optimization.operands = {ray_y("NONE")}; }},
+      {"merit.surface_ambiguous", "/optimization/operands/0/surface",
+       [](System& s) {
+         s.paths = {{"main",
+                     false,
+                     {{SurfaceId("STO"), EventKind::Transmit, 0},
+                      {SurfaceId("L1.S1"), EventKind::Refract, 0},
+                      {SurfaceId("L1.S2"), EventKind::Reflect, 0},
+                      {SurfaceId("L1.S1"), EventKind::Refract, 0}}}};
+         s.optimization.operands = {ray_y("L1.S1")};
+       }},
+      {"merit.index_out_of_range", "/optimization/operands/0/field",
+       [](System& s) {
+         rtt::model::SpotRmsOperand o = spot_rms("main");
+         o.field = 9;
+         s.optimization.operands = {o};
+       }},
+      {"merit.weight_invalid", "/optimization/operands/0/weight",
+       [](System& s) {
+         rtt::model::SpotRmsOperand o = spot_rms("main");
+         o.common.weight = -1.0;
+         s.optimization.operands = {o};
+       }},
+      {"merit.sampling_invalid", "/optimization/operands/0/rings",
+       [](System& s) {
+         rtt::model::SpotRmsOperand o = spot_rms("main");
+         o.rings = 0;
+         s.optimization.operands = {o};
+       }},
+      {"merit.selection_empty", "/optimization/generators/0/fields",
+       [](System& s) {
+         rtt::model::SpotGenerator g;
+         g.path = "main";
+         g.fields = std::vector<std::uint16_t>{};
+         s.optimization.generators = {g};
+       }},
+      {"merit.polychromatic_wavelength", "/optimization/operands/0/wavelength",
+       [](System& s) {
+         rtt::model::SpotRmsOperand o = spot_rms("main");
+         o.polychromatic = true;
+         o.wavelength = 0;
+         s.optimization.operands = {o};
+       }},
       // compile: a configuration index beyond the configurations (#165)
       {"config.unknown", "/configurations", [](System& s) { s.configurations = {{"a"}}; }, 1},
   };

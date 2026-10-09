@@ -73,6 +73,7 @@ ENUM_NAMES: dict[type, dict[str, str]] = {
     model.PoseReference: {"absolute": "ABSOLUTE", "relative_to_preceding": "RELATIVE_TO_PRECEDING",
                           "relative_to_sibling": "RELATIVE_TO_SIBLING"},
     model.PoseOrder: {"translate_first": "TRANSLATE_FIRST", "rotate_first": "ROTATE_FIRST"},
+    model.SpotReference: {"centroid": "CENTROID", "chief": "CHIEF"},
 }
 
 #: Type strings of the variants (and of an assembly) and their classes.
@@ -87,12 +88,30 @@ VARIANT_CLASSES: dict[str, type] = {
     "ideal_anti_reflection": model.IdealAntiReflection, "absorber": model.Absorber,
     "ideal_beam_splitter": model.IdealBeamSplitter, "coating": model.CoatingRef,
     "ideal_polarizer": model.IdealPolarizer, "ideal_retarder": model.IdealRetarder,
+    # The merit function (ADR 0030, #162 B); the type of a first-order or ray operand also
+    # names its quantity or coordinate (OPERAND_ENUMS).
+    "efl": model.FirstOrderOperand, "bfl": model.FirstOrderOperand,
+    "image_fnumber": model.FirstOrderOperand, "magnification": model.FirstOrderOperand,
+    "ray_x": model.RayOperand, "ray_y": model.RayOperand, "spot_rms": model.SpotRmsOperand,
+    "opd_rms": model.OpdRmsOperand, "param_value": model.ParamValueOperand,
+    "rms_spot": model.SpotGenerator, "rms_wavefront": model.WavefrontGenerator,
+}
+
+#: Operand types that also set an enum attribute: (attribute, value).
+OPERAND_ENUMS: dict[str, tuple[str, Any]] = {
+    "efl": ("quantity", model.FirstOrderQuantity.EFL),
+    "bfl": ("quantity", model.FirstOrderQuantity.BFL),
+    "image_fnumber": ("quantity", model.FirstOrderQuantity.IMAGE_F_NUMBER),
+    "magnification": ("quantity", model.FirstOrderQuantity.MAGNIFICATION),
+    "ray_x": ("coordinate", model.RayCoordinate.X),
+    "ray_y": ("coordinate", model.RayCoordinate.Y),
 }
 
 #: The new read-only classes of raytatouille.model (ADR 0024 point 1).
 READ_ONLY_CLASSES: list[type] = [
     model.Param, model.Pose, model.ShapeStack, model.Surface, model.Element, model.Assembly,
     model.Event, model.Path, model.FieldSet, model.SystemAperture, model.ObjectSpace,
+    model.Optimization,
     *(c for c in VARIANT_CLASSES.values() if c is not model.Assembly),
 ]
 
@@ -133,6 +152,21 @@ def first_instances(system: Any) -> dict[type, Any]:
 
 
 DEFAULTS = first_instances(rt.System.from_json(DEFAULTS_TEXT))
+
+#: One entry of every merit-function class with only its required keys (#162 B). They come from
+#: a copy of the defaults system with this section; only their classes are added to DEFAULTS, so
+#: that System and Optimization keep the defaults without a merit function.
+MERIT_DEFAULTS: dict[str, Any] = {
+    "operands": [{"type": "efl", "path": "p", "target": 0.0},
+                 {"type": "ray_x", "path": "p", "surface": "S0", "target": 0.0},
+                 {"type": "spot_rms", "path": "p", "target": 0.0},
+                 {"type": "opd_rms", "path": "p", "target": 0.0},
+                 {"type": "param_value", "parameter": "X", "target": 0.0}],
+    "generators": [{"type": "rms_spot", "path": "p"}, {"type": "rms_wavefront", "path": "p"}],
+}
+for _cls, _obj in first_instances(rt.System.from_json(json.dumps(
+        {**json.loads(DEFAULTS_TEXT), "optimization": MERIT_DEFAULTS}))).items():
+    DEFAULTS.setdefault(_cls, _obj)
 
 
 def check(expected: Any, actual: Any, where: str) -> None:
@@ -181,6 +215,10 @@ def check(expected: Any, actual: Any, where: str) -> None:
                 covered.add("type")
             else:  # a variant or an assembly
                 assert type(actual) is VARIANT_CLASSES[value], at
+                if value in OPERAND_ENUMS:  # the type also names the quantity or coordinate
+                    attr, member = OPERAND_ENUMS[value]
+                    assert getattr(actual, attr) == member, at
+                    covered.add(attr)
         elif key == "units" and isinstance(actual, rt.System):
             assert value == {"length": "mm", "wavelength": "um"}, at
         elif key == "material" and isinstance(actual, model.Element) and isinstance(value, dict):
@@ -320,6 +358,19 @@ def test_defaults_system_has_no_optional_values() -> None:
     assert DEFAULTS[model.ShapeStack].base == DEFAULTS[model.Plane]
     assert isinstance(DEFAULTS[model.Surface].interaction, model.Fresnel)
     assert DEFAULTS[model.Surface].aperture is None and DEFAULTS[model.Surface].phases == []
+
+
+def test_merit_defaults_have_no_optional_values() -> None:
+    # As above for MERIT_DEFAULTS (#162 B): removing any key of an entry makes the system
+    # unreadable, so each entry carries only required keys and its class the parser's defaults.
+    base = json.loads(DEFAULTS_TEXT)
+    for section in ("operands", "generators"):
+        for i, entry in enumerate(MERIT_DEFAULTS[section]):
+            for key in entry:
+                merit = json.loads(json.dumps(MERIT_DEFAULTS))
+                merit[section][i].pop(key)
+                with pytest.raises(rt.ParseError):
+                    rt.System.from_json(json.dumps({**base, "optimization": merit}))
 
 
 def test_every_variant_class_appears_in_the_reference_systems() -> None:

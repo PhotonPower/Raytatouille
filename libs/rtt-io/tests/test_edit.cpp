@@ -188,8 +188,44 @@ void node_keys(const json& n, const std::string& where) {
 void edit_form_keys(const json& e) {
   has_keys(e,
            {"schema_version", "name", "units", "environment", "object", "wavelengths", "aperture",
-            "fields", "parameters", "root", "paths"},
+            "fields", "parameters", "root", "paths", "optimization"},
            {"configurations"}, "");
+  // The merit function (ADR 0030; #162 part B): both lists always, every value of an entry,
+  // the optional selections only if set.
+  has_keys(e["optimization"], {"operands", "generators"}, {}, "/optimization");
+  const Keys common = {"type", "target", "weight"};
+  const auto with = [&](Keys k) {
+    k.insert(common.begin(), common.end());
+    return k;
+  };
+  const Keys first_order = with({"path"});
+  const std::map<std::string, Keys> operands = {
+      {"efl", first_order},
+      {"bfl", first_order},
+      {"image_fnumber", first_order},
+      {"magnification", first_order},
+      {"ray_x", with({"path", "surface", "field", "px", "py"})},
+      {"ray_y", with({"path", "surface", "field", "px", "py"})},
+      {"spot_rms", with({"path", "field", "polychromatic", "reference", "rings"})},
+      {"opd_rms", with({"path", "field", "grid"})},
+      {"param_value", with({"parameter"})}};
+  for (const json& o : e["optimization"]["operands"]) {
+    REQUIRE(o.contains("type"));
+    const std::string type = o["type"].get<std::string>();
+    REQUIRE(operands.contains(type));
+    has_keys(o, operands.at(type), {"configuration", "wavelength", "occurrence"},
+             "/optimization/operands");
+  }
+  const std::map<std::string, Keys> generators = {
+      {"rms_spot", {"type", "path", "reference", "rings", "arms", "weight"}},
+      {"rms_wavefront", {"type", "path", "rings", "arms", "weight"}}};
+  for (const json& g : e["optimization"]["generators"]) {
+    REQUIRE(g.contains("type"));
+    const std::string type = g["type"].get<std::string>();
+    REQUIRE(generators.contains(type));
+    has_keys(g, generators.at(type), {"configuration", "fields", "wavelengths"},
+             "/optimization/generators");
+  }
   has_keys(e["environment"], {"temperature_c", "pressure_atm", "medium"}, {}, "/environment");
   has_keys(e["object"], {"at_infinity", "distance"}, {}, "/object");
   param(e["object"]["distance"], "/object/distance");

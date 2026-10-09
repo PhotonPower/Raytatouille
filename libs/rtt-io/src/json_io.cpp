@@ -72,6 +72,19 @@ const EnumTable<PoseOrder> kPoseOrders = {
     {"rotate_first", PoseOrder::RotateFirst},
 };
 
+/// Operand types of the paraxial quantities (ADR 0030, point 3).
+const EnumTable<FirstOrderQuantity> kFirstOrderTypes = {
+    {"efl", FirstOrderQuantity::Efl},
+    {"bfl", FirstOrderQuantity::Bfl},
+    {"image_fnumber", FirstOrderQuantity::ImageFNumber},
+    {"magnification", FirstOrderQuantity::Magnification},
+};
+
+const EnumTable<SpotReference> kSpotReferences = {
+    {"centroid", SpotReference::Centroid},
+    {"chief", SpotReference::Chief},
+};
+
 template <class E>
 std::string_view enum_name(E value, const EnumTable<E>& table) {
   for (const auto& [name, v] : table) {
@@ -554,7 +567,8 @@ struct Migration {
 /// - 0.2 -> 0.3 (ADR 0025, 0026): the event kind "diffract" is read as "transmit" (read_path);
 ///   crystals, the optic axis and diffraction efficiencies are new.
 /// - 0.3 -> 0.4 (ADR 0028, 0029): the pickup of a Param is dropped with io.pickup_dropped;
-///   Pose.reference/order, the parameter table, configurations and bounds are new.
+///   Pose.reference/order, the parameter table, configurations, bounds and the merit function
+///   (ADR 0030) are new.
 Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
   const std::string ours(kSchemaVersion);
   const std::string mm = major_minor(version);
@@ -578,8 +592,8 @@ bool param_object(const Json& j) {
 
 /// Files before 0.4 (ADR 0029, point 6): drops every pickup, keeping value and variable, with
 /// the warning io.pickup_dropped at its pointer in the file; a 0.4 form (Pose.reference or
-/// .order, a bound Param or bounds, the parameter table or configurations) is an error, so that
-/// a version is never silently upgraded.
+/// .order, a bound Param or bounds, the parameter table, configurations or the merit function) is
+/// an error, so that a version is never silently upgraded.
 void migrate_0_4(Json& j, const Ctx& c, std::vector<Diagnostic>* warnings, bool top) {
   const auto newer = [](const Ctx& at, std::string_view what) {
     at.fail(std::string(what) + " needs schema_version 0.4 or later");
@@ -592,6 +606,7 @@ void migrate_0_4(Json& j, const Ctx& c, std::vector<Diagnostic>* warnings, bool 
   if (top) {
     if (j.contains("configurations")) newer(c.at("configurations"), "configurations");
     if (j.contains("parameters")) newer(c.at("parameters"), "a parameter table");
+    if (j.contains("optimization")) newer(c.at("optimization"), "a merit function");
   }
   if (param_object(j)) {
     for (const char* key : {"param", "min", "max"}) {
@@ -654,6 +669,175 @@ ParameterRow read_parameter_row(const Json& j, const Ctx& c) {
   return r;
 }
 
+/// Index into the fields or wavelengths of the system: an integer 0 ... 65535 (the range against
+/// the system is validate's, merit.index_out_of_range).
+std::uint16_t read_index(const Json& j, const Ctx& c) {
+  const int v = read_int(j, c);
+  if (v < 0 || v > std::numeric_limits<std::uint16_t>::max()) {
+    c.fail("index " + std::to_string(v) + " out of range (0 ... 65535)");
+  }
+  return static_cast<std::uint16_t>(v);
+}
+
+/// Fields or wavelengths of a generator: a non-empty list of indices (missing means all).
+std::vector<std::uint16_t> read_selection(const Json& j, const Ctx& c) {
+  expect_array(j, c);
+  if (j.empty()) c.fail("a selection is not empty; omit it for all");
+  std::vector<std::uint16_t> out;
+  out.reserve(j.size());
+  for (std::size_t k = 0; k < j.size(); ++k) out.push_back(read_index(j[k], c.at(k)));
+  return out;
+}
+
+std::optional<std::string> read_configuration(const Json& j, const Ctx& c) {
+  if (const Json* v = find(j, "configuration")) return read_string(*v, c.at("configuration"));
+  return std::nullopt;
+}
+
+/// target (required), weight and configuration of an operand (ADR 0030, point 2).
+OperandCommon read_common(const Json& j, const Ctx& c) {
+  OperandCommon o;
+  o.target = read_number(require(j, "target", c), c.at("target"));
+  read_opt(j, "weight", c, o.weight, read_number);
+  o.configuration = read_configuration(j, c);
+  return o;
+}
+
+std::string read_path_name(const Json& j, const Ctx& c) {
+  return read_string(require(j, "path", c), c.at("path"));
+}
+
+/// One operand (ADR 0030, point 3); keys that do not belong to its type are errors.
+Operand read_operand(const Json& j, const Ctx& c) {
+  const std::string type = read_type(j, c);
+  for (const auto& [name, quantity] : kFirstOrderTypes) {
+    if (type != name) continue;
+    expect_object(j, c, {"type", "path", "configuration", "wavelength", "target", "weight"});
+    FirstOrderOperand o;
+    o.common = read_common(j, c);
+    o.quantity = quantity;
+    o.path = read_path_name(j, c);
+    read_opt(j, "wavelength", c, o.wavelength, read_index);
+    return o;
+  }
+  if (type == "ray_x" || type == "ray_y") {
+    expect_object(j, c,
+                  {"type", "path", "configuration", "surface", "occurrence", "field", "px", "py",
+                   "wavelength", "target", "weight"});
+    RayOperand o;
+    o.common = read_common(j, c);
+    o.coordinate = type == "ray_x" ? RayCoordinate::X : RayCoordinate::Y;
+    o.path = read_path_name(j, c);
+    o.surface = SurfaceId(read_string(require(j, "surface", c), c.at("surface")));
+    if (const Json* v = find(j, "occurrence")) {
+      const int n = read_int(*v, c.at("occurrence"));
+      if (n < 0) c.at("occurrence").fail("occurrence is 0-based and not negative");
+      o.occurrence = static_cast<std::uint32_t>(n);
+    }
+    read_opt(j, "field", c, o.field, read_index);
+    read_opt(j, "px", c, o.px, read_number);
+    read_opt(j, "py", c, o.py, read_number);
+    read_opt(j, "wavelength", c, o.wavelength, read_index);
+    return o;
+  }
+  if (type == "spot_rms") {
+    expect_object(j, c,
+                  {"type", "path", "configuration", "field", "wavelength", "polychromatic",
+                   "reference", "rings", "target", "weight"});
+    SpotRmsOperand o;
+    o.common = read_common(j, c);
+    o.path = read_path_name(j, c);
+    read_opt(j, "field", c, o.field, read_index);
+    read_opt(j, "polychromatic", c, o.polychromatic, read_bool);
+    if (o.polychromatic && find(j, "wavelength") != nullptr) {
+      c.at("wavelength").fail("a polychromatic spot uses all wavelengths and has no wavelength");
+    }
+    read_opt(j, "wavelength", c, o.wavelength, read_index);
+    if (const Json* r = find(j, "reference")) {
+      o.reference = read_enum(*r, c.at("reference"), kSpotReferences);
+    }
+    read_opt(j, "rings", c, o.rings, read_int);
+    return o;
+  }
+  if (type == "opd_rms") {
+    expect_object(
+        j, c, {"type", "path", "configuration", "field", "wavelength", "grid", "target", "weight"});
+    OpdRmsOperand o;
+    o.common = read_common(j, c);
+    o.path = read_path_name(j, c);
+    read_opt(j, "field", c, o.field, read_index);
+    read_opt(j, "wavelength", c, o.wavelength, read_index);
+    read_opt(j, "grid", c, o.grid, read_int);
+    return o;
+  }
+  if (type == "param_value") {
+    expect_object(j, c, {"type", "parameter", "configuration", "target", "weight"});
+    ParamValueOperand o;
+    o.common = read_common(j, c);
+    o.parameter = read_string(require(j, "parameter", c), c.at("parameter"));
+    return o;
+  }
+  c.at("type").fail("unknown operand type '" + type +
+                    "', expected efl, bfl, image_fnumber, magnification, ray_x, ray_y, spot_rms, "
+                    "opd_rms or param_value");
+}
+
+/// The keys every generator has (ADR 0030, point 4); no target (always 0).
+template <class G>
+void read_generator_common(const Json& j, const Ctx& c, G& g) {
+  g.path = read_path_name(j, c);
+  g.configuration = read_configuration(j, c);
+  read_opt(j, "fields", c, g.fields, read_selection);
+  read_opt(j, "wavelengths", c, g.wavelengths, read_selection);
+  read_opt(j, "rings", c, g.rings, read_int);
+  read_opt(j, "arms", c, g.arms, read_int);
+  read_opt(j, "weight", c, g.weight, read_number);
+}
+
+Generator read_generator(const Json& j, const Ctx& c) {
+  const std::string type = read_type(j, c);
+  if (type == "rms_spot") {
+    expect_object(j, c,
+                  {"type", "path", "configuration", "fields", "wavelengths", "reference", "rings",
+                   "arms", "weight"});
+    SpotGenerator g;
+    read_generator_common(j, c, g);
+    if (const Json* r = find(j, "reference")) {
+      g.reference = read_enum(*r, c.at("reference"), kSpotReferences);
+    }
+    return g;
+  }
+  if (type == "rms_wavefront") {
+    expect_object(
+        j, c,
+        {"type", "path", "configuration", "fields", "wavelengths", "rings", "arms", "weight"});
+    WavefrontGenerator g;
+    read_generator_common(j, c, g);
+    return g;
+  }
+  c.at("type").fail("unknown generator type '" + type + "', expected rms_spot or rms_wavefront");
+}
+
+/// The section "optimization" (ADR 0030, point 2): both lists optional.
+Optimization read_optimization(const Json& j, const Ctx& c) {
+  expect_object(j, c, {"operands", "generators"});
+  Optimization o;
+  if (const Json* a = find(j, "operands")) {
+    const Ctx oc = c.at("operands");
+    expect_array(*a, oc);
+    for (std::size_t i = 0; i < a->size(); ++i)
+      o.operands.push_back(read_operand((*a)[i], oc.at(i)));
+  }
+  if (const Json* a = find(j, "generators")) {
+    const Ctx gc = c.at("generators");
+    expect_array(*a, gc);
+    for (std::size_t i = 0; i < a->size(); ++i) {
+      o.generators.push_back(read_generator((*a)[i], gc.at(i)));
+    }
+  }
+  return o;
+}
+
 System read_migrated(const Json& j, const Migration& m);
 
 /// `warnings` may be null: the warnings of the migration are dropped.
@@ -672,9 +856,10 @@ System read_system_tree(const Json& j, std::vector<Diagnostic>* warnings) {
 System read_migrated(const Json& j, const Migration& m) {
   const Ctx c;
   const bool before_0_3 = m.before_0_3;
-  expect_object(j, c,
-                {"schema_version", "name", "units", "environment", "object", "wavelengths",
-                 "aperture", "fields", "configurations", "parameters", "root", "paths"});
+  expect_object(
+      j, c,
+      {"schema_version", "name", "units", "environment", "object", "wavelengths", "aperture",
+       "fields", "configurations", "parameters", "root", "paths", "optimization"});
   System s;
   s.schema_version = std::string(kSchemaVersion);
   read_opt(j, "name", c, s.name, read_string);
@@ -783,6 +968,10 @@ System read_migrated(const Json& j, const Migration& m) {
       s.paths.push_back(read_path(a[i], pc.at(i), before_0_3));
     }
   }
+
+  if (const Json* o = find(j, "optimization")) {
+    s.optimization = read_optimization(*o, c.at("optimization"));
+  }
   return s;
 }
 
@@ -793,7 +982,8 @@ System read_migrated(const Json& j, const Migration& m) {
 // object. Optional members without a value (surface aperture, diffraction efficiency, element
 // material, optic axis, bounds) are missing in both. A bound Param is {"param": …} in both, without
 // a value; the edit form writes configurations only if there are any (an empty section is not
-// readable, ADR 0029) and parameters always.
+// readable, ADR 0029) and parameters and the merit function always (both lists, so that a patch
+// can add the first entry). Operands always carry their target (ADR 0030, point 2).
 
 OJson num(double v) {
   if (!std::isfinite(v)) throw std::invalid_argument("cannot write non-finite number to JSON");
@@ -875,6 +1065,8 @@ class Writer {
     OJson paths = OJson::array();
     for (const Path& p : s.paths) paths.push_back(path(p));
     o["paths"] = std::move(paths);
+
+    if (edit_ || !s.optimization.empty()) o["optimization"] = optimization(s.optimization);
     return o;
   }
 
@@ -1126,6 +1318,146 @@ class Writer {
       events.push_back(std::move(eo));
     }
     o["events"] = std::move(events);
+    return o;
+  }
+
+  // ---- merit function (ADR 0030): keys in the order type, path or parameter, configuration,
+  // the keys of the type, target, weight.
+
+  OJson optimization(const Optimization& m) const {
+    OJson o;
+    if (edit_ || !m.operands.empty()) {
+      OJson a = OJson::array();
+      for (const Operand& op : m.operands) {
+        a.push_back(std::visit([this](const auto& x) { return operand(x); }, op));
+      }
+      o["operands"] = std::move(a);
+    }
+    if (edit_ || !m.generators.empty()) {
+      OJson a = OJson::array();
+      for (const Generator& g : m.generators) {
+        a.push_back(std::visit([this](const auto& x) { return generator(x); }, g));
+      }
+      o["generators"] = std::move(a);
+    }
+    return o;
+  }
+
+  static void put_configuration(OJson& o, const std::optional<std::string>& configuration) {
+    if (configuration) o["configuration"] = *configuration;
+  }
+
+  void put_target_weight(OJson& o, const OperandCommon& c) const {
+    o["target"] = num(c.target);
+    if (edit_ || c.weight != OperandCommon{}.weight) o["weight"] = num(c.weight);
+  }
+
+  static void put_index(OJson& o, const char* key, const std::optional<std::uint16_t>& index) {
+    if (index) o[key] = *index;
+  }
+
+  static OJson selection(const std::vector<std::uint16_t>& list) {
+    OJson a = OJson::array();
+    for (const std::uint16_t k : list) a.push_back(k);
+    return a;
+  }
+
+  OJson operand(const FirstOrderOperand& op) const {
+    OJson o;
+    o["type"] = std::string(enum_name(op.quantity, kFirstOrderTypes));
+    o["path"] = op.path;
+    put_configuration(o, op.common.configuration);
+    put_index(o, "wavelength", op.wavelength);
+    put_target_weight(o, op.common);
+    return o;
+  }
+
+  OJson operand(const RayOperand& op) const {
+    const RayOperand d;
+    OJson o;
+    o["type"] = op.coordinate == RayCoordinate::X ? "ray_x" : "ray_y";
+    o["path"] = op.path;
+    put_configuration(o, op.common.configuration);
+    o["surface"] = op.surface.str();
+    if (op.occurrence) o["occurrence"] = *op.occurrence;
+    if (edit_ || op.field != d.field) o["field"] = op.field;
+    if (edit_ || op.px != d.px) o["px"] = num(op.px);
+    if (edit_ || op.py != d.py) o["py"] = num(op.py);
+    put_index(o, "wavelength", op.wavelength);
+    put_target_weight(o, op.common);
+    return o;
+  }
+
+  OJson operand(const SpotRmsOperand& op) const {
+    const SpotRmsOperand d;
+    OJson o;
+    o["type"] = "spot_rms";
+    o["path"] = op.path;
+    put_configuration(o, op.common.configuration);
+    if (edit_ || op.field != d.field) o["field"] = op.field;
+    put_index(o, "wavelength", op.wavelength);
+    if (edit_ || op.polychromatic != d.polychromatic) o["polychromatic"] = op.polychromatic;
+    if (edit_ || op.reference != d.reference) {
+      o["reference"] = std::string(enum_name(op.reference, kSpotReferences));
+    }
+    if (edit_ || op.rings != d.rings) o["rings"] = op.rings;
+    put_target_weight(o, op.common);
+    return o;
+  }
+
+  OJson operand(const OpdRmsOperand& op) const {
+    const OpdRmsOperand d;
+    OJson o;
+    o["type"] = "opd_rms";
+    o["path"] = op.path;
+    put_configuration(o, op.common.configuration);
+    if (edit_ || op.field != d.field) o["field"] = op.field;
+    put_index(o, "wavelength", op.wavelength);
+    if (edit_ || op.grid != d.grid) o["grid"] = op.grid;
+    put_target_weight(o, op.common);
+    return o;
+  }
+
+  OJson operand(const ParamValueOperand& op) const {
+    OJson o;
+    o["type"] = "param_value";
+    o["parameter"] = op.parameter;
+    put_configuration(o, op.common.configuration);
+    put_target_weight(o, op.common);
+    return o;
+  }
+
+  template <class G>
+  void put_generator_sampling(OJson& o, const G& g) const {
+    const G d;
+    if (edit_ || g.rings != d.rings) o["rings"] = g.rings;
+    if (edit_ || g.arms != d.arms) o["arms"] = g.arms;
+    if (edit_ || g.weight != d.weight) o["weight"] = num(g.weight);
+  }
+
+  template <class G>
+  static void put_generator_head(OJson& o, const char* type, const G& g) {
+    o["type"] = type;
+    o["path"] = g.path;
+    put_configuration(o, g.configuration);
+    if (g.fields) o["fields"] = selection(*g.fields);
+    if (g.wavelengths) o["wavelengths"] = selection(*g.wavelengths);
+  }
+
+  OJson generator(const SpotGenerator& g) const {
+    OJson o;
+    put_generator_head(o, "rms_spot", g);
+    if (edit_ || g.reference != SpotGenerator{}.reference) {
+      o["reference"] = std::string(enum_name(g.reference, kSpotReferences));
+    }
+    put_generator_sampling(o, g);
+    return o;
+  }
+
+  OJson generator(const WavefrontGenerator& g) const {
+    OJson o;
+    put_generator_head(o, "rms_wavefront", g);
+    put_generator_sampling(o, g);
     return o;
   }
 

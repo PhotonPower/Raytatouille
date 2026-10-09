@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "rtt/model/element.hpp"
+#include "rtt/model/optimization.hpp"
 #include "rtt/model/param.hpp"
 #include "rtt/model/path.hpp"
 
@@ -20,7 +21,7 @@ namespace rtt::model {
 /// and migrates them (0.2: per-segment materials of Lens and Plate, ADR 0017; 0.3: orders at
 /// every event without "diffract", diffraction efficiency, crystals and optic axis, ADR
 /// 0025/0026; 0.4: Pose.reference and Pose.order, ADR 0028; parameter table, configurations and
-/// bounds, pickup dropped, ADR 0029).
+/// bounds, pickup dropped, ADR 0029; merit function, ADR 0030).
 inline constexpr std::string_view kSchemaVersion = "0.4.0";
 
 struct Wavelength {
@@ -125,6 +126,8 @@ struct System {
   std::vector<Configuration> configurations;
   /// Parameter table in file order (ADR 0029); a row may only use rows before it.
   std::vector<ParameterRow> parameters;
+  /// Merit function (ADR 0030, section "optimization"); empty: none.
+  Optimization optimization;
   bool operator==(const System&) const = default;
 };
 

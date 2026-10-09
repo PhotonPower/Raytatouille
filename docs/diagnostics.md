@@ -81,6 +81,16 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `io.pickup_dropped` | Warnung | `pickup` eines Params aus einer Datei vor Schema 0.4 beim Lesen verworfen, der Wert bleibt (ADR 0029, Punkt 6); der Text steht in der Meldung | io | `…/pickup` in der gelesenen Datei |
 | `material.unknown` | Fehler | Materialreferenz nicht auflösbar | compile | `/environment/medium`, `…/el/material`, `…/el/material/i`, `…/el/material/ordinary`, `…/el/material/extraordinary` |
 | `material.wavelength_out_of_range` | Fehler | Systemwellenlänge außerhalb des Bereichs eines Materials auf einem Pfad | compile | `/environment/medium`, `…/el/material`, `…/el/material/i` |
+| `merit.index_out_of_range` | Fehler | Feld- oder Wellenlängenindex der Merit-Funktion außerhalb des Systems | validate | `…/field`, `…/wavelength`, `…/fields/k`, `…/wavelengths/k` |
+| `merit.polychromatic_wavelength` | Fehler | polychromatischer `spot_rms` mit `wavelength` (in einer Datei ein Lesefehler) | validate | `…/wavelength` |
+| `merit.sampling_invalid` | Fehler | `rings`, `arms` oder `grid` < 1 | validate | `…/rings`, `…/arms`, `…/grid` |
+| `merit.selection_empty` | Fehler | leere Liste `fields` oder `wavelengths` eines Generators (in einer Datei ein Lesefehler) | validate | `…/fields`, `…/wavelengths` |
+| `merit.surface_ambiguous` | Fehler | `ray_x`/`ray_y` an einer Fläche, die der Pfad mehrmals trifft, ohne `occurrence` | validate | `…/surface` |
+| `merit.surface_not_on_path` | Fehler | `ray_x`/`ray_y` an einer Fläche, die der Pfad nicht trifft, oder `occurrence` zu groß | validate | `…/surface`, `…/occurrence` |
+| `merit.unknown_configuration` | Fehler | Merit-Funktion nennt eine unbekannte Konfiguration | validate | `…/configuration` |
+| `merit.unknown_parameter` | Fehler | `param_value` nennt eine unbekannte Zeile der Parametertabelle | validate | `…/parameter` |
+| `merit.unknown_path` | Fehler | Merit-Funktion nennt einen unbekannten Pfad | validate | `…/path` |
+| `merit.weight_invalid` | Fehler | Gewicht der Merit-Funktion nicht endlich oder < 0 | validate | `…/weight` |
 | `node.name_duplicate` | Fehler | Name einer Baugruppe oder eines Elements doppelt | validate | `…/name` |
 | `node.name_empty` | Fehler | leerer Name einer Baugruppe oder eines Elements | validate | `…/name` |
 | `object.distance_invalid` | Fehler | endlicher Objektabstand nicht endlich oder ≤ 0 mm | validate | `/object/distance` |
@@ -127,7 +137,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `surface_aperture.inner_radius_invalid` | Fehler | Innenradius nicht endlich, < 0 oder ≥ Radius | validate | `…/s/aperture/inner_radius` |
 | `surface_aperture.radius_invalid` | Fehler | Radius der Kreisapertur nicht endlich oder ≤ 0 mm | validate | `…/s/aperture/radius` |
 | `surface_aperture.semi_axis_invalid` | Fehler | Halbachse der elliptischen Apertur nicht endlich oder ≤ 0 mm | validate | `…/s/aperture` |
-| `value.not_finite` | Fehler | Zahl des Modells ohne eigene Prüfung nicht endlich (Param-Werte, Grenzen, Pivot, `orientation_deg`, Werte der Parametertabelle; nur über die API, JSON kennt keine nicht endlichen Zahlen) | validate | Pointer der Zahl, bei einem Param `…/value` |
+| `value.not_finite` | Fehler | Zahl des Modells ohne eigene Prüfung nicht endlich (Param-Werte, Grenzen, Pivot, `orientation_deg`, Werte der Parametertabelle, `target`, `px` und `py` der Merit-Funktion; nur über die API, JSON kennt keine nicht endlichen Zahlen) | validate | Pointer der Zahl, bei einem Param `…/value` |
 | `wavelengths.empty` | Fehler | keine Wellenlänge | validate | `/wavelengths` |
 | `wavelengths.reference_count` | Fehler | nicht genau eine Referenzwellenlänge | validate | `/wavelengths` |
 | `wavelengths.too_many` | Fehler | mehr als 65535 Wellenlängen | compile | `/wavelengths` |

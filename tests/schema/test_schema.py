@@ -243,3 +243,74 @@ def test_0_4_forms_are_accepted(mutate):
 )
 def test_0_4_errors_are_rejected(mutate):
     assert not VALIDATOR.is_valid(_with(mutate))
+
+
+# ---- schema 0.4 (#162 part B): the merit function (ADR 0030) ----
+
+def _ops(d):
+    return d["optimization"]["operands"]
+
+
+def _gens(d):
+    return d["optimization"]["generators"]
+
+
+def test_tour_has_every_operand_and_generator_type():
+    doc = _tour()
+    assert {o["type"] for o in _ops(doc)} == {
+        "efl", "bfl", "image_fnumber", "magnification", "ray_x", "ray_y", "spot_rms", "opd_rms",
+        "param_value"}
+    assert {g["type"] for g in _gens(doc)} == {"rms_spot", "rms_wavefront"}
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda d: d.pop("optimization"),
+        lambda d: d["optimization"].pop("generators"),
+        lambda d: d["optimization"].pop("operands"),
+        lambda d: _ops(d).append({"type": "ray_y", "path": "p", "surface": "S", "target": 1.0,
+                                  "weight": 0.0, "px": -2.5, "occurrence": 0}),
+        lambda d: _ops(d).append({"type": "spot_rms", "path": "p", "wavelength": 1,
+                                  "reference": "centroid", "target": 0.0}),
+        lambda d: _gens(d).append({"type": "rms_wavefront", "path": "p", "wavelengths": [1, 0]}),
+    ],
+    ids=["no-section", "no-generators", "no-operands", "ray-all-keys", "spot-wavelength",
+         "wavefront-selection"],
+)
+def test_merit_function_forms_are_accepted(mutate):
+    VALIDATOR.validate(_with(mutate))
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda d: _ops(d).append({"type": "focus", "path": "p", "target": 0.0}),
+        lambda d: _ops(d).append({"type": "efl", "path": "p"}),
+        lambda d: _ops(d).append({"type": "efl", "target": 0.0}),
+        lambda d: _ops(d).append({"type": "efl", "path": "p", "target": 0.0, "grid": 3}),
+        lambda d: _ops(d).append({"type": "param_value", "parameter": "X", "path": "p",
+                                  "target": 0.0}),
+        lambda d: _ops(d).append({"type": "spot_rms", "path": "p", "polychromatic": True,
+                                  "wavelength": 0, "target": 0.0}),
+        lambda d: _ops(d).append({"type": "ray_x", "path": "p", "target": 0.0}),
+        lambda d: _ops(d).append({"type": "opd_rms", "path": "p", "field": -1, "target": 0.0}),
+        lambda d: _ops(d).append({"type": "opd_rms", "path": "p", "field": 65536,
+                                  "target": 0.0}),
+        lambda d: _ops(d).append({"type": "opd_rms", "path": "p", "grid": 1.5, "target": 0.0}),
+        lambda d: _ops(d).append({"type": "spot_rms", "path": "p", "reference": "best",
+                                  "target": 0.0}),
+        lambda d: _gens(d).append({"type": "rms_spot", "path": "p", "target": 0.0}),
+        lambda d: _gens(d).append({"type": "rms_wavefront", "path": "p", "reference": "chief"}),
+        lambda d: _gens(d).append({"type": "rms_spot", "path": "p", "fields": []}),
+        lambda d: _gens(d).append({"type": "rms_spot"}),
+        lambda d: d["optimization"].update(extra=[]),
+    ],
+    ids=["unknown-type", "operand-without-target", "operand-without-path", "foreign-key",
+         "param-value-with-path", "polychromatic-with-wavelength", "ray-without-surface",
+         "negative-index", "index-too-large", "grid-not-integer", "reference-value",
+         "generator-with-target", "wavefront-with-reference", "empty-selection",
+         "generator-without-path", "section-unknown-key"],
+)
+def test_merit_function_errors_are_rejected(mutate):
+    assert not VALIDATOR.is_valid(_with(mutate))
