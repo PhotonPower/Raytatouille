@@ -179,8 +179,8 @@ void bind_optim(nb::module_& m) {
           "variables", [](const Merit& f) { return f.get().variables(); },
           "The variables, in the order of ADR 0030, point 5.")
       .def(
-          "start", [](const Merit& f) { return doubles(f.get().start()); },
-          nb::rv_policy::reference, "Start values of the variables (read-only copy).")
+          "start", [](const Merit& f) { return f.get().start(); },
+          "Start values of the variables as a list, the input of evaluate().")
       .def_prop_ro(
           "size", [](const Merit& f) { return f.get().size(); },
           "Number of residuals: one per operand, then generator_sizes.")
