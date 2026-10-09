@@ -7,6 +7,7 @@
 
 #include "rtt/geom/phase.hpp"
 #include "rtt/math/units.hpp"
+#include "rtt/polar/birefringence.hpp"
 #include "rtt/polar/ideal.hpp"
 #include "rtt/polar/interface.hpp"
 
@@ -156,6 +157,128 @@ double order_efficiency(const compile::CompiledSurface& surface, int order) noex
   return 0.0;
 }
 
+/// Scales the weight of `out` after its P became p_event * P (ADR 0021): weight = s ||P_T||^2 / 2,
+/// so the event multiplies ||P_T||^2 by new / old and s stays; the efficiency of a diffraction
+/// order is a polarization-independent factor of s (ADR 0025, point 5). `out.dir` is the new
+/// direction.
+void apply_prt(RayState& out,
+               const RayState& ray,
+               const math::CMat3& p_event,
+               const compile::CompiledSurface& surface,
+               int order) noexcept {
+  const double before = transverse_norm2(ray.prt, ray.dir);
+  out.prt = p_event * ray.prt;
+  if (before > 0.0) {
+    out.weight *= transverse_norm2(out.prt, out.dir) / before;
+  }
+  if (surface.diffraction_efficiency) {
+    out.weight *= order_efficiency(surface, order);
+  }
+}
+
+/// Entry into, exit from or passage through a surface of a uniaxial crystal (ADR 0026, points 3
+/// to 5), for events where `media` has crystal data on either side. `ray` is the incoming ray
+/// (reading rule applied), `out` the ray moved to the hit point. The modes are solved in the
+/// local coordinates of the surface, where incident_tangential and order_momentum live; P and
+/// the eigenpolarizations are built from the global vectors.
+RayState crystal_event(const RayState& ray,
+                       RayState out,
+                       const compile::CompiledSurface& surface,
+                       const SurfaceHit& hit,
+                       model::EventKind kind,
+                       int order,
+                       const EventMedia& media) noexcept {
+  using model::EventKind;
+  const auto stop = [&out](RayStatus status) {
+    out.status = status;
+    return out;
+  };
+  // Interactions at crystal surfaces in M4 (point 5): Fresnel and IdealAntiReflection, both as
+  // the projection without reflection loss; compile rejects the others
+  // (crystal.interaction_unsupported).
+  if (!std::holds_alternative<model::Fresnel>(surface.interaction) &&
+      !std::holds_alternative<model::IdealAntiReflection>(surface.interaction)) {
+    return stop(RayStatus::EventImpossible);
+  }
+  if (kind == EventKind::Transmit) {
+    // Inside the crystal with order 0 (point 4): mode, wave, dir and P stay (dummy passage); the
+    // efficiency of order 0 applies as at any surface (ADR 0025, point 5).
+    if (!media.crystal_before || !media.crystal_after || order != 0) {
+      return stop(RayStatus::EventImpossible);
+    }
+    if (surface.diffraction_efficiency) out.weight *= order_efficiency(surface, 0);
+    return out;
+  }
+  const bool entry = (kind == EventKind::Ordinary || kind == EventKind::Extraordinary) &&
+                     !media.crystal_before && media.crystal_after;
+  const bool exit = kind == EventKind::Refract && media.crystal_before && !media.crystal_after &&
+                    media.crystal_mode != compile::CrystalMode::None && ray.mode_index > 0.0;
+  if (!entry && !exit) return stop(RayStatus::EventImpossible);
+  if (order != 0 && (!(media.wavelength_um > 0.0) || surface.phase_functions.empty())) {
+    return stop(RayStatus::EventImpossible);
+  }
+
+  // Tangential phase matching (Lam, Eq. (2.11)) with the term of the order (ADR 0025, point 2);
+  // the normal is oriented into the medium after the event, which the energy direction S enters.
+  const math::Vec3 normal_after =
+      hit.direction.dot(hit.normal) >= 0.0 ? hit.normal : math::Vec3(-hit.normal);
+  const math::Vec3 tau_zero = incident_tangential(ray, surface, hit, media.before.real());
+  const math::Vec3 tau =
+      order == 0 ? tau_zero : tau_zero + order_momentum(surface, hit, order, media.wavelength_um);
+
+  // No real solution: Tir for order 0, Evanescent for an order whose order 0 exists (ADR 0026,
+  // point 4; ADR 0025, point 7).
+  math::CMat3 p_event;
+  if (entry) {
+    const CrystalSide& c = *media.crystal_after;
+    const polar::Mode mode =
+        kind == EventKind::Ordinary ? polar::Mode::Ordinary : polar::Mode::Extraordinary;
+    const math::Vec3 axis = surface.to_local.apply_vector(c.axis);
+    const auto solve = [&](const math::Vec3& t) {
+      return polar::uniaxial_mode<double>(mode, t, normal_after, c.n_ordinary, c.n_extraordinary,
+                                          axis);
+    };
+    std::optional<polar::ModeSolution<double>> m = solve(tau_zero);
+    if (!m) return stop(RayStatus::Tir);
+    if (order != 0) {
+      m = solve(tau);
+      if (!m) return stop(RayStatus::Evanescent);
+    }
+    // Global vectors; E from the global axis, so that the degenerate case follows the global
+    // axis rule of prt.hpp (point 5).
+    polar::ModeSolution<double> g;
+    g.k = surface.to_global.apply_vector(m->k);
+    g.s = surface.to_global.apply_vector(m->s);
+    g.n = m->n;
+    g.e = polar::eigen_polarization<double>(mode, g.k, g.s, c.axis);
+    p_event = polar::prt_crystal_entry<double>(ray.dir, g);
+    out.dir = g.s;
+    out.wave = g.k;
+    out.mode_index = g.n;
+  } else {
+    const CrystalSide& c = *media.crystal_before;
+    const double n_out = media.after.real();
+    if (!polar::isotropic_from_tangential<double>(tau_zero, normal_after, n_out)) {
+      return stop(RayStatus::Tir);
+    }
+    const std::optional<math::Vec3> t =
+        polar::isotropic_from_tangential<double>(tau, normal_after, n_out);
+    if (!t) return stop(RayStatus::Evanescent);
+    const polar::Mode mode = media.crystal_mode == compile::CrystalMode::Ordinary
+                                 ? polar::Mode::Ordinary
+                                 : polar::Mode::Extraordinary;
+    const math::Vec3 e_m = polar::eigen_polarization<double>(mode, ray.wave, ray.dir, c.axis);
+    out.dir = surface.to_global.apply_vector(*t);
+    p_event = polar::prt_crystal_exit<double>(ray.dir, e_m, out.dir);
+    out.wave = out.dir;
+    out.mode_index = 0.0;
+  }
+  if (!p_event.allFinite()) return stop(RayStatus::EventImpossible);
+  out.opl += order_opl(surface, hit, order, media.wavelength_um);
+  apply_prt(out, ray, p_event, surface, order);
+  return out;
+}
+
 }  // namespace
 
 std::optional<math::Vec3> refract(const math::Vec3& d,
@@ -207,10 +330,16 @@ RayState move_to_hit(const RayState& ray,
                      const SurfaceHit& hit,
                      std::uint32_t surface_index,
                      const EventMedia& media) noexcept {
-  // t is the geometric path in mm because |dir| = 1; OPL = Re(n) * path.
+  // t is the geometric path in mm because |dir| = 1; OPL = Re(n) * path. In a crystal (mode
+  // index > 0) the path runs along S = dir and the phase along k = wave: OPL = n l (k . S)
+  // (Lam, Eq. (2.17), Fig. 2.13; ADR 0026, point 3). Isotropic media keep the first form.
   RayState out = ray;
   out.pos = surface.to_global.apply_point(hit.point);
-  out.opl += media.before.real() * hit.t;
+  if (ray.mode_index > 0.0) {
+    out.opl += ray.mode_index * hit.t * ray.wave.dot(ray.dir);
+  } else {
+    out.opl += media.before.real() * hit.t;
+  }
   out.last_surface = surface_index;
   // Byrnes, arXiv:1603.02720v5, Eqs. (1), (2): E ~ exp(i 2 pi n z / lambda_vac), so |E|^2, the
   // power by Eqs. (17), (18), decays as exp(-4 pi kappa z / lambda_vac); lambda in mm like t.
@@ -234,12 +363,17 @@ RayState move_to_hit(const RayState& ray,
   return move_to_hit(ray, surface, hit, surface_index, media);
 }
 
-math::Vec3 incident_tangential(const RayState& /*ray*/,
-                               const compile::CompiledSurface& /*surface*/,
+math::Vec3 incident_tangential(const RayState& ray,
+                               const compile::CompiledSurface& surface,
                                const SurfaceHit& hit,
                                double n_before) noexcept {
-  const math::Vec3& d = hit.direction;
   const math::Vec3& n = hit.normal;
+  if (ray.mode_index > 0.0) {
+    // In a crystal the phase follows k: n k with n the mode index (ADR 0026, point 3).
+    const math::Vec3 k = ray.mode_index * surface.to_local.apply_vector(ray.wave);
+    return k - n * n.dot(k);
+  }
+  const math::Vec3& d = hit.direction;
   return n_before * (d - n * n.dot(d));
 }
 
@@ -309,7 +443,7 @@ math::Mat3 rotation_between(const math::Vec3& a, const math::Vec3& b) noexcept {
   return r;
 }
 
-RayState apply_event(const RayState& ray,
+RayState apply_event(const RayState& incoming,
                      const compile::CompiledSurface& surface,
                      const SurfaceHit& hit,
                      std::uint32_t surface_index,
@@ -318,8 +452,14 @@ RayState apply_event(const RayState& ray,
                      const EventMedia& media) noexcept {
   const double n_before = media.before.real();
   const double n_after = media.after.real();
-  if (ray.status != RayStatus::Alive) {
-    return ray;
+  if (incoming.status != RayStatus::Alive) {
+    return incoming;
+  }
+  // Reading rule (ADR 0026, point 3): wave and mode_index count only for mode_index > 0.
+  RayState ray = incoming;
+  if (!(ray.mode_index > 0.0)) {
+    ray.wave = ray.dir;
+    ray.mode_index = 0.0;
   }
   RayState out = ray;
   switch (hit.status) {
@@ -337,6 +477,9 @@ RayState apply_event(const RayState& ray,
     out.status = RayStatus::Absorbed;
     out.weight = 0.0;
     return out;
+  }
+  if (media.crystal_before || media.crystal_after) {
+    return crystal_event(ray, out, surface, hit, kind, order, media);
   }
 
   math::Vec3 local_dir = hit.direction;
@@ -357,7 +500,7 @@ RayState apply_event(const RayState& ray,
       break;
     case model::EventKind::Ordinary:
     case model::EventKind::Extraordinary:
-      out.status = RayStatus::EventImpossible;  // M4
+      out.status = RayStatus::EventImpossible;  // no crystal after the event
       return out;
   }
 
@@ -400,17 +543,11 @@ RayState apply_event(const RayState& ray,
     k_out = surface.to_global.apply_vector(local_order);
     p_event = rotation_between(k_zero, k_out).cast<math::Complex>() * p_event;
   }
-  // weight = s ||P_T||^2 / 2 (ADR 0021): the event multiplies ||P_T||^2 by new / old, s stays;
-  // the efficiency of the order is a polarization-independent factor of s (ADR 0025, point 5).
-  const double before = transverse_norm2(ray.prt, ray.dir);
-  out.prt = p_event * ray.prt;
-  if (before > 0.0) {
-    out.weight *= transverse_norm2(out.prt, k_out) / before;
-  }
-  if (surface.diffraction_efficiency) {
-    out.weight *= order_efficiency(surface, order);
-  }
   out.dir = k_out;
+  apply_prt(out, ray, p_event, surface, order);
+  // Isotropic on both sides: no mode, wave = dir (ADR 0026, point 3).
+  out.wave = out.dir;
+  out.mode_index = 0.0;
   return out;
 }
 

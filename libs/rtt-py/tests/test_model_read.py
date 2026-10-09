@@ -163,6 +163,14 @@ def check(expected: Any, actual: Any, where: str) -> None:
                 assert type(actual) is VARIANT_CLASSES[value], at
         elif key == "units" and isinstance(actual, rt.System):
             assert value == {"length": "mm", "wavelength": "um"}, at
+        elif key == "material" and isinstance(actual, model.Element) and isinstance(value, dict):
+            # A uniaxial crystal (ADR 0026): {"ordinary": ..., "extraordinary": ...}.
+            crystal = actual.crystal
+            assert crystal is not None, at
+            assert (crystal.ordinary, crystal.extraordinary) == (value["ordinary"],
+                                                                 value["extraordinary"]), at
+            assert (actual.material, actual.segment_materials) == (None, []), at
+            covered |= {"material", "segment_materials", "crystal"}
         elif key == "material" and isinstance(actual, model.Element):
             if isinstance(value, str):
                 assert (actual.material, actual.segment_materials) == (value, []), at

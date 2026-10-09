@@ -38,6 +38,20 @@ struct RayState {
   /// Power for an unpolarized source (source normalised to 1): weight = s ||P_T||^2 / 2 with
   /// P_T = P - k k_0^T and s the polarization-independent factors (ADR 0021).
   double weight = 1.0;
+  /// Unit wave normal k (ADR 0026, point 3), global. `dir` is the energy direction S; in an
+  /// isotropic medium wave = dir. Counts only for mode_index > 0 (reading rule).
+  math::Vec3 wave = math::Vec3::UnitZ();
+  /// Index n of the current crystal mode along `wave`, real, > 0 inside a crystal; 0 in an
+  /// isotropic medium ("no mode"). With 0 every event reads `dir` (ADR 0026, point 3).
+  double mode_index = 0.0;
+};
+
+/// Data of a uniaxial crystal on one side of an event at the event's wavelength (ADR 0026,
+/// point 3).
+struct CrystalSide {
+  double n_ordinary = 1.0;                ///< ordinary principal index n_O, real, > 0
+  double n_extraordinary = 1.0;           ///< extraordinary principal index n_E, real, > 0
+  math::Vec3 axis = math::Vec3::UnitZ();  ///< optic axis, global unit vector, sign without meaning
 };
 
 /// Physical inputs of one event, independent of the path (ADR 0021; the sequential tracer
@@ -56,6 +70,14 @@ struct EventMedia {
   /// the other side (the caller reverses the stack for light from the substrate, ADR 0019).
   /// Empty if the surface has no coating.
   std::span<const coating::Layer<double>> layers;
+  /// The crystal the ray is in before the event (exit, or a transmit inside the crystal); none
+  /// for an isotropic medium (ADR 0026, point 3).
+  std::optional<CrystalSide> crystal_before;
+  /// The crystal after the event (entry with Ordinary or Extraordinary); none for an isotropic
+  /// medium.
+  std::optional<CrystalSide> crystal_after;
+  /// Mode of the ray in `crystal_before` (CompiledEvent::crystal_mode); None without it.
+  compile::CrystalMode crystal_mode = compile::CrystalMode::None;
 };
 
 /// Hit of a ray on a surface, in the local coordinates of the surface.
@@ -97,8 +119,9 @@ struct SurfaceHit {
 // coordinates of the surface; momenta in units of the vacuum wave number (n t, dimensionless).
 
 /// Tangential momentum n t_par = n_before (d - (d . N) N) of the incident ray at the hit, with
-/// d = hit.direction and N = hit.normal. `ray` and `surface` are part of the interface for
-/// crystals (#132, ADR 0026: there the wave normal times the mode index replaces n d).
+/// d = hit.direction and N = hit.normal. Inside a crystal (ray.mode_index > 0) the mode index
+/// times the wave normal replaces n d: n k_par with k = ray.wave in the local coordinates of
+/// `surface` (ADR 0026, point 3; Lam, Eq. (2.11)); n_before is then not used.
 [[nodiscard]] math::Vec3 incident_tangential(const RayState& ray,
                                              const compile::CompiledSurface& surface,
                                              const SurfaceHit& hit,
@@ -164,7 +187,8 @@ inline constexpr double kApertureTolerance = 1e-9;
 [[nodiscard]] bool inside_aperture(const compile::CompiledSurface& surface,
                                    const SurfaceHit& hit) noexcept;
 
-/// Moves the ray to the hit point: position (global), OPL += Re(n_before) t, last_surface, and
+/// Moves the ray to the hit point: position (global), OPL += Re(n_before) t (inside a crystal,
+/// mode_index > 0: OPL += mode_index t (wave . dir), Lam, Eq. (2.17), ADR 0026), last_surface, and
 /// volume absorption weight *= exp(-4 pi kappa t / lambda_vac) with kappa = Im(n_before), t the
 /// geometric path in mm and lambda_vac in mm (Byrnes, arXiv:1603.02720v5, Eqs. (1), (2):
 /// E ~ exp(i k.r) with |k| = 2 pi n / lambda_vac, and power ~ |E|^2 by Eqs. (17), (18); kappa is
@@ -190,10 +214,26 @@ inline constexpr double kApertureTolerance = 1e-9;
 /// A ray that is not Alive is returned unchanged; a hit with status Missed or NoConvergence
 /// gives that status and leaves the ray unchanged. Otherwise the ray moves to the hit point
 /// (move_to_hit, with volume absorption) and then: Absorber interaction -> Absorbed with
-/// weight 0; Ordinary, Extraordinary -> EventImpossible (M4); Refract -> refracted
-/// direction (Snell with Re(n)) or Tir beyond the critical angle; Reflect -> reflected direction;
-/// Transmit -> unchanged direction. A stopped ray stays at the hit point with last_surface =
-/// surface_index. The aperture is not checked here.
+/// weight 0; Refract -> refracted direction (Snell with Re(n)) or Tir beyond the critical angle;
+/// Reflect -> reflected direction; Transmit -> unchanged direction. A stopped ray stays at the
+/// hit point with last_surface = surface_index. The aperture is not checked here. After an event
+/// into an isotropic medium wave = dir and mode_index = 0.
+///
+/// Reading rule (ADR 0026, point 3): `ray.wave` and `ray.mode_index` count only for
+/// mode_index > 0; otherwise the event reads `dir` (wave := dir).
+///
+/// Uniaxial crystals (ADR 0026, points 3 to 5), when `media` has crystal data on either side; only
+/// at Fresnel and IdealAntiReflection surfaces (otherwise EventImpossible):
+/// - Entry, Ordinary or Extraordinary with `crystal_after` and no `crystal_before`: the mode from
+///   rtt::polar::uniaxial_mode() with incident_tangential (+ order_momentum); dir = S, wave = k,
+///   mode_index = n of the mode; P = prt_crystal_entry (projection model, no reflection loss).
+/// - Exit, Refract with `crystal_before` (mode `crystal_mode`) and no `crystal_after`: direction
+///   from rtt::polar::isotropic_from_tangential() with mode_index * wave as tangential momentum
+///   (+ order_momentum); P = prt_crystal_exit with the eigenpolarization of the mode.
+/// - Transmit inside the crystal with order 0: dir, wave, mode and P stay.
+/// - No real solution: Tir for order 0, Evanescent for an order m != 0 whose order 0 exists.
+///   The OPL grows by order_opl; weight as below. Any other event with crystal data, and
+///   Ordinary or Extraordinary without `crystal_after`, gives EventImpossible.
 ///
 /// Interactions (ADR 0021), P_event power-normalised (rtt/polar/interface.hpp), P = P_event P,
 /// weight scaled by ||P_T,new||^2 / ||P_T,old||^2 with ||P_T||^2 = ||P||_F^2 - 1:
