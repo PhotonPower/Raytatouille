@@ -91,6 +91,19 @@ TEST_CASE("bounds: the round trip p -> theta -> p is exact to a few ulp", "[opti
   }
 }
 
+TEST_CASE("bounds: one-sided transformations do not overflow for huge theta", "[optim][bounds]") {
+  // theta^2 and d (d + 2) would overflow beyond about 1e154; p - a = |theta| (1 + O(1/theta)).
+  const Bounds lower{1.0, std::nullopt};
+  const Bounds upper{std::nullopt, 1.0};
+  for (const double t : {1e154, 1e200, 1e300}) {
+    INFO("theta = " << t);
+    CHECK(std::isfinite(to_external(t, lower)));
+    CHECK(ulps(to_external(t, lower), t) < 4.0);
+    CHECK(ulps(to_external(-t, upper), -t) < 4.0);
+    CHECK(ulps(to_internal(t, lower), t) < 4.0);
+  }
+}
+
 TEST_CASE("bounds: at_bound uses the thresholds of ADR 0030", "[optim][bounds]") {
   const Bounds both{0.0, 10.0};  // 1e-6 (b - a) = 1e-5
   CHECK(at_bound(0.0, both));

@@ -265,7 +265,11 @@ Run::JacobianOutcome Run::jacobian() {
     }
   }
   if (skipped) {
-    if (interrupted(monitor) || interrupted(optimize_)) return JacobianOutcome::Cancelled;
+    // Both monitors are finished, so an exception of the progress callback in either stage
+    // propagates even when a cancellation was requested at the same time.
+    const bool stage_cancelled = interrupted(monitor);
+    const bool run_cancelled = interrupted(optimize_);
+    if (stage_cancelled || run_cancelled) return JacobianOutcome::Cancelled;
   } else {
     try {
       monitor.finish();  // the final report of the stage
@@ -350,6 +354,11 @@ LmResult Run::run() {
     throw std::invalid_argument("levenberg_marquardt: residuals invalid at the start point");
   }
   merit_ = half_square(f_);
+  // f = 0 already: g = J^T f = 0 for every J, so the gradient test holds without differences
+  // (ADR 0030, point 9).
+  if (std::all_of(f_.begin(), f_.end(), [](double v) { return v == 0.0; })) {
+    return finish(LmStatus::ConvergedGradient);
+  }
   switch (jacobian()) {
     case JacobianOutcome::Cancelled:
       return finish(LmStatus::Cancelled);

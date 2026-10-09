@@ -111,11 +111,8 @@ std::vector<double> column_norms(const Matrix& j) {
 // nonlinear terms O(||e||^2) (relative 1e-8 here). In theta: ||e|| <= ||e_z|| / min_j d_j.
 // d: column norms of the Jacobian (in theta) at the start; j_star: Jacobian at the solution
 // (1 or 2 columns, so lambda_min has a closed form); theta_star: the solution in theta.
-double solution_tolerance(const std::vector<double>& d,
-                          const Matrix& j_star,
-                          const std::vector<double>& theta_star,
-                          double mu_last,
-                          double xtol) {
+// Smallest eigenvalue of A_z = (J D^-1)^T (J D^-1) for J with 1 or 2 columns (closed form).
+double scaled_lambda_min(const std::vector<double>& d, const Matrix& j_star) {
   const std::size_t n = j_star.cols;
   REQUIRE((n == 1 || n == 2));
   std::array<std::array<double, 2>, 2> a{};
@@ -126,8 +123,17 @@ double solution_tolerance(const std::vector<double>& d,
       }
     }
   }
-  const double lambda_min =
-      n == 1 ? a[0][0] : 0.5 * (a[0][0] + a[1][1]) - std::hypot(0.5 * (a[0][0] - a[1][1]), a[0][1]);
+  return n == 1 ? a[0][0]
+                : 0.5 * (a[0][0] + a[1][1]) - std::hypot(0.5 * (a[0][0] - a[1][1]), a[0][1]);
+}
+
+double solution_tolerance(const std::vector<double>& d,
+                          const Matrix& j_star,
+                          const std::vector<double>& theta_star,
+                          double mu_last,
+                          double xtol) {
+  const std::size_t n = j_star.cols;
+  const double lambda_min = scaled_lambda_min(d, j_star);
   INFO("lambda_min = " << lambda_min << ", mu at the last solve = " << mu_last);
   REQUIRE(mu_last <= lambda_min / 2.0);
   double scaled = 0.0;
@@ -186,8 +192,13 @@ TEST_CASE("LM: Rosenbrock converges to (1, 1) within the derived tolerance (T1)"
 TEST_CASE("LM: a linear problem gives rho = 1 and mu/3 per step, and the LS solution (T2)",
           "[optim][lm]") {
   // ftol = 0: only the step test stops the run, so the solution bound below applies.
-  // tau = 1: strong damping at the start, so the first steps decrease F by much more than
-  // the rounding of F (rho is then 1 up to ~1e-12).
+  // tau = 1: strong damping at the start, so the first steps decrease F strongly.
+  // Bound 1e-9 for rho - 1: f is linear, so the model L is exact and rho = 1 up to (a) the
+  // rounding of F and F_new, about 2 m eps_M F = 1.8e-15 F for m = 4, divided by the predicted
+  // decrease, and (b) the error of the central-difference Jacobian, eps_M |f| / h with
+  // h = eps_M^(1/3) ~ 6e-6, i.e. a relative error of about 4e-11 |f| / |J| (|f| / |J| = O(1)
+  // here). With a decrease of at least 1e-3 F per solve (checked below) (a) is below 2e-12;
+  // the sum stays below 1e-10, so 1e-9 holds with a factor 10.
   LmOptions options;
   options.ftol = 0.0;
   options.tau = 1.0;
@@ -197,9 +208,14 @@ TEST_CASE("LM: a linear problem gives rho = 1 and mu/3 per step, and the LS solu
   // Nielsen 1999 eq. (2.5) with beta = 2, gamma = 3, p = 3: rho = 1 gives
   // mu_new = mu max{1/3, 1 - (2 rho - 1)^3} = mu/3. Checked on the first three solves, where
   // the predicted decrease is far above the rounding of F.
+  std::vector<double> f0(4);
+  REQUIRE(linear(std::vector<double>{0.0, 0.0}, f0));
+  double previous = 0.5 * (f0[0] * f0[0] + f0[1] * f0[1] + f0[2] * f0[2] + f0[3] * f0[3]);
   for (std::size_t i = 0; i < 3; ++i) {
     INFO("solve " << i + 1);
     REQUIRE(r.history[i].accepted);
+    REQUIRE(r.history[i].F <= (1.0 - 1e-3) * previous);  // the decrease assumed above
+    previous = r.history[i].F;
     CHECK(std::abs(r.history[i].rho - 1.0) <= 1e-9);
     CHECK(std::abs(r.history[i + 1].mu / r.history[i].mu - 1.0 / 3.0) <= 1e-9);
   }
@@ -415,6 +431,7 @@ TEST_CASE("LM: cancellation ends with the last accepted state (T9)", "[optim][lm
     CHECK(r.status == LmStatus::Cancelled);
     CHECK(r.p == k.p);
     CHECK(r.f == k.f);
+    CHECK(r.evaluations == k.evaluations);
     CHECK(r.p != std::vector<double>{-1.2, 1.0});
   }
   SECTION("an exception of the progress callback propagates") {
@@ -535,4 +552,128 @@ TEST_CASE("LM: input errors are std::invalid_argument (T12)", "[optim][lm]") {
   CHECK_THROWS_AS(with([](LmOptions& o) { o.gtol = -1.0; }), std::invalid_argument);
   CHECK_THROWS_AS(with([](LmOptions& o) { o.tau = 0.0; }), std::invalid_argument);
   CHECK_THROWS_AS(with([](LmOptions& o) { o.function_precision = 0.0; }), std::invalid_argument);
+}
+
+TEST_CASE("LM: zero residuals at the start end without differences", "[optim][lm]") {
+  // ADR 0030 point 9: f(theta_0) = 0 gives g = 0 for every J; the run ends at the start.
+  const Residuals zero = [](std::span<const double>, std::span<double> out) {
+    for (double& v : out) v = 0.0;
+    return true;
+  };
+  const LmResult r = levenberg_marquardt(zero, 3, {1.0, -2.0}, free_bounds(2));
+  CHECK(r.status == LmStatus::ConvergedGradient);
+  CHECK(r.evaluations == 1);
+  CHECK(r.iterations == 0);
+  CHECK(r.history.empty());
+  CHECK(r.p == std::vector<double>{1.0, -2.0});
+  CHECK(r.F == 0.0);
+}
+
+TEST_CASE("LM: a problem with F* > 0 stops by the merit test (MINPACK-1 F-convergence)",
+          "[optim][lm]") {
+  // The linear problem with default options (ftol = sqrt(eps_M)). A priori bound: f is linear,
+  // so F(theta) = F* + 1/2 e_z^T A_z e_z with the error e_z = D (theta - theta*), and the damped
+  // step h_z = -(A_z + mu I)^-1 A_z e_z predicts, in the eigenbasis of A_z (eigenvalues l),
+  // L(0) - L(h) = 1/2 sum l^2 e^2 (l + 2 mu) / (l + mu)^2 >= (1 - mu^2/(l + mu)^2) (F - F*).
+  // With mu <= lambda_min (checked) the factor is >= 3/4. The test stops when
+  // L(0) - L(h) <= ftol F_old, so F_old - F* <= 4/3 ftol F_old and
+  // ||e_z|| <= sqrt(8/3 ftol F_old / lambda_min) for the state before that solve; the result is
+  // that state or an accepted step from it, whose error is smaller for a linear problem.
+  // In theta: ||e|| <= ||e_z|| / min d.
+  const LmOptions options;
+  const LmResult r = levenberg_marquardt(linear, 4, {0.0, 0.0}, free_bounds(2), options);
+  REQUIRE(r.status == LmStatus::ConvergedMerit);
+  REQUIRE(r.history.size() >= 2);
+  const double f_old = r.history[r.history.size() - 2].F;
+  Matrix j{4, 2, {}};
+  for (std::size_t i = 0; i < 4; ++i) {
+    j.values.push_back(-kLinearA[i][0]);
+    j.values.push_back(-kLinearA[i][1]);
+  }
+  const std::vector<double> d = column_norms(j);
+  const double lambda_min = scaled_lambda_min(d, j);
+  INFO("lambda_min = " << lambda_min << ", mu = " << r.history.back().mu);
+  REQUIRE(r.history.back().mu <= lambda_min);
+  const double tol = std::sqrt(8.0 / 3.0 * options.ftol * f_old / lambda_min) /
+                     *std::min_element(d.begin(), d.end());
+  const std::array<double, 2> x_star = linear_solution();
+  INFO("tolerance = " << tol);
+  CHECK(std::hypot(r.p[0] - x_star[0], r.p[1] - x_star[1]) <= tol);
+}
+
+TEST_CASE("LM: the merit test may end the run on a rejected trial", "[optim][lm]") {
+  // Reference run: ends with ConvergedMerit after solve K, whose trial was the only evaluation
+  // of that solve (call number E + 1 with E the evaluations after solve K - 1). The second run
+  // returns at that call the residuals scaled to F_new = F_old (1 + 1e-9): rho < 0, so the
+  // trial is rejected, but |F_old - F_new| / F_old = 1e-9 <= ftol and the predicted decrease
+  // is that of the reference run, so the merit test holds on the rejected trial. The result
+  // must be the last accepted state, the same as a run with k_max = K - 1.
+  const LmResult ref = levenberg_marquardt(linear, 4, {0.0, 0.0}, free_bounds(2));
+  REQUIRE(ref.status == LmStatus::ConvergedMerit);
+  const std::size_t k = ref.history.size();
+  REQUIRE(k >= 2);
+  REQUIRE(ref.history[k - 1].accepted);
+  const std::size_t e = ref.history[k - 2].evaluations;
+  REQUIRE(ref.history[k - 1].evaluations == e + 1);
+  const double f_old = ref.history[k - 2].F;
+  std::atomic<std::size_t> calls{0};
+  const Residuals f = [&](std::span<const double> x, std::span<double> out) {
+    const std::size_t call = ++calls;
+    if (!linear(x, out)) return false;
+    if (call == e + 1) {
+      double half = 0.0;
+      for (const double v : out) half += 0.5 * v * v;
+      const double s = std::sqrt(f_old * (1.0 + 1e-9) / half);
+      for (double& v : out) v *= s;
+    }
+    return true;
+  };
+  const LmResult r = levenberg_marquardt(f, 4, {0.0, 0.0}, free_bounds(2));
+  LmOptions before;
+  before.max_iterations = static_cast<int>(k - 1);
+  const LmResult b = levenberg_marquardt(linear, 4, {0.0, 0.0}, free_bounds(2), before);
+  CHECK(r.status == LmStatus::ConvergedMerit);
+  REQUIRE(r.history.size() == k);
+  CHECK_FALSE(r.history.back().accepted);
+  CHECK(r.history.back().rho < 0.0);
+  CHECK(r.p == b.p);
+  CHECK(r.f == b.f);
+}
+
+TEST_CASE("LM: a callback error is not hidden by a simultaneous cancellation", "[optim][lm]") {
+  rtt::trace::RunControl control;
+  control.cancel = rtt::trace::CancelToken{};
+  control.min_interval = std::chrono::milliseconds(0);
+  rtt::trace::CancelToken token = *control.cancel;
+  control.progress = [token](const rtt::trace::Progress& progress) mutable {
+    if (progress.stage == std::string_view("jacobian") && progress.done >= 1) {
+      token.request_cancel();
+      throw std::runtime_error("callback");
+    }
+  };
+  CHECK_THROWS_AS(levenberg_marquardt(rosenbrock, 2, {-1.2, 1.0}, free_bounds(2), {}, control),
+                  std::runtime_error);
+}
+
+TEST_CASE("LM: a start value exactly on a bound gives a zero column", "[optim][lm]") {
+  // ADR 0030 point 5: at the bound theta = 0 (one-sided) or pi/2 (two-sided), p is symmetric
+  // about it, the central difference is zero, g = 0, and the variable does not move.
+  const Residuals f = [](std::span<const double> p, std::span<double> out) {
+    out[0] = p[0] - 1.0;  // the minimum p = 1 lies inside
+    return true;
+  };
+  SECTION("one-sided") {
+    const LmResult r = levenberg_marquardt(f, 1, {0.0}, {Bounds{0.0, std::nullopt}});
+    CHECK(r.status == LmStatus::ConvergedGradient);
+    CHECK(r.p == std::vector<double>{0.0});
+    CHECK(r.changed == std::vector<std::uint8_t>{0});
+    CHECK(r.at_bound == std::vector<std::uint8_t>{1});
+  }
+  SECTION("two-sided") {
+    const LmResult r = levenberg_marquardt(f, 1, {3.0}, {Bounds{-2.0, 3.0}});
+    CHECK(r.status == LmStatus::ConvergedGradient);
+    CHECK(r.p == std::vector<double>{3.0});
+    CHECK(r.changed == std::vector<std::uint8_t>{0});
+    CHECK(r.at_bound == std::vector<std::uint8_t>{1});
+  }
 }

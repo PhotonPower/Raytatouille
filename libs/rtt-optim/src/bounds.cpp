@@ -14,15 +14,15 @@ constexpr double kAtBound = 1e-6;
 // cancellation: (x + 1)^2 - 1 = x (x + 2). Same equation; the direct form loses the relative
 // accuracy of small x (natural size 1e-4, ADR 0030 point 14).
 double one_sided_theta(double x) {
-  const double d = std::max(x, 0.0);  // rounding of p - a may give -0
-  return std::sqrt(d * (d + 2.0));
+  const double d = std::max(x, 0.0);         // rounding of p - a may give -0
+  return std::sqrt(d) * std::sqrt(d + 2.0);  // no overflow of d (d + 2) for d > 1e154
 }
 
 // MINUIT User's Guide eqs. (1.4)/(1.6): distance from the bound sqrt(theta^2 + 1) - 1, written
 // without cancellation as theta^2 / (sqrt(theta^2 + 1) + 1). Same equation; >= 0.
 double one_sided_distance(double theta) {
-  const double t2 = theta * theta;
-  return t2 / (std::sqrt(t2 + 1.0) + 1.0);
+  const double t = std::abs(theta);
+  return t * (t / (std::hypot(t, 1.0) + 1.0));  // no overflow of theta^2 for |theta| > 1e154
 }
 
 }  // namespace
