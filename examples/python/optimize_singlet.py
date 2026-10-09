@@ -1,10 +1,10 @@
 """Optimize a singlet for EFL 100 mm and a small spot, then take the result back with undo (#169).
 
 The singlet of tests/reference/m5/singlet_optim.rtt.json has three variables: both radii and
-the image distance. The merit function is added here as the section "optimization" of the
-system file: the operand EFL = 100 mm and the generator rms_spot (Gaussian pupil quadrature,
-ADR 0030). rt.optim.optimize returns a new system and an RFC 6902 patch from the input to it;
-an Editor applies the patch as one step, so undo restores the input bit for bit.
+the image distance. Its merit function is the section "optimization" of the file: the operand
+EFL = 100 mm (weight 1e4) and the generator rms_spot (Gaussian pupil quadrature, ADR 0030).
+rt.optim.optimize returns a new system and an RFC 6902 patch from the input to it; an Editor
+applies the patch as one step, so undo restores the input bit for bit.
 
 Run from the repository root after building the package (pip install .):
 
@@ -13,7 +13,6 @@ Run from the repository root after building the package (pip install .):
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
@@ -24,12 +23,7 @@ SINGLET = REPO_ROOT / "tests" / "reference" / "m5" / "singlet_optim.rtt.json"
 
 
 def main() -> int:
-    data = json.loads(SINGLET.read_text(encoding="utf-8"))
-    data["optimization"] = {
-        "operands": [{"type": "efl", "path": "main", "target": 100.0}],
-        "generators": [{"type": "rms_spot", "path": "main", "rings": 3, "arms": 6}],
-    }
-    system = rt.System.from_json(json.dumps(data))
+    system = rt.load(SINGLET)
 
     result = rt.optim.optimize(system)
     h = result.history

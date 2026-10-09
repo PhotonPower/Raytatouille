@@ -41,7 +41,7 @@ def test_merit_function_evaluates_the_operands() -> None:
     assert e.valid() and e.undefined == [""]
     efl = rt.paraxial.first_order(rt.compile(singlet_merit())).efl
     assert efl is not None and e.values[0] == efl  # exactly the analysis
-    assert e.residuals[0] == e.values[0] - 100.0  # weight 1
+    assert e.residuals[0] == 100.0 * (e.values[0] - 100.0)  # sqrt(weight 1e4) (v - t)
     [g] = e.generators
     assert (g.rays_launched, g.rays_lost, g.undefined) == (18, 0, "")
     # The sum of squares of the generator residuals is its mean square (weight 1).
@@ -60,9 +60,9 @@ def test_optimize_returns_a_new_system_and_its_patch() -> None:
     assert all(v.changed for v in result.variables)
     assert result.iterations == len(result.history) >= 1
     assert result.history.phi[-1] < result.history.phi[0] or result.iterations == 1
-    # EFL 100 mm reached within a small fraction of the start deviation.
+    # EFL 100 mm with weight 1e4: the rest is far below the start deviation (#170 checks it).
     [efl] = result.operands
-    assert efl.pointer == "/optimization/operands/0" and abs(efl.value - 100.0) < 1e-3
+    assert efl.pointer == "/optimization/operands/0" and abs(efl.value - 100.0) < 1e-6
     [spot] = result.generators
     assert spot.pointer == "/optimization/generators/0" and spot.rays_lost == 0
     # The patch turns the input into the result; an Editor applies it as one step.
@@ -124,7 +124,7 @@ def test_start_errors_carry_codes() -> None:
     assert error.value.codes == ["optim.no_variables", "optim.no_operands"]
     assert isinstance(error.value, ValueError)
     with pytest.raises(rt.OptimError) as error:
-        rt.optim.optimize(rt.load(REFERENCE_DIR / "m5" / "singlet_optim.rtt.json"))
+        rt.optim.optimize(with_merit("m5/singlet_optim.rtt.json", None))
     assert error.value.codes == ["optim.no_operands"]
     assert error.value.diagnostics[0].location == "/optimization"
 
@@ -154,7 +154,11 @@ def test_to_dict_leaves_out_the_system() -> None:
     assert loaded.type == "OptimResult" and loaded.data["patch"] == result.patch
 
 
-def test_with_merit_helper_keeps_the_reference_untouched() -> None:
-    # optim_systems builds the merit functions from the reference files; the files have none.
-    assert rt.load(REFERENCE_DIR / "m5" / "singlet_optim.rtt.json").optimization.operands == []
-    assert with_merit("m5/singlet_optim.rtt.json", {"operands": []}).optimization.operands == []
+def test_the_reference_files_carry_the_merit_of_the_acceptance() -> None:
+    # The sections of #170 (f2): EFL with weight 1e4 and rms_spot; EFL 55 mm and focus.
+    singlet = singlet_merit().optimization
+    assert len(singlet.operands) == 1 and len(singlet.generators) == 1
+    assert singlet.operands[0].weight == 10000.0
+    gap = gap_merit().optimization
+    assert len(gap.operands) == 2 and gap.generators == []
+    assert with_merit("m5/singlet_optim.rtt.json", None).optimization.operands == []

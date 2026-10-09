@@ -1,6 +1,5 @@
-"""Systems with a merit function for the optimization tests (#169): the M5 reference systems
-with an optimization section added as JSON, the same merit functions as optim_cases.cpp builds
-from the model types."""
+"""Systems for the optimization tests (#169): the M5 reference systems with the merit functions
+of the M5 acceptance (#170) in their section "optimization", and variants of them."""
 
 from __future__ import annotations
 
@@ -12,27 +11,22 @@ from conftest import REFERENCE_DIR
 import raytatouille as rt
 
 
-def with_merit(relative: str, optimization: dict[str, Any]) -> rt.System:
-    data = json.loads((REFERENCE_DIR / relative).read_text(encoding="utf-8"))
-    data["optimization"] = optimization
-    return rt.System.from_json(json.dumps(data))
-
-
 def singlet_merit() -> rt.System:
-    """m5/singlet_optim (R1, R2 and the image distance variable) with EFL 100 mm and the RMS
-    spot generator (defaults: 3 rings, 6 arms, reference centroid)."""
-    return with_merit("m5/singlet_optim.rtt.json", {
-        "operands": [{"type": "efl", "path": "main", "target": 100.0}],
-        "generators": [{"type": "rms_spot", "path": "main"}],
-    })
+    """m5/singlet_optim: R1, R2 and the image distance variable; EFL 100 mm (weight 1e4) and
+    the RMS spot generator (defaults: 3 rings, 6 arms, reference centroid)."""
+    return rt.load(REFERENCE_DIR / "m5" / "singlet_optim.rtt.json")
 
 
 def gap_merit() -> rt.System:
-    """m5/two_lens_gap (the row D and the image distance variable) with EFL 40 mm and the
-    marginal ray height 0 on IMG."""
-    return with_merit("m5/two_lens_gap.rtt.json", {
-        "operands": [
-            {"type": "efl", "path": "main", "target": 40.0},
-            {"type": "ray_y", "path": "main", "surface": "IMG", "py": 1.0, "target": 0.0},
-        ],
-    })
+    """m5/two_lens_gap: the row D and the image distance variable; EFL 55 mm and the marginal
+    ray height 0 on IMG (two equations, two unknowns, zero residual)."""
+    return rt.load(REFERENCE_DIR / "m5" / "two_lens_gap.rtt.json")
+
+
+def with_merit(relative: str, optimization: dict[str, Any] | None) -> rt.System:
+    """The reference system `relative` with its section "optimization" replaced (None: none)."""
+    data = json.loads((REFERENCE_DIR / relative).read_text(encoding="utf-8"))
+    data.pop("optimization", None)
+    if optimization is not None:
+        data["optimization"] = optimization
+    return rt.System.from_json(json.dumps(data))

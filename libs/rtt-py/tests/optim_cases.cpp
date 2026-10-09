@@ -1,6 +1,6 @@
 // Optimization cases of rtt_py_reference (#169): the same calls as CASES in
-// test_bitwise_optim.py. The merit functions are built here from the model types and on the
-// Python side from the same JSON; a difference shows as a different result.
+// test_bitwise_optim.py, on the M5 reference systems with the merit functions of the M5
+// acceptance (#170) in their section "optimization".
 
 #include "optim_cases.hpp"
 
@@ -17,7 +17,6 @@
 #include "npy_writer.hpp"
 #include "rtt/io/json_io.hpp"
 #include "rtt/material/material.hpp"
-#include "rtt/model/optimization.hpp"
 #include "rtt/model/system.hpp"
 #include "rtt/optim/merit.hpp"
 #include "rtt/optim/optimize.hpp"
@@ -105,52 +104,13 @@ void write_evaluation(const Writer& w, const MeritEvaluation& e) {
   w.u8("ints", {e.valid() ? 1U : 0U, e.warnings.size()});
 }
 
-model::OperandCommon common(double target) {
-  model::OperandCommon c;
-  c.target = target;
-  return c;
-}
-
-/// As singlet_merit() in test_bitwise_optim.py: m5/singlet_optim (R1, R2 and the image
-/// distance variable) with EFL 100 mm and the RMS spot generator (3 rings, 6 arms).
-model::System singlet_merit(const fs::path& reference_dir) {
-  model::System s = io::load_system(reference_dir / "m5/singlet_optim.rtt.json");
-  model::FirstOrderOperand efl;
-  efl.common = common(100.0);
-  efl.quantity = model::FirstOrderQuantity::Efl;
-  efl.path = "main";
-  model::SpotGenerator spot;
-  spot.path = "main";
-  s.optimization.operands = {efl};
-  s.optimization.generators = {spot};
-  return s;
-}
-
-/// As gap_merit() in test_bitwise_optim.py: m5/two_lens_gap (the row D and the image distance
-/// variable) with EFL 40 mm and the marginal ray height 0 on IMG.
-model::System gap_merit(const fs::path& reference_dir) {
-  model::System s = io::load_system(reference_dir / "m5/two_lens_gap.rtt.json");
-  model::FirstOrderOperand efl;
-  efl.common = common(40.0);
-  efl.quantity = model::FirstOrderQuantity::Efl;
-  efl.path = "main";
-  model::RayOperand ray;
-  ray.common = common(0.0);
-  ray.coordinate = model::RayCoordinate::Y;
-  ray.path = "main";
-  ray.surface = model::SurfaceId{"IMG"};
-  ray.py = 1.0;
-  s.optimization.operands = {efl, ray};
-  return s;
-}
-
 }  // namespace
 
 void run_optim_cases(const fs::path& reference_dir, const fs::path& out, int threads) {
   const auto w = [&](const std::string& name) { return Writer(out, name); };
   const material::MaterialLibrary plain;
-  const model::System singlet = singlet_merit(reference_dir);
-  const model::System gap = gap_merit(reference_dir);
+  const model::System singlet = io::load_system(reference_dir / "m5/singlet_optim.rtt.json");
+  const model::System gap = io::load_system(reference_dir / "m5/two_lens_gap.rtt.json");
   const MeritFunction merit(singlet, plain, nullptr);
   const std::vector<double> start = merit.start();
 

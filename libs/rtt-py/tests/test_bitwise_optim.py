@@ -1,8 +1,9 @@
 """Optimization from Python is bitwise equal to C++ (#169).
 
-rtt_py_reference (optim_cases.cpp) optimizes the same systems and evaluates the same merit
-function; the flatten_* functions below build the same arrays from the Python results. Both
-sides run with 1 and with 4 threads.
+rtt_py_reference (optim_cases.cpp) optimizes the M5 reference systems with the merit functions
+of the M5 acceptance (#170) and evaluates the singlet's merit at its start; the flatten_*
+functions below build the same arrays from the Python results. Both sides run with 1 and with 4
+threads.
 """
 
 from __future__ import annotations
