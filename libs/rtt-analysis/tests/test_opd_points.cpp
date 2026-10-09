@@ -2,6 +2,7 @@
 // opd_map (reference sphere, chief ray of the same wavelength, waves at the reference
 // wavelength), without statistics, so that every sampling is allowed, also the Gaussian one.
 
+#include <algorithm>
 #include <bit>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
