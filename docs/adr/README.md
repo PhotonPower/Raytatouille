@@ -35,6 +35,7 @@ Neue Entscheidungen bekommen die nächste Nummer. Bestehende ADRs werden nicht u
 | [0029](0029.md) | Parametertabelle und Konfigurationen | angenommen |
 | [0030](0030.md) | Optimierung (Merit-Funktion, Operanden, Levenberg-Marquardt) | angenommen |
 | [0031](0031.md) | Ideale Linse und ideale Zylinderlinse | angenommen |
+| [0034](0034.md) | Polarisation in der Pupille (P je Ereignis, akkumuliertes Q, Jones-Pupille) | angenommen |
 
 ## Vorlage
 
