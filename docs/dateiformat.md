@@ -1,8 +1,8 @@
 # Systemdateien `.rtt.json` erzeugen
 
 Kurzanleitung für das Dateiformat, das die Engine, die CLI (`rtt`) und der Raytatouille Explorer
-laden. Alle Beispiele hier wurden gegen Schema `0.4.x` geprüft (Bibliothek 0.7.0). Dateien
-mit Schema 0.1, 0.2 und 0.3 liest `rtt` weiter und schreibt sie mit `rtt format` als 0.4; ein
+laden. Alle Beispiele hier wurden gegen Schema `0.5.x` geprüft. Dateien mit Schema 0.1 bis
+0.4 liest `rtt` weiter und schreibt sie mit `rtt format` als 0.5; ein
 `pickup` aus einer Datei vor 0.4 fällt dabei weg, mit der Warnung `io.pickup_dropped` (siehe
 „Parametertabelle“).
 Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/architecture.md`.
@@ -97,7 +97,7 @@ Zahlenwerte dürfen auch als `{"value": …, "variable": true, "min": …, "max"
 markiert sie als Optimierungsvariable mit Grenzen (beide optional, in der Einheit des Werts). Ein
 Zahlenwert kann stattdessen an eine Zeile der Parametertabelle gebunden sein,
 `{"param": "NAME"}`, ohne eigenen Wert (siehe unten). Zernike-Terme (`shape.terms`) kennt das
-Schema, die Engine kompiliert sie in Version 0.4.0 aber noch nicht (Meldung: "not supported before
+Schema, die Engine kompiliert sie aber noch nicht, bis M8 (Meldung: "not supported before
 M8"). Gitter und Phasenflächen (`phases`) übernimmt die Kompilierung; der Tracer verfolgt seit #127
 jede Beugungsordnung `order` nach der lokalen Gittergleichung (ADR 0025) und rechnet
 `diffraction_efficiency` in das Gewicht ein; evaneszente Ordnungen enden mit dem Status
