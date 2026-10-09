@@ -102,8 +102,9 @@ TEST_CASE("opd_points: the gauss sampling, point by point as single rays", "[opd
 TEST_CASE("opd_points: lost rays keep W = 0 and their status, without an exception",
           "[opd][points]") {
   // An aperture of 5 mm on L1.S1 (beam radius 10 mm, collimated, 5 mm behind the stop) lets the
-  // chief ray and the inner ring (rho = 0.34) arrive and stops the outer rings (rho = 0.71,
-  // 0.94); opd_points has no statistics and reports them as points.
+  // chief ray (the reference of W, not a gauss point) and the inner ring (rho = 0.34) arrive and
+  // stops the outer rings (rho = 0.71, 0.94); opd_points has no statistics and reports them as
+  // points.
   const CompiledSystem cs = singlet(5.0);
   const OpdPupilPoints p =
       rtt::analysis::opd_points(cs, PathId{0}, 0, 0, rtt::trace::GaussPupil{3, 6});
