@@ -11,7 +11,9 @@
 ///     factor     = "-" factor | primary ;
 ///     primary    = number | name | "(" expression ")" ;
 ///
-/// Numbers follow the JSON number rule without a sign; names are [A-Za-z_][A-Za-z0-9_]*.
+/// Numbers follow the JSON number rule without a sign and must be 0 or a finite normal double
+/// (overflow, underflow and subnormal literals are syntax errors, the same on every platform);
+/// names are [A-Za-z_][A-Za-z0-9_]*.
 /// Spaces and tabs separate tokens. The parser never throws and never recurses deeper than
 /// kMaxExpressionDepth levels of factor.
 

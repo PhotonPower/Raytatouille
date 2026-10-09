@@ -141,6 +141,7 @@ TEST_CASE("table: not finite in exactly one configuration", "[parameters]") {
   CHECK(d[0].code == "parameters.not_finite");
   CHECK(d[0].location == "/parameters/1/expression");
   CHECK_THAT(d[0].message, ContainsSubstring("'tele'"));
+  CHECK_THAT(d[0].message, ContainsSubstring("(+inf)"));
   CHECK_THAT(d[0].message, !ContainsSubstring("'wide'"));
   const ParameterValues v = evaluate_parameters(s);
   CHECK(v.at(1, 0) == 1.0);
@@ -154,6 +155,7 @@ TEST_CASE("table: not finite in exactly one configuration", "[parameters]") {
   const std::vector<Diagnostic> dn = evaluating(n);
   REQUIRE(dn.size() == 1);
   CHECK_THAT(dn[0].message, ContainsSubstring("nominal"));
+  CHECK_THAT(dn[0].message, ContainsSubstring("(NaN)"));  // 0 / 0, without a platform sign
 }
 
 TEST_CASE("table: undefined inputs give no follow-up diagnostics", "[parameters]") {

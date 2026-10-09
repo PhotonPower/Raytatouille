@@ -23,6 +23,13 @@ namespace {
 
 constexpr double kUndefined = std::numeric_limits<double>::quiet_NaN();
 
+/// A non-finite value as text, the same on every platform ("NaN", "+inf", "-inf");
+/// std::to_string differs (GCC "-nan", MSVC "-nan(ind)"). Review of #164.
+std::string non_finite_text(double v) {
+  if (std::isnan(v)) return "NaN";
+  return v > 0.0 ? "+inf" : "-inf";
+}
+
 std::string row_pointer(std::size_t row) {
   return "/parameters/" + std::to_string(row);
 }
@@ -217,7 +224,7 @@ ParameterValues evaluate_parameters(const System& system, std::vector<Diagnostic
       if (!std::isfinite(values[k])) {
         usable[i] = false;
         add(diagnostics, "parameters.not_finite", location,
-            "row '" + row.name + "' is not finite (" + std::to_string(values[k]) + ") in " +
+            "row '" + row.name + "' is not finite (" + non_finite_text(values[k]) + ") in " +
                 configuration_text(system, k));
       }
     }

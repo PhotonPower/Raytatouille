@@ -6,6 +6,7 @@
 #include <charconv>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -275,10 +276,17 @@ class Parser {
       case TokenKind::Number: {
         // std::from_chars: correctly rounded (to nearest, ties to even) and independent of the
         // locale (ADR 0029, point 2).
+        // Overflow, underflow and subnormal results are rejected by our own rule, so that the
+        // outcome does not depend on how a standard library reports them (libstdc++, MSVC and
+        // libc++ differ for subnormals): a literal is 0 or a finite normal double.
         double value = 0.0;
         const auto [end, ec] = std::from_chars(t.text.data(), t.text.data() + t.text.size(), value);
-        if (ec != std::errc() || end != t.text.data() + t.text.size() || !std::isfinite(value)) {
-          fail(t.position, "number " + describe(t) + " out of the range of double");
+        const std::string_view mantissa = t.text.substr(0, t.text.find_first_of("eE"));
+        const bool nonzero_digits = mantissa.find_first_of("123456789") != std::string_view::npos;
+        if (ec != std::errc() || end != t.text.data() + t.text.size() || !std::isfinite(value) ||
+            (nonzero_digits && !(std::abs(value) >= std::numeric_limits<double>::min()))) {
+          fail(t.position, "number " + describe(t) +
+                               " is not 0 or a normal double (overflow, underflow or subnormal)");
           return;
         }
         next();

@@ -105,9 +105,30 @@ TEST_CASE("expression: literals are correctly rounded (ties to even)", "[express
   CHECK(value_of("9007199254740995") == 9007199254740996.0);
 }
 
+TEST_CASE("expression: a literal is 0 or a normal double on every platform", "[expression]") {
+  // The extremes of the normal range are accepted.
+  CHECK(value_of("2.2250738585072014e-308") == std::numeric_limits<double>::min());
+  CHECK(value_of("1.7976931348623157e308") == std::numeric_limits<double>::max());
+  CHECK(value_of("1e308") == 1e308);
+  // Zero with any exponent stays zero.
+  CHECK(bits(value_of("0e-400")) == bits(0.0));
+  CHECK(bits(value_of("0.000e999")) == bits(0.0));
+  // Overflow, underflow and subnormal literals are syntax errors by our own rule, independent
+  // of how the standard library reports them (ADR 0029, point 2; review of #164).
+  for (const std::string_view text :
+       {"1e309", "1.8e308", "1e-400", "5e-324", "1e-310", "2.2250738585072009e-308"}) {
+    INFO(text);
+    const ExpressionError e = error_of(text);
+    CHECK(e.code == "parameters.expression_syntax");
+    CHECK(e.position == 0);
+  }
+}
+
 TEST_CASE("expression: no FMA contraction in the evaluation", "[expression]") {
   // a = 1 + 2^-30 and b = 1 - 2^-30 are exact; a * b = 1 - 2^-60 rounds to 1, so a * b - 1 is
-  // exactly 0. A fused multiply-add would give -2^-60 instead.
+  // exactly 0. A fused multiply-add would give -2^-60 instead. Proven by a mutation probe (#164):
+  // an evaluator that fuses Multiply and Subtract into std::fma turns these checks red. The
+  // postfix interpreter (one operation per step) and -ffp-contract=off protect together.
   const std::vector<double> rows = {1.000000000931322574615478515625,
                                     0.999999999068677425384521484375, 1.0};
   REQUIRE(rows[0] == 1.0 + std::ldexp(1.0, -30));
