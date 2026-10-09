@@ -48,9 +48,15 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 | 0018 | Python-Build- und Testwerkzeuge (nanobind, scikit-build-core, numpy, pytest, mypy) über `pyproject.toml` statt vcpkg |
 | 0019 | Coating-Kataloge als eigene JSON-Dateien (`CATALOG:NAME`), Auflösung in `compile()`, Substrat = Inneres des Elements |
 | 0020 | Gemeinsamer strikter JSON-Parser `rtt-json` (header-only, Schicht Basis): doppelte Schlüssel und Zahlen-Overflow sind Fehler mit Pointer |
+| 0021 | Interaktionen im Tracer (Fresnel, Coatings, ideale Elemente je Ereignisart, `EventImpossible` für den Rest); `prt` leistungsnormiert, `weight` = s·½‖P_T‖²_F (angenommen) |
 | 0022 | Stabile Diagnosecodes in Punktnotation mit Registry `rtt-diagnostics` (header-only, Schicht Basis), Warnungen von `compile()` als Daten, Fehlerorte in `ParaxialError`/`AnalysisError`, eine Klasse `NoStopError` (angenommen) |
 | 0023 | Ergebnisformat `raytatouille-result` (JSON mit dtype/shape für Arrays, NaN als Zeichenkette, Roundtrip = Daten) und Strahlverluste als Daten (angenommen) |
+| 0024 | Modell lesen über unveränderliche typisierte Kopien, ändern über JSON Patch (RFC 6902) auf der Bearbeitungsform, Adressierung mit JSON-Pointern und verankerten Verweisen, Undo und Redo über inverse Patches (angenommen) |
+| 0025 | Gitter und diffraktive Flächen als Phasenschicht: Ordnung am Ereignis, lokale Gittergleichung, OPL-Beitrag der Ordnung, Effizienz nur im Gewicht, Status `Evanescent` (angenommen) |
+| 0026 | Einachsiger Kristall: Material mit n_O und n_E, optische Achse am Element, Strahlzustand mit Wellennormale und Modenindex, Projektionsmodell für P (angenommen) |
+| 0027 | Ghost-Generator: Zweifachreflexions-Ghosts eines Pfads als erzeugte explizite Pfade, Medien durch compile (angenommen) |
 | 0028 | Relative Platzierung: `Pose.reference` (absolut, relativ zur vorangehenden Fläche oder zum vorangehenden Geschwister) und `Pose.order` (`translate_first` wie bisher, `rotate_first` als Koordinatensprung) (angenommen) |
+| 0029 | Parametertabelle mit Ausdrücken nur über frühere Zeilen, Konfigurationen als Spalten (nur Parameter), Modell-Param verweist mit `{"param": …}` auf eine Zeile, `pickup` entfällt mit Warnung (angenommen) |
 
 **Konventionen (verbindlich für alle Bibliotheken)**
 
