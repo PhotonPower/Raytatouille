@@ -8,6 +8,9 @@
 // - M. Mansuripur, Proc. SPIE 6620, 66200N (2007), Eq. (7b): n2 sigma' = n1 sigma +
 //   m lambda0 grad F, F = phi / (2 pi);
 // - J. E. Greivenkamp, OPTI-201/202, Sec. 9, p. 9-2: y-nu trace n'u' = nu - y phi.
+// - W.-S. T. Lam, Anisotropic Ray Trace, dissertation, Eq. (2.39) for n_e(theta); the walk-off
+//   at 45 degree, tan(rho) = (n_O^2 - n_E^2) / (n_O^2 + n_E^2), is derived in #130 from Lam,
+//   Eq. (2.41) and p. 107 (docs/quellen.md).
 
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
@@ -114,6 +117,43 @@ TEST_CASE("M4 Michelson: R + T = 1, arm weights R T, OPL difference 2 Delta", "[
     REQUIRE(p.status == RayStatus::Alive);
     REQUIRE(std::abs(p.delta - 15.0) <= 1e-10);
   }
+}
+
+TEST_CASE("M4 calcite walk-off: offset t tan(rho) of the e-ray, none for the o-ray", "[m4]") {
+  // tests/reference/m4/calcite_walkoff.rtt.json: calcite plate (CONST n_O = 1.6584,
+  // n_E = 1.4864, ADR 0026 acceptance), t = 2 mm from z = 10 to 12, optic axis (1, 0, 1) at
+  // 45 degree in the x-z plane, detector at z = 20, vacuum, normal incidence. The o-ray goes
+  // straight through; the e-ray leaves the plate parallel to the incidence, shifted by
+  // t tan(rho) away from the axis direction +x, with tan(rho) = (n_O^2 - n_E^2) /
+  // (n_O^2 + n_E^2) (Lam, p. 107). OPL: 18 mm in vacuum plus n t with n_O or
+  // n_e(45 deg) = sqrt(2 / (1 / n_O^2 + 1 / n_E^2)) (Lam, Eq. (2.39); in the plate
+  // l = t / cos(rho) along S and k . S = cos(rho)). Rounding of a few operations on mm values:
+  // 1e-10 (acceptance criterion of #135).
+  const double n_o = 1.6584;
+  const double n_e = 1.4864;
+  const double thickness = 2.0;
+  const double tan_rho = (n_o * n_o - n_e * n_e) / (n_o * n_o + n_e * n_e);
+  const double n_e45 = std::sqrt(2.0 / (1.0 / (n_o * n_o) + 1.0 / (n_e * n_e)));
+  const CompiledSystem cs =
+      rtt::compile::compile(load("m4/calcite_walkoff.rtt.json"), rtt::material::MaterialLibrary{});
+  for (const char* name : {"o", "e"}) {
+    INFO(name);
+    const bool e = std::string(name) == "e";
+    RayBatch rays(1);
+    rays.pos_y()[0] = 0.3;
+    [[maybe_unused]] const auto stats =
+        rtt::trace::SequentialTracer().trace(cs, path(cs, name), rays);
+    REQUIRE(rays.status()[0] == RayStatus::Alive);
+    REQUIRE(std::abs(rays.dir_x()[0]) <= 1e-12);
+    REQUIRE(std::abs(rays.dir_y()[0]) <= 1e-12);
+    REQUIRE(std::abs(rays.dir_z()[0] - 1.0) <= 1e-12);
+    REQUIRE(std::abs(rays.pos_x()[0] - (e ? -thickness * tan_rho : 0.0)) <= 1e-10);
+    REQUIRE(std::abs(rays.pos_y()[0] - 0.3) <= 1e-10);
+    REQUIRE(std::abs(rays.pos_z()[0] - 20.0) <= 1e-10);
+    REQUIRE(std::abs(rays.opl()[0] - (18.0 + (e ? n_e45 : n_o) * thickness)) <= 1e-10);
+  }
+  // The offset is not trivially small: about 0.218 mm.
+  REQUIRE(thickness * tan_rho > 0.2);
 }
 
 TEST_CASE("M4 grating equation: orders -1, 0, +1 by Palmer (2-1), order +6 evanescent", "[m4]") {

@@ -201,19 +201,24 @@ CASES: dict[str, Case] = {
 }
 
 
+# The annular stop of the feature tour clips the collimated bundle on purpose (#135): only that
+# case filters stop.clips_beam, the other cases keep the warning as a guard.
+CLIPS_BEAM = pytest.mark.filterwarnings(
+    r"ignore:warning \[stop\.clips_beam\]:raytatouille.errors.RaytatouilleWarning")
+CASE_PARAMS = [pytest.param(name, marks=CLIPS_BEAM) if name.startswith("tour_") else name
+               for name in CASES]
+
+
 @pytest.fixture(scope="module")
 def compiled_systems() -> Systems:
     return systems()
 
 
-# vignetted on purpose: the rays.lost warning is expected; the annular stop of the feature tour
-# clips the collimated bundle (stop.clips_beam, #135)
+# vignetted on purpose: the rays.lost warning is expected
 @pytest.mark.filterwarnings(
     r"ignore:warning \[rays\.lost\]:raytatouille.errors.RaytatouilleWarning")
-@pytest.mark.filterwarnings(
-    r"ignore:warning \[stop\.clips_beam\]:raytatouille.errors.RaytatouilleWarning")
 @pytest.mark.parametrize("threads", [1, 4], ids=lambda t: f"py{t}threads")
-@pytest.mark.parametrize("name", list(CASES))
+@pytest.mark.parametrize("name", CASE_PARAMS)
 def test_paths_equal_cpp_bitwise(name: str, threads: int, cpp_dir: Path,
                                  compiled_systems: Systems) -> None:
     results = CASES[name](compiled_systems, threads)
@@ -226,12 +231,9 @@ def test_paths_equal_cpp_bitwise(name: str, threads: int, cpp_dir: Path,
         assert actual.tobytes() == expected.tobytes(), array
 
 
-# vignetted on purpose: the rays.lost warning is expected; the annular stop of the feature tour
-# clips the collimated bundle (stop.clips_beam, #135)
+# vignetted on purpose: the rays.lost warning is expected
 @pytest.mark.filterwarnings(
     r"ignore:warning \[rays\.lost\]:raytatouille.errors.RaytatouilleWarning")
-@pytest.mark.filterwarnings(
-    r"ignore:warning \[stop\.clips_beam\]:raytatouille.errors.RaytatouilleWarning")
 def test_the_cases_separate_status_and_values(compiled_systems: Systems) -> None:
     # The comparison must see lost rays, non-trivial deltas and several ghosts (lesson of #51).
     small = CASES["michelson_small_t"](compiled_systems, 1)
@@ -250,7 +252,8 @@ def test_the_cases_separate_status_and_values(compiled_systems: Systems) -> None
     assert plates["path"].size == 6 and np.unique(plates["relative_irradiance"]).size == 6
     singlet = CASES["ghost_singlet_ranking"](compiled_systems, 1)
     assert np.isfinite(singlet["focus_offset"]).all()
-    tour = CASES["tour_first_order"](compiled_systems, 1)
+    with pytest.warns(rt.errors.RaytatouilleWarning, match=r"stop\.clips_beam"):
+        tour = CASES["tour_first_order"](compiled_systems, 1)
     assert {int(RayStatus.ALIVE), int(RayStatus.VIGNETTED)} <= set(np.unique(tour["status"]).tolist())
     assert np.unique(tour["weight"][tour["status"] == int(RayStatus.ALIVE)]).size > 1
 
