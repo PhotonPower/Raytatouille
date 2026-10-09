@@ -135,17 +135,76 @@ std::optional<math::CMat3> interaction_prt(const compile::CompiledSurface& surfa
           const auto axis = transverse(surface.ideal_axis, k_in);
           if (!transmit || !axis) return std::nullopt;
           return polar::linear_retarder(*axis, interaction.retardance_waves, k_in);
-        } else if constexpr (std::is_same_v<I, model::Absorber> ||
-                             std::is_same_v<I, model::IdealLens> ||
+        } else if constexpr (std::is_same_v<I, model::Absorber>) {
+          return std::nullopt;  // handled before the event
+        } else if constexpr (std::is_same_v<I, model::IdealLens> ||
                              std::is_same_v<I, model::IdealCylinderLens>) {
-          // Absorber: handled before the event. Ideal lenses: interim state of #178 until the
-          // tracer applies them (ADR 0031, point 8): EventImpossible, never silently undeflected.
-          return std::nullopt;
+          // ADR 0031, point 5: a lossless passage, then a thin scalar layer that turns k_in into
+          // k_out without rotating the polarization about the direction (as ADR 0025, point 6,
+          // with P_0 = I): P = R(k_in -> k_out). Only transmit acts (point 7).
+          if (!transmit) return std::nullopt;
+          return rotation_between(k_in, k_out).cast<math::Complex>();
         } else {
           static_assert(kUnhandledInteraction<I>, "interaction not handled");
         }
       },
       surface.interaction);
+}
+
+/// Direction and optical path of a transmit at an ideal lens or ideal cylinder lens.
+struct IdealPassage {
+  math::Vec3 direction;  ///< outgoing unit direction, local
+  double opl = 0.0;      ///< Delta added to the OPL, mm
+};
+
+/// The passage through an ideal (cylinder) lens at the local hit (ADR 0031, points 2 to 4, all
+/// derived there, no literature source; docs/quellen.md). Local coordinates, the lens in z = 0;
+/// q = hit point, d = incident direction, slopes xi = (d_x, d_y) / |d_z| and g(v) = sqrt(1 +
+/// |v|^2); every length counts along the propagation, so a ray in -z sees the mirrored lens with
+/// the same q, xi and f and the same formulas.
+/// - Direction (point 2): xi' = xi - q_perp / f, d'_z with the sign of d_z, with q_perp = q for the
+///   ideal lens and (b . q) b for the cylinder lens (point 4). For a point P = (p, s) the rays
+///   meet in P' = (s'/s p, s') with 1/s' = 1/s + 1/f: a collinear map, exact for every ray.
+/// - Optical path (point 3), exact for every point of the design plane s = 1/t_o: with
+///   xi_0 = xi + t_o q_perp (the ray through the lens centre) and t_i = t_o + 1/f,
+///   Delta = n [(t_o |q|^2 - 2 xi_0 . q) / (g(xi) + g(xi_0)) - (t_i |q|^2 - 2 xi_0 . q) /
+///   (g(xi') + g(xi_0))] with q = q_perp, the cancellation-free form of
+///   n [s (g(xi) - g(xi_0)) - s' (g(xi') - g(xi_0))]; it holds for t_o = 0 and t_i = 0 as well.
+/// None for d_z = 0 (a ray in the lens plane: EventImpossible).
+/// @param n real index of the surrounding medium (the same on both sides)
+std::optional<IdealPassage> ideal_passage(const compile::CompiledIdealLens& lens,
+                                          const SurfaceHit& hit,
+                                          double n) noexcept {
+  const math::Vec3& d = hit.direction;
+  if (!(d.z() != 0.0)) return std::nullopt;
+  double qx = hit.point.x();
+  double qy = hit.point.y();
+  if (lens.power_axis) {
+    const math::Vec3& b = *lens.power_axis;
+    const double bq = b.x() * qx + b.y() * qy;
+    qx = bq * b.x();
+    qy = bq * b.y();
+  }
+  const double az = std::abs(d.z());
+  const double sx = d.x() / az;  // xi
+  const double sy = d.y() / az;
+  const double f = lens.focal_length;
+  const double tx = sx - qx / f;  // xi'
+  const double ty = sy - qy / f;
+  const double g_out = std::sqrt(1.0 + tx * tx + ty * ty);
+  const double z_out = d.z() > 0.0 ? 1.0 : -1.0;
+  IdealPassage out;
+  out.direction = math::Vec3(tx / g_out, ty / g_out, z_out / g_out);
+  const double t_o = lens.t_o;
+  const double t_i = t_o + 1.0 / f;
+  const double x0 = sx + t_o * qx;  // xi_0
+  const double y0 = sy + t_o * qy;
+  const double q2 = qx * qx + qy * qy;
+  const double xq = x0 * qx + y0 * qy;
+  const double g_in = std::sqrt(1.0 + sx * sx + sy * sy);
+  const double g_0 = std::sqrt(1.0 + x0 * x0 + y0 * y0);
+  out.opl = n * ((t_o * q2 - 2.0 * xq) / (g_in + g_0) - (t_i * q2 - 2.0 * xq) / (g_out + g_0));
+  return out;
 }
 
 /// 2 pi as in rtt::geom::LinearGratingPhase, so that g / (2 pi) is exact for 2^k lines/mm.
@@ -501,6 +560,17 @@ RayState apply_event(const RayState& incoming,
       local_dir = reflect(hit.direction, hit.normal);
       break;
     case model::EventKind::Transmit:
+      if (surface.ideal_lens) {
+        // ADR 0031: the medium stays (an element without material), n = Re(n_before).
+        const std::optional<IdealPassage> passage =
+            ideal_passage(*surface.ideal_lens, hit, n_before);
+        if (!passage) {
+          out.status = RayStatus::EventImpossible;
+          return out;
+        }
+        local_dir = passage->direction;
+        out.opl += passage->opl;
+      }
       break;
     case model::EventKind::Ordinary:
     case model::EventKind::Extraordinary:
