@@ -151,8 +151,9 @@ Dazu optional `variable` (Optimierungsvariable, nicht bei `expression`) und `min
 
 `pickup` gibt es nicht mehr: Beim Lesen einer Datei vor 0.4 fällt er weg, der Wert bleibt, und
 `rtt validate`, `rtt format` und `rt.load` melden die Warnung `io.pickup_dropped` mit der Stelle.
-In einer 0.4-Datei ist `pickup` ein Fehler. Bis #164/#165 wertet die Bibliothek die Ausdrücke
-noch nicht aus; die Kompilierung meldet gebundene Werte als `param.unresolved`.
+In einer 0.4-Datei ist `pickup` ein Fehler. compile wertet die Tabelle für die gewählte
+Konfiguration aus (`compile(system, materials, coatings, configuration)`, #165); ein Index jenseits
+der Konfigurationen ist `config.unknown`.
 
 ## Pfade
 

@@ -12,7 +12,7 @@ if(RTT_BUILD_TESTS)
     SOURCES tests/test_compile.cpp tests/test_media.cpp tests/test_coatings.cpp tests/test_layout.cpp
             tests/test_diagnostic_codes.cpp tests/test_errors.cpp tests/test_ghosts.cpp
             tests/test_migration.cpp tests/test_crystal.cpp
-            tests/test_relative_placement.cpp
+            tests/test_relative_placement.cpp tests/test_configurations.cpp
     LIBS rtt::compile rtt::io rtt::model_test_support)
   target_compile_definitions(rtt_compile_tests PRIVATE
     RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs")

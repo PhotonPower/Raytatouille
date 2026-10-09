@@ -76,6 +76,7 @@ struct GhostSystem {
 /// @param materials material library, as for compile()
 /// @param coatings  coating library, as for compile()
 /// @param options   limit of the number of ghosts
+/// @param configuration column of the parameter table, as for compile() (ADR 0029, #165)
 /// @return the compiled copy (all paths of the model, then the ghosts) and one GhostPath per
 ///         ghost
 /// @throws CompileError as compile(), std::invalid_argument for an unknown `base` and as
@@ -84,6 +85,7 @@ struct GhostSystem {
                                               std::string_view base,
                                               const material::MaterialLibrary& materials,
                                               const coating::CoatingLibrary& coatings,
-                                              const GhostOptions& options = {});
+                                              const GhostOptions& options = {},
+                                              std::size_t configuration = 0);
 
 }  // namespace rtt::compile

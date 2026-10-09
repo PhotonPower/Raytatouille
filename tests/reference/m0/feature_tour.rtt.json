@@ -120,7 +120,13 @@
           },
           {
             "id": "A.S2",
-            "pose": {"position": [0.0, 0.0, 6.0]},
+            "pose": {
+              "position": [
+                0.0,
+                0.0,
+                {"param": "A_S2_Z"}
+              ]
+            },
             "shape": {
               "base": {"type": "conic", "radius": -80.0}
             },

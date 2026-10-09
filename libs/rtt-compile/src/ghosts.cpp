@@ -136,8 +136,9 @@ GhostSystem compile_with_ghosts(const model::System& system,
                                 std::string_view base,
                                 const material::MaterialLibrary& materials,
                                 const coating::CoatingLibrary& coatings,
-                                const GhostOptions& options) {
-  const CompiledSystem plain = compile(system, materials, coatings);
+                                const GhostOptions& options,
+                                std::size_t configuration) {
+  const CompiledSystem plain = compile(system, materials, coatings, configuration);
   const std::optional<PathId> base_id = plain.find_path(base);
   if (!base_id) {
     throw std::invalid_argument("ghosts: the system has no path named '" + std::string(base) + "'");
@@ -146,7 +147,7 @@ GhostSystem compile_with_ghosts(const model::System& system,
   const std::vector<GhostPair> pairs = ghost_pairs(plain.path(*base_id), options.max_paths);
   model::System copy = system;
   for (const model::Path& g : ghosts) copy.paths.push_back(g);
-  GhostSystem out{compile(copy, materials, coatings), {}};
+  GhostSystem out{compile(copy, materials, coatings, configuration), {}};
   out.ghosts.reserve(ghosts.size());
   const CompiledPath& base_path = out.system.path(*base_id);
   for (std::size_t k = 0; k < ghosts.size(); ++k) {
