@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import warnings
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -98,7 +99,15 @@ def test_loading_a_0_3_file_warns_about_dropped_pickups(tmp_path: Path) -> None:
     image = data["root"]["children"][1]
     image["pose"] = {"position": [0.0, 0.0, {"value": 6.0, "pickup": "2 * 3"}]}
     text = json.dumps(data)
-    for load in (lambda: rt.System.from_json(text), lambda: rt.load(write(tmp_path, text))):
+
+    def from_text() -> rt.System:
+        return rt.System.from_json(text)
+
+    def from_file() -> rt.System:
+        return rt.load(write(tmp_path, text))
+
+    loaders: list[Callable[[], rt.System]] = [from_text, from_file]
+    for load in loaders:
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             s = load()

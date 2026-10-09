@@ -5,7 +5,7 @@
   "environment": {"temperature_c": 22.0, "pressure_atm": 0.95},
   "object": {
     "at_infinity": false,
-    "distance": {"value": 250.0, "variable": true, "min": 100.0, "max": 400.0}
+    "distance": {"value": 250.0, "variable": true}
   },
   "wavelengths": [
     {"um": 0.532, "reference": true},
@@ -100,7 +100,7 @@
             "shape": {
               "base": {
                 "type": "even_asphere",
-                "radius": {"value": 30.0, "variable": true},
+                "radius": {"value": 30.0, "variable": true, "min": 20.0, "max": 40.0},
                 "conic": -0.8,
                 "coefficients": [
                   1.2e-06,
