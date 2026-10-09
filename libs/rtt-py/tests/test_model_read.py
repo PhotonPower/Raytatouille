@@ -27,7 +27,7 @@ from raytatouille import model
 #: Every optional key is missing, so each first instance of a class in this system carries the
 #: parser's defaults. Required keys have arbitrary values; the stop-size aperture has no value.
 DEFAULTS_TEXT = """{
-  "schema_version": "0.3.0",
+  "schema_version": "0.4.0",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [{"um": 0.5}],
   "aperture": {"type": "stop_size"},
@@ -149,6 +149,17 @@ def check(expected: Any, actual: Any, where: str) -> None:
     if isinstance(actual, model.Param) and not isinstance(expected, dict):
         expected = {"value": expected}  # a plain number is a Param with the defaults
     assert isinstance(expected, dict), where
+    if isinstance(actual, model.ParameterRow):
+        # Exactly one of three forms (ADR 0029, point 1), so no single default row fits all:
+        # compared field by field, the other forms are None.
+        assert (actual.name, actual.value, actual.values, actual.expression) == (
+            expected["name"], expected.get("value"), expected.get("values"),
+            expected.get("expression")), where
+        assert (actual.variable, actual.min, actual.max) == (
+            expected.get("variable", False), expected.get("min"), expected.get("max")), where
+        assert set(expected) <= {"name", "value", "values", "expression", "variable", "min",
+                                 "max"}, where
+        return
     covered: set[str] = set()
     for key, value in expected.items():
         at = f"{where}/{key}"

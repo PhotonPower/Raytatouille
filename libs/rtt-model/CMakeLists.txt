@@ -15,5 +15,6 @@ if(RTT_BUILD_TESTS)
 
   rtt_add_test(rtt_model_tests
     SOURCES tests/test_validate.cpp tests/test_pose.cpp tests/test_segment_materials.cpp
+            tests/test_validate_0_4.cpp
     LIBS rtt::model rtt::model_test_support)
 endif()

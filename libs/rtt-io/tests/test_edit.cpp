@@ -92,7 +92,13 @@ void has_keys(const json& o, Keys keys, const Keys& optional, const std::string&
 }
 
 void param(const json& p, const std::string& where) {
-  has_keys(p, {"value", "variable"}, {"pickup"}, where);
+  // A bound Param is only the reference (ADR 0029, point 3); an unbound one has value and
+  // variable, bounds if set.
+  if (p.is_object() && p.contains("param")) {
+    has_keys(p, {"param"}, {}, where);
+    return;
+  }
+  has_keys(p, {"value", "variable"}, {"min", "max"}, where);
 }
 
 void params(const json& list, const std::string& where) {
@@ -101,7 +107,7 @@ void params(const json& list, const std::string& where) {
 }
 
 void pose(const json& p, const std::string& where) {
-  has_keys(p, {"position", "rotation_deg", "pivot"}, {}, where);
+  has_keys(p, {"reference", "order", "position", "rotation_deg", "pivot"}, {}, where);
   params(p["position"], where + "/position");
   params(p["rotation_deg"], where + "/rotation_deg");
   CHECK(p["pivot"].size() == 3);
@@ -182,7 +188,7 @@ void node_keys(const json& n, const std::string& where) {
 void edit_form_keys(const json& e) {
   has_keys(e,
            {"schema_version", "name", "units", "environment", "object", "wavelengths", "aperture",
-            "fields", "root", "paths"},
+            "fields", "configurations", "parameters", "root", "paths"},
            {}, "");
   has_keys(e["environment"], {"temperature_c", "pressure_atm", "medium"}, {}, "/environment");
   has_keys(e["object"], {"at_infinity", "distance"}, {}, "/object");
@@ -194,6 +200,15 @@ void edit_form_keys(const json& e) {
   param(e["aperture"]["value"], "/aperture/value");
   has_keys(e["fields"], {"type", "points"}, {}, "/fields");
   for (const json& f : e["fields"]["points"]) has_keys(f, {"x", "y", "weight"}, {}, "/points");
+  for (const json& c : e["configurations"]) has_keys(c, {"name"}, {}, "/configurations");
+  // A row: name, exactly one form, always variable (ADR 0029, point 3), bounds if set.
+  for (const json& r : e["parameters"]) {
+    const int forms = static_cast<int>(r.contains("value")) + static_cast<int>(r.contains("values")) +
+                      static_cast<int>(r.contains("expression"));
+    CHECK(forms == 1);
+    has_keys(r, {"name", "variable"}, {"value", "values", "expression", "min", "max"},
+             "/parameters");
+  }
   node_keys(e["root"], "/root");
   for (const json& p : e["paths"]) {
     has_keys(p, {"name", "events"}, {}, "/paths");
@@ -298,10 +313,11 @@ TEST_CASE("the edit form writes every value", "[io][edit]") {
   CHECK(is_param_object(lens["surfaces"][0]["shape"]["base"]["radius"]));
   const json events = e["paths"][0]["events"];
   CHECK((events == "auto" || (events[0].contains("kind") && events[0].contains("order"))));
-  // A pickup stays; an unset optional member is missing.
+  // A plain value is an object with value and variable; an unset optional member is missing.
+  // (Until 0.3 this value carried the pickup "2 * 3"; since 0.4 it is the table row A_S2_Z.)
   const json tour = json::parse(rtt::io::to_edit_json(load("m0/feature_tour.rtt.json")));
   const json z = tour["root"]["children"][2]["surfaces"][1]["pose"]["position"][2];
-  CHECK(z == json::parse(R"({"value": 6.0, "variable": false, "pickup": "2 * 3"})"));
+  CHECK(z == json::parse(R"({"value": 6.0, "variable": false})"));
   CHECK(!tour["root"]["children"][5]["surfaces"][0].contains("aperture"));
   CHECK(!tour["root"]["children"][5].contains("material"));
 }
@@ -312,7 +328,7 @@ TEST_CASE("the acceptance patches are undone bit for bit on every reference syst
     const System s = rtt::io::load_system(file);
     const json e = json::parse(rtt::io::to_edit_json(s));
     const std::string value = json(e["aperture"]["value"]["value"].get<double>() + 1.0).dump();
-    // A Param object replaced by a number (drops variable and pickup).
+    // A Param object replaced by a number (drops variable and bounds).
     applied_and_undone(s,
                        R"([{"op": "replace", "path": "/aperture/value", "value": )" + value + "}]");
     // A move into an ancestor of its source.

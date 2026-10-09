@@ -140,16 +140,19 @@ def test_editor_on_every_reference_system(file: Path) -> None:
     assert canonical(ed.system) == after
 
 
-def test_set_on_a_param_keeps_variable_and_pickup() -> None:
+def test_set_on_a_param_keeps_variable_and_bounds() -> None:
+    # Until 0.3 the second Param carried a pickup; 0.4 drops it (ADR 0029). The tour's object
+    # distance has bounds instead, which set() keeps like variable.
     tour = load("m0/feature_tour.rtt.json")
     ed = rt.Editor(tour)
     ed.set("/object/distance", 300.0)
     assert ed.history[-1] == [{"op": "replace", "path": "/object/distance/value", "value": 300.0}]
     distance = ed.system.object_space.distance
     assert (distance.value, distance.variable) == (300.0, True)
+    assert (distance.min, distance.max) == (100.0, 400.0)
     z = "/root/children/2/surfaces/1/pose/position/2"
     ed.set(z, 7.0)
-    assert ed.system.json_at(z) == {"value": 7.0, "variable": False, "pickup": "2 * 3"}
+    assert ed.system.json_at(z) == {"value": 7.0, "variable": False}
     # A whole Param object replaces it; a bool is no number, so it replaces the object too and
     # the strict reader rejects it.
     ed.set("/object/distance", {"value": 1.0, "variable": False})
