@@ -330,12 +330,6 @@ double frobenius(const Mat& a) {
   return std::sqrt(s);
 }
 
-double norm(const Vec& v) {
-  double s = 0.0;
-  for (const double x : v) s += x * x;
-  return std::sqrt(s);
-}
-
 /// Hessian of F = 1/2 f^T f at p: J^T J + sum_i f_i d2f_i, the second part from central
 /// differences of J contracted with f (so the large EFL row, whose residual is about 0 at the
 /// reference, does not enter through second differences of F).
