@@ -13,7 +13,9 @@
 /// the weight of the generator, W_f and W_l the model weights of the chosen fields and
 /// wavelengths normalised to sum 1 over the choice, q_k the quadrature weight
 /// (trace::gauss_pupil_weights, sum 1). The sum of squares is w sum_f W_f RMS_f^2 (spot) and
-/// w sum_f sum_l W_f W_l sigma_fl^2 (wavefront).
+/// w sum_f sum_l W_f W_l sigma_fl^2 (wavefront). The power of a ray (RayBatch::weight) does not
+/// enter, unlike analysis::spot, which weights every ray with its power: on a system with
+/// coatings or absorption the generator rms_spot and the operand spot_rms therefore differ.
 ///
 /// Deviations:
 /// - rms_spot: (x_k - x_ref, y_k - y_ref) in the local coordinates of the image surface (the

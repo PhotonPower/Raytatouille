@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <span>
 #include <stdexcept>
@@ -97,6 +98,18 @@ std::vector<double> residuals(const Generator& g, const CompiledSystem& cs, Gene
 
 bool same(double a, double b) {
   return std::bit_cast<std::uint64_t>(a) == std::bit_cast<std::uint64_t>(b);
+}
+
+/// The bound of the G3 comparisons: |actual - expected| <= 64 eps_M scale. Derivation: the
+/// hits (batch and single aiming, #187) and W (opd_points, #191) are bitwise the same, and the
+/// sums run in the same order, so only rounding differs: the weight sqrt(w W_f W_l q_k) is the
+/// same product in another association (at most 3 roundings per side, 3 u relative after the
+/// square root, u = eps_M / 2) plus the square root and the final product (2 u per side); a
+/// reference (centroid, W_mean) computed in another translation unit may differ by a few ulp of
+/// its own size. With scale = sqrt(w W_f W_l q_k) (|value| + |reference|) all of this stays far
+/// below 64 eps_M scale.
+bool within_rounding(double actual, double expected, double scale) {
+  return std::abs(actual - expected) <= 64.0 * std::numeric_limits<double>::epsilon() * scale;
 }
 
 double largest(const std::vector<double>& r) {
@@ -245,12 +258,19 @@ TEST_CASE("generators G3: rms_spot against independently traced rays", "[optim][
           const double dy = p[l * n + k].second - ry;
           const std::size_t i = 2 * ((f * 2 + l) * n + k);
           INFO("field " << f << ", wavelength " << l << ", point " << k);
-          CHECK(std::abs(r[i] - c * dx) <= 1e-12);
-          CHECK(std::abs(r[i + 1] - c * dy) <= 1e-12);
+          const double sx = c * (std::abs(p[l * n + k].first) + std::abs(rx));
+          const double sy = c * (std::abs(p[l * n + k].second) + std::abs(ry));
+          CHECK(within_rounding(r[i], c * dx, sx));
+          CHECK(within_rounding(r[i + 1], c * dy, sy));
           expected_ms += wf[f] * wl[l] * q[k] * (dx * dx + dy * dy);
         }
       }
     }
+    // Mean squares: a term c d^2 differs by about 2 c |d| eps_M |hit| (the reference rounding
+    // above); summed and with Cauchy-Schwarz (sum c |d| <= sqrt(sum c) RMS, sum c <= 1) that is
+    // at most 2 eps_M |hit|_max / RMS relative: below 1e-12 for |hit| <= 10 mm (image height at
+    // 5 deg and f = 100 mm about 8.7 mm) and an RMS above 0.01 mm, checked here.
+    CHECK(std::sqrt(st.mean_square) > 0.01);
     CHECK(std::abs(st.mean_square - expected_ms) <= 1e-12 * expected_ms);
     CHECK(std::abs(sum_of_squares(r) - w * st.mean_square) <= 1e-12 * w * st.mean_square);
     CHECK(largest(r) > 1e-3);  // content: off-axis fields with colour
@@ -288,6 +308,7 @@ TEST_CASE("generators G3: rms_wavefront against opd_points of single rays", "[op
   CHECK(st.rays_lost == 0);
 
   double expected_ms = 0.0;
+  double w_max = 0.0;  // largest |W|, for the bound of the mean square
   for (std::size_t f = 0; f < 2; ++f) {
     for (std::size_t l = 0; l < 2; ++l) {
       std::vector<double> wk;
@@ -300,6 +321,7 @@ TEST_CASE("generators G3: rms_wavefront against opd_points of single rays", "[op
         REQUIRE(one.points.size() == 1);
         REQUIRE(one.points[0].status == rtt::trace::RayStatus::Alive);
         wk.push_back(one.points[0].w);
+        w_max = std::max(w_max, std::abs(one.points[0].w));
         sq += q[k];
         mean += q[k] * one.points[0].w;
       }
@@ -308,12 +330,15 @@ TEST_CASE("generators G3: rms_wavefront against opd_points of single rays", "[op
         const double c = std::sqrt(w * wf[f] * wl[l] * q[k]);
         const std::size_t i = (f * 2 + l) * n + k;
         INFO("field " << f << ", wavelength " << l << ", point " << k);
-        CHECK(std::abs(r[i] - c * (wk[k] - mean)) <= 1e-9);
+        CHECK(within_rounding(r[i], c * (wk[k] - mean), c * (std::abs(wk[k]) + std::abs(mean))));
         expected_ms += wf[f] * wl[l] * q[k] * (wk[k] - mean) * (wk[k] - mean);
       }
     }
   }
-  CHECK(std::abs(st.mean_square - expected_ms) <= 1e-9 * expected_ms);
+  // As for the spot: at most 2 eps_M |W|_max / sigma relative, below 1e-12 while |W|_max <
+  // 2000 sigma (checked).
+  CHECK(w_max < 2000.0 * std::sqrt(st.mean_square));
+  CHECK(std::abs(st.mean_square - expected_ms) <= 1e-12 * expected_ms);
   CHECK(largest(r) > 1e-2);  // content: off axis the wavefront is not flat
 }
 
