@@ -16,6 +16,7 @@
 #include "rtt/diagnostics/codes.hpp"
 #include "rtt/model/optimization.hpp"
 #include "rtt/optim/bounds.hpp"
+#include "rtt/optim/generators.hpp"
 #include "rtt/optim/merit.hpp"
 #include "rtt/optim/variables.hpp"
 
@@ -91,13 +92,26 @@ OptimResult optimize(const model::System& system,
   // Start (ADR 0030, point 10): the exception of an analysis comes through unchanged; an
   // undefined value is an input error naming the operand.
   const MeritEvaluation start = merit.evaluate(p0);
-  for (std::size_t i = 0; i < start.residuals.size(); ++i) {
+  const std::size_t n_operands = system.optimization.operands.size();
+  for (std::size_t i = 0; i < n_operands; ++i) {
     if (!std::isfinite(start.residuals[i])) {
       const std::string& why = start.undefined[i];
       throw std::invalid_argument("optimize: operand /optimization/operands/" + std::to_string(i) +
                                   " has no finite residual at the start" +
                                   (why.empty() ? std::string() : ": " + why));
     }
+  }
+  // Generator residuals follow in blocks of generator_sizes() (ADR 0030, addendum #168).
+  for (std::size_t g = 0, offset = n_operands; g < merit.generator_sizes().size(); ++g) {
+    const std::size_t block_end = offset + merit.generator_sizes()[g];
+    for (std::size_t i = offset; i < block_end; ++i) {
+      if (std::isfinite(start.residuals[i])) continue;
+      const std::string& why = start.generators[g].undefined;
+      throw std::invalid_argument("optimize: generator /optimization/generators/" +
+                                  std::to_string(g) + " has no finite residual at the start" +
+                                  (why.empty() ? std::string() : ": " + why));
+    }
+    offset = block_end;
   }
 
   const LmOptions lm_options{options.max_iterations, options.ftol, options.xtol,
@@ -131,6 +145,9 @@ OptimResult optimize(const model::System& system,
   for (const model::Operand& op : system.optimization.operands) {
     weights += std::visit([](const auto& o) { return o.common.weight; }, op);
   }
+  for (const model::Generator& g : system.optimization.generators) {
+    weights += std::visit([](const auto& o) { return o.weight; }, g);
+  }
   for (const double r : end.residuals) squares += r * r;
   for (const LmIteration& it : lm.history) {
     result.history.push_back({it.k, weights > 0.0 ? 2.0 * it.F / weights : 0.0, it.mu, it.rho,
@@ -143,6 +160,18 @@ OptimResult optimize(const model::System& system,
     const double r = end.residuals[i];
     result.operands.push_back({"/optimization/operands/" + std::to_string(i), end.values[i], target,
                                weight, squares > 0.0 ? 100.0 * r * r / squares : 0.0});
+  }
+  // Generators (ADR 0030, addendum #168): only with an evaluated final state.
+  for (std::size_t g = 0, offset = end.values.size(); g < end.generators.size(); ++g) {
+    const std::size_t n = merit.generator_sizes()[g];
+    double own = 0.0;
+    for (std::size_t i = offset; i < offset + n; ++i) own += end.residuals[i] * end.residuals[i];
+    offset += n;
+    const GeneratorStats& st = end.generators[g];
+    result.generators.push_back(
+        {"/optimization/generators/" + std::to_string(g), std::sqrt(st.mean_square),
+         std::visit([](const auto& o) { return o.weight; }, system.optimization.generators[g]),
+         squares > 0.0 ? 100.0 * own / squares : 0.0, st.rays_launched, st.rays_lost});
   }
 
   std::string patch = "[";
@@ -174,6 +203,15 @@ OptimResult optimize(const model::System& system,
     result.diagnostics.push_back(
         diagnostic("optim.jacobian_failed", variables[*lm.failed_variable].pointer,
                    "no valid evaluation for the Jacobian column of this variable"));
+  }
+  // F7: lost rays of a generator in the final state (ADR 0030, point 4 and addendum #168).
+  for (const GeneratorValue& g : result.generators) {
+    if (g.rays_lost == 0) continue;
+    result.diagnostics.push_back(diagnostic(
+        "optim.rays_lost", g.pointer,
+        std::to_string(g.rays_lost) + " of " + std::to_string(g.rays_launched) +
+            " rays of the generator are lost in the final state; they give residuals 0 and "
+            "lower the merit"));
   }
   for (const model::Diagnostic& d : end.warnings) result.diagnostics.push_back(d);
   return result;

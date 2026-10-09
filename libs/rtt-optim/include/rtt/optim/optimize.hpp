@@ -44,8 +44,9 @@ struct OptimizeOptions {
 /// One solve of the run (ADR 0030, point 12).
 struct OptimIteration {
   int k = 0;  ///< number of this solve (1, 2, ...)
-  /// Normalised merit phi = 2 F / sum of the operand weights, of the current (last accepted)
-  /// state after this solve; the mean of w (v - t)^2. 0 if all weights are 0.
+  /// Normalised merit phi = 2 F / sum of the operand and generator weights, of the current
+  /// (last accepted) state after this solve; the mean of w (v - t)^2, a generator counting with
+  /// w times its mean square. 0 if all weights are 0.
   double phi = 0.0;
   double mu = 0.0;              ///< damping of this solve
   double rho = 0.0;             ///< gain ratio; NaN without a valid trial
@@ -62,6 +63,19 @@ struct OperandValue {
   double weight = 0.0;  ///< weight w >= 0, dimensionless
   /// Share w (v - t)^2 / sum_j w_j (v_j - t_j)^2 of the merit, percent; 0 if the sum is 0.
   double contribution = 0.0;
+};
+
+/// One generator in the final state (ADR 0030, addendum #168).
+struct GeneratorValue {
+  std::string pointer;  ///< /optimization/generators/g
+  /// Weighted RMS sqrt(GeneratorStats::mean_square): mm (rms_spot) or waves at the reference
+  /// wavelength (rms_wavefront); independent of the weight, so also reported for weight 0.
+  double rms = 0.0;
+  double weight = 0.0;  ///< weight w >= 0, dimensionless
+  /// Share of its residuals in the merit, sum r^2 / sum_j f_j^2, percent; 0 if the sum is 0.
+  double contribution = 0.0;
+  std::size_t rays_launched = 0;  ///< rays of the generator
+  std::size_t rays_lost = 0;      ///< rays that did not arrive (residuals 0)
 };
 
 /// One variable in the final state.
@@ -84,12 +98,13 @@ struct OptimResult {
   /// RFC 6902 patch from the input to `system`: one "replace" per changed variable, numbers in
   /// the shortest round-trip form; "[]" if nothing changed.
   std::string patch;
-  std::vector<OptimIteration> history;   ///< one entry per solve
-  std::vector<OperandValue> operands;    ///< final state, file order
-  std::vector<VariableValue> variables;  ///< order of ADR 0030, point 5
+  std::vector<OptimIteration> history;     ///< one entry per solve
+  std::vector<OperandValue> operands;      ///< final state, file order
+  std::vector<GeneratorValue> generators;  ///< final state, file order
+  std::vector<VariableValue> variables;    ///< order of ADR 0030, point 5
   /// optim.parameter_at_bound (per variable), optim.evaluation_failed, optim.jacobian_failed
-  /// (status Failed, error), then the warnings of the analyses in the final state (rays.lost,
-  /// stop.clips_beam).
+  /// (status Failed, error), optim.rays_lost (per generator with lost rays in the final state),
+  /// then the warnings of the analyses in the final state (rays.lost, stop.clips_beam).
   std::vector<model::Diagnostic> diagnostics;
   int iterations = 0;  ///< number of solves
   /// Evaluations of the merit function in this call: the solver's, the start check and the
@@ -110,14 +125,14 @@ struct OptimResult {
 ///                  cancellation ends the run with status Cancelled and the last accepted state.
 ///                  Requested before the start, nothing is evaluated and the result is the
 ///                  input; after a cancellation the final state is not evaluated again, so
-///                  `operands` and the warnings of the analyses stay empty (ADR 0030, addendum
-///                  #167)
+///                  `operands`, `generators`, optim.rays_lost and the warnings of the analyses
+///                  stay empty (ADR 0030, addendum #167)
 /// @throws compile::CompileError if the system is invalid or does not compile at the start
 /// @throws OptimError with optim.no_variables and/or optim.no_operands (both if both apply), or
 ///         with merit.operand_unsupported
 /// @throws the exception of an analysis at the start (ParaxialError, AnalysisError,
-///         NoStopError), or std::invalid_argument naming the operand if its value is not
-///         defined at the start (ADR 0030, point 10)
+///         NoStopError), or std::invalid_argument naming the operand or generator if its value
+///         or a residual is not defined at the start (ADR 0030, point 10)
 [[nodiscard]] OptimResult optimize(const model::System& system,
                                    const material::MaterialLibrary& materials,
                                    const coating::CoatingLibrary* coatings = nullptr,
