@@ -50,6 +50,7 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 | 0020 | Gemeinsamer strikter JSON-Parser `rtt-json` (header-only, Schicht Basis): doppelte Schlüssel und Zahlen-Overflow sind Fehler mit Pointer |
 | 0022 | Stabile Diagnosecodes in Punktnotation mit Registry `rtt-diagnostics` (header-only, Schicht Basis), Warnungen von `compile()` als Daten, Fehlerorte in `ParaxialError`/`AnalysisError`, eine Klasse `NoStopError` (angenommen) |
 | 0023 | Ergebnisformat `raytatouille-result` (JSON mit dtype/shape für Arrays, NaN als Zeichenkette, Roundtrip = Daten) und Strahlverluste als Daten (angenommen) |
+| 0028 | Relative Platzierung: `Pose.reference` (absolut, relativ zur vorangehenden Fläche oder zum vorangehenden Geschwister) und `Pose.order` (`translate_first` wie bisher, `rotate_first` als Koordinatensprung) (angenommen) |
 
 **Konventionen (verbindlich für alle Bibliotheken)**
 
