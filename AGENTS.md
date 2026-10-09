@@ -55,6 +55,14 @@ Zwei Fehlerquellen, die nur die CI sieht, vorab lokal prüfen:
 - **Bitvergleiche brauchen einen Inhaltswächter.** Liefern C++ und Python beide dasselbe Falsche
   (z. B. alle Strahlen verfehlt), ist der Vergleich trotzdem grün. Jeder neue Fall bekommt deshalb
   eine Prüfung auf den erwarteten Status und auf Werte, die sich unterscheiden.
+- **Geänderte Referenzdateien auch durch die Python-Tests.** `test_model_read.py` und die
+  Bitvergleiche lesen die Dateien unter `tests/reference/` (z. B. `feature_tour.rtt.json`). Wer eine
+  dieser Dateien ändert, lässt die Python-Tests lokal laufen, auch wenn sich keine Bindung ändert;
+  ein vorhandener Python-Build genügt dafür (pytest liest die JSON-Dateien aus dem Quellbaum).
+- **GCC 13 der CI warnt anders als ein neueres lokales GCC.** Die CI baut mit GCC 13 und `-O3`;
+  Meldungen wie `-Wdangling-reference` oder `-Wmaybe-uninitialized` sieht ein lokales GCC 16 oft
+  nicht, und umgekehrt. Ist GCC 13 lokal nicht verfügbar, die CI-Läufe von `ci-linux-gcc` nach dem
+  Push gezielt ansehen.
 
 ## Aufbau
 
