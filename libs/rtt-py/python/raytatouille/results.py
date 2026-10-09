@@ -54,9 +54,10 @@ __all__ = [
 ]
 
 FORMAT = "raytatouille-result"
-SCHEMA_VERSION = "0.1.5"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
+SCHEMA_VERSION = "0.1.6"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
 # 0.1.3: status Evanescent, status arrays one entry longer (#127); 0.1.4: PathTransmission,
-# PathOplDifference, GhostRanking (#133); 0.1.5: RayBatch wave_x/y/z, mode_index (#134)
+# PathOplDifference, GhostRanking (#133); 0.1.5: RayBatch wave_x/y/z, mode_index (#134);
+# 0.1.6: RaytraceReport, SystemReport, DimensionReport (#177)
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a
@@ -107,6 +108,18 @@ _FIELDS: dict[str, tuple[str, ...]] = {
                      "paraxial_blur_radius", "losses"),
     "GhostRanking": ("base", "field", "wavelength", "base_power", "base_rms_radius",
                      "resolution_radius", "entries", "warnings"),
+    # reports (#177)
+    "RaytraceRows": ("ray", "slot", "surface", "x", "y", "z", "dx", "dy", "dz", "local_x",
+                     "local_y", "local_z", "local_dx", "local_dy", "local_dz", "opl", "weight",
+                     "status"),
+    "RaytraceReport": ("path", "rows", "rays", "slots"),
+    "SystemReport": ("path", "wavelength", "wavelengths_um", "reference_wavelength",
+                     "field_count", "surface_count", "event_count", "stop", "prescription",
+                     "warnings"),
+    "DimensionSegments": ("element", "first_surface", "coaxial", "centre_thickness",
+                          "semi_diameter_first", "semi_diameter_second", "aperture_first",
+                          "aperture_second", "edge_thickness", "diameter"),
+    "DimensionReport": ("segments",),
     # paraxial
     "ChromaticPair": ("first", "second"),
     "Pupil": ("z", "diameter"),
@@ -144,6 +157,7 @@ TYPES: tuple[str, ...] = (
     "SpotDiagram", "RayFan", "OpdMap", "OpdFan", "LongitudinalColour", "LateralColour",
     "DistortionSweep", "DistortionPoint", "FieldCurvatureSweep", "FieldCurvaturePoint",
     "PathTransmission", "PathOplDifference", "GhostRanking",
+    "RaytraceReport", "SystemReport", "DimensionReport",
     "FirstOrder", "Seidel", "Prescription", "TraceStats", "RayBatch", "RayPaths",
     "Diattenuation", "Diattenuations", "Retardance", "Retardances",
     "GlassInfo", "GlassMap", "SurfaceLayout", "CompiledElement", "Diagnostic", "LoadWarning",

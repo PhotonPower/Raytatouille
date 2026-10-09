@@ -33,6 +33,7 @@
 #include "npy_writer.hpp"
 #include "paths_cases.hpp"
 #include "polar_batch.hpp"
+#include "reports_cases.hpp"
 #include "rtt/coating/catalog.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/io/json_io.hpp"
@@ -327,6 +328,7 @@ int main(int argc, char** argv) {
     rtt::py::reference::run_crystal_cases(args[0], args[1], args[2], threads);
     rtt::py::reference::run_diffraction_cases(args[0], args[1], args[2], threads);
     rtt::py::reference::run_configuration_cases(args[0], args[1], args[2], threads);
+    rtt::py::reference::run_reports_cases(args[0], args[1], args[2], threads);
     return 0;
   } catch (const std::exception& e) {
     std::cerr << "rtt_py_reference: " << e.what() << '\n';

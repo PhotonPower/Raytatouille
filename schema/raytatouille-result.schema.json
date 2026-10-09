@@ -34,6 +34,9 @@
         "PathTransmission",
         "PathOplDifference",
         "GhostRanking",
+        "RaytraceReport",
+        "SystemReport",
+        "DimensionReport",
         "FirstOrder",
         "Seidel",
         "Prescription",
@@ -281,6 +284,72 @@
               "resolution_radius",
               "entries",
               "warnings"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RaytraceReport"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "path",
+              "rows",
+              "rays",
+              "slots"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "SystemReport"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "path",
+              "wavelength",
+              "wavelengths_um",
+              "reference_wavelength",
+              "field_count",
+              "surface_count",
+              "event_count",
+              "stop",
+              "prescription",
+              "warnings"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "DimensionReport"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "segments"
             ]
           }
         }
