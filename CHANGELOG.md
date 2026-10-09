@@ -6,6 +6,119 @@ Neue Einträge stehen bis zum nächsten Release als Fragmente in [`changelog.d/`
 
 ## [Unreleased]
 
+## [0.7.0] – M5 Optimierung
+
+### Hinzugefügt
+- Dateiformat und Modell: `Pose.reference` (absolut, relativ zur vorangehenden Fläche oder zum
+  vorangehenden Geschwister) und `Pose.order` (`translate_first`, `rotate_first` als
+  Koordinatensprung, ADR 0028); Parametertabelle `parameters` mit den Formen `value`, `values`
+  und `expression`, Konfigurationen `configurations`, Grenzen `min`/`max` an Params und Zeilen
+  (ADR 0029); dazu die Prüfungen in `validate` ohne Auswertung von Ausdrücken und die Lesetypen in
+  Python (`Pose.reference`/`order`, `Param.param`/`min`/`max`, `System.parameters`,
+  `System.configurations`) (#162).
+- Dateiformat und Modell: Abschnitt `optimization` mit der Merit-Funktion (ADR 0030), Operanden
+  `efl`, `bfl`, `image_fnumber`, `magnification`, `ray_x`, `ray_y`, `spot_rms`, `opd_rms`,
+  `param_value` und Generatoren `rms_spot`, `rms_wavefront` mit den Standardwerten im Modell
+  (`rtt/model/optimization.hpp`); Prüfungen in `validate` (`merit.*`), JSON-Schema und
+  Lesetypen in Python (`System.optimization`) (#162).
+- `rtt-compile`: relative Platzierung nach ADR 0028. compile setzt die globale Lage jedes Knotens
+  als global(Bezug) · Pose zusammen, mit der letzten Fläche davor in Baumreihenfolge
+  (`relative_to_preceding`) oder dem vorangehenden Geschwister (`relative_to_sibling`) als Bezug;
+  eine Luftdicke ist damit ein einzelner Wert, auch hinter einem Faltspiegel (`rotate_first`).
+  Absolut platzierte Systeme bleiben bitgleich. Die Feature-Tour platziert ihr Bild relativ zum
+  Spiegel `dump` (#163).
+- `rtt-model`: Auswertung der Parametertabelle (ADR 0029, `rtt/model/parameters.hpp`):
+  `evaluate_parameters` (Zeilen je Konfiguration, Ausdrücke nach der Grammatik von ADR 0029,
+  korrekt gerundete Literale, ohne FMA-Kontraktion), `resolve_parameters` (System einer
+  Konfiguration), `for_each_param` (jedes Param mit Pointer in der Reihenfolge der
+  Bearbeitungsform), `configuration_count`, `find_configuration`, `find_parameter`; validate meldet
+  `parameters.expression_syntax`, `parameters.unknown_name`, `parameters.forward_reference` und
+  `parameters.not_finite` (#164).
+- `rtt-compile`: Konfigurationen (ADR 0029, Punkt 5). `compile(system, materials[, coatings],
+  configuration)` wertet die Parametertabelle für die gewählte Spalte aus und setzt die gebundenen
+  Params vor dem Zusammensetzen der Posen; ohne Bindung bleibt das Ergebnis bitgleich.
+  `CompiledSystem::configuration()` und `configuration_name()` nennen die Konfiguration,
+  `compile_with_ghosts` nimmt sie ebenfalls; ein ungültiger Index ist `config.unknown` (#165).
+- `rtt-optim` (neu, Schicht Workflows): Levenberg-Marquardt-Kern nach ADR 0030
+  (`rtt/optim/levenberg_marquardt.hpp`): kleinste Quadrate gegen einen Residuen-Callback,
+  Algorithmus 3.16 von Madsen/Nielsen/Tingleff mit der Dämpfung nach Nielsen (1999), fester
+  Skalierung nach MINPACK-1, Cholesky-Zerlegung nach Madsen/Nielsen/Tingleff (Algorithmus A.4),
+  zentraler Differenz parallel über die Variablen und Grenzen per MINUIT-Transformation
+  (`rtt/optim/bounds.hpp`, ein- und zweiseitig); Abbruch über `RunControl` mit dem letzten
+  angenommenen Stand, Ergebnis bitgleich bei jeder Thread-Anzahl (#166).
+- `rtt-optim`: Optimierung eines Systems gegen seine Merit-Funktion (ADR 0030, #167).
+  - `optimize` liefert das neue System, einen RFC-6902-Patch, den Verlauf, die Operanden- und
+    die Variablentabelle sowie Diagnosen.
+  - Die Variablen sind erst die variablen Zeilen der Parametertabelle (je Konfiguration bei
+    `values`), dann die variablen Params.
+  - Jeder Operand (`efl`, `bfl`, `image_fnumber`, `magnification`, `ray_x`, `ray_y`, `spot_rms`,
+    `opd_rms`, `param_value`) ist genau seine bestehende Analyse in der genannten Konfiguration.
+  - Neue Codes: `merit.operand_unsupported`, `optim.no_variables`, `optim.no_operands`,
+    `optim.evaluation_failed`, `optim.jacobian_failed`, `optim.parameter_at_bound`,
+    `optim.rays_lost` (erzeugt ab #168).
+  - Die Rechengenauigkeit einer Merit-Auswertung ist gemessen: `kMeritPrecision` = 1e−9.
+- Referenzsysteme `m5/singlet_optim` und `m5/two_lens_gap` für die Abnahme von M5 (#167).
+- `rtt-trace`: Pupillenverteilung `GaussPupil` (Gauß-Quadratur: Ringe nach Gauß-Legendre in
+  ρ², gleichverteilte Arme) mit den Quadraturgewichten `gauss_pupil_weights`, auch in Python
+  (`rt.trace.GaussPupil`). Spot, Pfad-Analysen und Ghost-Rangfolge lehnen sie ab, weil sie über
+  ihre Strahlen ohne diese Gewichte mitteln (#168).
+- `rtt-analysis`: `opd_points` gibt die OPD an den Punkten einer beliebigen Pupillenverteilung
+  (auch `GaussPupil`) mit den Konventionen von `opd_map` zurück, ohne Statistik; `opd_map` und
+  `opd_fan` rechnen ihre Punkte mit derselben Funktion (#168).
+- `rtt-optim`: die Merit-Generatoren `rms_spot` und `rms_wavefront` mit Gauß-Quadratur in der
+  Pupille (`rtt/optim/generators.hpp`); ihre Residuen stehen hinter denen der Operanden. Das
+  Ergebnis von `optimize` hat eine Generatortabelle (gewichtetes RMS, Anteil, Strahlen) und
+  meldet verlorene Strahlen mit `optim.rays_lost` (ADR 0030, Nachtrag #168).
+- `rtt-compile`: `configuration_index(system, name)` und `compile(…, std::string_view
+  configuration)`: Konfiguration per Name, ein unbekannter Name ist `config.unknown` wie ein
+  ungültiger Index. `CompiledSystem::node_frames()`: für jeden Knoten (Baugruppe, Element,
+  Fläche) das globale KS seines Bezugs und sein eigenes, damit eine GUI Knoten verschieben und
+  absolute in relative Posen umrechnen kann (ADR 0028, Punkt 6) (#169).
+- `rtt-py`: `rt.compile(…, configuration=)` und `rt.compile_with_ghosts(…, configuration=)` mit
+  Index oder Name, `CompiledSystem.configuration`/`configuration_name`, `System.resolved()` (das
+  System einer Konfiguration mit festen Zahlen), `System.locate_parameter()`,
+  `rt.layout.node_frames()` und `rt.layout.reference_frame()`; Beispiel-Referenzsystem
+  `tests/reference/m5/zoom.rtt.json` (Zoom mit zwei Konfigurationen, relativer Platzierung und
+  abgeleiteter Zeile) (#169).
+- Python: `rt.optim` mit `optimize` (neues System, RFC-6902-Patch für `Editor` mit Undo, Verlauf,
+  Operanden-, Generator- und Variablentabelle; Abbruch als Status `CANCELLED`), `MeritFunction`,
+  `variables`, `OptimizeOptions` und `OptimError`. Ergebnisformat `raytatouille-result` 0.1.7
+  mit `OptimResult` (ohne das System, das sich aus dem Patch ergibt) und `MeritEvaluation`
+  (Nachtrag ADR 0023). Beispiel `examples/python/optimize_singlet.py` (#169).
+- Referenzdateien: `m5/singlet_optim` und `m5/two_lens_gap` tragen die Merit-Funktionen der
+  M5-Abnahme im Abschnitt `optimization` (EFL 100 mm mit Gewicht 1e4 und `rms_spot`; EFL 55 mm
+  und Fokus) (#169, #170).
+- Abnahme M5 (`libs/rtt-optim/tests/test_m5_acceptance.cpp`, Tag `[m5]`) mit den
+  Referenzsystemen `m5/singlet_solve` (Einzellinse auf minimalen RMS-Spot, die EFL von 100 mm
+  hält die Parametertabelle exakt) und `m5/two_lens_gap` (Luftdicke aus der Gullstrand-Gleichung),
+  Sollwerte unabhängig vom Optimierer, Toleranzen vorab hergeleitet (#170).
+- Bekannte Grenze dokumentiert (ADR 0030, Nachtrag #170): Gleichheitsbedingungen als Operand mit
+  großem Gewicht können `converged_step` weit vor dem Optimum ergeben; Bedingungen besser über
+  die Parametertabelle halten (#196).
+- `rtt-analysis`: Reports als Daten (`rtt/analysis/reports.hpp`): `raytrace_report` (Strahl ×
+  Ereignis mit Ort und Richtung global und im Flächen-KS, OPL, Gewicht, Status; global bitgleich
+  zu `RayPaths`), `system_report` (Systemangaben und paraxiale Prescription, ohne paraxiale
+  Daten mit Warnung `report.paraxial_unavailable`) und `dimension_report` (Mittendicke,
+  Randdicke beim größeren Halbdurchmesser, Halbdurchmesser und Durchmesser je Segment, aus der
+  kompilierten Geometrie) (#177).
+- Python: `rt.analysis.raytrace_report`, `system_report` und `dimension_report` mit den Klassen
+  `RaytraceReport`, `SystemReport`, `DimensionReport` (Spalten als NumPy-Kopien) und
+  `to_csv()` (`raytatouille.reports`; NaN als leeres Feld, Floats bitgleich zurücklesbar,
+  Systemreport als `key,value`). Ergebnisformat `raytatouille-result` 0.1.6 mit den drei
+  Reports (Nachtrag ADR 0023). Beispiel `examples/python/reports.py` (#177).
+
+### Geändert
+- Dateiformat: Schema 0.4.0 (ADR 0028, 0029). Dateien 0.1 bis 0.3 werden weiter gelesen und
+  migriert; ein `pickup` fällt dabei weg, der Wert bleibt, mit der Warnung `io.pickup_dropped`.
+  `rtt-io` hat dafür Überladungen von `parse_system` und `load_system` mit Warnliste;
+  `rtt validate` und `rtt format` schreiben die Warnungen nach stderr, Python gibt sie beim Laden
+  als `RaytatouilleWarning` aus (#162).
+
+### Entfernt
+- `rtt-model`, `rtt-py`: `Param::pickup` bzw. `Param.pickup` entfällt; an seine Stelle tritt die
+  Bindung an eine Zeile der Parametertabelle (`Param::param`, ADR 0029). Pickups wurden nie
+  ausgewertet (#162).
+
 ## [0.6.0] – M4 Multi-Path
 
 ### Hinzugefügt
