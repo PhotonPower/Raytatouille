@@ -137,9 +137,10 @@ std::string read_string(const Json& j, const Ctx& c) {
   return j.get<std::string>();
 }
 
-const Json& read_array(const Json& j, const Ctx& c) {
+/// Checks that `j` is an array (a check without return value, so that no reference to the
+/// parameter is handed back; the callers keep using `j`).
+void expect_array(const Json& j, const Ctx& c) {
   if (!j.is_array()) c.fail("expected an array, got " + std::string(type_name(j)));
-  return j;
 }
 
 /// Required key whose value must be an array.
@@ -175,20 +176,23 @@ Param read_param(const Json& j, const Ctx& c) {
 
 std::vector<Param> read_param_list(const Json& j, const Ctx& c) {
   std::vector<Param> out;
-  const Json& a = read_array(j, c);
+  expect_array(j, c);
+  const Json& a = j;
   out.reserve(a.size());
   for (std::size_t i = 0; i < a.size(); ++i) out.push_back(read_param(a[i], c.at(i)));
   return out;
 }
 
 std::array<Param, 3> read_param3(const Json& j, const Ctx& c) {
-  const Json& a = read_array(j, c);
+  expect_array(j, c);
+  const Json& a = j;
   if (a.size() != 3) c.fail("expected exactly 3 values");
   return {read_param(a[0], c.at(0)), read_param(a[1], c.at(1)), read_param(a[2], c.at(2))};
 }
 
 std::array<double, 3> read_vec3(const Json& j, const Ctx& c) {
-  const Json& a = read_array(j, c);
+  expect_array(j, c);
+  const Json& a = j;
   if (a.size() != 3) c.fail("expected exactly 3 numbers");
   return {read_number(a[0], c.at(0)), read_number(a[1], c.at(1)), read_number(a[2], c.at(2))};
 }
@@ -255,7 +259,8 @@ ShapeStack read_shape(const Json& j, const Ctx& c) {
   read_opt(j, "base", c, s.base, read_base_shape);
   if (const Json* t = find(j, "terms")) {
     const Ctx tc = c.at("terms");
-    const Json& a = read_array(*t, tc);
+    expect_array(*t, tc);
+    const Json& a = *t;
     for (std::size_t i = 0; i < a.size(); ++i) {
       s.terms.push_back(read_shape_term(a[i], c.at("terms").at(i)));
     }
@@ -355,7 +360,8 @@ Interaction read_interaction(const Json& j, const Ctx& c) {
 /// Efficiency per diffraction order (ADR 0025): [{"order": m, "efficiency": eta}, ...]. Values
 /// and duplicates are checked by validate.
 std::vector<DiffractionEfficiency> read_efficiency(const Json& j, const Ctx& c) {
-  const Json& a = read_array(j, c);
+  expect_array(j, c);
+  const Json& a = j;
   std::vector<DiffractionEfficiency> out;
   out.reserve(a.size());
   for (std::size_t i = 0; i < a.size(); ++i) {
@@ -377,7 +383,8 @@ Surface read_surface(const Json& j, const Ctx& c) {
   if (const Json* a = find(j, "aperture")) s.aperture = read_aperture(*a, c.at("aperture"));
   if (const Json* p = find(j, "phases")) {
     const Ctx pc = c.at("phases");
-    const Json& a = read_array(*p, pc);
+    expect_array(*p, pc);
+    const Json& a = *p;
     for (std::size_t i = 0; i < a.size(); ++i)
       s.phases.push_back(read_phase(a[i], c.at("phases").at(i)));
   }
@@ -458,7 +465,8 @@ Path read_path(const Json& j, const Ctx& c, bool before_0_3) {
     p.automatic = true;
     return p;
   }
-  const Json& a = read_array(events, ec);
+  expect_array(events, ec);
+  const Json& a = events;
   for (std::size_t i = 0; i < a.size(); ++i) {
     const Ctx c2 = ec.at(i);
     expect_object(a[i], c2, {"surface", "kind", "order"});

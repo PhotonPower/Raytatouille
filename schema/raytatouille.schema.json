@@ -38,7 +38,7 @@
         "required": ["um"],
         "properties": {
           "um": {"type": "number"},
-          "weight": {"type": "number"},
+          "weight": {"type": "number", "minimum": 0},
           "reference": {"type": "boolean"}
         }
       }
@@ -68,7 +68,7 @@
             "properties": {
               "x": {"type": "number"},
               "y": {"type": "number"},
-              "weight": {"type": "number"}
+              "weight": {"type": "number", "minimum": 0}
             }
           }
         }

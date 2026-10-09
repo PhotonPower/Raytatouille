@@ -140,7 +140,7 @@ void bind_model_tree(nb::module_& m) {
               "Vertex radius of curvature in mm, sign as for Conic (Param).")
       .def_ro("conic", &model::EvenAsphere::conic, "Conic constant, dimensionless (Param).")
       .def_ro("coefficients", &model::EvenAsphere::coefficients,
-              "A4, A6, A8, ... in mm^(1-2k) for the term r^(2k) (Param each).");
+              "A4, A6, A8, ...: A_n in mm^(1 - n) for the term A_n r^n (Param each).");
   read_only_class<model::ZernikeSag>(
       m, "ZernikeSag",
       "Additive Zernike sag term in Noll ordering, coefficients[0] is j = 1 (read-only copy).")

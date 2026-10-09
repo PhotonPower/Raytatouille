@@ -35,7 +35,7 @@ struct Conic {
 struct EvenAsphere {
   Param radius;
   Param conic;
-  std::vector<Param> coefficients;  ///< A4, A6, A8, ... in mm^(1-2k)
+  std::vector<Param> coefficients;  ///< A4, A6, A8, ...: A_n in mm^(1 - n) for the term A_n r^n
   bool operator==(const EvenAsphere&) const = default;
 };
 
