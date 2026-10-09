@@ -105,7 +105,30 @@ void bind_compile(nb::module_& m) {
       .def_ro("reference", &compile::CompiledMedium::reference,
               "Material reference as in the model, e.g. \"AIR\".")
       .def_ro("index", &compile::CompiledMedium::index,
-              "Complex index n + i*kappa per system wavelength (kappa >= 0 absorbs).");
+              "Complex index n + i*kappa per system wavelength (kappa >= 0 absorbs); for a "
+              "crystal the ordinary index n_O (kappa = 0).")
+      .def_prop_ro("is_crystal", &compile::CompiledMedium::is_crystal,
+                   "True for a uniaxial crystal (ADR 0026).")
+      .def_ro("reference_extraordinary", &compile::CompiledMedium::reference_extraordinary,
+              "Crystal only (empty otherwise): reference of the extraordinary index n_E.")
+      .def_prop_ro(
+          "index_extraordinary",
+          [](const compile::CompiledMedium& c) {
+            return read_only_array<double>(c.index_extraordinary, [](double v) { return v; });
+          },
+          nb::rv_policy::reference,
+          "Crystal only (empty otherwise): n_E per system wavelength, real, float64 (copy).")
+      .def_prop_ro(
+          "optic_axis",
+          [](const compile::CompiledMedium& c) -> std::optional<ReadOnlyArray<double>> {
+            if (!c.optic_axis) return std::nullopt;
+            const std::vector<double> xyz = {c.optic_axis->x(), c.optic_axis->y(),
+                                             c.optic_axis->z()};
+            return read_only_array<double>(xyz, [](double v) { return v; });
+          },
+          nb::rv_policy::reference,
+          "Crystal only: optic axis (x, y, z) in global coordinates, unit vector, float64 "
+          "(copy); its sign has no meaning (ADR 0026, point 2). None for an isotropic medium.");
 
   nb::class_<compile::CompiledSystem>(
       m, "CompiledSystem",

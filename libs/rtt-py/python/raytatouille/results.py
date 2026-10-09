@@ -54,15 +54,21 @@ __all__ = [
 ]
 
 FORMAT = "raytatouille-result"
-SCHEMA_VERSION = "0.1.4"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
+SCHEMA_VERSION = "0.1.5"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
 # 0.1.3: status Evanescent, status arrays one entry longer (#127); 0.1.4: PathTransmission,
-# PathOplDifference, GhostRanking (#133)
+# PathOplDifference, GhostRanking (#133); 0.1.5: RayBatch wave_x/y/z, mode_index (#134)
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a
 # method. Top-level types are listed in TYPES; the others only appear nested.
 _RAY_BATCH = ("pos_x", "pos_y", "pos_z", "dir_x", "dir_y", "dir_z", "wl", "opl", "weight",
-              "field", "pupil_x", "pupil_y", "last_surface", "status", "prt=prt_matrices()")
+              "field", "pupil_x", "pupil_y", "last_surface", "status", "prt=prt_matrices()",
+              "wave_x", "wave_y", "wave_z", "mode_index")
+# Keys that an existing type gained in a later schema version (ADR 0023, addendum #134): files
+# of an older version may lack them; load_json fills them as the type's reading rule says.
+_ADDED: dict[str, tuple[int, tuple[str, ...]]] = {
+    "RayBatch": (5, ("wave_x", "wave_y", "wave_z", "mode_index")),  # 0.1.5 (#134)
+}
 _FIELDS: dict[str, tuple[str, ...]] = {
     # analysis
     "Point2": ("x", "y"),
@@ -363,6 +369,10 @@ def load_json(text: str) -> Result:
     Raises ValueError for text that is not a raytatouille-result of schema version 0.1.x, an
     unknown type, missing keys of the type, or malformed values (a NaN literal, a duplicate
     key, an array whose values do not match its dtype or shape, a misused reserved key).
+
+    A file of an older 0.1.x version may lack keys that its type gained later (RayBatch:
+    wave_x, wave_y, wave_z and mode_index from 0.1.5); the data then contain them as the type's
+    reading rule says (RayBatch: wave = dir, mode_index 0; ADR 0026, point 3).
     """
     envelope = json.loads(text, parse_constant=_no_constant, object_pairs_hook=_unique_keys)
     if not isinstance(envelope, dict):
@@ -379,8 +389,27 @@ def load_json(text: str) -> Result:
         raise ValueError(f"results: unknown result type {type_name!r}")
     if not isinstance(envelope["data"], dict):
         raise ValueError("results: data must be an object")
-    missing = [k for k in _required(type_name) if k not in envelope["data"]]
+    required = _required(type_name)
+    since, added = _ADDED.get(type_name, (0, ()))
+    older = int(version.rpartition(".")[2]) < since
+    if older:
+        required = [k for k in required if k not in added]
+    missing = [k for k in required if k not in envelope["data"]]
     if missing:
         raise ValueError(f"results: data of {type_name} misses {', '.join(missing)}")
     data = _decode(envelope["data"], "/data")
+    if older:
+        data = _upgrade(type_name, data)
     return Result(type_name, version, data)
+
+
+def _upgrade(type_name: str, data: dict[str, Any]) -> dict[str, Any]:
+    """Adds the keys of _ADDED that an older file lacks, in the order of to_dict."""
+    if type_name == "RayBatch":
+        # Reading rule (ADR 0026, point 3): without a crystal mode wave = dir, mode_index 0.
+        added = {"wave_x": np.array(data["dir_x"], dtype=np.float64),
+                 "wave_y": np.array(data["dir_y"], dtype=np.float64),
+                 "wave_z": np.array(data["dir_z"], dtype=np.float64),
+                 "mode_index": np.zeros(np.shape(data["dir_x"]), dtype=np.float64)}
+        data = {**data, **{k: v for k, v in added.items() if k not in data}}
+    return {k: data[k] for k in _required(type_name)}

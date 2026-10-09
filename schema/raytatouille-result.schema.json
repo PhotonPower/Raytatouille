@@ -586,6 +586,32 @@
       "if": {
         "properties": {
           "type": {
+            "const": "RayBatch"
+          },
+          "schema_version": {
+            "not": {
+              "pattern": "^0\\.1\\.[0-4]$"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "wave_x",
+              "wave_y",
+              "wave_z",
+              "mode_index"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
             "const": "RayFan"
           }
         }

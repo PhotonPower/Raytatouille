@@ -119,3 +119,12 @@ def test_grating_orders_example(capsys: pytest.CaptureFixture[str]) -> None:
     out = capsys.readouterr().out
     assert "lambda0 G = 0.17628" in out and "order +6  EVANESCENT" in out
     assert "order +1  transmission 0.400" in out
+
+
+def test_calcite_double_image_example(capsys: pytest.CaptureFixture[str]) -> None:
+    # main() returns 1 if the separation, the OPL difference or the walk-off deviates from its
+    # closed form by more than 1e-10.
+    namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "calcite_double_image.py"))
+    assert namespace["main"]() == 0
+    out = capsys.readouterr().out
+    assert "walk-off 6.2241 deg" in out and "image separation 0.218121 mm" in out
