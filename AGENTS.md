@@ -32,6 +32,12 @@ dort den `PATH` der Tests selbst (Compiler-Verzeichnis vorn). Direkt gestartete 
 brauchen `export PATH=/c/msys64/ucrt64/bin:$PATH`, weil Git for Windows eine inkompatible
 msvcrt-`libstdc++-6.dll` in `/mingw64/bin` mitbringt (Einsprungpunkt-Fehler beim Start).
 
+Python lokal unter Windows: ein eigenes Build-Verzeichnis mit GCC aus MSYS2 und `RTT_BUILD_PYTHON=ON`
+gegen ein MSYS2-Python mit eigener venv (nanobind, NumPy, pytest, mypy) genügt für alle Python-Tests
+einschließlich der Bitvergleiche (über `ctest -R rtt_py`). Das MSVC-Preset `ci-windows-python`
+braucht beim Übersetzen der Bindungen mehr Speicher, als ein Rechner mit 16 GB neben mehreren
+Sitzungen frei hat, und bricht dort ab; es läuft in der CI.
+
 Vor jedem PR müssen lokal grün sein: Build mit `-DRTT_WARNINGS_AS_ERRORS=ON`, alle Tests,
 `clang-format --dry-run -Werror`, die Schema-Tests. Clang-tidy läuft mit
 `-DRTT_ENABLE_CLANG_TIDY=ON`, Sanitizer mit `-DRTT_ENABLE_SANITIZERS=ON`.
