@@ -51,6 +51,7 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 | 0022 | Stabile Diagnosecodes in Punktnotation mit Registry `rtt-diagnostics` (header-only, Schicht Basis), Warnungen von `compile()` als Daten, Fehlerorte in `ParaxialError`/`AnalysisError`, eine Klasse `NoStopError` (angenommen) |
 | 0023 | Ergebnisformat `raytatouille-result` (JSON mit dtype/shape für Arrays, NaN als Zeichenkette, Roundtrip = Daten) und Strahlverluste als Daten (angenommen) |
 | 0028 | Relative Platzierung: `Pose.reference` (absolut, relativ zur vorangehenden Fläche oder zum vorangehenden Geschwister) und `Pose.order` (`translate_first` wie bisher, `rotate_first` als Koordinatensprung) (angenommen) |
+| 0029 | Parametertabelle mit Ausdrücken nur über frühere Zeilen, Konfigurationen als Spalten (nur Parameter), Modell-Param verweist mit `{"param": …}` auf eine Zeile, `pickup` entfällt mit Warnung (vorgeschlagen) |
 
 **Konventionen (verbindlich für alle Bibliotheken)**
 
