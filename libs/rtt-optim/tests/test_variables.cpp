@@ -82,6 +82,8 @@ TEST_CASE("variables: table rows first, then model Params in edit-form order", "
 TEST_CASE("variables: with_values sets exactly the variables", "[optim][vars]") {
   const rtt::model::System s = tour();
   const std::vector<Variable> vars = collect_variables(s);
+  // Content guard (red check #193): three table variables and at least three model Params.
+  REQUIRE(vars.size() >= 6);
   std::vector<double> start;
   for (const Variable& v : vars) start.push_back(v.start);
   // The start values give the input back, bitwise in the edit form.
@@ -92,6 +94,7 @@ TEST_CASE("variables: with_values sets exactly the variables", "[optim][vars]") 
     next.push_back(start[v] + 0.25 * static_cast<double>(v + 1));
   ojson changed = ojson::parse(rtt::io::to_edit_json(with_values(s, vars, next)));
   ojson original = ojson::parse(rtt::io::to_edit_json(s));
+  CHECK(changed != original);  // the new values arrived
   for (std::size_t v = 0; v < vars.size(); ++v) {
     INFO(vars[v].pointer);
     const ojson::json_pointer at(vars[v].pointer);
