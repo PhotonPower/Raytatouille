@@ -1,0 +1,93 @@
+{
+  "schema_version": "0.4.0",
+  "name": "Two lenses with a variable air gap D; L2 and the image placed relative to the preceding surface",
+  "units": {"length": "mm", "wavelength": "um"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 10.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "parameters": [
+    {"name": "D", "value": 10.0, "variable": true, "min": 1.0}
+  ],
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 5.0}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "L1",
+        "pose": {"position": [0.0, 0.0, 5.0]},
+        "material": "CONST:1.5168",
+        "surfaces": [
+          {
+            "id": "L1.S1",
+            "shape": {
+              "base": {"type": "conic", "radius": 100.0}
+            },
+            "aperture": {"type": "circular", "radius": 12.7}
+          },
+          {
+            "id": "L1.S2",
+            "pose": {"position": [0.0, 0.0, 4.0]},
+            "shape": {
+              "base": {"type": "conic", "radius": -100.0}
+            },
+            "aperture": {"type": "circular", "radius": 12.7}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "L2",
+        "pose": {"position": [0.0, 0.0, {"param": "D"}], "reference": "relative_to_preceding"},
+        "material": "CONST:1.5168",
+        "surfaces": [
+          {
+            "id": "L2.S1",
+            "shape": {
+              "base": {"type": "conic", "radius": 100.0}
+            },
+            "aperture": {"type": "circular", "radius": 12.7}
+          },
+          {
+            "id": "L2.S2",
+            "pose": {"position": [0.0, 0.0, 4.0]},
+            "shape": {
+              "base": {"type": "conic", "radius": -100.0}
+            },
+            "aperture": {"type": "circular", "radius": 12.7}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {
+          "position": [0.0, 0.0, {"value": 45.0, "variable": true}],
+          "reference": "relative_to_preceding"
+        },
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}
