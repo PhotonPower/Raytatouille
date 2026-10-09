@@ -120,13 +120,13 @@ void bind_compile(nb::module_& m) {
           "Crystal only (empty otherwise): n_E per system wavelength, real, float64 (copy).")
       .def_prop_ro(
           "optic_axis",
-          [](const compile::CompiledMedium& c) -> nb::object {
-            if (!c.optic_axis) return nb::none();
+          [](const compile::CompiledMedium& c) -> std::optional<ReadOnlyArray<double>> {
+            if (!c.optic_axis) return std::nullopt;
             const std::vector<double> xyz = {c.optic_axis->x(), c.optic_axis->y(),
                                              c.optic_axis->z()};
-            return nb::cast(read_only_array<double>(xyz, [](double v) { return v; }),
-                            nb::rv_policy::reference);
+            return read_only_array<double>(xyz, [](double v) { return v; });
           },
+          nb::rv_policy::reference,
           "Crystal only: optic axis (x, y, z) in global coordinates, unit vector, float64 "
           "(copy); its sign has no meaning (ADR 0026, point 2). None for an isotropic medium.");
 
