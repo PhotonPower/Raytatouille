@@ -381,6 +381,8 @@ class Parser {
       AgfGlass& g = current(m, line_no);
       if (g.thermal) fail(line_no, "second TD record for glass " + g.name);
       g.thermal = numbers(items, line_no);
+      // At most 7 values (D0 D1 D2 E0 E1 Ltk Temp), as for a continuation line (#35).
+      if (g.thermal->size() > 7) fail(line_no, "TD has more than 7 values");
       continuable_ = Continuable::kTd;
     } else if (m == "ED") {
       AgfGlass& g = current(m, line_no);
