@@ -1,6 +1,8 @@
 """Analyses as data objects (rtt-analysis): spot diagram, ray fans, OPD, longitudinal and
 lateral colour, distortion, field curvature and Seidel sums; path transmission and OPL
-difference of two paths (#122) and the ghost ranking (#124).
+difference of two paths (#122) and the ghost ranking (#124); reports as data (#177): the
+raytrace report, the system data report and the dimension report (CSV with to_csv(), see
+raytatouille.reports).
 
 Every function takes a System (compiled on each call with ``materials``) or a CompiledSystem;
 for several analyses compile once with rt.compile(). ``path`` is an index or a path name,
@@ -40,6 +42,9 @@ from typing import TypeVar
 from . import _core
 from .errors import RaytatouilleWarning
 from ._core import (
+    ApertureKind,
+    DimensionReport,
+    DimensionSegments,
     DistortionPoint,
     DistortionSweep,
     FanPoints,
@@ -64,9 +69,12 @@ from ._core import (
     Points2,
     RayFan,
     RayLosses,
+    RaytraceReport,
+    RaytraceRows,
     ReferenceSphere,
     SpotDiagram,
     SpotStatistics,
+    SystemReport,
 )
 from ._util import SystemLike, chromatic_pair, compiled
 from .paraxial import ChromaticPair, seidel
@@ -85,6 +93,9 @@ from .trace import (
 )
 
 __all__ = [
+    "ApertureKind",
+    "DimensionReport",
+    "DimensionSegments",
     "DistortionPoint",
     "DistortionSweep",
     "FanPoints",
@@ -106,9 +117,13 @@ __all__ = [
     "Points2",
     "RayFan",
     "RayLosses",
+    "RaytraceReport",
+    "RaytraceRows",
     "ReferenceSphere",
     "SpotDiagram",
     "SpotStatistics",
+    "SystemReport",
+    "dimension_report",
     "distortion",
     "distortion_at",
     "field_curvature",
@@ -121,9 +136,11 @@ __all__ = [
     "opl_difference",
     "path_transmission",
     "ray_fan",
+    "raytrace_report",
     "sampling",
     "seidel",
     "spot",
+    "system_report",
 ]
 
 _SHORTHAND = (
@@ -186,7 +203,7 @@ def sampling(rays: str | PupilSampling) -> PupilSampling:
 
 
 _R = TypeVar("_R", SpotDiagram, RayFan, OpdMap, OpdFan, PathTransmission, PathOplDifference,
-              GhostRanking)
+              GhostRanking, SystemReport)
 
 
 def _warn(result: _R) -> _R:
@@ -609,3 +626,71 @@ def ghost_ranking(
         ghosts, field, wavelength, sampling(rays), aiming, resolution_radius,
         lost_warning_fraction, threads, cancel, progress,
     ))
+
+
+def raytrace_report(
+    system: SystemLike,
+    path: int | str = 0,
+    *,
+    start: RayBatch,
+    materials: MaterialLibrary | None = None,
+    threads: int | None = None,
+) -> RaytraceReport:
+    """Raytrace report of ``path`` (#177): the start rays ``start`` (a RayBatch in global
+    coordinates, copied, not changed) are traced with path recording, and ``rows`` has one
+    entry per ray and slot (ray-major) up to the slot where each ray stopped: slot 0 is the
+    start, slot s the state after event s - 1 at surface ``rows.surface`` (NO_SURFACE in slot
+    0). Position (mm) and direction global and in the frame of the event's surface (``local_*``,
+    NaN in slot 0), OPL from the start (mm), weight (power, unpolarized source = 1) and status
+    as uint8 RayStatus values. The global columns are bitwise those of rt.trace.trace(...,
+    record_path=True) for the same rays (#80). Meant for a few rays (chief and marginal rays):
+    about 65 bytes per ray and slot.
+
+    Example::
+
+        rays = rt.trace.make_rays(compiled, rt.trace.SinglePupilPoint(0.0, 1.0), fields=[0])
+        report = rt.analysis.raytrace_report(compiled, "main", start=rays)
+        text = report.to_csv()
+
+    Raises ValueError for an invalid path or empty start rays.
+    """
+    return _core.raytrace_report(compiled(system, materials), path, start, threads)
+
+
+def system_report(
+    system: SystemLike,
+    path: int | str = 0,
+    wavelength: int | None = None,
+    *,
+    materials: MaterialLibrary | None = None,
+) -> SystemReport:
+    """System data report of ``path`` at ``wavelength`` (None: reference) (#177): the system
+    settings (wavelengths in um, reference wavelength, numbers of fields, surfaces and path
+    events, stop surface or None) and the paraxial prescription (as
+    raytatouille.paraxial.prescription, with the first-order data). If the prescription
+    rejects the path (not rotationally symmetric, a crystal, a diffraction order != 0, a stop
+    aperture that is not circular, ...), ``prescription`` is None and ``warnings`` has
+    report.paraxial_unavailable with the reason; the warning is also issued as
+    RaytatouilleWarning.
+
+    Raises ValueError for an invalid path or wavelength.
+    """
+    return _warn(_core.system_report(compiled(system, materials), path, wavelength))
+
+
+def dimension_report(
+    system: SystemLike,
+    *,
+    materials: MaterialLibrary | None = None,
+) -> DimensionReport:
+    """Dimension report (#177): one entry of ``segments`` per segment (the glass between
+    surfaces j and j + 1) of every lens and plate, in element order, from the compiled
+    geometry (relative placement and configurations included). In mm: centre thickness (vertex
+    distance along the z axis of surface j), the semi-diameters of both surfaces (the
+    circumscribed radius of the aperture, its kind in ``aperture_first``/``aperture_second``
+    as uint8 ApertureKind values), the diameter 2 h and the edge thickness at h, the larger of
+    the two semi-diameters (where the body ends; the model has no mechanical diameter). NaN
+    where a value is undefined: no aperture, a surface that does not reach h, a segment that is
+    not ``coaxial``.
+    """
+    return _core.dimension_report(compiled(system, materials))

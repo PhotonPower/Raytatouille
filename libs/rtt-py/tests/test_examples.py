@@ -128,3 +128,15 @@ def test_calcite_double_image_example(capsys: pytest.CaptureFixture[str]) -> Non
     assert namespace["main"]() == 0
     out = capsys.readouterr().out
     assert "walk-off 6.2241 deg" in out and "image separation 0.218121 mm" in out
+
+
+def test_reports_example(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    # main() returns 1 if a centre thickness does not come back from the CSV bit for bit.
+    namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "reports.py"))
+    assert namespace["main"]() == 0
+    out = capsys.readouterr().out
+    assert "Lens  centre thickness" in out and "EFL " in out
+    assert "Raytrace report: 3 rays x" in out
+    assert namespace["main"](str(tmp_path)) == 0
+    for name in ("dimensions", "system", "raytrace"):
+        assert (tmp_path / f"cooke_{name}.csv").stat().st_size > 0

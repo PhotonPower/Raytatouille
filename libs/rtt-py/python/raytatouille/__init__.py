@@ -27,6 +27,7 @@ from . import (
     paraxial,
     plot,
     polar,
+    reports,
     results,
     trace,
 )
@@ -115,6 +116,7 @@ __all__ = [
     "paraxial",
     "plot",
     "polar",
+    "reports",
     "results",
     "save",
     "trace",

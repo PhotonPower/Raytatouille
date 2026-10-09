@@ -1,0 +1,119 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.6",
+ "type": "DimensionReport",
+ "data": {
+  "segments": {
+   "element": {
+    "dtype": "uint32",
+    "shape": [
+     3
+    ],
+    "values": [
+     0,
+     1,
+     3
+    ]
+   },
+   "first_surface": {
+    "dtype": "uint32",
+    "shape": [
+     3
+    ],
+    "values": [
+     0,
+     2,
+     5
+    ]
+   },
+   "coaxial": {
+    "dtype": "bool",
+    "shape": [
+     3
+    ],
+    "values": [
+     true,
+     true,
+     true
+    ]
+   },
+   "centre_thickness": {
+    "dtype": "float64",
+    "shape": [
+     3
+    ],
+    "values": [
+     4.831,
+     0.9749999999999996,
+     3.126999999999999
+    ]
+   },
+   "semi_diameter_first": {
+    "dtype": "float64",
+    "shape": [
+     3
+    ],
+    "values": [
+     "NaN",
+     "NaN",
+     "NaN"
+    ]
+   },
+   "semi_diameter_second": {
+    "dtype": "float64",
+    "shape": [
+     3
+    ],
+    "values": [
+     "NaN",
+     "NaN",
+     "NaN"
+    ]
+   },
+   "aperture_first": {
+    "dtype": "uint8",
+    "shape": [
+     3
+    ],
+    "values": [
+     0,
+     0,
+     0
+    ]
+   },
+   "aperture_second": {
+    "dtype": "uint8",
+    "shape": [
+     3
+    ],
+    "values": [
+     0,
+     0,
+     0
+    ]
+   },
+   "edge_thickness": {
+    "dtype": "float64",
+    "shape": [
+     3
+    ],
+    "values": [
+     "NaN",
+     "NaN",
+     "NaN"
+    ]
+   },
+   "diameter": {
+    "dtype": "float64",
+    "shape": [
+     3
+    ],
+    "values": [
+     "NaN",
+     "NaN",
+     "NaN"
+    ]
+   }
+  }
+ }
+}

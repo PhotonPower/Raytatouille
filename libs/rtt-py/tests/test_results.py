@@ -98,6 +98,11 @@ PRODUCERS: dict[str, Callable[[rt.CompiledSystem, rt.MaterialLibrary], Any]] = {
     "PathOplDifference": lambda cs, lib: rt.analysis.opl_difference(cs, 0, 0, field=1,
                                                                     rays="fan_y:3"),
     "GhostRanking": lambda cs, lib: rt.analysis.ghost_ranking(singlet_ghosts(), rays="hexapolar:2"),
+    # reports (#177): a y fan of three rays at field 2
+    "RaytraceReport": lambda cs, lib: rt.analysis.raytrace_report(
+        cs, start=rt.trace.make_rays(cs, rt.trace.FanYPupil(3), fields=[2])),
+    "SystemReport": lambda cs, lib: rt.analysis.system_report(cs),
+    "DimensionReport": lambda cs, lib: rt.analysis.dimension_report(cs),
     "FirstOrder": lambda cs, lib: rt.paraxial.first_order(cs),
     "Seidel": lambda cs, lib: rt.paraxial.seidel(cs, pair=(0, 2)),
     "Prescription": lambda cs, lib: rt.paraxial.prescription(cs),
@@ -137,10 +142,10 @@ def test_round_trip_is_bit_identical(name: str, singlet: rt.CompiledSystem,
     envelope = json.loads(text, parse_constant=no_constants)  # standard JSON only
     assert list(envelope) == ["format", "schema_version", "type", "data"]
     assert envelope["format"] == "raytatouille-result"
-    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.5"
+    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.6"
     assert envelope["type"] == name
     loaded = rt.results.load_json(text)
-    assert (loaded.type, loaded.schema_version) == (name, "0.1.5")
+    assert (loaded.type, loaded.schema_version) == (name, "0.1.6")
     same(loaded.data, data)
 
 
@@ -358,7 +363,7 @@ def test_trace_stats_carry_the_evanescent_status(singlet: rt.CompiledSystem) -> 
     rays.status[1] = int(rt.trace.RayStatus.EVANESCENT)
     stats = rt.trace.trace(singlet, rays, path="main")
     loaded = rt.results.load_json(stats.to_json())
-    assert loaded.schema_version == rt.results.SCHEMA_VERSION == "0.1.5"
+    assert loaded.schema_version == rt.results.SCHEMA_VERSION == "0.1.6"
     counts = list(loaded.data["rays"])
     assert len(counts) == 8
     assert counts[int(rt.trace.RayStatus.EVANESCENT)] == 1
