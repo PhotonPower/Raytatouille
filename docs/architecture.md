@@ -499,3 +499,5 @@ Nach M1 können bis zu drei Agenten parallel arbeiten. M4 und M6 brauchen M2 und
 | M8 Release v1.0 | Forbes-, Zernike-, XY-, Grid-Flächen, ZMX-Import, CLI komplett, Doku, Beispiele | alle Referenzfälle grün; Benchmark-Ziel; ZMX-Testdateien korrekt importiert |
 | M9 Nicht-sequenziell | BVH, Quellen, Detektoren, Ray Splitting, Streumodelle, Strahlpfad-Reports | analytische NSC-Testfälle |
 | M10 Python-GUI | PySide6-Anwendung auf der öffentlichen API | – |
+
+**Erweiterungskandidaten (Entwurf, nicht verbindlich):** Aus dem Vergleich mit einem kommerziellen Optikdesign-Programm sind Ergänzungen zu M5 bis M9 und weiterführende Pakete gesammelt in [roadmap-erweiterungen.md](roadmap-erweiterungen.md). Erst nach Freigabe durch den Maintainer wandern Einträge in die Tabelle oben.
