@@ -1,6 +1,6 @@
 # Roadmap-Erweiterungen
 
-> **Status: entschieden** (2026-10-09, Koordinator im Auftrag des Maintainers; siehe [Entscheidungen](#entscheidungen)). Stand nach 0.6.0; M5 läuft (ADR 0028 bis 0030 und Schema 0.4.0 Teil A sind auf `main`, die Einträge sind dagegen abgeglichen). Verbindlich ist ein Eintrag erst, wenn er unter „Entscheidungen“ als freigegeben steht; Einträge mit „Ideenliste“ werden beim Planen des jeweiligen Meilensteins neu bewertet. Die Roadmap-Tabelle in [architecture.md](architecture.md) bleibt die Quelle für die Meilensteine.
+> **Status: entschieden** (2026-10-09, Koordinator im Auftrag des Maintainers; siehe [Entscheidungen](#entscheidungen)). Stand nach 0.7.0 (M5 abgeschlossen; die Einträge sind gegen ADR 0028 bis 0031 und Schema 0.4.0 abgeglichen). Verbindlich ist ein Eintrag erst, wenn er unter „Entscheidungen“ als freigegeben steht; Einträge mit „Ideenliste“ werden beim Planen des jeweiligen Meilensteins neu bewertet. Die Roadmap-Tabelle in [architecture.md](architecture.md) bleibt die Quelle für die Meilensteine.
 
 ## Herkunft und Umgang mit der Quelle
 
