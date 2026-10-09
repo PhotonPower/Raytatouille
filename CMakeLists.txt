@@ -50,6 +50,7 @@ add_subdirectory(libs/rtt-compile)
 add_subdirectory(libs/rtt-paraxial)
 add_subdirectory(libs/rtt-trace)
 add_subdirectory(libs/rtt-analysis)
+add_subdirectory(libs/rtt-optim)
 add_subdirectory(libs/rtt-io)
 
 if(RTT_BUILD_PYTHON)
