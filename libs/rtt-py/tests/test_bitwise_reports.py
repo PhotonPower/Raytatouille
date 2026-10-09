@@ -108,6 +108,9 @@ def systems() -> Systems:
         "cooke": rt.compile(rt.load(REFERENCE_DIR / "m2" / "cooke_triplet.rtt.json"),
                             materials=schott),
         "grating": rt.compile(rt.load(REFERENCE_DIR / "m4" / "grating_transmission.rtt.json")),
+        # relative placement and configurations (#169 A): the gap of the configuration "tele"
+        "zoom_tele": rt.compile(rt.load(REFERENCE_DIR / "m5" / "zoom.rtt.json"),
+                                configuration="tele"),
     }
 
 
@@ -124,6 +127,7 @@ CASES: dict[str, Case] = {
     "grating_system": lambda s, t: flatten_system(an.system_report(s["grating"], "order +1", 0)),
     "singlet_dimensions": lambda s, t: flatten_dimensions(an.dimension_report(s["singlet"])),
     "cooke_dimensions": lambda s, t: flatten_dimensions(an.dimension_report(s["cooke"])),
+    "zoom_tele_dimensions": lambda s, t: flatten_dimensions(an.dimension_report(s["zoom_tele"])),
 }
 
 
@@ -155,13 +159,37 @@ def test_reports_equal_cpp_bitwise(name: str, threads: int, cpp_dir: Path,
 
 @NO_PARAXIAL
 def test_the_cases_have_content(compiled_systems: Systems) -> None:
-    # Sanity: rays arrive and one is lost, the prescriptions exist except for the grating
-    # order, the Cooke triplet has three lenses.
-    alive = int(rt.trace.RayStatus.ALIVE)
-    for name in ("singlet_raytrace", "cooke_raytrace"):
-        status = CASES[name](compiled_systems, 1)["status"]
-        assert alive in status.tolist() and set(status.tolist()) != {alive}, name
+    """The compared arrays carry content (review of #192): a comparison of rays that all end at
+    the first surface, or of NaN dimensions, would also be bitwise equal."""
+    status = rt.trace.RayStatus
+    lost = {"singlet_raytrace": status.VIGNETTED, "cooke_raytrace": status.MISSED}
+    for name, end_of_ray_2 in lost.items():
+        a = CASES[name](compiled_systems, 1)
+        slots = int(a["ints"][2])
+        # The last row of each ray (rows are ray-major): rays 0 and 1 arrive ALIVE in the last
+        # slot, ray 2 ends lost as start_rays() says.
+        last = {int(r): i for i, r in enumerate(a["ray"])}
+        assert sorted(last) == [0, 1, 2], name
+        for ray in (0, 1):
+            assert (int(a["slot"][last[ray]]), int(a["status"][last[ray]])) == (
+                slots - 1, int(status.ALIVE)), (name, ray)
+        assert int(a["status"][last[2]]) == int(end_of_ray_2), name
+        assert int(a["slot"][last[2]]) < slots - 1, name
+    # The prescriptions exist except for the grating order.
     assert CASES["singlet_system"](compiled_systems, 1)["ints"][7] == 1
     assert CASES["cooke_system"](compiled_systems, 1)["ints"][7] == 1
     assert CASES["grating_system"](compiled_systems, 1)["ints"][7] == 0
-    assert len(CASES["cooke_dimensions"](compiled_systems, 1)["element"]) == 3
+    # Every segment coaxial with a finite positive centre thickness. The singlet and the zoom
+    # have apertures, so finite positive edge thicknesses and diameters; the Cooke triplet has
+    # none, so its edge thicknesses and diameters are NaN by definition.
+    for name, count in (("singlet_dimensions", 1), ("cooke_dimensions", 3),
+                        ("zoom_tele_dimensions", 2)):
+        d = CASES[name](compiled_systems, 1)
+        assert len(d["element"]) == count, name
+        assert bool(np.all(d["coaxial"])), name
+        positive = ["centre_thickness"]
+        if name != "cooke_dimensions":
+            positive += ["edge_thickness", "diameter"]
+        for key in positive:
+            assert bool(np.all(np.isfinite(d[key]) & (d[key] > 0.0))), (name, key)
+    assert bool(np.all(np.isnan(CASES["cooke_dimensions"](compiled_systems, 1)["diameter"])))

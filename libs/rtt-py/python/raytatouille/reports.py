@@ -56,8 +56,9 @@ from ._core import (
 )
 from .results import to_dict
 
-__all__ = ["RAYTRACE_COLUMNS", "DIMENSION_COLUMNS", "to_csv"]
+__all__ = ["DIMENSION_COLUMNS", "RAYTRACE_COLUMNS", "Report", "to_csv"]
 
+#: Any of the three reports.
 Report = Union[RaytraceReport, SystemReport, DimensionReport]
 
 #: Columns of the raytrace report CSV, in order (the attributes of RaytraceRows).

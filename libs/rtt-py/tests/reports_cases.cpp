@@ -182,6 +182,8 @@ void run_reports_cases(const fs::path& reference_dir,
       compile::compile(io::load_system(reference_dir / "m2/cooke_triplet.rtt.json"), schott);
   const CompiledSystem grating =
       compile::compile(io::load_system(reference_dir / "m4/grating_transmission.rtt.json"), plain);
+  const CompiledSystem zoom_tele =
+      compile::compile(io::load_system(reference_dir / "m5/zoom.rtt.json"), plain, "tele");
 
   oneapi::tbb::task_arena arena(threads);
   arena.execute([&] {
@@ -195,6 +197,7 @@ void run_reports_cases(const fs::path& reference_dir,
   write_system(w("grating_system"), system_report(grating, *order, 0));
   write_dimensions(w("singlet_dimensions"), dimension_report(singlet));
   write_dimensions(w("cooke_dimensions"), dimension_report(cooke));
+  write_dimensions(w("zoom_tele_dimensions"), dimension_report(zoom_tele));
 }
 
 }  // namespace rtt::py::reference

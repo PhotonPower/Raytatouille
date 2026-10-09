@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import csv
 import io
+import struct
 import sys
 from pathlib import Path
 
@@ -46,7 +47,8 @@ def main(out_dir: str | None = None) -> int:
     p = system.prescription
     assert p is not None and p.first_order.efl is not None
     print(f"\nSystem: {len(system.wavelengths_um)} wavelengths, {system.field_count} fields, "
-          f"{system.event_count} events, stop {cs.surface_ids[system.stop or 0]}")
+          f"{system.event_count} events, "
+          f"stop {'none' if system.stop is None else cs.surface_ids[system.stop]}")
     print(f"EFL {p.first_order.efl:.4f} mm, paraxial working F/# "
           f"{p.paraxial_working_f_number:.3f}, total track {p.total_track:.3f} mm")
 
@@ -62,17 +64,19 @@ def main(out_dir: str | None = None) -> int:
         surface = cs.surface_ids[rows.surface[i]]
         print(f"{rows.ray[i]:3}  {surface:<8} {rows.y[i]:10.5f}  {rows.local_y[i]:10.5f}")
 
-    reports = {"dimensions": dims, "system": system, "raytrace": trace}
+    reports: dict[str, rt.reports.Report] = {"dimensions": dims, "system": system,
+                                             "raytrace": trace}
     if out_dir is not None:
         for name, report in reports.items():
             path = Path(out_dir) / f"cooke_{name}.csv"
             path.write_text(report.to_csv(), encoding="utf-8", newline="")
             print(f"{name} written to {path}")
 
-    # The CSV keeps every bit of the doubles.
+    # The CSV keeps every bit of the doubles: compare the bytes, not only the values.
     lines = list(csv.DictReader(io.StringIO(dims.to_csv())))
-    return 0 if all(float(line["centre_thickness"]) == s.centre_thickness[k]
-                    for k, line in enumerate(lines)) else 1
+    same = all(struct.pack("<d", float(line["centre_thickness"]))
+               == struct.pack("<d", s.centre_thickness[k]) for k, line in enumerate(lines))
+    return 0 if same else 1
 
 
 if __name__ == "__main__":
