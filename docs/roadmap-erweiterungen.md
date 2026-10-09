@@ -74,7 +74,7 @@ Setzt ADR 0029 (Parametertabelle) voraus.
 
 | ID | Auftrag | Bibliothek | Abnahme (Vorschlag) | Vorbild |
 | --- | --- | --- | --- | --- |
-| N1 | **Rayfile-Import und -Export** für Quellen (Format mit dem Maintainer wählen, F) | `rtt-io`, `rtt-trace` | Roundtrip bitgleich in Ort, Richtung und Fluss; Summe der Flüsse bleibt erhalten | 26.3.1 |
+| N1 | **Rayfile-Export und -Import** für Quellen, zuerst im eigenen dokumentierten Austauschformat (Spalten wie `RayBatch`, Kopf mit Einheiten, Wellenlänge und Gesamtleistung, blockweises Lesen); Fremdformate nur nach Bedarf und nur mit frei zugänglicher Spezifikation (F, ADR) | `rtt-io`, `rtt-trace` | Roundtrip bitgleich in Ort, Richtung und Fluss; Summe der Flüsse bleibt erhalten | 26.3.1 |
 | N2 | **STL- und STEP-Import** als Absorber oder Streukörper (braucht die BVH von M9) | `rtt-io`, `rtt-trace` | Würfel als STL: Strahlen treffen die sechs Seiten an den analytischen Orten | 21.0.2 |
 
 ## Paket P7: v2 und später
@@ -99,6 +99,6 @@ Huygens-PSF und -MTF (17.5.2, 17.6.2), Beamlet-Propagation (17.9), Faserkopplung
 
 1. GRIN (X1): **vorgeschlagen v1.x**, direkt nach v1.0 und vor M10. Der ADR (Integrator, Schrittregel, Fehlergrenzen, Determinismus) wird früh geschrieben, damit M5 bis M8 keine Annahme „Strahlen sind zwischen Flächen immer Geraden“ einbauen (Ray Aiming, Analysen, Paraxial). Alternative v2, wenn v1.0 nicht verzögert werden soll. Maintainer-Freigabe steht aus.
 2. Setup (O6): **vorgeschlagen als optionaler Abschnitt in `*.rtt.json`**, keine Nebendatei. Maintainer-Freigabe steht aus.
-3. Rayfile-Format (N1).
+3. Rayfile (N1): **vorgeschlagen: eigenes Austauschformat zuerst**, Export von Anfang an, Fremdformate als Import nach Bedarf der realen Quellen. Maintainer-Freigabe steht aus.
 4. Richtlinie für Python-Callbacks (O2, F3): nur Laufzeit, nie im Dateiformat. Das hält die Dateien deterministisch.
 5. Ob R2 (ideale Linse) in M5 vorgezogen wird.
