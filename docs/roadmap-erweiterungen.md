@@ -34,7 +34,7 @@ Setzt ADR 0029 (Parametertabelle) voraus.
 | O3 | **Gewichte und Randbedingungen:** Feld- und Wellenlängengewichte in den Merit-Generatoren; Mindest- und Höchstwerte auf abhängige Größen (Mittendicke, Randdicke, Baulänge); Option, den Farbquerfehler im Spot auszuklammern (Schwerpunkt je Wellenlänge); Operanden auf Vignettierung (aus R3) | `rtt-optim` | Eine Singlet-Optimierung mit Mindest-Randdicke hält die Grenze ein (aktive Randbedingung, Abweichung unter der Optimierertoleranz); mit der Option ist der polychromatische RMS gleich dem Mittel der monochromatischen RMS, wenn die Wellenlängen sich nur durch einen Versatz unterscheiden | 19.4.2.2, 19.5 |
 | O4 | **Modellglas** aus n_d und ν_d, optimierbar (F) | `rtt-material`, `rtt-model` | n(λ_d) = n_d exakt; (n_F − n_C) = (n_d − 1)/ν_d; ein Dublett aus zwei Modellgläsern mit φ₁/ν₁ + φ₂/ν₂ = 0 hat paraxial keinen Farblängsfehler zwischen F und C | 8.2, 19.9.2 |
 | O5 | **Thermische Längen:** Abstände und Dicken folgen der linearen Ausdehnung als Konfigurationsparameter (Athermalisierung), über die Ausdrücke aus ADR 0029 | `rtt-compile` | L(T) = L₀·(1 + α·ΔT) exakt; die Luftdicke folgt dem Gehäuse-CTE | 16.1.0.4 |
-| O6 | **Setup speichern:** Merit-Funktion, Toleranzsatz und Analyse-Voreinstellungen als optionaler Abschnitt oder Nebendatei (F, ADR) | `rtt-io`, `rtt-optim` | Roundtrip bitgleich; eine Optimierung aus der gespeicherten Datei reproduziert das Ergebnis (ADR 0004) | 3.4.2 |
+| O6 | **Setup speichern:** Merit-Funktion, Toleranzsatz und Analyse-Voreinstellungen als optionaler Abschnitt in der Systemdatei `*.rtt.json` (F, ADR); ein System ohne den Abschnitt bleibt gültig | `rtt-io`, `rtt-optim` | Roundtrip bitgleich; eine Optimierung aus der gespeicherten Datei reproduziert das Ergebnis (ADR 0004) | 3.4.2 |
 
 ## Paket P2: Ergänzungen zu M6 (Beugung, Polarisation)
 
@@ -90,7 +90,7 @@ Huygens-PSF und -MTF (17.5.2, 17.6.2), Beamlet-Propagation (17.9), Faserkopplung
 ## Reihenfolge und Abhängigkeiten
 
 1. P0 sofort, parallel zu M5; R3 braucht G6.
-2. P1 mit M5; O1 und O3 brauchen ADR 0029, O6 braucht einen Formatentscheid.
+2. P1 mit M5; O1 und O3 brauchen ADR 0029, O6 braucht einen ADR zum Abschnitt (Name, Inhalt, Schema-Version, Migration).
 3. P2 und P3 mit M6 und M7; W1 setzt #122 voraus (erledigt), W3 die Jones-Pupille aus M6.
 4. P4 mit M8; R2 darf vorgezogen werden, wenn die Systemskizzen es brauchen.
 5. P5 erst nach v1.0; X1 ist der größte Eingriff in den Tracer und beginnt mit dem ADR, der schon vor M8 vorliegen soll.
@@ -98,7 +98,7 @@ Huygens-PSF und -MTF (17.5.2, 17.6.2), Beamlet-Propagation (17.9), Faserkopplung
 ## Offene Entscheidungen für den Maintainer
 
 1. GRIN (X1): **vorgeschlagen v1.x**, direkt nach v1.0 und vor M10. Der ADR (Integrator, Schrittregel, Fehlergrenzen, Determinismus) wird früh geschrieben, damit M5 bis M8 keine Annahme „Strahlen sind zwischen Flächen immer Geraden“ einbauen (Ray Aiming, Analysen, Paraxial). Alternative v2, wenn v1.0 nicht verzögert werden soll. Maintainer-Freigabe steht aus.
-2. Setup-Datei (O6): Abschnitt in `*.rtt.json` oder eigene Datei.
+2. Setup (O6): **vorgeschlagen als optionaler Abschnitt in `*.rtt.json`**, keine Nebendatei. Maintainer-Freigabe steht aus.
 3. Rayfile-Format (N1).
 4. Richtlinie für Python-Callbacks (O2, F3): nur Laufzeit, nie im Dateiformat. Das hält die Dateien deterministisch.
 5. Ob R2 (ideale Linse) in M5 vorgezogen wird.
