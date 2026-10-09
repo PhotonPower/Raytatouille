@@ -86,8 +86,12 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `param.bound_conflict` | Fehler | gebundenes Param (`param`) mit `variable` oder Grenzen (nur über die API) | validate | Pointer des Params |
 | `param.unknown_parameter` | Fehler | Param an eine Zeile gebunden, die es nicht gibt | validate | `…/param` |
 | `param.unresolved` | Fehler | Zwischenstand bis #165: gebundenes Param, das compile noch nicht auswertet | compile | Pointer des Params |
+| `parameters.expression_syntax` | Fehler | Ausdruck einer Zeile nicht nach der Grammatik von ADR 0029 (Zeichenposition in der Meldung), länger als 1000 Zeichen, tiefer als 64 geschachtelt oder mit einem Literal, das weder 0 noch ein endliches normales double ist (Überlauf, Unterlauf, subnormal) | validate | `/parameters/i/expression` |
+| `parameters.forward_reference` | Fehler | Ausdruck nutzt die eigene oder eine spätere Zeile | validate | `/parameters/i/expression` |
 | `parameters.name_duplicate` | Fehler | Name einer Zeile der Parametertabelle doppelt | validate | `/parameters/i/name` (zweites Vorkommen) |
 | `parameters.name_invalid` | Fehler | Name einer Zeile nicht von der Form `[A-Za-z_][A-Za-z0-9_]*` | validate | `/parameters/i/name` |
+| `parameters.not_finite` | Fehler | Ergebnis eines Ausdrucks nicht endlich, einmal je betroffener Konfiguration (Name in der Meldung); Zeilen, die eine solche Zeile nutzen, melden nichts | validate | `/parameters/i/expression` |
+| `parameters.unknown_name` | Fehler | Ausdruck nutzt einen Namen, der keine Zeile ist | validate | `/parameters/i/expression` |
 | `parameters.values_count` | Fehler | `values` mit einer anderen Anzahl als Konfigurationen | validate | `/parameters/i/values` |
 | `parameters.variable_expression` | Fehler | Zeile mit `expression` als `variable` markiert | validate | `/parameters/i/variable` |
 | `paths.crystal_mode_required` | Fehler | Eintritt in einen Kristall mit `refract` statt `ordinary` oder `extraordinary` (ADR 0026) | compile | `/paths/i/events/k` |
