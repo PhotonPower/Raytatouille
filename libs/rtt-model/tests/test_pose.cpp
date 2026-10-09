@@ -46,18 +46,16 @@ TEST_CASE("translate_first is the default and keeps the transform of from_pose",
   p.position = {Param(1.0), Param(-2.0), Param(3.0)};
   p.rotation_deg = {Param(10.0), Param(20.0), Param(30.0)};
   p.pivot = {0.5, 0.25, -4.0};
-  const auto expected = rtt::math::Isometry3::from_pose(Vec3(1.0, -2.0, 3.0),
-                                                        Vec3(10.0, 20.0, 30.0),
-                                                        Vec3(0.5, 0.25, -4.0));
+  const auto expected = rtt::math::Isometry3::from_pose(
+      Vec3(1.0, -2.0, 3.0), Vec3(10.0, 20.0, 30.0), Vec3(0.5, 0.25, -4.0));
   const auto t = rtt::model::to_isometry(p);
   // Bitwise: translate_first calls Isometry3::from_pose unchanged (ADR 0028, Folgen).
-  for (const Vec3& q : {Vec3::Zero(), Vec3(1.0, 2.0, 3.0), Vec3(-7.0, 0.5, 11.0)}) {
+  for (const Vec3& q : {Vec3(0.0, 0.0, 0.0), Vec3(1.0, 2.0, 3.0), Vec3(-7.0, 0.5, 11.0)}) {
     REQUIRE(t.apply_point(q) == expected.apply_point(q));
   }
 }
 
-TEST_CASE("rotate_first rotates the reference frame about the pivot, then shifts in it",
-          "[pose]") {
+TEST_CASE("rotate_first rotates the reference frame about the pivot, then shifts in it", "[pose]") {
   // ADR 0028, point 3: p_ref = Q + R (t + p - Q), Q in the reference frame.
   Pose p;
   p.order = rtt::model::PoseOrder::RotateFirst;

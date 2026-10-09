@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.3.0",
+  "schema_version": "0.4.0",
   "name": "M3 acceptance: total internal reflection in an N-BK7 prism (n = 1.5168), 45 deg inside",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},

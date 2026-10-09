@@ -4,8 +4,10 @@
 /// Root of the optical model. Pure data, no tracing logic.
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 #include "rtt/model/element.hpp"
@@ -14,10 +16,12 @@
 
 namespace rtt::model {
 
-/// Version of the file format written by this library. rtt-io also reads 0.1 and 0.2 files and
-/// migrates them (0.2: per-segment materials of Lens and Plate, ADR 0017; 0.3: orders at every
-/// event without "diffract", diffraction efficiency, crystals and optic axis, ADR 0025/0026).
-inline constexpr std::string_view kSchemaVersion = "0.3.0";
+/// Version of the file format written by this library. rtt-io also reads 0.1, 0.2 and 0.3 files
+/// and migrates them (0.2: per-segment materials of Lens and Plate, ADR 0017; 0.3: orders at
+/// every event without "diffract", diffraction efficiency, crystals and optic axis, ADR
+/// 0025/0026; 0.4: Pose.reference and Pose.order, ADR 0028; parameter table, configurations and
+/// bounds, pickup dropped, ADR 0029).
+inline constexpr std::string_view kSchemaVersion = "0.4.0";
 
 struct Wavelength {
   double um = 0.0;  ///< vacuum wavelength in micrometre
@@ -78,6 +82,35 @@ struct Environment {
   bool operator==(const Environment&) const = default;
 };
 
+/// A configuration: one column of the parameter table (ADR 0029, point 5).
+struct Configuration {
+  std::string name;  ///< not empty, not only white space, unique
+  bool operator==(const Configuration&) const = default;
+};
+
+/// Expression of a derived row of the parameter table (ADR 0029, point 2); evaluated from #164.
+struct ParameterExpression {
+  std::string text;
+  bool operator==(const ParameterExpression&) const = default;
+};
+
+/// The three forms of a row (ADR 0029, point 1): one value for all configurations, one value per
+/// configuration (in the order of System::configurations), or an expression of earlier rows.
+using ParameterForm = std::variant<double, std::vector<double>, ParameterExpression>;
+
+/// Row of the parameter table (ADR 0029). The unit is that of the Params bound to it.
+struct ParameterRow {
+  std::string name;  ///< [A-Za-z_][A-Za-z0-9_]*, unique, case-sensitive
+  ParameterForm form = 0.0;
+  /// True if the optimizer may change it: one unknown for a value, one per configuration for
+  /// values; never for an expression (validate: parameters.variable_expression).
+  bool variable = false;
+  /// Bounds for the optimizer, independent rows only (unit of the row).
+  std::optional<double> min;
+  std::optional<double> max;
+  bool operator==(const ParameterRow&) const = default;
+};
+
 struct System {
   std::string schema_version{kSchemaVersion};
   std::string name;
@@ -88,6 +121,10 @@ struct System {
   FieldSet fields;
   Assembly root;
   std::vector<Path> paths;
+  /// Configurations (ADR 0029); empty means only the nominal configuration (index 0, no name).
+  std::vector<Configuration> configurations;
+  /// Parameter table in file order (ADR 0029); a row may only use rows before it.
+  std::vector<ParameterRow> parameters;
   bool operator==(const System&) const = default;
 };
 

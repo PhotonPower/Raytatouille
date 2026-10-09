@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.3.0",
+  "schema_version": "0.4.0",
   "name": "Cemented achromat N-BK7/F2, f about 100 mm",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [

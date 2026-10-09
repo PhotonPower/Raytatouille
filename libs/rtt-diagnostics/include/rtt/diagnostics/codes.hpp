@@ -6,7 +6,9 @@
 ///
 /// A code is a lower-case dotted name "<group>.<what>", e.g. "material.unknown". Codes are
 /// stable across versions: a code is never renamed, reused or given another meaning; new codes
-/// are only added. Every code is listed in docs/diagnostics.md.
+/// are only added. An interim code added between two releases (its summary says "interim") may
+/// be removed again before the next release, because it was never published as stable (ADR
+/// 0022). Every code is listed in docs/diagnostics.md.
 
 #include <array>
 #include <cstdint>
@@ -22,7 +24,7 @@ enum class Severity : std::uint8_t { Error, Warning };
 struct CodeInfo {
   std::string_view code;      ///< dotted name, e.g. "material.unknown"
   Severity severity;          ///< the severity every diagnostic with this code has
-  std::string_view producer;  ///< "validate", "compile", "analysis", "agf" or "edit"
+  std::string_view producer;  ///< "validate", "compile", "analysis", "agf", "edit" or "io"
                               ///< (docs/diagnostics.md)
   std::string_view summary;   ///< one-line meaning, as in docs/diagnostics.md
 };
@@ -40,6 +42,10 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "aperture type stop_size without a stop element"},
     {"aperture.value_invalid", Severity::Error, "validate",
      "system aperture value not finite or <= 0"},
+    {"bounds.invalid", Severity::Error, "validate",
+     "min not below max, or bounds at a derived parameter row"},
+    {"bounds.value_outside", Severity::Warning, "validate",
+     "value of a Param or row outside its bounds"},
     {"coating.design_wavelength_out_of_range", Severity::Error, "compile",
      "QWOT design wavelength outside the valid range of the layer material"},
     {"coating.layer_material_unknown", Severity::Error, "compile",
@@ -54,6 +60,9 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
     {"coating.unknown", Severity::Error, "compile", "coating reference cannot be resolved"},
     {"coating.wavelength_out_of_range", Severity::Error, "compile",
      "system wavelength outside the valid range of a layer material"},
+    {"configurations.name_duplicate", Severity::Error, "validate", "configuration name used twice"},
+    {"configurations.name_invalid", Severity::Error, "validate",
+     "empty or blank configuration name"},
     {"crystal.absorbing", Severity::Error, "compile",
      "crystal part with kappa != 0 at a system wavelength (not supported in M4)"},
     {"crystal.interaction_unsupported", Severity::Error, "compile",
@@ -109,6 +118,8 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
     {"interaction.reflectance_invalid", Severity::Error, "validate",
      "beam splitter reflectance outside [0, 1]"},
     {"interaction.retardance_invalid", Severity::Error, "validate", "retardance not finite"},
+    {"io.pickup_dropped", Severity::Warning, "io",
+     "pickup of a file before schema 0.4 dropped on reading"},
     {"material.unknown", Severity::Error, "compile", "material reference cannot be resolved"},
     {"material.wavelength_out_of_range", Severity::Error, "compile",
      "system wavelength outside the valid range of a material on a path"},
@@ -116,6 +127,18 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
     {"node.name_empty", Severity::Error, "validate", "empty assembly or element name"},
     {"object.distance_invalid", Severity::Error, "validate",
      "finite object distance not finite or <= 0 mm"},
+    {"param.bound_conflict", Severity::Error, "validate", "bound Param with variable or bounds"},
+    {"param.unknown_parameter", Severity::Error, "validate",
+     "Param bound to an unknown parameter row"},
+    {"param.unresolved", Severity::Error, "compile",
+     "bound Param not evaluated yet (interim, removed with #165)"},
+    {"parameters.name_duplicate", Severity::Error, "validate", "parameter row name used twice"},
+    {"parameters.name_invalid", Severity::Error, "validate",
+     "parameter row name not of the form [A-Za-z_][A-Za-z0-9_]*"},
+    {"parameters.values_count", Severity::Error, "validate",
+     "values of a row not one per configuration"},
+    {"parameters.variable_expression", Severity::Error, "validate",
+     "derived parameter row marked variable"},
     {"paths.crystal_mode_required", Severity::Error, "compile",
      "a crystal entered with Refract instead of Ordinary or Extraordinary"},
     {"paths.empty", Severity::Error, "validate", "no path"},
@@ -137,6 +160,14 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "grating line density not finite or <= 0"},
     {"phase.radius_invalid", Severity::Error, "validate",
      "phase normalization radius not finite or <= 0 mm"},
+    {"pose.no_preceding", Severity::Error, "validate",
+     "relative_to_preceding without a preceding surface"},
+    {"pose.no_sibling", Severity::Error, "validate",
+     "relative_to_sibling without a preceding sibling"},
+    {"pose.reference_unsupported", Severity::Error, "compile",
+     "relative pose not evaluated yet (interim, removed with #163)"},
+    {"pose.relative_first_surface", Severity::Error, "validate",
+     "first surface of an element placed relatively"},
     {"rays.lost", Severity::Warning, "analysis",
      "more rays lost than the threshold of the analysis (default 50 %)"},
     {"shape.asphere_without_coefficients", Severity::Warning, "validate",
@@ -165,6 +196,7 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "circular aperture radius not finite or <= 0 mm"},
     {"surface_aperture.semi_axis_invalid", Severity::Error, "validate",
      "elliptical aperture semi axis not finite or <= 0 mm"},
+    {"value.not_finite", Severity::Error, "validate", "number of the model not finite"},
     {"wavelengths.empty", Severity::Error, "validate", "no wavelength"},
     {"wavelengths.reference_count", Severity::Error, "validate",
      "not exactly one reference wavelength"},

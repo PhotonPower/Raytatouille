@@ -172,15 +172,19 @@ TEST_CASE("edit form of the 0.4 fields (ADR 0024, ADR 0029 point 3)", "[io][0.4]
           json::parse(R"({"value": 0.0, "variable": false})"));
   REQUIRE(j["root"]["children"][0]["pose"]["reference"] == "absolute");
   REQUIRE(j["root"]["children"][0]["pose"]["order"] == "translate_first");
-  // The edit form writes both sections, also when empty.
+  // The edit form writes the table also when empty; configurations only if there are any,
+  // because an empty section is not readable (ADR 0029, point 1).
   const json plain = json::parse(rtt::io::to_edit_json(rtt::model::test::make_singlet()));
-  REQUIRE(plain["configurations"] == json::array());
+  REQUIRE_FALSE(plain.contains("configurations"));
   REQUIRE(plain["parameters"] == json::array());
+  REQUIRE(rtt::io::parse_system(plain.dump()) == rtt::model::test::make_singlet());
 }
 
 TEST_CASE("malformed 0.4 values are errors at their pointer", "[io][0.4]") {
   const System s = zoom_singlet();
-  const auto bound_d = [](json& j) -> json& { return j["root"]["children"][2]["pose"]["position"][2]; };
+  const auto bound_d = [](json& j) -> json& {
+    return j["root"]["children"][2]["pose"]["position"][2];
+  };
   // A bound Param carries nothing but the name (ADR 0029, point 3).
   CHECK(error_pointer(changed(s, [&](json& j) { bound_d(j)["value"] = 1.0; })) ==
         "/root/children/2/pose/position/2/value");
@@ -263,8 +267,8 @@ TEST_CASE("0.4 forms in an older file are errors, the version is never upgraded 
   CHECK(error_pointer(file_0_3(json::object(),
                                json::parse(R"({"parameters": [{"name": "D", "value": 1.0}]})"))) ==
         "/parameters");
-  CHECK(error_pointer(file_0_3(json::object(),
-                               json::parse(R"({"configurations": [{"name": "a"}]})"))) ==
+  CHECK(error_pointer(
+            file_0_3(json::object(), json::parse(R"({"configurations": [{"name": "a"}]})"))) ==
         "/configurations");
   CHECK_THAT(error_message(file_0_3(json::parse(R"({"order": "rotate_first"})"))),
              ContainsSubstring("0.4"));

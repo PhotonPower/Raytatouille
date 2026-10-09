@@ -7,6 +7,7 @@
 #include <cmath>
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "rtt/model/validate.hpp"
@@ -21,8 +22,11 @@ namespace {
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 
 /// True if `d` has exactly one diagnostic with this code, and it is at `location`.
-bool only_at(const std::vector<Diagnostic>& d, const std::string& code, const std::string& location) {
-  const auto n = std::count_if(d.begin(), d.end(), [&](const Diagnostic& x) { return x.code == code; });
+bool only_at(const std::vector<Diagnostic>& d,
+             const std::string& code,
+             const std::string& location) {
+  const auto n =
+      std::count_if(d.begin(), d.end(), [&](const Diagnostic& x) { return x.code == code; });
   return n == 1 && std::any_of(d.begin(), d.end(), [&](const Diagnostic& x) {
            return x.code == code && x.location == location;
          });
@@ -55,12 +59,14 @@ TEST_CASE("relative placement: valid references raise nothing (ADR 0028)", "[val
 }
 
 TEST_CASE("relative placement: the first surface of an element is absolute", "[validate][0.4]") {
-  for (const PoseReference r : {PoseReference::RelativeToPreceding, PoseReference::RelativeToSibling}) {
+  for (const PoseReference r :
+       {PoseReference::RelativeToPreceding, PoseReference::RelativeToSibling}) {
     System s = make_singlet();
     element(s, 1).surfaces[0].pose.reference = r;
     const auto d = validate(s);
     INFO(static_cast<int>(r));
-    REQUIRE(only_at(d, "pose.relative_first_surface", "/root/children/1/surfaces/0/pose/reference"));
+    REQUIRE(
+        only_at(d, "pose.relative_first_surface", "/root/children/1/surfaces/0/pose/reference"));
     // One diagnostic per location (ADR 0028, point 5).
     REQUIRE(none_with(d, "pose.no_sibling"));
     REQUIRE(none_with(d, "pose.no_preceding"));
@@ -169,7 +175,8 @@ TEST_CASE("a bound Param names an existing row and carries nothing else", "[vali
   REQUIRE(validate(s).empty());
 
   element(s, 2).pose.position[2] = Param::bound("X");
-  REQUIRE(only_at(validate(s), "param.unknown_parameter", "/root/children/2/pose/position/2/param"));
+  REQUIRE(
+      only_at(validate(s), "param.unknown_parameter", "/root/children/2/pose/position/2/param"));
 
   Param conflict = Param::bound("D");
   conflict.variable = true;
@@ -197,7 +204,8 @@ TEST_CASE("bounds of Params and rows", "[validate][0.4]") {
   Param& conic = std::get<Conic>(element(s, 1).surfaces[0].shape.base).conic;
   conic.min = 1.0;
   conic.max = 1.0;
-  REQUIRE(only_at(validate(s), "bounds.invalid", "/root/children/1/surfaces/0/shape/base/conic/min"));
+  REQUIRE(
+      only_at(validate(s), "bounds.invalid", "/root/children/1/surfaces/0/shape/base/conic/min"));
   conic.min = -1.0;
   conic.max = -0.5;  // value 0 lies above max: a warning only
   const auto d = validate(s);
@@ -220,7 +228,8 @@ TEST_CASE("bounds of Params and rows", "[validate][0.4]") {
 TEST_CASE("value.not_finite for numbers without their own check", "[validate][0.4]") {
   System s = make_singlet();
   std::get<Conic>(element(s, 1).surfaces[0].shape.base).conic = Param(kNaN);
-  REQUIRE(only_at(validate(s), "value.not_finite", "/root/children/1/surfaces/0/shape/base/conic/value"));
+  REQUIRE(only_at(validate(s), "value.not_finite",
+                  "/root/children/1/surfaces/0/shape/base/conic/value"));
 
   s = make_singlet();
   element(s, 1).pose.pivot[1] = kNaN;
@@ -237,7 +246,8 @@ TEST_CASE("value.not_finite for numbers without their own check", "[validate][0.
   s = make_singlet();
   Param& bounded = std::get<Conic>(element(s, 1).surfaces[0].shape.base).conic;
   bounded.max = kNaN;
-  REQUIRE(only_at(validate(s), "value.not_finite", "/root/children/1/surfaces/0/shape/base/conic/max"));
+  REQUIRE(
+      only_at(validate(s), "value.not_finite", "/root/children/1/surfaces/0/shape/base/conic/max"));
 
   // A number with its own check keeps it: a NaN radius stays shape.radius_invalid.
   s = make_singlet();

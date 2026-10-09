@@ -188,8 +188,8 @@ void node_keys(const json& n, const std::string& where) {
 void edit_form_keys(const json& e) {
   has_keys(e,
            {"schema_version", "name", "units", "environment", "object", "wavelengths", "aperture",
-            "fields", "configurations", "parameters", "root", "paths"},
-           {}, "");
+            "fields", "parameters", "root", "paths"},
+           {"configurations"}, "");
   has_keys(e["environment"], {"temperature_c", "pressure_atm", "medium"}, {}, "/environment");
   has_keys(e["object"], {"at_infinity", "distance"}, {}, "/object");
   param(e["object"]["distance"], "/object/distance");
@@ -200,10 +200,13 @@ void edit_form_keys(const json& e) {
   param(e["aperture"]["value"], "/aperture/value");
   has_keys(e["fields"], {"type", "points"}, {}, "/fields");
   for (const json& f : e["fields"]["points"]) has_keys(f, {"x", "y", "weight"}, {}, "/points");
-  for (const json& c : e["configurations"]) has_keys(c, {"name"}, {}, "/configurations");
+  if (e.contains("configurations")) {  // only if there are any (an empty one is not readable)
+    for (const json& c : e["configurations"]) has_keys(c, {"name"}, {}, "/configurations");
+  }
   // A row: name, exactly one form, always variable (ADR 0029, point 3), bounds if set.
   for (const json& r : e["parameters"]) {
-    const int forms = static_cast<int>(r.contains("value")) + static_cast<int>(r.contains("values")) +
+    const int forms = static_cast<int>(r.contains("value")) +
+                      static_cast<int>(r.contains("values")) +
                       static_cast<int>(r.contains("expression"));
     CHECK(forms == 1);
     has_keys(r, {"name", "variable"}, {"value", "values", "expression", "min", "max"},
