@@ -30,13 +30,14 @@ using rtt::trace::RayStatus;
 
 namespace {
 
-/// tests/reference/m1/singlet_const.rtt.json: a plano-convex CONST singlet, fields 0, 1, 2.
-CompiledSystem singlet(double detector_radius = 0.0) {
+/// tests/reference/m1/singlet_const.rtt.json: a plano-convex CONST singlet, fields 0, 1, 2;
+/// `lens_radius` > 0 replaces the aperture of the first lens surface (12.7 mm).
+CompiledSystem singlet(double lens_radius = 0.0) {
   rtt::model::System s =
       rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m1/singlet_const.rtt.json");
-  if (detector_radius > 0.0) {
-    std::get<rtt::model::Element>(s.root.children.back().value).surfaces[0].aperture =
-        rtt::model::CircularAperture{detector_radius, 0.0};
+  if (lens_radius > 0.0) {
+    std::get<rtt::model::Element>(s.root.children[1].value).surfaces[0].aperture =
+        rtt::model::CircularAperture{lens_radius, 0.0};
   }
   return rtt::compile::compile(s, rtt::material::MaterialLibrary{});
 }
@@ -100,9 +101,10 @@ TEST_CASE("opd_points: the gauss sampling, point by point as single rays", "[opd
 
 TEST_CASE("opd_points: lost rays keep W = 0 and their status, without an exception",
           "[opd][points]") {
-  // A detector aperture of 0.5 mm lets the chief ray arrive and stops the outer rays; opd_points
-  // has no statistics and reports them as points (opd_map would average over the rest).
-  const CompiledSystem cs = singlet(0.5);
+  // An aperture of 5 mm on L1.S1 (beam radius 10 mm, collimated, 5 mm behind the stop) lets the
+  // chief ray and the inner ring (rho = 0.34) arrive and stops the outer rings (rho = 0.71,
+  // 0.94); opd_points has no statistics and reports them as points.
+  const CompiledSystem cs = singlet(5.0);
   const OpdPupilPoints p =
       rtt::analysis::opd_points(cs, PathId{0}, 0, 0, rtt::trace::GaussPupil{3, 6});
   std::size_t lost = 0;
@@ -111,8 +113,8 @@ TEST_CASE("opd_points: lost rays keep W = 0 and their status, without an excepti
     ++lost;
     CHECK(q.w == 0.0);
   }
-  CHECK(lost > 0);
-  CHECK(lost < p.points.size() + 1);
+  CHECK(lost == 12);
+  CHECK(p.points.size() == 18);
   CHECK(p.losses.launched == p.points.size());
 }
 
