@@ -72,3 +72,24 @@ def test_complex_values_are_pairs():
     doc["data"]["axis"]["values"][0] = 1.0
     with pytest.raises(jsonschema.ValidationError):
         VALIDATOR.validate(doc)
+
+
+WAVE_KEYS = ["wave_x", "wave_y", "wave_z", "mode_index"]
+
+
+def test_older_ray_batch_without_wave_is_valid():
+    # RayBatch gained wave_x/y/z and mode_index in 0.1.5 (#134, ADR 0023 addendum): files of
+    # an older version stay valid without them.
+    for version in ("0.1.0", "0.1.4"):
+        doc = _broken(lambda d: [d["data"].pop(k) for k in WAVE_KEYS], "RayBatch.result.json")
+        doc["schema_version"] = version
+        VALIDATOR.validate(doc)
+
+
+@pytest.mark.parametrize("key", WAVE_KEYS)
+@pytest.mark.parametrize("version", ["0.1.5", "0.1.12"])
+def test_ray_batch_from_0_1_5_needs_wave(key: str, version: str):
+    doc = _broken(lambda d: d["data"].pop(key), "RayBatch.result.json")
+    doc["schema_version"] = version
+    with pytest.raises(jsonschema.ValidationError):
+        VALIDATOR.validate(doc)

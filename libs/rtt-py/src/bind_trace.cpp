@@ -212,7 +212,8 @@ void bind_trace(nb::module_& m) {
       "coordinates (right-handed, optical axis +z), OPL in mm. weight is the power for an "
       "unpolarized source (source = 1); P (prt) is power-normalised, see raytatouille.polar and "
       "ADR 0021. "
-      "Every column (pos_x, ..., last_surface, status, prt(row, col)) is a writable NumPy "
+      "Every column (pos_x, ..., wave_x, ..., mode_index, last_surface, status, "
+      "prt(row, col)) is a writable NumPy "
       "view on the batch without a copy and keeps the batch alive; the size is fixed from "
       "Python. While trace() or make_rays() runs on the batch (the GIL is released), do not "
       "read or change its columns from another Python thread and do not start a second "
@@ -220,7 +221,8 @@ void bind_trace(nb::module_& m) {
   batch
       .def(nb::init<std::size_t>(), "size"_a,
            "Batch of `size` rays at the origin along +z, wavelength 0, OPL 0, weight 1, "
-           "P = identity, status ALIVE, field 0, pupil (0, 0), last_surface NO_SURFACE.")
+           "P = identity, status ALIVE, field 0, pupil (0, 0), last_surface NO_SURFACE, "
+           "wave +z and mode_index 0.")
       .def("__len__", &RayBatch::size)
       .def_prop_ro("size", &RayBatch::size, "Number of rays.");
   using Double = std::span<double> (RayBatch::*)() noexcept;
@@ -250,6 +252,19 @@ void bind_trace(nb::module_& m) {
                      "Normalised pupil x of the ray's origin.");
   def_column<double>(batch, "pupil_y", static_cast<Double>(&RayBatch::pupil_y),
                      "Normalised pupil y of the ray's origin.");
+  def_column<double>(batch, "wave_x", static_cast<Double>(&RayBatch::wave_x),
+                     "x of the unit wave normal k, global (ADR 0026, point 3). dir is the "
+                     "energy direction S; in an isotropic medium wave = dir. Counts only where "
+                     "mode_index > 0: trace() sets wave := dir for every ray with mode_index 0, "
+                     "so a batch that sets only dir is valid (reading rule).");
+  def_column<double>(batch, "wave_y", static_cast<Double>(&RayBatch::wave_y),
+                     "y of the unit wave normal k, global; see wave_x.");
+  def_column<double>(batch, "wave_z", static_cast<Double>(&RayBatch::wave_z),
+                     "z of the unit wave normal k, global; see wave_x.");
+  def_column<double>(batch, "mode_index", static_cast<Double>(&RayBatch::mode_index),
+                     "Index n of the crystal mode along the wave normal, real, dimensionless: "
+                     "> 0 inside a uniaxial crystal, 0 in an isotropic medium (no mode; "
+                     "ADR 0026, point 3). OPL in the crystal grows by n l (k . S).");
   def_column<std::uint32_t>(
       batch, "last_surface",
       static_cast<std::span<std::uint32_t> (RayBatch::*)() noexcept>(&RayBatch::last_surface),

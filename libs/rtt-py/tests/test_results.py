@@ -137,10 +137,10 @@ def test_round_trip_is_bit_identical(name: str, singlet: rt.CompiledSystem,
     envelope = json.loads(text, parse_constant=no_constants)  # standard JSON only
     assert list(envelope) == ["format", "schema_version", "type", "data"]
     assert envelope["format"] == "raytatouille-result"
-    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.4"
+    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.5"
     assert envelope["type"] == name
     loaded = rt.results.load_json(text)
-    assert (loaded.type, loaded.schema_version) == (name, "0.1.4")
+    assert (loaded.type, loaded.schema_version) == (name, "0.1.5")
     same(loaded.data, data)
 
 
@@ -342,8 +342,10 @@ def test_schema_lists_the_keys_of_every_type(reference_dir: Path, singlet: rt.Co
     """schema/raytatouille-result.schema.json requires exactly the keys that to_dict writes."""
     schema = json.loads((reference_dir.parent.parent / "schema"
                          / "raytatouille-result.schema.json").read_text(encoding="utf-8"))
-    required = {rule["if"]["properties"]["type"]["const"]:
-                rule["then"]["properties"]["data"]["required"] for rule in schema["allOf"]}
+    required: dict[str, list[str]] = {}
+    for rule in schema["allOf"]:
+        required.setdefault(rule["if"]["properties"]["type"]["const"], []).extend(
+            rule["then"]["properties"]["data"]["required"])
     assert schema["properties"]["type"]["enum"] == list(rt.results.TYPES)
     for name, make in PRODUCERS.items():
         assert required[name] == list(make(singlet, library).to_dict()), name
@@ -356,7 +358,43 @@ def test_trace_stats_carry_the_evanescent_status(singlet: rt.CompiledSystem) -> 
     rays.status[1] = int(rt.trace.RayStatus.EVANESCENT)
     stats = rt.trace.trace(singlet, rays, path="main")
     loaded = rt.results.load_json(stats.to_json())
-    assert loaded.schema_version == rt.results.SCHEMA_VERSION == "0.1.4"
+    assert loaded.schema_version == rt.results.SCHEMA_VERSION == "0.1.5"
     counts = list(loaded.data["rays"])
     assert len(counts) == 8
     assert counts[int(rt.trace.RayStatus.EVANESCENT)] == 1
+
+
+WAVE_KEYS = ["wave_x", "wave_y", "wave_z", "mode_index"]
+
+
+def test_older_ray_batch_reads_with_the_reading_rule(singlet: rt.CompiledSystem) -> None:
+    """RayBatch gained wave_x/y/z and mode_index in 0.1.5 (#134). A file of an older version
+    without them still loads; the data then have wave = dir and mode_index 0 (reading rule,
+    ADR 0026, point 3), in the key order of to_dict. A 0.1.5 file must have them."""
+    rays = traced(singlet)[0]
+    data = rays.to_dict()
+    assert list(data)[-4:] == WAVE_KEYS
+    envelope = json.loads(rays.to_json())
+    for key in WAVE_KEYS:
+        del envelope["data"][key]
+    envelope["schema_version"] = "0.1.4"
+    loaded = rt.results.load_json(json.dumps(envelope))
+    assert loaded.schema_version == "0.1.4"
+    assert list(loaded.data) == list(data)
+    for axis in "xyz":
+        same(loaded.data[f"wave_{axis}"], data[f"dir_{axis}"])
+    same(loaded.data["mode_index"], np.zeros(len(rays)))
+    envelope["schema_version"] = "0.1.5"
+    with pytest.raises(ValueError, match="misses wave_x, wave_y, wave_z, mode_index"):
+        rt.results.load_json(json.dumps(envelope))
+
+
+def test_ray_batch_carries_wave_and_mode_index(singlet: rt.CompiledSystem) -> None:
+    """The new columns go through the round trip bit for bit, also with values that only a
+    crystal gives (wave != dir, mode_index > 0)."""
+    rays = traced(singlet)[0]
+    rays.wave_x[1], rays.wave_y[1], rays.wave_z[1] = 0.6, 0.0, 0.8
+    rays.mode_index[1] = 1.5653568260606650
+    loaded = rt.results.load_json(rays.to_json())
+    same(loaded.data, rays.to_dict())
+    assert loaded.data["mode_index"][1] == 1.5653568260606650
