@@ -2,7 +2,7 @@
 
 Jede Diagnose (`rtt::model::Diagnostic`, in Python `rt.Diagnostic`) trägt einen stabilen Code in Punktnotation `<gruppe>.<was>` (ADR 0022). Dazu kommen Schwere, JSON-Pointer und Meldung. Der Code ist die maschinenlesbare Ursache; die Meldung ist für Menschen und darf sich ändern.
 
-**Stabilitätsversprechen:** Ein Code wird nie umbenannt, wiederverwendet oder umgedeutet. Neue Codes kommen nur hinzu. Ein Code, der nicht mehr erzeugt wird, bleibt in dieser Liste und wird als „nicht mehr erzeugt“ markiert. Ausnahme: Ein Zwischencode zwischen zwei Releases (in der Bedeutung als „Zwischenstand“ markiert, z. B. `pose.reference_unsupported`, `param.unresolved`) darf vor dem nächsten Release wieder entfallen, weil er nie stabil veröffentlicht war (ADR 0022).
+**Stabilitätsversprechen:** Ein Code wird nie umbenannt, wiederverwendet oder umgedeutet. Neue Codes kommen nur hinzu. Ein Code, der nicht mehr erzeugt wird, bleibt in dieser Liste und wird als „nicht mehr erzeugt“ markiert. Ausnahme: Ein Zwischencode zwischen zwei Releases (in der Bedeutung als „Zwischenstand“ markiert, z. B. `param.unresolved`) darf vor dem nächsten Release wieder entfallen, weil er nie stabil veröffentlicht war (ADR 0022).
 
 **Registry:** `libs/rtt-diagnostics/include/rtt/diagnostics/codes.hpp` (Schicht Basis, header-only), in Python `rt.diagnostics.CODES`.
 - Ein Erzeuger kann nur registrierte Codes verwenden. Der Typ `DiagnosticCode` prüft das beim Kompilieren, ein Tippfehler ist ein Compile-Fehler.
@@ -105,7 +105,6 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `phase.radius_invalid` | Fehler | Normierungsradius der Phase nicht endlich oder ≤ 0 mm | validate | `…/s/phases/i/normalization_radius` |
 | `pose.no_preceding` | Fehler | `relative_to_preceding`, aber in Baumreihenfolge steht keine Fläche davor | validate | `…/pose/reference` |
 | `pose.no_sibling` | Fehler | `relative_to_sibling` am ersten Kind oder an der Wurzel | validate | `…/pose/reference` |
-| `pose.reference_unsupported` | Fehler | Zwischenstand bis #163: relative Pose, die compile noch nicht auswertet | compile | `…/pose/reference` |
 | `pose.relative_first_surface` | Fehler | erste Fläche eines Elements relativ platziert (beide Arten; einzige Diagnose an diesem Ort) | validate | `…/s/pose/reference` |
 | `rays.lost` | Warnung | mehr Strahlen verloren als die Schwelle `lost_warning_fraction` der Analyse (Standard 50 %; Vignettierung am Feldrand ist gewollt) | analysis | Fläche, an der die meisten verlorenen Strahlen enden (`…/s`), sonst leer |
 | `shape.asphere_without_coefficients` | Warnung | gerade Asphäre ohne Koeffizienten | validate | `…/s/shape/base/coefficients` |
