@@ -3,6 +3,7 @@
 // invalid (ADR 0030, point 10) and the run ends without an exception.
 
 #include <catch2/catch_test_macros.hpp>
+#include <cmath>
 #include <optional>
 #include <string>
 #include <variant>
@@ -32,20 +33,26 @@ bool has(const OptimResult& r, const std::string& code, const std::string& locat
 
 TEST_CASE("ideal lens: an evaluation at f = 0 is invalid, the run ends without exception",
           "[optim][ideal]") {
-  // Start f = 1e-3 mm, unbounded (theta = p): the Jacobian steps by h = cbrt(eps_f) max(|theta|,
-  // 1) = 1e-3 (kMeritPrecision = 1e-9), so theta - h = 0 exactly. The merit is the value of a
-  // table row, so every other evaluation is valid and only f = 0 fails.
+  // Start f = h mm, unbounded (theta = p): the Jacobian steps by h = cbrt(eps_f) max(|theta|, 1)
+  // (levenberg_marquardt.cpp) with eps_f = kMeritPrecision; for theta = h < 1 that is h itself, so
+  // theta - h = 0 exactly. The operand is a ray of a path that bypasses the lenses (STO -> IMG):
+  // every evaluation compiles the whole system, the lens included, so only f = 0 fails.
   System s = rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/r2/ideal_lens.rtt.json");
-  Param f(1e-3);
+  const double h = std::cbrt(rtt::optim::kMeritPrecision);
+  Param f(h);
   f.variable = true;
   std::get<IdealLens>(std::get<Element>(s.root.children[1].value).surfaces[0].interaction)
       .focal_length = f;
-  rtt::model::ParameterRow row;
-  row.name = "X";
-  row.form = 1.0;
-  s.parameters = {row};
-  rtt::model::ParamValueOperand op;
-  op.parameter = "X";
+  using rtt::model::EventKind;
+  using rtt::model::SurfaceId;
+  s.paths.push_back(
+      {"free",
+       false,
+       {{SurfaceId{"STO"}, EventKind::Transmit, 0}, {SurfaceId{"IMG"}, EventKind::Transmit, 0}}});
+  rtt::model::RayOperand op;
+  op.path = "free";
+  op.surface = SurfaceId{"IMG"};
+  op.py = 1.0;
   op.common.target = 0.0;
   s.optimization.operands = {op};
 

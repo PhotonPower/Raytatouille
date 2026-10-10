@@ -27,14 +27,15 @@ namespace fs = std::filesystem;
 using trace::RayBatch;
 
 /// Rays from the object point (x0, y0, -75) towards the points (x, y, -1) of the stop with
-/// x, y in {-8, -4, 0, 4, 8}; directions normalised with sqrt(dx^2 + dy^2 + dz^2) in this order.
+/// x, y in {-6, -3, 0, 3, 6} (inside its radius 10); directions normalised with
+/// sqrt(dx^2 + dy^2 + dz^2) in this order.
 RayBatch start_rays(double x0, double y0) {
   RayBatch rays(25);
   std::size_t i = 0;
   for (int j = -2; j <= 2; ++j) {
     for (int k = -2; k <= 2; ++k, ++i) {
-      const double dx = 4.0 * k - x0;
-      const double dy = 4.0 * j - y0;
+      const double dx = 3.0 * k - x0;
+      const double dy = 3.0 * j - y0;
       const double dz = 74.0;
       const double n = std::sqrt(dx * dx + dy * dy + dz * dz);
       rays.pos_x()[i] = x0;

@@ -30,13 +30,14 @@ COLUMNS = ("pos_x", "pos_y", "pos_z", "dir_x", "dir_y", "dir_z", "opl", "weight"
 
 def start_rays(x0: float, y0: float) -> RayBatch:
     """As start_rays() in ideal_lens_cases.cpp: from (x0, y0, -75) towards (x, y, -1) of the
-    stop, x, y in {-8, -4, 0, 4, 8}, normalised with sqrt(dx^2 + dy^2 + dz^2) in this order."""
+    stop, x, y in {-6, -3, 0, 3, 6} (inside its radius 10), normalised with
+    sqrt(dx^2 + dy^2 + dz^2) in this order."""
     rays = RayBatch(25)
     i = 0
     for j in range(-2, 3):
         for k in range(-2, 3):
-            dx = 4.0 * k - x0
-            dy = 4.0 * j - y0
+            dx = 3.0 * k - x0
+            dy = 3.0 * j - y0
             dz = 74.0
             n = math.sqrt(dx * dx + dy * dy + dz * dz)
             rays.pos_x[i], rays.pos_y[i], rays.pos_z[i] = x0, y0, -75.0
