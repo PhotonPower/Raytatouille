@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.4.0",
+  "schema_version": "0.5.0",
   "name": "M4 acceptance: ghost of a plano-convex singlet (n = 1.5, R1 = 64 mm), paraxial ghost focus from y-nu",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},

@@ -394,6 +394,25 @@ Interaction read_interaction(const Json& j, const Ctx& c) {
     read_opt(j, "retardance_waves", c, r.retardance_waves, read_number);
     return r;
   }
+  if (type == "ideal_lens") {  // ADR 0031, point 1
+    expect_object(j, c, {"type", "focal_length", "object_distance"});
+    IdealLens l;
+    l.focal_length = read_param(require(j, "focal_length", c), c.at("focal_length"));
+    if (const Json* d = find(j, "object_distance")) {
+      l.object_distance = read_param(*d, c.at("object_distance"));
+    }
+    return l;
+  }
+  if (type == "ideal_cylinder_lens") {  // ADR 0031, points 1 and 4
+    expect_object(j, c, {"type", "focal_length", "axis_deg", "object_distance"});
+    IdealCylinderLens l;
+    l.focal_length = read_param(require(j, "focal_length", c), c.at("focal_length"));
+    read_opt(j, "axis_deg", c, l.axis_deg, read_number);
+    if (const Json* d = find(j, "object_distance")) {
+      l.object_distance = read_param(*d, c.at("object_distance"));
+    }
+    return l;
+  }
   c.at("type").fail("unknown interaction type '" + type + "'");
 }
 
@@ -557,6 +576,7 @@ void check_material_forms(const Json& node, const Ctx& c, bool lists_allowed) {
 struct Migration {
   bool before_0_3 = false;  ///< the event kind "diffract" existed
   bool before_0_4 = false;  ///< Params could carry a pickup; no 0.4 forms
+  bool before_0_5 = false;  ///< no ideal lenses (ADR 0031)
 };
 
 /// Checks the schema version of `j` and tells which migrations to the current version it needs.
@@ -569,6 +589,8 @@ struct Migration {
 /// - 0.3 -> 0.4 (ADR 0028, 0029): the pickup of a Param is dropped with io.pickup_dropped;
 ///   Pose.reference/order, the parameter table, configurations, bounds and the merit function
 ///   (ADR 0030) are new.
+/// - 0.4 -> 0.5 (ADR 0031): content unchanged, only the interactions ideal_lens and
+///   ideal_cylinder_lens are new.
 Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
   const std::string ours(kSchemaVersion);
   const std::string mm = major_minor(version);
@@ -577,11 +599,38 @@ Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
     if (const Json* root = find(j, "root")) {
       check_material_forms(*root, Ctx().at("root"), mm == "0.2");
     }
-    return {true, true};
+    return {true, true, true};
   }
-  if (mm == "0.3") return {false, true};
+  if (mm == "0.3") return {false, true, true};
+  if (mm == "0.4") return {false, false, true};
   c.fail("incompatible schema_version '" + version + "', this build reads " + ours +
-         " and migrates 0.1, 0.2 and 0.3");
+         " and migrates 0.1, 0.2, 0.3 and 0.4");
+}
+
+/// Files before 0.5 (ADR 0031): an ideal lens or ideal cylinder lens is an error at the type of
+/// its interaction, so that a version is never silently upgraded.
+void check_0_5_forms(const Json& node, const Ctx& c) {
+  if (!node.is_object()) return;  // structural errors are reported by the reader
+  if (const Json* surfaces = find(node, "surfaces"); surfaces != nullptr && surfaces->is_array()) {
+    for (std::size_t i = 0; i < surfaces->size(); ++i) {
+      const Json* interaction = find((*surfaces)[i], "interaction");
+      const Json* type = interaction != nullptr ? find(*interaction, "type") : nullptr;
+      if (type != nullptr && type->is_string() &&
+          (*type == "ideal_lens" || *type == "ideal_cylinder_lens")) {
+        c.at("surfaces")
+            .at(i)
+            .at("interaction")
+            .at("type")
+            .fail("the interaction '" + type->get<std::string>() +
+                  "' needs schema_version 0.5 or later (ADR 0031)");
+      }
+    }
+  }
+  if (const Json* children = find(node, "children"); children != nullptr && children->is_array()) {
+    for (std::size_t i = 0; i < children->size(); ++i) {
+      check_0_5_forms((*children)[i], c.at("children").at(i));
+    }
+  }
 }
 
 /// A Param object: no "type" (the system aperture {"type", "value"} has one) and "value" or
@@ -846,6 +895,9 @@ System read_system_tree(const Json& j, std::vector<Diagnostic>* warnings) {
   if (!j.is_object()) c.fail("expected an object, got " + std::string(type_name(j)));
   const std::string version = read_string(require(j, "schema_version", c), c.at("schema_version"));
   const Migration m = migrate(j, version, c.at("schema_version"));
+  if (m.before_0_5) {
+    if (const Json* root = find(j, "root")) check_0_5_forms(*root, c.at("root"));
+  }
   if (!m.before_0_4) return read_migrated(j, m);
   Json current = j;
   migrate_0_4(current, c, warnings, true);
@@ -1226,6 +1278,16 @@ class Writer {
       if (edit_ || r->fast_axis != d.fast_axis) o["fast_axis"] = vec3(r->fast_axis);
       if (edit_ || r->retardance_waves != d.retardance_waves)
         o["retardance_waves"] = num(r->retardance_waves);
+    } else if (const auto* l = std::get_if<IdealLens>(&i)) {
+      // ADR 0031, point 1: object_distance only when set, also in the edit form.
+      o["type"] = "ideal_lens";
+      o["focal_length"] = param(l->focal_length);
+      if (l->object_distance) o["object_distance"] = param(*l->object_distance);
+    } else if (const auto* y = std::get_if<IdealCylinderLens>(&i)) {
+      o["type"] = "ideal_cylinder_lens";
+      o["focal_length"] = param(y->focal_length);
+      if (edit_ || y->axis_deg != 0.0) o["axis_deg"] = num(y->axis_deg);
+      if (y->object_distance) o["object_distance"] = param(*y->object_distance);
     }
     return o;
   }

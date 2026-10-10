@@ -314,3 +314,50 @@ def test_merit_function_forms_are_accepted(mutate):
 )
 def test_merit_function_errors_are_rejected(mutate):
     assert not VALIDATOR.is_valid(_with(mutate))
+
+# ---- schema 0.5 (#178, ADR 0031): ideal lens and ideal cylinder lens ----
+
+def _ideal(mutate):
+    doc = copy.deepcopy(load(ROOT / "tests" / "reference" / "r2" / "ideal_lens.rtt.json"))
+    mutate(doc)
+    return doc
+
+
+def _il(d):
+    return d["root"]["children"][1]["surfaces"][0]["interaction"]
+
+
+def _cl(d):
+    return d["root"]["children"][2]["surfaces"][0]["interaction"]
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda d: _il(d).pop("object_distance"),
+        lambda d: _il(d).update(focal_length={"value": 50.0, "variable": True, "min": 20.0}),
+        lambda d: _il(d).update(focal_length={"param": "F"}, object_distance={"param": "OBJ"}),
+        lambda d: _il(d).update(focal_length=-50.0, object_distance=-30.0),
+        lambda d: _cl(d).update(axis_deg=30.0),
+    ],
+    ids=["infinity", "variable-f", "bound", "negative", "cylinder-axis"],
+)
+def test_0_5_ideal_lens_forms_are_accepted(mutate):
+    VALIDATOR.validate(_ideal(mutate))
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda d: _il(d).pop("focal_length"),
+        lambda d: _il(d).update(focal_length="50"),
+        lambda d: _il(d).update(axis_deg=30.0),
+        lambda d: _cl(d).update(axis_deg={"value": 30.0}),
+        lambda d: _il(d).update(object_distance=True),
+        lambda d: _il(d).update(weight=1.0),
+    ],
+    ids=["missing-f", "f-string", "axis-at-ideal-lens", "axis-not-number", "distance-bool",
+         "unknown-key"],
+)
+def test_0_5_ideal_lens_errors_are_rejected(mutate):
+    assert not VALIDATOR.is_valid(_ideal(mutate))

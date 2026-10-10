@@ -1,0 +1,88 @@
+{
+  "schema_version": "0.5.0",
+  "name": "Ideal lens and ideal cylinder lens f = 50 mm: object at 75 mm, image at 150 mm (#178, ADR 0031)",
+  "units": {"length": "mm", "wavelength": "um"},
+  "object": {"at_infinity": false, "distance": 75.0},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "stop_size"},
+  "fields": {
+    "type": "object_height",
+    "points": [
+      {},
+      {"y": 5.0},
+      {"x": 3.0, "y": -4.0},
+      {"x": 3.0, "y": 2.0}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "pose": {"position": [0.0, 0.0, -1.0]},
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 10.0}
+          }
+        ]
+      },
+      {
+        "type": "thin_element",
+        "name": "ideal lens",
+        "surfaces": [
+          {
+            "id": "IL",
+            "aperture": {"type": "circular", "radius": 12.0},
+            "interaction": {"type": "ideal_lens", "focal_length": 50.0, "object_distance": 75.0}
+          }
+        ]
+      },
+      {
+        "type": "thin_element",
+        "name": "cylinder lens",
+        "surfaces": [
+          {
+            "id": "CL",
+            "aperture": {"type": "circular", "radius": 12.0},
+            "interaction": {
+              "type": "ideal_cylinder_lens",
+              "focal_length": 50.0,
+              "object_distance": 75.0
+            }
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 150.0]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {
+      "name": "ideal lens",
+      "events": [
+        {"surface": "STO"},
+        {"surface": "IL", "kind": "transmit"},
+        {"surface": "IMG"}
+      ]
+    },
+    {
+      "name": "cylinder lens",
+      "events": [
+        {"surface": "STO"},
+        {"surface": "CL", "kind": "transmit"},
+        {"surface": "IMG"}
+      ]
+    }
+  ]
+}

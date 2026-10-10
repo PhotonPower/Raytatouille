@@ -27,7 +27,7 @@ from raytatouille import model
 #: Every optional key is missing, so each first instance of a class in this system carries the
 #: parser's defaults. Required keys have arbitrary values; the stop-size aperture has no value.
 DEFAULTS_TEXT = """{
-  "schema_version": "0.4.0",
+  "schema_version": "0.5.0",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [{"um": 0.5}],
   "aperture": {"type": "stop_size"},
@@ -50,7 +50,9 @@ DEFAULTS_TEXT = """{
                       {"type": "radial_phase", "normalization_radius": 1.0}]},
           {"id": "S4", "interaction": {"type": "ideal_beam_splitter"}},
           {"id": "S5", "interaction": {"type": "ideal_polarizer"}},
-          {"id": "S6", "interaction": {"type": "ideal_retarder"}}
+          {"id": "S6", "interaction": {"type": "ideal_retarder"}},
+          {"id": "S7", "interaction": {"type": "ideal_lens", "focal_length": 1.0}},
+          {"id": "S8", "interaction": {"type": "ideal_cylinder_lens", "focal_length": 1.0}}
         ]
       }
     ]
@@ -88,6 +90,7 @@ VARIANT_CLASSES: dict[str, type] = {
     "ideal_anti_reflection": model.IdealAntiReflection, "absorber": model.Absorber,
     "ideal_beam_splitter": model.IdealBeamSplitter, "coating": model.CoatingRef,
     "ideal_polarizer": model.IdealPolarizer, "ideal_retarder": model.IdealRetarder,
+    "ideal_lens": model.IdealLens, "ideal_cylinder_lens": model.IdealCylinderLens,
     # The merit function (ADR 0030, #162 B); the type of a first-order or ray operand also
     # names its quantity or coordinate (OPERAND_ENUMS).
     "efl": model.FirstOrderOperand, "bfl": model.FirstOrderOperand,
@@ -351,7 +354,7 @@ def test_defaults_system_has_no_optional_values() -> None:
     assert sorted(optional) == sorted([
         f"{s}/1/shape", f"{s}/1/shape/base", f"{s}/2/shape", f"{s}/2/shape/base",
         f"{s}/2/shape/terms", f"{s}/3/aperture", f"{s}/3/phases", f"{s}/4/interaction",
-        f"{s}/5/interaction", f"{s}/6/interaction",
+        f"{s}/5/interaction", f"{s}/6/interaction", f"{s}/7/interaction", f"{s}/8/interaction",
     ])
     # The carriers come after the first instances of their classes.
     assert DEFAULTS[model.Surface].id == "S0"
@@ -377,7 +380,9 @@ def test_every_variant_class_appears_in_the_reference_systems() -> None:
     seen = {type(o) for f in reference_files() for o in walk(rt.load(f))}
     assert set(VARIANT_CLASSES.values()) <= seen
     tour = {type(o) for o in walk(rt.load(REFERENCE_DIR / "m0" / "feature_tour.rtt.json"))}
-    assert set(VARIANT_CLASSES.values()) - {model.IdealMirror} <= tour
+    # feature_tour without an ideal lens (ADR 0031, #178); the line above covers r2/ideal_lens.
+    assert set(VARIANT_CLASSES.values()) - {model.IdealMirror, model.IdealLens,
+                                             model.IdealCylinderLens} <= tour
 
 
 def test_copies_are_read_only_and_not_constructible() -> None:
@@ -458,8 +463,13 @@ def test_crystal_optic_axis_and_diffraction_efficiency() -> None:
     # Schema 0.3 (ADR 0025, ADR 0026); no reference system has them yet (crystals compile from
     # #131 on), so they are checked on a changed copy of the defaults system.
     data = json.loads(DEFAULTS_TEXT)
-    data["schema_version"] = "0.3.0"
     lens = data["root"]["children"][0]
+    # The ideal lenses are schema 0.5 (ADR 0031): a 0.3 file must not have them.
+    ideal = {"ideal_lens", "ideal_cylinder_lens"}
+    kept = [s for s in lens["surfaces"] if s.get("interaction", {}).get("type") not in ideal]
+    assert len(lens["surfaces"]) - len(kept) == 2
+    lens["surfaces"] = kept
+    data["schema_version"] = "0.3.0"
     lens["material"] = {"ordinary": "BIREFRINGENT:CALCITE",
                         "extraordinary": "BIREFRINGENT:CALCITE-E"}
     lens["optic_axis"] = [0.0, 1.0, 1.0]

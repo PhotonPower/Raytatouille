@@ -284,6 +284,22 @@ std::vector<Case> cases() {
        [](System& s) {
          element(s, 1).surfaces[0].interaction = IdealRetarder{{1.0, 0.0, 0.0}, kNaN};
        }},
+      // The ideal lenses (#178, ADR 0031): the stop becomes a thin element with the lens.
+      {"interaction.ideal_lens_not_allowed", "/root/children/1/surfaces/0/interaction",
+       [](System& s) {
+         element(s, 1).surfaces[0].interaction = IdealLens{Param(50.0), std::nullopt};
+       }},
+      {"interaction.focal_length_invalid", "/root/children/0/surfaces/0/interaction/focal_length",
+       [](System& s) {
+         element(s, 0).kind = ElementKind::ThinElement;
+         element(s, 0).surfaces[0].interaction = IdealLens{Param(0.0), std::nullopt};
+       }},
+      {"interaction.object_distance_invalid",
+       "/root/children/0/surfaces/0/interaction/object_distance",
+       [](System& s) {
+         element(s, 0).kind = ElementKind::ThinElement;
+         element(s, 0).surfaces[0].interaction = IdealCylinderLens{Param(50.0), 0.0, Param(0.0)};
+       }},
       {"paths.empty", "/paths", [](System& s) { s.paths.clear(); }},
       {"paths.name_empty", "/paths/0/name", [](System& s) { s.paths[0].name.clear(); }},
       {"paths.name_duplicate", "/paths/1/name", [](System& s) { s.paths.push_back(s.paths[0]); }},
@@ -348,6 +364,16 @@ std::vector<Case> cases() {
          s.paths = {{"x",
                      false,
                      {{SurfaceId("STO"), EventKind::Transmit, 0},
+                      {SurfaceId("L1.S1"), EventKind::Refract, 0},
+                      {SurfaceId("L1.S2"), EventKind::Refract, 0}}}};
+       }},
+      {"paths.ideal_lens_event", "/paths/0/events/0",
+       [](System& s) {
+         element(s, 0).kind = ElementKind::ThinElement;
+         element(s, 0).surfaces[0].interaction = IdealLens{Param(50.0), std::nullopt};
+         s.paths = {{"x",
+                     false,
+                     {{SurfaceId("STO"), EventKind::Refract, 0},
                       {SurfaceId("L1.S1"), EventKind::Refract, 0},
                       {SurfaceId("L1.S2"), EventKind::Refract, 0}}}};
        }},

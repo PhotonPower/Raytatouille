@@ -69,12 +69,12 @@ constexpr const char* kShorthand = R"("SCHOTT:N-BK7")";
 
 }  // namespace
 
-TEST_CASE("schema version is 0.4.0", "[io][segments]") {
-  REQUIRE(rtt::model::kSchemaVersion == "0.4.0");
+TEST_CASE("schema version is 0.5.0", "[io][segments]") {
+  REQUIRE(rtt::model::kSchemaVersion == "0.5.0");
 }
 
 TEST_CASE("material list: file -> model -> file is byte-identical", "[io][segments][roundtrip]") {
-  const std::string text = doublet_file("0.4.0", kList);
+  const std::string text = doublet_file("0.5.0", kList);
   const rtt::model::System s = rtt::io::parse_system(text);
   REQUIRE_FALSE(lens(s).material.has_value());
   REQUIRE(lens(s).segment_materials == std::vector<std::string>{"SCHOTT:N-BK7", "SCHOTT:F2"});
@@ -82,7 +82,7 @@ TEST_CASE("material list: file -> model -> file is byte-identical", "[io][segmen
 }
 
 TEST_CASE("material shorthand is kept on write", "[io][segments][roundtrip]") {
-  const std::string text = doublet_file("0.4.0", kShorthand);
+  const std::string text = doublet_file("0.5.0", kShorthand);
   const rtt::model::System s = rtt::io::parse_system(text);
   REQUIRE(lens(s).material == std::optional<std::string>("SCHOTT:N-BK7"));
   REQUIRE(lens(s).segment_materials.empty());
@@ -90,7 +90,7 @@ TEST_CASE("material shorthand is kept on write", "[io][segments][roundtrip]") {
 }
 
 TEST_CASE("a one-entry list stays a list", "[io][segments][roundtrip]") {
-  const std::string text = doublet_file("0.4.0", R"(["SCHOTT:N-BK7"])");
+  const std::string text = doublet_file("0.5.0", R"(["SCHOTT:N-BK7"])");
   const rtt::model::System s = rtt::io::parse_system(text);
   REQUIRE_FALSE(lens(s).material.has_value());
   REQUIRE(lens(s).segment_materials == std::vector<std::string>{"SCHOTT:N-BK7"});
@@ -101,10 +101,10 @@ TEST_CASE("migration: a 0.1 file with one material is written in the current ver
           "[io][segments]") {
   const std::string old_text = doublet_file("0.1.0", kShorthand);
   const rtt::model::System s = rtt::io::parse_system(old_text);
-  REQUIRE(s.schema_version == "0.4.0");
+  REQUIRE(s.schema_version == "0.5.0");
   REQUIRE(lens(s).material == std::optional<std::string>("SCHOTT:N-BK7"));
   REQUIRE(lens(s).segment_materials.empty());
-  REQUIRE(rtt::io::to_json(s) == doublet_file("0.4.0", kShorthand));
+  REQUIRE(rtt::io::to_json(s) == doublet_file("0.5.0", kShorthand));
 }
 
 TEST_CASE("migration: a 0.1 file must not contain material lists", "[io][segments]") {

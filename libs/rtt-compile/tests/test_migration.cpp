@@ -94,7 +94,7 @@ TEST_CASE("migration: diffract -> transmit keeps the compiled media of the path"
   // The 0.2 file as the 0.2 writer wrote it: "diffract" instead of "transmit".
   const std::string current = rtt::io::to_json(system_with(EventKind::Transmit));
   const std::string old = replace_all(
-      replace_all(current, R"("schema_version": "0.4.0")", R"("schema_version": "0.2.0")"),
+      replace_all(current, R"("schema_version": "0.5.0")", R"("schema_version": "0.2.0")"),
       R"("kind": "transmit")", R"("kind": "diffract")");
   const System migrated = rtt::io::parse_system(old);
   REQUIRE(migrated == system_with(EventKind::Transmit));

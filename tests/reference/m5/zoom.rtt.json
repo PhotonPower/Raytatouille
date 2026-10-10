@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.4.0",
+  "schema_version": "0.5.0",
   "name": "M5 example: two-lens zoom with configurations wide and tele (ADR 0028, ADR 0029)",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},

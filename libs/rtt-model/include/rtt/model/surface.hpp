@@ -140,6 +140,30 @@ struct IdealRetarder {
   bool operator==(const IdealRetarder&) const = default;
 };
 
+/// Ideal lens without thickness (ADR 0031): a collinear map that images the plane at s onto the
+/// plane at s' with 1/s' = 1/s + 1/f for every ray, not only paraxially. Only at the single plane
+/// surface of a thin_element without shape terms or phases (validate:
+/// interaction.ideal_lens_not_allowed); only `transmit` acts there (compile:
+/// paths.ideal_lens_event).
+struct IdealLens {
+  /// f in mm: the physical distance from the lens to the rear focal point in the surrounding
+  /// medium, measured along the propagation; f > 0 converges. Independent of the wavelength.
+  Param focal_length;
+  /// Design conjugate for the optical path (ADR 0031, point 3), mm: positive for a real object in
+  /// front of the lens (as System::object), negative for a virtual object; s = -object_distance.
+  /// None: object at infinity. The OPD is exact only for rays from this plane.
+  std::optional<Param> object_distance;
+  bool operator==(const IdealLens&) const = default;
+};
+/// Ideal cylinder lens (ADR 0031, point 4): the ideal lens in the direction of power
+/// b = (-sin psi, cos psi, 0) only; the slope along the axis a = (cos psi, sin psi, 0) stays.
+struct IdealCylinderLens {
+  Param focal_length;     ///< as IdealLens::focal_length, mm
+  double axis_deg = 0.0;  ///< psi, local surface frame, from the x to the y axis (as a grating)
+  std::optional<Param> object_distance;  ///< as IdealLens::object_distance, mm
+  bool operator==(const IdealCylinderLens&) const = default;
+};
+
 using Interaction = std::variant<Fresnel,
                                  IdealMirror,
                                  IdealAntiReflection,
@@ -147,7 +171,9 @@ using Interaction = std::variant<Fresnel,
                                  CoatingRef,
                                  IdealPolarizer,
                                  IdealRetarder,
-                                 Absorber>;
+                                 Absorber,
+                                 IdealLens,
+                                 IdealCylinderLens>;
 
 // -------------------------------------------------------------- surface -----
 

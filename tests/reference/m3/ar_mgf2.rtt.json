@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.4.0",
+  "schema_version": "0.5.0",
   "name": "M3 acceptance: quarter-wave MgF2 (1.38) anti-reflection on 1.52 in vacuum at its design wavelength",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},

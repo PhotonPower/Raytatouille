@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/PhotonPower/Raytatouille/schema/raytatouille.schema.json",
-  "title": "Raytatouille system file (.rtt.json), schema 0.4",
-  "description": "Units: lengths mm, wavelengths um, angles in degree where the key ends in _deg. Parsing in rtt-io is the reference; this schema must accept exactly what rtt-io accepts structurally for the current schema version. rtt-io migrates older files (0.1, 0.2, 0.3); run rtt format before checking them against this schema. Semantic rules (names of parameter rows, one value per configuration, bounds) are checked by validate, not here.",
+  "title": "Raytatouille system file (.rtt.json), schema 0.5",
+  "description": "Units: lengths mm, wavelengths um, angles in degree where the key ends in _deg. Parsing in rtt-io is the reference; this schema must accept exactly what rtt-io accepts structurally for the current schema version. rtt-io migrates older files (0.1, 0.2, 0.3, 0.4); run rtt format before checking them against this schema. Semantic rules (names of parameter rows, one value per configuration, bounds) are checked by validate, not here.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "units", "wavelengths", "aperture", "fields", "root", "paths"],
   "properties": {
-    "schema_version": {"type": "string", "pattern": "^0\\.4\\.[0-9]+$"},
+    "schema_version": {"type": "string", "pattern": "^0\\.5\\.[0-9]+$"},
     "name": {"type": "string"},
     "units": {
       "type": "object",
@@ -481,6 +481,25 @@
             "type": {"const": "ideal_retarder"},
             "fast_axis": {"$ref": "#/$defs/vec3"},
             "retardance_waves": {"type": "number"}
+          }
+        },
+        {
+          "description": "Ideal lens (ADR 0031): f in mm, object_distance in mm (absent: object at infinity).",
+          "type": "object", "additionalProperties": false, "required": ["type", "focal_length"],
+          "properties": {
+            "type": {"const": "ideal_lens"},
+            "focal_length": {"$ref": "#/$defs/param"},
+            "object_distance": {"$ref": "#/$defs/param"}
+          }
+        },
+        {
+          "description": "Ideal cylinder lens (ADR 0031): as ideal_lens, power only along (-sin psi, cos psi, 0) with psi = axis_deg.",
+          "type": "object", "additionalProperties": false, "required": ["type", "focal_length"],
+          "properties": {
+            "type": {"const": "ideal_cylinder_lens"},
+            "focal_length": {"$ref": "#/$defs/param"},
+            "axis_deg": {"type": "number"},
+            "object_distance": {"$ref": "#/$defs/param"}
           }
         }
       ]

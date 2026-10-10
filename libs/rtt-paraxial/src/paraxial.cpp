@@ -74,6 +74,9 @@ std::vector<Step> prepare(const CompiledSystem& cs, PathId path, std::uint16_t w
     // ADR 0025, point 4: order 0 at a surface with phase layers is the surface without them
     // (point 2); other orders have no paraxial model in M4.
     if (event.order != 0) fail("diffraction orders other than 0 have no paraxial model");
+    // Interim state of #178 until rtt-paraxial knows the ideal lens (ADR 0031, point 8): an
+    // error, never an EFL without the lens. The cylinder lens stays an error afterwards.
+    if (s.ideal_lens) fail("ideal lenses have no paraxial model yet (#178)");
     const math::Vec3 vertex = s.to_global.translation();
     const math::Vec3 axis = s.to_global.apply_vector(math::Vec3::UnitZ());
     if (std::abs(vertex.x()) > kSymmetryTolerance || std::abs(vertex.y()) > kSymmetryTolerance) {

@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.4.0",
+  "schema_version": "0.5.0",
   "name": "Feature tour: every model element of schema 0.1",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"temperature_c": 22.0, "pressure_atm": 0.95},

@@ -115,8 +115,8 @@ json file_0_3(const json& detector_pose, const json& extra = json::object()) {
 
 }  // namespace
 
-TEST_CASE("schema version is 0.4.0", "[io][0.4]") {
-  REQUIRE(rtt::model::kSchemaVersion == "0.4.0");
+TEST_CASE("schema version is 0.5.0", "[io][0.4]") {
+  REQUIRE(rtt::model::kSchemaVersion == "0.5.0");
 }
 
 TEST_CASE("relative poses, bounds, bound Params and the table round-trip", "[io][0.4]") {
@@ -228,7 +228,7 @@ TEST_CASE("migration 0.3 -> 0.4 drops pickups with io.pickup_dropped (ADR 0029, 
   const std::string text = j.dump();
   std::vector<Diagnostic> warnings;
   const System s = rtt::io::parse_system(text, warnings);
-  REQUIRE(s.schema_version == "0.4.0");
+  REQUIRE(s.schema_version == "0.5.0");
   // The value stays, the pickup is gone, variable is kept.
   REQUIRE(element_of(s, 1).pose.position[2] == Param(6.0));
   const Param& y = element_of(s, 1).surfaces[0].pose.position[1];
