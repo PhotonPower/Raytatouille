@@ -3,7 +3,8 @@ lateral colour, distortion, field curvature and Seidel sums; path transmission a
 difference of two paths (#122) and the ghost ranking (#124); reports as data (#177): the
 raytrace report, the system data report and the dimension report (CSV with to_csv(), see
 raytatouille.reports); the OPD at arbitrary pupil points, the pupil function with refocus and
-the Zernike fit with the Strehl approximation (ADR 0032; #202, #203, #209).
+the Zernike fit with the Strehl approximation (ADR 0032; #202, #203, #209); the diffraction
+PSF, the Strehl ratio through focus, the MTF and the encircled energy (ADR 0033; #205, #206, #209).
 
 Every function takes a System (compiled on each call with ``materials``) or a CompiledSystem;
 for several analyses compile once with rt.compile(). ``path`` is an index or a path name,
@@ -39,7 +40,11 @@ from __future__ import annotations
 import math
 import re
 import warnings
-from typing import TypeVar
+from collections.abc import Sequence
+from typing import Any, TypeVar
+
+import numpy as np
+import numpy.typing as npt
 
 from . import _core
 from .errors import RaytatouilleWarning
@@ -49,6 +54,8 @@ from ._core import (
     DimensionSegments,
     DistortionPoint,
     DistortionSweep,
+    EeCentre,
+    EncircledEnergy,
     FanPoints,
     Field,
     FieldCurvaturePoint,
@@ -65,6 +72,8 @@ from ._core import (
     LateralColour,
     LongitudinalColour,
     MaterialLibrary,
+    Mtf,
+    MtfCurve,
     NollIndex,
     OpdFan,
     OpdMap,
@@ -76,6 +85,9 @@ from ._core import (
     PathTransmission,
     Point2,
     Points2,
+    Psf,
+    PsfPeak,
+    PsfWavelengths,
     PupilCells,
     PupilFunction,
     PupilMapping,
@@ -87,6 +99,7 @@ from ._core import (
     SpotDiagram,
     SpotStatistics,
     SystemReport,
+    ThroughFocus,
     ZernikeFit,
 )
 from ._util import SystemLike, chromatic_pair, compiled
@@ -111,6 +124,8 @@ __all__ = [
     "DimensionSegments",
     "DistortionPoint",
     "DistortionSweep",
+    "EeCentre",
+    "EncircledEnergy",
     "FanPoints",
     "FieldCurvaturePoint",
     "FieldCurvatureSweep",
@@ -126,6 +141,8 @@ __all__ = [
     "LongitudinalColour",
     "MAX_PUPIL_GRID",
     "MAX_ZERNIKE_TERMS",
+    "Mtf",
+    "MtfCurve",
     "NollIndex",
     "OpdFan",
     "OpdMap",
@@ -137,6 +154,9 @@ __all__ = [
     "PathTransmission",
     "Point2",
     "Points2",
+    "Psf",
+    "PsfPeak",
+    "PsfWavelengths",
     "PupilCells",
     "PupilFunction",
     "PupilMapping",
@@ -148,10 +168,12 @@ __all__ = [
     "SpotDiagram",
     "SpotStatistics",
     "SystemReport",
+    "ThroughFocus",
     "ZernikeFit",
     "dimension_report",
     "distortion",
     "distortion_at",
+    "encircled_energy",
     "field_curvature",
     "field_curvature_at",
     "ghost_ranking",
@@ -159,6 +181,7 @@ __all__ = [
     "jones_pupil",
     "lateral_colour",
     "longitudinal_colour",
+    "mtf",
     "noll_from_nm",
     "noll_to_nm",
     "opd_fan",
@@ -166,6 +189,9 @@ __all__ = [
     "opd_points",
     "opl_difference",
     "path_transmission",
+    "psf",
+    "psf_at",
+    "psf_positions",
     "pupil_cells",
     "pupil_function",
     "ray_fan",
@@ -246,7 +272,8 @@ def sampling(rays: str | PupilSampling) -> PupilSampling:
 
 _R = TypeVar("_R", SpotDiagram, RayFan, OpdMap, OpdFan, OpdPupilPoints, PupilFunction,
               ZernikeFit, PathTransmission, PathOplDifference, Interferogram, GhostRanking,
-              SystemReport, JonesPupil)
+              SystemReport, JonesPupil, Psf, ThroughFocus, Mtf,
+              EncircledEnergy)
 
 
 def _warn(result: _R) -> _R:
@@ -401,11 +428,11 @@ def opd_points(
     ))
 
 
-def pupil_cells(grid: int) -> PupilCells:
+def pupil_cells(grid: int, obscuration: float = 0.0) -> PupilCells:
     """The N x N cells of the pupil function (ADR 0032, point 1): area fraction inside the unit
     circle and sample point (centre, or centroid of the part inside); rows from py = -1, px
     fastest. ValueError for N outside [2, MAX_PUPIL_GRID]."""
-    return _core.pupil_cells(grid)
+    return _core.pupil_cells(grid, obscuration)
 
 
 def pupil_function(
@@ -486,6 +513,221 @@ def noll_to_nm(j: int) -> NollIndex:
 def noll_from_nm(n: int, m: int, sine: bool = False) -> int:
     """Noll index of (n, m) with the sine (odd j) or the cosine (even j) for m != 0."""
     return _core.noll_from_nm(n, m, sine)
+
+
+
+# ------------------------------------------------- diffraction (ADR 0033; #205, #206, P1b) ---
+
+
+def psf(
+    system: SystemLike,
+    path: int | str = 0,
+    field: int = 0,
+    *,
+    wavelengths: Sequence[int] | None = None,
+    grid: int = 64,
+    padding: int = 4,
+    apodization: float = 0.0,
+    focus_shift: float = 0.0,
+    aiming: Aiming = Aiming.REAL,
+    aliasing_factor: float = 3.0,
+    undersampled_waves: float = 0.5,
+    materials: MaterialLibrary | None = None,
+    threads: int | None = None,
+    lost_warning_fraction: float = 0.5,
+    mapping_warning: float = 0.01,
+    cancel: CancelToken | None = None,
+    progress: ProgressCallback | None = None,
+) -> Psf:
+    """Diffraction PSF of ``field`` by FFT of the pupil function (ADR 0033, points 2-4, 7).
+
+    ``intensity`` is an (L, L) array with L = ``padding`` x ``grid`` (larger only for a shorter
+    wavelength), row k2 + L // 2 and column k1 + L // 2, the fraction of the pupil energy per
+    cell on the lattice x(k) = ``lattice`` @ k in mm along ``e_x``, ``e_y`` of the plane through
+    C' normal to the chief ray (``psf_positions(result)`` gives all positions). ``strehl`` is
+    the Strehl ratio at C'. ``wavelengths``: indices, or None for all system wavelengths with
+    their model weights (each wavelength on its own lattice, weighted with w_i E_i).
+
+    Raises AnalysisError (location /paths/i) for an afocal image space or a path with crystal
+    modes, ValueError for options out of range. Warnings (rays.lost, stop.clips_beam,
+    pupil.mapping_nonlinear, psf.aliasing, psf.pupil_undersampled) are issued as
+    RaytatouilleWarning and stay in ``warnings``.
+    """
+    return _warn(_core.psf(
+        compiled(system, materials), path, field,
+        None if wavelengths is None else list(wavelengths), grid, padding, apodization,
+        focus_shift, aiming, aliasing_factor, undersampled_waves, lost_warning_fraction,
+        mapping_warning, threads, cancel, progress,
+    ))
+
+
+def psf_at(pupil: PupilFunction, points: npt.ArrayLike) -> npt.NDArray[np.float64]:
+    """Intensity of the monochromatic PSF of ``pupil`` at ``points`` (shape (n, 2), mm along
+    e_x, e_y of ``pupil.mapping``) by the direct sum over the cells, in Strehl units: 1 is the
+    peak of the same pupil without aberration, the value at (0, 0) the Strehl ratio.
+
+    Raises AnalysisError for an afocal pupil function or one without arrived cells, ValueError
+    for points of another shape."""
+    xy = np.ascontiguousarray(points, dtype=np.float64)
+    if xy.ndim == 1 and xy.shape == (2,):
+        xy = xy.reshape(1, 2)
+    if xy.ndim != 2 or xy.shape[1] != 2:
+        raise ValueError(f"points must have the shape (n, 2), not {xy.shape}")
+    return np.asarray(_core.psf_at(pupil, xy))
+
+
+def psf_positions(result: Psf) -> npt.NDArray[np.float64]:
+    """Positions of the lattice cells of ``result``, shape (L, L, 2) in mm along e_x, e_y
+    relative to C', in the order of ``intensity``: [k2 + L // 2, k1 + L // 2] = lattice @ (k1,
+    k2). Also available as ``Psf.positions()``."""
+    k = np.arange(result.length, dtype=np.float64) - result.length // 2
+    k1, k2 = np.meshgrid(k, k)  # k1 varies along a row, k2 along a column
+    b = result.lattice
+    out = np.empty((result.length, result.length, 2), dtype=np.float64)
+    out[..., 0] = b[0, 0] * k1 + b[0, 1] * k2
+    out[..., 1] = b[1, 0] * k1 + b[1, 1] * k2
+    return out
+
+
+def through_focus(
+    system: SystemLike,
+    path: int | str = 0,
+    field: int = 0,
+    wavelength: int | None = None,
+    *,
+    shifts: Sequence[float],
+    grid: int = 64,
+    apodization: float = 0.0,
+    aiming: Aiming = Aiming.REAL,
+    materials: MaterialLibrary | None = None,
+    threads: int | None = None,
+    lost_warning_fraction: float = 0.5,
+    mapping_warning: float = 0.01,
+    cancel: CancelToken | None = None,
+    progress: ProgressCallback | None = None,
+) -> ThroughFocus:
+    """Strehl ratio |sum u|^2 / |sum f A|^2 at ``wavelength`` for every focus shift in
+    ``shifts`` (mm along the chief ray, ADR 0032, point 5): one trace, W recomputed per shift
+    without tracing again (ADR 0033, points 8 and 11). ``arrived_fraction`` is the area of the
+    cells that cross each shifted reference sphere.
+
+    Raises ValueError for a non-finite shift, AnalysisError as psf()."""
+    return _warn(_core.through_focus(
+        compiled(system, materials), path, field, wavelength, [float(x) for x in shifts], grid,
+        apodization, aiming, lost_warning_fraction, mapping_warning, threads, cancel, progress,
+    ))
+
+
+def _pupil_form(name: str, given: dict[str, Any]) -> None:
+    """The form on a PupilFunction excludes the options of the system form."""
+    named = [key for key, value in given.items() if value is not None]
+    if named:
+        raise ValueError(f"{', '.join(named)} only apply to a system, not to a PupilFunction "
+                         f"({name} of a pupil function uses its own grid, field and wavelength)")
+
+
+def mtf(
+    system: SystemLike | PupilFunction,
+    path: int | str | None = None,
+    field: int | None = None,
+    *,
+    wavelengths: Sequence[int] | None = None,
+    grid: int | None = None,
+    map: bool = False,
+    complex_otf: bool = False,
+    apodization: float | None = None,
+    focus_shift: float | None = None,
+    aiming: Aiming | None = None,
+    undersampled_waves: float | None = None,
+    materials: MaterialLibrary | None = None,
+    threads: int | None = None,
+    lost_warning_fraction: float | None = None,
+    mapping_warning: float | None = None,
+    cancel: CancelToken | None = None,
+    progress: ProgressCallback | None = None,
+) -> Mtf:
+    """Diffraction MTF (ADR 0033, point 5) from the autocorrelation of the pupil function:
+    ``tangential`` (shifts in py, meridional for a field on +-y) and ``sagittal`` (px), each
+    with ``frequency`` (cycles per mm, up to the cut-off where the value is exactly 0) and
+    ``modulation`` = |OTF|; ``complex_otf`` adds the OTF, ``map`` the 2D map over all shifts
+    (one wavelength only). Polychromatic: the complex OTF of each wavelength interpolated onto
+    the frequencies of the reference and summed with w_i E_i.
+
+    ``system`` is a System or CompiledSystem (path 0, field 0, grid 64 and the defaults of
+    pupil_function() unless given), or a PupilFunction (e.g. from refocus()): then only ``map``
+    and ``complex_otf`` apply, the others raise ValueError.
+
+    Raises AnalysisError (location /paths/i) for an afocal image space or a path with crystal
+    modes, ValueError for options out of range. Warnings are issued as RaytatouilleWarning.
+    """
+    if isinstance(system, PupilFunction):
+        _pupil_form("mtf", {"path": path, "field": field, "wavelengths": wavelengths,
+                            "grid": grid, "apodization": apodization,
+                            "focus_shift": focus_shift, "aiming": aiming,
+                            "undersampled_waves": undersampled_waves, "materials": materials,
+                            "threads": threads, "lost_warning_fraction": lost_warning_fraction,
+                            "mapping_warning": mapping_warning, "cancel": cancel,
+                            "progress": progress})
+        return _warn(_core.mtf_of_pupil(system, map, complex_otf))
+    return _warn(_core.mtf(
+        compiled(system, materials), 0 if path is None else path, 0 if field is None else field,
+        None if wavelengths is None else list(wavelengths), 64 if grid is None else grid,
+        0.0 if apodization is None else apodization, 0.0 if focus_shift is None else focus_shift,
+        Aiming.REAL if aiming is None else aiming, map, complex_otf,
+        0.5 if undersampled_waves is None else undersampled_waves,
+        0.5 if lost_warning_fraction is None else lost_warning_fraction,
+        0.01 if mapping_warning is None else mapping_warning, threads, cancel, progress,
+    ))
+
+
+def encircled_energy(
+    system: SystemLike | PupilFunction,
+    radii: Sequence[float],
+    path: int | str | None = None,
+    field: int | None = None,
+    *,
+    centre: EeCentre = EeCentre.REFERENCE,
+    wavelengths: Sequence[int] | None = None,
+    grid: int | None = None,
+    apodization: float | None = None,
+    focus_shift: float | None = None,
+    aiming: Aiming | None = None,
+    undersampled_waves: float | None = None,
+    materials: MaterialLibrary | None = None,
+    threads: int | None = None,
+    lost_warning_fraction: float | None = None,
+    mapping_warning: float | None = None,
+    cancel: CancelToken | None = None,
+    progress: ProgressCallback | None = None,
+) -> EncircledEnergy:
+    """Encircled energy at ``radii`` (mm in the PSF plane; ADR 0033, point 6): the fraction of
+    the pupil energy inside circles about ``centre`` (EeCentre.REFERENCE: C';
+    EeCentre.LINEAR_PHASE: the point given by the phase of the first harmonic, exact for a tilt,
+    not the centroid). Radii up to ``radius_max`` (a quarter of the shortest period of the
+    periodic PSF); larger, negative or non-finite radii raise ValueError.
+
+    ``system`` as in mtf(): a System or CompiledSystem, or a PupilFunction (then only
+    ``centre`` applies besides ``radii``). Unlike psf() and mtf(), ``radii`` is the second
+    positional argument in both forms: encircled_energy(system, radii, path, field) and
+    encircled_energy(pupil, radii)."""
+    values = [float(r) for r in radii]
+    if isinstance(system, PupilFunction):
+        _pupil_form("encircled_energy", {
+            "path": path, "field": field, "wavelengths": wavelengths, "grid": grid,
+            "apodization": apodization, "focus_shift": focus_shift, "aiming": aiming,
+            "undersampled_waves": undersampled_waves, "materials": materials,
+            "threads": threads, "lost_warning_fraction": lost_warning_fraction,
+            "mapping_warning": mapping_warning, "cancel": cancel, "progress": progress})
+        return _warn(_core.encircled_energy_of_pupil(system, values, centre))
+    return _warn(_core.encircled_energy(
+        compiled(system, materials), 0 if path is None else path, 0 if field is None else field,
+        values, centre, None if wavelengths is None else list(wavelengths),
+        64 if grid is None else grid, 0.0 if apodization is None else apodization,
+        0.0 if focus_shift is None else focus_shift, Aiming.REAL if aiming is None else aiming,
+        0.5 if undersampled_waves is None else undersampled_waves,
+        0.5 if lost_warning_fraction is None else lost_warning_fraction,
+        0.01 if mapping_warning is None else mapping_warning, threads, cancel, progress,
+    ))
 
 
 def longitudinal_colour(

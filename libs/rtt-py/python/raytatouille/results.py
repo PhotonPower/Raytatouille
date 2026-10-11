@@ -54,7 +54,7 @@ __all__ = [
 ]
 
 FORMAT = "raytatouille-result"
-SCHEMA_VERSION = "0.1.11"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
+SCHEMA_VERSION = "0.1.12"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
 # 0.1.3: status Evanescent, status arrays one entry longer (#127); 0.1.4: PathTransmission,
 # PathOplDifference, GhostRanking (#133); 0.1.5: RayBatch wave_x/y/z, mode_index (#134);
 # 0.1.6: RaytraceReport, SystemReport, DimensionReport (#177);
@@ -63,6 +63,8 @@ SCHEMA_VERSION = "0.1.11"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84)
 # 0.1.9: RayBatch q, RayPaths polarization, prt, q (#207)
 # 0.1.10: Interferogram (#210)
 # 0.1.11: JonesPupil (#208)
+# 0.1.12: Psf, ThroughFocus, Mtf, EncircledEnergy; PupilCells obscuration, inner_rim,
+# PupilFunction obscuration (#209 P1b, #229 C)
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a
@@ -77,6 +79,8 @@ _ADDED: dict[str, tuple[tuple[int, tuple[str, ...]], ...]] = {
     "RayBatch": ((5, ("wave_x", "wave_y", "wave_z", "mode_index")),  # 0.1.5 (#134)
                  (9, ("q",))),  # 0.1.9 (#207)
     "RayPaths": ((9, ("polarization", "prt", "q")),),  # 0.1.9 (#207)
+    "PupilCells": ((12, ("obscuration", "inner_rim")),),  # 0.1.12 (#229 C, Python #209 P1b)
+    "PupilFunction": ((12, ("obscuration",)),),  # 0.1.12 (#229 C, Python #209 P1b)
 }
 _FIELDS: dict[str, tuple[str, ...]] = {
     # analysis
@@ -98,12 +102,13 @@ _FIELDS: dict[str, tuple[str, ...]] = {
     # pupil function and Zernike fit (ADR 0032; #202, #203, Python #209). PupilFunction without
     # its end states (internal, for refocus).
     "OpdPupilPoints": ("field", "wavelength", "sphere", "points", "losses", "warnings"),
-    "PupilCells": ("grid", "fraction", "px", "py"),
+    "PupilCells": ("grid", "fraction", "px", "py", "obscuration", "inner_rim"),
     "PupilMapping": ("m", "s0", "centre", "e_x", "e_y", "d_c", "delta_max", "delta_rms"),
     "PupilFunction": ("path", "field", "wavelength", "wavelength_um", "reference_wavelength_um",
                       "grid", "focus_shift", "apodization", "lost_warning_fraction",
                       "mapping_warning", "sphere", "fraction", "px", "py", "amplitude", "w",
-                      "status", "prt", "mapping", "arrived_fraction", "losses", "warnings"),
+                      "status", "prt", "mapping", "arrived_fraction", "losses", "warnings",
+                      "obscuration"),
     "ZernikeFit": ("path", "field", "wavelength", "wavelength_um", "reference_wavelength_um",
                    "coefficients", "residual_rms", "sigma", "sigma_bf", "strehl", "cells",
                    "arrived_fraction", "warnings"),
@@ -114,6 +119,19 @@ _FIELDS: dict[str, tuple[str, ...]] = {
                    "w", "j", "transmission", "diattenuation", "diattenuation_orientation",
                    "diattenuation_ellipticity", "retardance", "retardance_orientation",
                    "retardance_ellipticity", "losses", "warnings"),
+    # diffraction (ADR 0033; #205, #206, Python #209 P1b)
+    "PsfPeak": ("value", "k1", "k2", "x", "y"),
+    "PsfWavelengths": ("wavelength", "weight", "energy", "length", "outside_field"),
+    "Psf": ("field", "grid", "length", "centre", "e_x", "e_y", "lattice", "intensity", "strehl",
+            "peak", "edge_energy_deficit", "polychromatic_scale_error", "wavelengths", "losses",
+            "warnings"),
+    "ThroughFocus": ("field", "wavelength", "shifts", "strehl", "arrived_fraction", "losses",
+                     "warnings"),
+    "MtfCurve": ("direction", "frequency", "modulation", "otf"),
+    "Mtf": ("field", "grid", "centre", "e_x", "e_y", "tangential", "sagittal", "frequency_matrix",
+            "map", "otf_map", "edge_energy_deficit", "wavelengths", "losses", "warnings"),
+    "EncircledEnergy": ("field", "grid", "centre", "e_x", "e_y", "offset", "radii", "energy",
+                        "radius_max", "edge_energy_deficit", "wavelengths", "losses", "warnings"),
     "Foci": ("wavelength", "paraxial_z", "real_z"),
     "LongitudinalColour": ("pair", "foci", "paraxial", "real"),
     "LateralColour": ("field", "chief", "offset"),
@@ -198,7 +216,8 @@ _FIELDS: dict[str, tuple[str, ...]] = {
 #: Types that to_json writes and load_json accepts as "type".
 TYPES: tuple[str, ...] = (
     "SpotDiagram", "RayFan", "OpdMap", "OpdFan", "OpdPupilPoints", "PupilCells", "PupilFunction",
-    "ZernikeFit", "JonesPupil", "LongitudinalColour", "LateralColour",
+    "ZernikeFit", "JonesPupil", "Psf", "ThroughFocus", "Mtf", "EncircledEnergy",
+    "LongitudinalColour", "LateralColour",
     "DistortionSweep", "DistortionPoint", "FieldCurvatureSweep", "FieldCurvaturePoint",
     "PathTransmission", "PathOplDifference", "Interferogram", "GhostRanking",
     "RaytraceReport", "SystemReport", "DimensionReport",
@@ -477,5 +496,11 @@ def _upgrade(type_name: str, data: dict[str, Any], absent: list[str]) -> dict[st
                  "q": None}  # no Q requested (ADR 0034, addendum #207)
     elif type_name == "RayPaths":
         added = {"polarization": False, "prt": None, "q": None}  # nothing per slot (ADR 0034)
+    elif type_name == "PupilCells":
+        # Without an obscuration the cells cover the unit circle (ADR 0032, addendum #229).
+        added = {"obscuration": 0.0,
+                 "inner_rim": np.zeros(np.shape(data["fraction"]), dtype=np.uint8)}
+    elif type_name == "PupilFunction":
+        added = {"obscuration": 0.0}
     data = {**data, **{k: v for k, v in added.items() if k in absent and k not in data}}
     return {k: data[k] for k in _required(type_name)}

@@ -159,6 +159,15 @@ def test_wavefront_example(capsys: pytest.CaptureFixture[str]) -> None:
     assert "sigma_bf  Strehl" in out and "focus shift (mm)" in out
 
 
+def test_diffraction_example(capsys: pytest.CaptureFixture[str]) -> None:
+    # main() returns 1 if PSF, MTF, encircled energy or the Strehl ratio of the aberration-free
+    # paraboloid deviate from the circular pupil (#209, P1b); no plots without a directory.
+    namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "diffraction.py"))
+    assert namespace["main"]() == 0
+    out = capsys.readouterr().out
+    assert "first zero 1.22" in out and "encircled energy at" in out
+
+
 def test_ideal_lens_example(capsys: pytest.CaptureFixture[str]) -> None:
     # main() returns 1 if a spot or an OPD of the ideal lens is not as described (#178).
     namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "ideal_lens.py"))

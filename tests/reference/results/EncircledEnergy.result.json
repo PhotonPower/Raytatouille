@@ -1,0 +1,131 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.12",
+ "type": "EncircledEnergy",
+ "data": {
+  "field": 0,
+  "grid": 6,
+  "centre": {
+   "dtype": "float64",
+   "shape": [
+    3
+   ],
+   "values": [
+    0.0,
+    0.0,
+    106.363
+   ]
+  },
+  "e_x": {
+   "dtype": "float64",
+   "shape": [
+    3
+   ],
+   "values": [
+    1.0,
+    0.0,
+    0.0
+   ]
+  },
+  "e_y": {
+   "dtype": "float64",
+   "shape": [
+    3
+   ],
+   "values": [
+    0.0,
+    1.0,
+    0.0
+   ]
+  },
+  "offset": {
+   "x": 0.0,
+   "y": 0.0
+  },
+  "radii": {
+   "dtype": "float64",
+   "shape": [
+    2
+   ],
+   "values": [
+    0.001,
+    0.002
+   ]
+  },
+  "energy": {
+   "dtype": "float64",
+   "shape": [
+    2
+   ],
+   "values": [
+    0.04773879308872523,
+    0.14522841373089398
+   ]
+  },
+  "radius_max": 0.004409324335621014,
+  "edge_energy_deficit": 0.08814309967423906,
+  "wavelengths": {
+   "wavelength": {
+    "dtype": "uint16",
+    "shape": [
+     1
+    ],
+    "values": [
+     1
+    ]
+   },
+   "weight": {
+    "dtype": "float64",
+    "shape": [
+     1
+    ],
+    "values": [
+     1.0
+    ]
+   },
+   "energy": {
+    "dtype": "float64",
+    "shape": [
+     1
+    ],
+    "values": [
+     25.94294897537697
+    ]
+   },
+   "length": {
+    "dtype": "int32",
+    "shape": [
+     1
+    ],
+    "values": [
+     12
+    ]
+   },
+   "outside_field": {
+    "dtype": "float64",
+    "shape": [
+     1
+    ],
+    "values": [
+     0.0
+    ]
+   }
+  },
+  "losses": {
+   "launched": 36,
+   "by_status": [
+    36,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "worst_surface": null,
+   "worst_surface_count": 0
+  },
+  "warnings": []
+ }
+}
