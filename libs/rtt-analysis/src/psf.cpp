@@ -26,8 +26,10 @@ using compile::CompiledSystem;
 using compile::PathId;
 using Complex = std::complex<double>;
 
-/// Largest FFT length (ADR 0033, point 11: memory guard, L^2 complex values, 1
-/// GiB at 8192).
+/// Largest FFT length (ADR 0033, point 11: memory guard). L^2 complex values are 1 GiB at 8192;
+/// psf() keeps one transform at a time (the pupil's is freed before the ideal one of
+/// psf.aliasing) plus the L^2 intensities of the reference lattice (0.5 GiB), so about 1.5 GiB at
+/// the limit (review of #233).
 constexpr int kMaxFftLength = 8192;
 
 std::string path_pointer(PathId path) {
@@ -53,6 +55,10 @@ std::vector<std::pair<std::uint16_t, double>> chosen_wavelengths(
     if (list->empty()) throw std::invalid_argument("analysis: the wavelength list is empty");
     for (const std::uint16_t w : *list) {
       detail::check_wavelength(system, w);
+      if (std::find(indices.begin(), indices.end(), w) != indices.end()) {
+        throw std::invalid_argument("analysis: wavelength " + std::to_string(w) +
+                                    " is chosen more than once");
+      }
       indices.push_back(w);
     }
   } else {
@@ -122,13 +128,18 @@ const PupilMapping& mapping_of(const PupilFunction& p) {
   return *p.mapping;
 }
 
+/// sum_j u_j in cell order: U at x = 0 up to the factor |det M| a^2 (ADR 0033, point 2).
+Complex sum_of_cells(const PupilFunction& p) {
+  Complex sum{0.0, 0.0};
+  for (std::size_t j = 0; j < p.fraction.size(); ++j) sum += cell_value(p, j);
+  return sum;
+}
+
 /// |sum u|^2 / |sum f A|^2: the Strehl ratio of the discrete pupil (ADR 0033,
 /// point 4; Wyant & Creath Eq. (64)), the intensity at C' relative to the pupil
 /// without aberration.
 double strehl_of(const PupilFunction& p, const PupilSums& s) {
-  Complex sum{0.0, 0.0};
-  for (std::size_t j = 0; j < p.fraction.size(); ++j) sum += cell_value(p, j);
-  return std::norm(sum) / (s.fa * s.fa);
+  return std::norm(sum_of_cells(p)) / (s.fa * s.fa);
 }
 
 /// Centre coordinate (2 i + 1 - N) / N of cell column or row i (pupil.hpp): the
@@ -321,42 +332,49 @@ Psf psf(const compile::CompiledSystem& system,
   std::optional<std::uint16_t> aliasing_wavelength;
   double worst_step = 0.0;
   std::optional<std::uint16_t> step_wavelength;
+  // Polychromatic Strehl ratio as the peak ratio of the summed images (review of #233): the
+  // intensity at k = 0, sum omega_i |sum u|_i^2 / (L_i^2 E_i), over that of the pupils without
+  // aberration, sum omega_i (sum f A)_i^2 / (L_i^2 E_i), omega_i = w_i E_i / sum w E.
+  double peak_sum = 0.0;
+  double ideal_sum = 0.0;
   for (const Part& part : parts) {
     const PupilFunction& p = part.pupil;
     const std::size_t l = part.length;
-    const std::vector<Complex> u = transformed(p, l, false);
-    // ADR 0033, point 4: I_k = |U_k|^2 / (L^2 E), weighted with w_i E_i / sum w
-    // E.
-    const double scale = part.weight * part.sums.fa2 / sum_we /
-                         (static_cast<double>(l) * static_cast<double>(l) * part.sums.fa2);
-    // Every cell of the own lattice, k in [-(L_i / 2), L_i - L_i / 2): inside the reference
-    // field it is added, outside (only for L_i > L) its energy is reported as outside_field.
-    const auto li = static_cast<long long>(l);
-    const auto centred = [li](std::size_t idx) {
-      const auto k = static_cast<long long>(idx);
-      return k < li - li / 2 ? k : k - li;
-    };
-    const auto inside = [half_ref, l_ref](long long k) {
-      return k >= -half_ref && k < static_cast<long long>(l_ref) - half_ref;
-    };
-    const double unit = 1.0 / (static_cast<double>(l) * static_cast<double>(l) * part.sums.fa2);
+    const double l2 = static_cast<double>(l) * static_cast<double>(l);
     double outside = 0.0;
-    for (std::size_t row = 0; row < l; ++row) {
-      const long long k2 = centred(row);
-      for (std::size_t col = 0; col < l; ++col) {
-        const long long k1 = centred(col);
-        const double v = std::norm(u[row * l + col]);
-        if (inside(k1) && inside(k2)) {
-          const auto target = static_cast<std::size_t>(k2 + half_ref) * l_ref +
-                              static_cast<std::size_t>(k1 + half_ref);
-          result.intensity[target] += scale * v;
-        } else {
-          outside += unit * v;
+    double edge = 0.0;
+    {
+      const std::vector<Complex> u = transformed(p, l, false);
+      // ADR 0033, point 4: I_k = |U_k|^2 / (L^2 E), weighted with w_i E_i / sum w E.
+      const double scale = part.weight * part.sums.fa2 / sum_we / (l2 * part.sums.fa2);
+      // Every cell of the own lattice, k in [-(L_i / 2), L_i - L_i / 2): inside the reference
+      // field it is added, outside (only for L_i > L) its energy is reported as outside_field.
+      const auto li = static_cast<long long>(l);
+      const auto centred = [li](std::size_t idx) {
+        const auto k = static_cast<long long>(idx);
+        return k < li - li / 2 ? k : k - li;
+      };
+      const auto inside = [half_ref, l_ref](long long k) {
+        return k >= -half_ref && k < static_cast<long long>(l_ref) - half_ref;
+      };
+      const double unit = 1.0 / (l2 * part.sums.fa2);
+      for (std::size_t row = 0; row < l; ++row) {
+        const long long k2 = centred(row);
+        for (std::size_t col = 0; col < l; ++col) {
+          const long long k1 = centred(col);
+          const double v = std::norm(u[row * l + col]);
+          if (inside(k1) && inside(k2)) {
+            const auto target = static_cast<std::size_t>(k2 + half_ref) * l_ref +
+                                static_cast<std::size_t>(k1 + half_ref);
+            result.intensity[target] += scale * v;
+          } else {
+            outside += unit * v;
+          }
         }
       }
-    }
+      edge = border_fraction(u, l);
+    }  // the pupil's transform is freed before the ideal one: one L^2 array at a time
     // Warnings (ADR 0033, point 3).
-    const double edge = border_fraction(u, l);
     const double edge_ideal = border_fraction(transformed(p, l, true), l);
     if (edge > options.aliasing_factor * edge_ideal) {
       const double excess = edge_ideal > 0.0 ? edge / edge_ideal : edge;
@@ -372,7 +390,8 @@ Psf psf(const compile::CompiledSystem& system,
     }
     // Weighted scalars.
     const double we = part.weight * part.sums.fa2 / sum_we;
-    result.strehl += we * strehl_of(p, part.sums);
+    peak_sum += we * std::norm(sum_of_cells(p)) / (l2 * part.sums.fa2);
+    ideal_sum += we * part.sums.fa * part.sums.fa / (l2 * part.sums.fa2);
     result.edge_energy_deficit += we * (1.0 - part.sums.f2a2 / part.sums.fa2);
     if (&part != &parts[ref]) {
       const std::array<double, 4> b = lattice_matrix(p, l);
@@ -384,6 +403,10 @@ Psf psf(const compile::CompiledSystem& system,
     result.wavelengths.push_back(
         {p.wavelength, part.weight, part.sums.fa2, static_cast<int>(l), outside});
   }
+
+  // Monochromatic exactly |sum u|^2 / |sum f A|^2, bit for bit as through_focus().
+  result.strehl =
+      parts.size() == 1 ? strehl_of(parts[0].pupil, parts[0].sums) : peak_sum / ideal_sum;
 
   // Peak of the lattice, the first maximum in row-major order.
   std::size_t best = 0;
@@ -476,20 +499,38 @@ std::vector<double> psf_at(const PupilFunction& pupil, std::span<const Point2> x
   return out;
 }
 
-std::vector<double> through_focus(const compile::CompiledSystem& system,
-                                  compile::PathId path,
-                                  std::uint16_t field,
-                                  std::uint16_t wavelength,
-                                  std::span<const double> shifts,
-                                  const PupilFunctionOptions& options) {
+ThroughFocus through_focus(const compile::CompiledSystem& system,
+                           compile::PathId path,
+                           std::uint16_t field,
+                           std::uint16_t wavelength,
+                           std::span<const double> shifts,
+                           const PupilFunctionOptions& options) {
+  return through_focus(system, path, field, wavelength, shifts, options, trace::RunControl{});
+}
+
+ThroughFocus through_focus(const compile::CompiledSystem& system,
+                           compile::PathId path,
+                           std::uint16_t field,
+                           std::uint16_t wavelength,
+                           std::span<const double> shifts,
+                           const PupilFunctionOptions& options,
+                           const trace::RunControl& control) {
   for (const double d : shifts) {
     if (!std::isfinite(d)) throw std::invalid_argument("analysis: focus shifts must be finite");
   }
   PupilFunctionOptions base = options;
   base.focus_shift = 0.0;
-  const PupilFunction p0 = pupil_function(system, path, field, wavelength, base);
-  std::vector<double> out;
-  out.reserve(shifts.size());
+  const PupilFunction p0 = pupil_function(system, path, field, wavelength, base, control);
+  // Afocal as in psf() (review of #233): the reference of an afocal image space is not settled.
+  static_cast<void>(require_evaluable(p0));
+  ThroughFocus result;
+  result.field = field;
+  result.wavelength = wavelength;
+  result.shifts.assign(shifts.begin(), shifts.end());
+  result.strehl.reserve(shifts.size());
+  result.arrived_fraction.reserve(shifts.size());
+  result.losses = p0.losses;
+  result.warnings = p0.warnings;
   for (const double d : shifts) {
     const PupilFunction p = refocus(system, p0, d);
     const PupilSums s = pupil_sums(p);
@@ -498,9 +539,10 @@ std::vector<double> through_focus(const compile::CompiledSystem& system,
           "analysis: no cell of the pupil function arrived at focus shift " + std::to_string(d),
           path_pointer(path));
     }
-    out.push_back(strehl_of(p, s));
+    result.strehl.push_back(strehl_of(p, s));
+    result.arrived_fraction.push_back(p.arrived_fraction);
   }
-  return out;
+  return result;
 }
 
 }  // namespace rtt::analysis
