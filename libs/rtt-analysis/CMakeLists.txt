@@ -1,11 +1,11 @@
 add_library(rtt_analysis src/spot.cpp src/opd.cpp src/field.cpp src/chromatic.cpp
   src/paths.cpp src/ghosts.cpp src/reports.cpp src/fft.cpp src/pupil.cpp src/reference.cpp
-  src/zernike.cpp src/psf.cpp)
+  src/zernike.cpp src/psf.cpp src/jones.cpp)
 add_library(rtt::analysis ALIAS rtt_analysis)
 target_include_directories(rtt_analysis PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 target_link_libraries(rtt_analysis PUBLIC rtt::trace rtt::paraxial rtt::compile rtt::math
-  PRIVATE rtt::diagnostics rtt::pocketfft)
+  PRIVATE rtt::diagnostics rtt::pocketfft rtt::polar)
 rtt_target_defaults(rtt_analysis LIBRARY)
 
 if(RTT_BUILD_TESTS)
@@ -20,6 +20,7 @@ if(RTT_BUILD_TESTS)
             tests/test_paths.cpp tests/test_ghost_ranking.cpp tests/test_m4_acceptance.cpp
             tests/test_relative_ghosts.cpp tests/test_gauss_rejected.cpp tests/test_reports.cpp
             tests/test_opd_points.cpp tests/test_point_list_pupil.cpp tests/test_fft.cpp
+            tests/test_jones_pupil.cpp
             tests/test_pupil_cells.cpp tests/test_focus_shift.cpp tests/test_pupil_function.cpp
             tests/test_zernike.cpp tests/test_ideal_lens_analysis.cpp tests/test_psf.cpp
     LIBS rtt::analysis rtt::io rtt::polar rtt::coating rtt::model_test_support TBB::tbb)
