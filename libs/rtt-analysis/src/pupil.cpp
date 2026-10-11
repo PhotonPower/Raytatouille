@@ -1,11 +1,11 @@
 #include "rtt/analysis/pupil.hpp"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace rtt::analysis {
 
@@ -48,19 +48,21 @@ Part part_inside(double x0, double x1, double y0, double y1) {
   const double lo = std::max(x0, -1.0);
   const double hi = std::min(x1, 1.0);
   if (!(lo < hi)) return part;
-  std::array<double, 6> t{};
-  std::size_t count = 0;
-  t[count++] = lo;
+  // Ends and at most four kinks (a vector: std::sort on a partly filled std::array trips
+  // -Warray-bounds of GCC 16 at -O2).
+  std::vector<double> t;
+  t.reserve(6);
+  t.push_back(lo);
   for (const double y : {y0, y1}) {
     if (std::abs(y) >= 1.0) continue;
     const double kink = std::sqrt(1.0 - y * y);
     for (const double k : {-kink, kink}) {
-      if (k > lo && k < hi) t[count++] = k;
+      if (k > lo && k < hi) t.push_back(k);
     }
   }
-  t[count++] = hi;
-  std::sort(t.begin(), t.begin() + static_cast<std::ptrdiff_t>(count));
-  for (std::size_t j = 0; j + 1 < count; ++j) {
+  t.push_back(hi);
+  std::sort(t.begin(), t.end());
+  for (std::size_t j = 0; j + 1 < t.size(); ++j) {
     const double ta = t[j];
     const double tb = t[j + 1];
     if (!(ta < tb)) continue;
@@ -150,8 +152,14 @@ PupilCells pupil_cells(int grid) {
       // away from t = +-1, where asin amplifies the rounding of t by 1 / sqrt(1 - t^2) (up to
       // 5e-13 in f at N = 64 the other way round). The swapped cell (x <-> y) takes the same
       // path with the roles exchanged, so f and the centroid are symmetric bit for bit.
+      // A cell on a diagonal (the same x and y range after mirroring) is its own swap image, so
+      // its two moments are equal; their mean puts the centroid on the diagonal bit for bit (the
+      // two formulas alone differ by up to 3e-14 in the centroid at N = 64).
       Part part;
-      if (std::max(std::abs(x0), std::abs(x1)) > std::max(std::abs(y0), std::abs(y1))) {
+      if (x0 == y0 && x1 == y1) {
+        part = part_inside(x0, x1, y0, y1);
+        part.mx = part.my = 0.5 * (part.mx + part.my);
+      } else if (std::max(std::abs(x0), std::abs(x1)) > std::max(std::abs(y0), std::abs(y1))) {
         const Part swapped = part_inside(y0, y1, x0, x1);
         part = {swapped.area, swapped.my, swapped.mx};
       } else {

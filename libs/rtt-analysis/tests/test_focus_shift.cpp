@@ -16,6 +16,7 @@
 // so each of the few roundings in the OPL to the sphere is about u 250 mm = 2.8e-14 mm; the
 // formula itself rounds at u times |W| <= 0.25 mm. 1e-9 waves is about 20 times that.
 
+#include <Eigen/Geometry>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <cstddef>
