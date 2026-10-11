@@ -82,9 +82,11 @@ Zwei Fehlerquellen, die nur die CI sieht, vorab lokal prüfen:
 - **Keine exakten Vergleiche über libm-Ergebnisse auf Konstanten.** GCC faltet z. B.
   `std::cbrt(kKonstante)` bei Optimierung zur Übersetzungszeit korrekt gerundet; die Laufzeit-libm
   (glibc, MinGW) darf um 1 ulp abweichen. Ein Test, der sich darauf verlässt, dass er denselben Wert
-  wie der Code zur Laufzeit trifft, ist dann je nach Plattform und Build rot oder grün. Werte wählen,
-  die jede libm exakt liefert (z. B. 2⁻³⁰ für `cbrt`), und die Voraussetzung vor dem Lauf mit
-  `REQUIRE` prüfen (#218).
+  wie der Code zur Laufzeit trifft, ist dann je nach Plattform und Build rot oder grün. Nicht auf
+  „exakte“ Eingaben vertrauen: glibc rundet `cbrt` nicht korrekt, auch nicht für einen exakten
+  Würfel wie 2⁻³⁰. Stattdessen den Wert im Test zur Laufzeit mit derselben Funktion und derselben
+  Eingabe wie der Code berechnen (Eingabe über `volatile`, damit nichts gefaltet wird) und die
+  Voraussetzung vor dem Lauf mit `REQUIRE` prüfen (#218).
 
 ## Aufbau
 
