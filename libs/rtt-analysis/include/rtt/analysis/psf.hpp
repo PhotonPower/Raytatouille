@@ -54,6 +54,10 @@ struct PsfWavelength {
   double weight = 0.0;           ///< model weight, normalised to sum 1 over the chosen wavelengths
   double energy = 0.0;           ///< E = sum f A^2 of its pupil function (cells)
   int length = 0;                ///< FFT length L_i (ADR 0033, point 7)
+  /// Fraction of E on its own lattice that lies outside the reference field (|k| >= L/2) and
+  /// is therefore not in Psf::intensity: > 0 only for a longer wavelength (L_i > L). Like
+  /// edge_energy_deficit it is reported, not lost silently.
+  double outside_field = 0.0;
 };
 
 /// Peak of the lattice, not interpolated.

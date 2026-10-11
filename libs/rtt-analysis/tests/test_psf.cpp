@@ -332,6 +332,33 @@ TEST_CASE("psf: two wavelengths sum with weights w_i E_i on the reference lattic
             1e-14 * poly.intensity[cell(poly, 0, 0)]);
     }
   }
+  // The longer wavelength has L_2 = 160 > L = 128: its cells with |k| >= 64 lie outside the
+  // reference field. Their energy is reported as outside_field (review of the F2 plan), and the
+  // energy balance holds with it: sum I = sum w E (1 - deficit - outside) / sum w E.
+  CHECK(b.wavelengths[0].outside_field == 0.0);  // alone, its own lattice is the field
+  CHECK(poly.wavelengths[0].outside_field == 0.0);
+  double outside_b = 0.0;
+  for (int k2 = -80; k2 < 80; ++k2) {
+    for (int k1 = -80; k1 < 80; ++k1) {
+      if (k1 < -64 || k1 >= 64 || k2 < -64 || k2 >= 64) outside_b += b.intensity[cell(b, k1, k2)];
+    }
+  }
+  CHECK(outside_b > 0.0);  // content guard: the Airy tails reach beyond the reference field
+  CHECK(std::abs(poly.wavelengths[1].outside_field - outside_b) <= 1e-12 * outside_b);
+  double sum_poly = 0.0;
+  for (const double v : poly.intensity) sum_poly += v;
+  const double balance =
+      (wa * (1.0 - a.edge_energy_deficit) + wb * (1.0 - b.edge_energy_deficit - outside_b)) /
+      (wa + wb);
+  CHECK(std::abs(sum_poly - balance) <= 1e-12);
+  // A shorter wavelength (L_2 = round(0.8 L) = 102 < L) loses nothing: its whole lattice lies in
+  // the reference field; it only does not cover the rim of it.
+  s.wavelengths = {{0.5876, 1.0, true}, {0.5876 * 0.8, 1.0, false}};
+  const Psf shorter = rtt::analysis::psf(rtt::compile::compile(s, rtt::material::MaterialLibrary{}),
+                                         PathId{0}, 0, both);
+  REQUIRE(shorter.wavelengths.size() == 2);
+  CHECK(shorter.wavelengths[1].length == 102);
+  CHECK(shorter.wavelengths[1].outside_field == 0.0);
   // A ratio without a whole L: the scale error stays within the rounding of L_i.
   s.wavelengths = {{0.5876, 1.0, true}, {0.5876 * 1.1, 1.0, false}};
   const Psf rounded = rtt::analysis::psf(rtt::compile::compile(s, rtt::material::MaterialLibrary{}),
