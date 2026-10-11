@@ -246,6 +246,12 @@ inline constexpr double kApertureTolerance = 1e-9;
 ///   sqrt(1 - R_p)). CoatingRef: Refract or Reflect with the stack of `media.layers`
 ///   (rtt-coating, Byrnes). IdealPolarizer and IdealRetarder: Transmit only, axis
 ///   CompiledSurface::ideal_axis projected perpendicular to the ray (rtt/polar/ideal.hpp).
+/// - IdealLens and IdealCylinderLens (ADR 0031, CompiledSurface::ideal_lens): Transmit only. The
+///   direction follows the slope rule xi' = xi - q_perp / f in the local frame (a collinear map,
+///   exact for every ray; q_perp = q, or (b . q) b for the cylinder lens), the OPL grows by Delta,
+///   exact for rays from the design plane of object_distance (point 3), P_event =
+///   rotation_between(k_in, k_out) and the weight stays (point 5). A ray in the lens plane
+///   (local d_z = 0) gives EventImpossible.
 /// - Transmit at a Fresnel, IdealAntiReflection or CoatingRef surface is a dummy passage: P and
 ///   weight are unchanged.
 /// - Any other combination of interaction and event kind, a CoatingRef surface without compiled

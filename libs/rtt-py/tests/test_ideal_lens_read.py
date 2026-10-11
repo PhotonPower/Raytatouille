@@ -1,6 +1,6 @@
 """The ideal lens and the ideal cylinder lens from Python (#178, ADR 0031): read types in
-raytatouille.model, the edit form, and the interim errors until the tracer and rtt-paraxial
-know them."""
+raytatouille.model, the edit form, the tracer, and the interim error until rtt-paraxial knows
+them."""
 
 from __future__ import annotations
 
@@ -58,12 +58,14 @@ def test_edit_form_and_patch() -> None:
                                  "value": 0.0}])
 
 
-def test_interim_errors_until_the_tracer_and_paraxial_know_the_lens() -> None:
-    # ADR 0031, point 8: never silently wrong in between.
+def test_the_tracer_images_the_object_point_and_paraxial_waits() -> None:
+    # PR 2 of #178: the axial ray of the object point reaches its image at z = 150 on the axis;
+    # rtt-paraxial follows with PR 3 (ADR 0031, point 8): until then a ParaxialError.
     cs = rt.compile(rt.load(FILE))
     rays = rt.trace.RayBatch(1)
     rays.pos_z[0] = -75.0  # the object point, in front of the stop plane z = -1
     rt.trace.trace(cs, rays, path="ideal lens")
-    assert rays.status[0] == int(rt.trace.RayStatus.EVENT_IMPOSSIBLE)
+    assert rays.status[0] == int(rt.trace.RayStatus.ALIVE)
+    assert (rays.pos_x[0], rays.pos_y[0], rays.pos_z[0]) == (0.0, 0.0, 150.0)
     with pytest.raises(rt.ParaxialError):
         rt.paraxial.first_order(cs, path="ideal lens")
