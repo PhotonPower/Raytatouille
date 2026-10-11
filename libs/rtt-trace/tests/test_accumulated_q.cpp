@@ -1,5 +1,5 @@
 // Accumulated geometric transformation Q, P and Q per slot in RayPaths, and the ideal conductor
-// flag (#207, ADR 0034, points 1, 3, 7 and 9; closes #76).
+// flag (#207, ADR 0034, points 1, 3, 7 and 9; towards #76, which PR B closes).
 //
 // Sources: W.-S. T. Lam, "Anisotropic Ray Trace", Eqs. (4.5)/(4.6) (geometric transformation,
 // with the (3, 3) element 1; rtt::polar::geometric_transform), Sec. 4.5.1 (physical part Q^T P);
@@ -267,8 +267,11 @@ TEST_CASE("Q of a diffraction order: Q = R(k_0 -> k_m) Q_0, so Q^T P = Q_0^T P_0
 }
 
 TEST_CASE("events without deflection keep Q bitwise", "[polarization][q]") {
-  // ADR 0034, point 1: Q = I for polarizer, retarder and transmit (dummy passage). A ray that
-  // starts with a Q != I (set in the batch) leaves with the same Q, bit for bit.
+  // ADR 0034, point 1: Q = I for polarizer, retarder and transmit (dummy passage). A mirror at
+  // normal incidence first turns the start Q (!= I, set in the batch) into diag(1, 1, -1) Q
+  // (Householder with N = z, exact); the events after it keep that Q bit for bit. The ray starts
+  // at z = 25, reflects at z = 30 and runs back through the thin elements, the plate and the
+  // detector at z = 0.
   System s;
   s.name = "dummy events";
   s.environment.medium = "VACUUM";
@@ -289,28 +292,34 @@ TEST_CASE("events without deflection keep Q bitwise", "[polarization][q]") {
   plate_back.pose = Pose::along_z(2.0);
   Surface image;
   image.id = SurfaceId("IMG");
+  Surface mirror;
+  mirror.id = SurfaceId("M");
   s.root.children = {
-      {thin("POL", 0.0, rtt::model::IdealPolarizer{{1.0, 0.0, 0.0}, 0.0})},
-      {thin("RET", 5.0, rtt::model::IdealRetarder{{1.0, 1.0, 0.0}, 0.25})},
+      {Element{"M", ElementKind::Mirror, Pose::along_z(30.0), std::nullopt, {mirror}}},
+      {thin("POL", 20.0, rtt::model::IdealPolarizer{{1.0, 0.0, 0.0}, 0.0})},
+      {thin("RET", 15.0, rtt::model::IdealRetarder{{1.0, 1.0, 0.0}, 0.25})},
       {Element{
           "W", ElementKind::Plate, Pose::along_z(10.0), "CONST:1.5", {plate_front, plate_back}}},
-      {Element{"D", ElementKind::Detector, Pose::along_z(20.0), std::nullopt, {image}}}};
+      {Element{"D", ElementKind::Detector, Pose::along_z(0.0), std::nullopt, {image}}}};
   s.paths = {{"dummy",
               false,
-              {{SurfaceId("POL"), EventKind::Transmit, 0},
+              {{SurfaceId("M"), EventKind::Reflect, 0},
+               {SurfaceId("POL"), EventKind::Transmit, 0},
                {SurfaceId("RET"), EventKind::Transmit, 0},
-               {SurfaceId("W.S1"), EventKind::Transmit, 0},
                {SurfaceId("W.S2"), EventKind::Transmit, 0},
+               {SurfaceId("W.S1"), EventKind::Transmit, 0},
                {SurfaceId("IMG"), EventKind::Transmit, 0}}}};
   const MaterialLibrary lib;
   const CompiledSystem cs = compile(s, lib);
   RayBatch rays(1);
-  rays.pos_z()[0] = -1.0;
+  rays.pos_z()[0] = 25.0;
   const Mat3 start = Eigen::AngleAxisd(0.3, Vec3::UnitZ()).toRotationMatrix();
   rays.set_q_matrix(0, start);
   [[maybe_unused]] const auto stats = SequentialTracer().trace(cs, PathId{0}, rays);
   REQUIRE(rays.status()[0] == RayStatus::Alive);
-  CHECK(rays.q_matrix(0) == start);
+  REQUIRE(rays.pos_z()[0] == 0.0);  // back at the detector
+  const Mat3 expected = Mat3(Eigen::Vector3d(1.0, 1.0, -1.0).asDiagonal()) * start;
+  CHECK(rays.q_matrix(0) == expected);
   // Content guard: the polarizer acted on P.
   CHECK(std::abs(rays.weight()[0] - 0.5) <= 1e-12);
 }
