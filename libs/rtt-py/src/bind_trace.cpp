@@ -232,7 +232,11 @@ void bind_trace(nb::module_& m) {
         t->points.reserve(px.size());
         for (std::size_t i = 0; i < px.size(); ++i) t->points.push_back({px[i], py[i]});
       },
-      "px"_a, "py"_a);
+      "px"_a, "py"_a,
+      // Lists and one-dimensional NumPy arrays both convert (sequence of float).
+      nb::sig("def __init__(self, px: collections.abc.Sequence[float] | "
+              "numpy.typing.NDArray[numpy.float64], py: collections.abc.Sequence[float] | "
+              "numpy.typing.NDArray[numpy.float64]) -> None"));
   column<double>(
       point_list, "px", [](const trace::PupilPoint& p) { return p.px; },
       "Normalised pupil x of the points (read-only copy).");

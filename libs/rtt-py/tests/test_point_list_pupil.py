@@ -39,9 +39,9 @@ def test_make_rays_equals_single_points(reference_dir: Path) -> None:
                 assert getattr(rays, column)[i] == getattr(single, column)[0], (f, k, column)
             assert rays.pupil_x[i] == px[k] and rays.pupil_y[i] == py[k]
             assert rays.field[i] == f
-    # Content guard: aimed rays whose directions differ across the pupil.
+    # Content guard: aimed rays starting at different points (object at infinity: one direction).
     assert np.all(rays.status == int(rt.trace.RayStatus.ALIVE))
-    assert len(set(np.round(rays.dir_y[: len(px)], 12).tolist())) > 1
+    assert len(set(np.round(rays.pos_y[: len(px)], 12).tolist())) > 1
 
 
 def test_input_errors(reference_dir: Path) -> None:

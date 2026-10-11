@@ -70,8 +70,9 @@ TEST_CASE("point list pupil: make_rays aims each point exactly like a SinglePupi
   const PointListPupil list{{{0.0, 0.0}, {0.3, -0.7}, {-0.6, 0.2}, {0.0, 1.0}}};
   const RayBatch rays = rtt::trace::make_rays(cs, rtt::compile::PathId{0}, fields, 0, list);
   REQUIRE(rays.size() == fields.size() * list.points.size());
-  // Content guard: the rays are aimed (Alive) and differ in direction across the pupil.
-  bool directions_differ = false;
+  // Content guard: the rays are aimed (Alive) and start at different points across the pupil (the
+  // object is at infinity, so the directions of one field are equal).
+  bool starts_differ = false;
   for (std::size_t f = 0; f < fields.size(); ++f) {
     for (std::size_t k = 0; k < list.points.size(); ++k) {
       const std::size_t i = f * list.points.size() + k;
@@ -91,8 +92,8 @@ TEST_CASE("point list pupil: make_rays aims each point exactly like a SinglePupi
       CHECK(same_bits(rays.pupil_y()[i], list.points[k].py));
       CHECK(rays.field()[i] == fields[f]);
       CHECK(rays.status()[i] == single.status()[0]);
-      if (k > 0 && rays.dir_y()[i] != rays.dir_y()[i - k]) directions_differ = true;
+      if (k > 0 && rays.pos_y()[i] != rays.pos_y()[i - k]) starts_differ = true;
     }
   }
-  CHECK(directions_differ);
+  CHECK(starts_differ);
 }

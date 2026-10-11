@@ -693,8 +693,17 @@ std::vector<PupilPoint> pupil_points(const PupilSampling& sampling) {
             }
           }
         } else if constexpr (std::is_same_v<S, PointListPupil>) {
-          // STUB for the red run (tests first): no points, no checks.
-          static_cast<void>(s);
+          // ADR 0032, point 2: the list as given, in its order.
+          if (s.points.empty()) {
+            throw std::invalid_argument("pupil sampling: the point list is empty");
+          }
+          for (std::size_t i = 0; i < s.points.size(); ++i) {
+            if (!std::isfinite(s.points[i].px) || !std::isfinite(s.points[i].py)) {
+              throw std::invalid_argument("pupil sampling: point " + std::to_string(i) +
+                                          " of the list is not finite");
+            }
+          }
+          p = s.points;
         } else if constexpr (std::is_same_v<S, RandomPupil>) {
           std::mt19937_64 engine(s.seed);
           p.reserve(s.count);
