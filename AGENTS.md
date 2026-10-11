@@ -72,7 +72,14 @@ Zwei Fehlerquellen, die nur die CI sieht, vorab lokal prüfen:
 - **GCC 13 der CI warnt anders als ein neueres lokales GCC.** Die CI baut mit GCC 13 und `-O3`;
   Meldungen wie `-Wdangling-reference` oder `-Wmaybe-uninitialized` sieht ein lokales GCC 16 oft
   nicht, und umgekehrt. Ist GCC 13 lokal nicht verfügbar, die CI-Läufe von `ci-linux-gcc` nach dem
-  Push gezielt ansehen.
+  Push gezielt ansehen. Dazu gehört `-Wrange-loop-construct`: Eine Bereichsschleife per Wert über
+  `const Vec3` meldet nur GCC 13, also über Klassentypen immer `const T&` (#218).
+- **Keine exakten Vergleiche über libm-Ergebnisse auf Konstanten.** GCC faltet z. B.
+  `std::cbrt(kKonstante)` bei Optimierung zur Übersetzungszeit korrekt gerundet; die Laufzeit-libm
+  (glibc, MinGW) darf um 1 ulp abweichen. Ein Test, der sich darauf verlässt, dass er denselben Wert
+  wie der Code zur Laufzeit trifft, ist dann je nach Plattform und Build rot oder grün. Werte wählen,
+  die jede libm exakt liefert (z. B. 2⁻³⁰ für `cbrt`), und die Voraussetzung vor dem Lauf mit
+  `REQUIRE` prüfen (#218).
 
 ## Aufbau
 
