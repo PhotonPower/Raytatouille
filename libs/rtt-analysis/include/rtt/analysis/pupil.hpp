@@ -146,7 +146,9 @@ struct PupilFunction {
   std::vector<double> px, py;    ///< sample point (centre or centroid)
   /// sqrt(weight) exp(-G rho^2); 0 if the cell did not arrive or f = 0.
   std::vector<double> amplitude;
-  std::vector<double> w;  ///< waves at lambda_ref; 0 if the cell did not arrive or f = 0
+  /// W = OPL_ref - OPL in waves at lambda_ref, > 0 where the wave leads (opd.hpp); 0 if the
+  /// cell did not arrive or f = 0.
+  std::vector<double> w;
   std::vector<trace::RayStatus> status;
   /// With PupilFunctionOptions::with_prt: 9 elements per cell, global, row-major (3 row + col)
   /// as RayBatch::prt; zero for cells with f = 0. Empty otherwise.
@@ -194,8 +196,9 @@ struct PupilFunction {
 /// arrived_fraction, losses, warnings, mapping->centre and the deltas of the mapping are
 /// recomputed. Bit for bit the same as pupil_function() with that focus_shift. `system` must be
 /// the system that produced `pupil` (for the surface names and pointers of the warnings).
-/// @throws std::invalid_argument if focus_shift is not finite or the path of `pupil` does not
-///         exist in `system`
+/// @throws std::invalid_argument if focus_shift is not finite or `system` cannot be the system of
+///         `pupil` (path, field or wavelength out of range, another image surface, or a last
+///         surface of a ray outside its surfaces)
 /// @throws AnalysisError as pupil_function() for the shifted sphere
 [[nodiscard]] PupilFunction refocus(const compile::CompiledSystem& system,
                                     const PupilFunction& pupil,

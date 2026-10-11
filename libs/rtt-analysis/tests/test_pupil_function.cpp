@@ -282,6 +282,9 @@ TEST_CASE("refocus gives pupil_function with that focus_shift bit for bit", "[pu
   check_same(rtt::analysis::refocus(cs, rtt::analysis::refocus(cs, base, -190.0), 0.0), base);
   CHECK_THROWS_AS(rtt::analysis::refocus(cs, base, std::numeric_limits<double>::quiet_NaN()),
                   std::invalid_argument);
+  // Another system (review of #227): an input error, not reads out of range.
+  const CompiledSystem other = compiled(load("m1/singlet_const.rtt.json"));
+  CHECK_THROWS_AS(rtt::analysis::refocus(other, base, 0.3), std::invalid_argument);
 }
 
 TEST_CASE("pupil function: Gaussian apodisation A = exp(-G rho^2)", "[pupil][function]") {

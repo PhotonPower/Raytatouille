@@ -192,8 +192,8 @@ namespace {
 using compile::CompiledSystem;
 using compile::PathId;
 
-/// Step of the parabasal rays of the mapping in pupil units (ADR 0032, point 4: the delta of the
-/// field curvature, error O(delta^2)).
+/// Step of the parabasal rays of the mapping in pupil units (ADR 0032, point 4): the same step as
+/// the field-curvature analysis (#31); the central difference has an error O(step^2).
 constexpr double kMappingStep = 1e-3;
 /// |x_B x d_c| at or below this: the chief ray grazes the image surface, no frame (point 4).
 constexpr double kGrazingLimit = 1e-6;
@@ -473,6 +473,19 @@ PupilFunction refocus(const compile::CompiledSystem& system,
     throw std::invalid_argument("analysis: focus_shift must be finite");
   }
   detail::check_path(system, pupil.path);
+  // Review of #227 (f2): a system other than the one of `pupil` would make the loss counter read
+  // surfaces out of range. The cheap guards catch the usual mix-up: the same image surface, the
+  // field and wavelength in range, every last surface a surface of `system`.
+  detail::check_wavelength(system, pupil.wavelength);
+  const auto surfaces = system.surfaces().size();
+  if (pupil.field >= system.fields().points.size() ||
+      pupil.end.image_surface != detail::image_surface(system, pupil.path) ||
+      std::any_of(
+          pupil.end.last_surface.begin(), pupil.end.last_surface.end(),
+          [surfaces](std::uint32_t s) { return s != trace::kNoSurface && s >= surfaces; })) {
+    throw std::invalid_argument(
+        "analysis: refocus needs the system that produced the pupil function");
+  }
   PupilFunction pf = pupil;
   pf.focus_shift = focus_shift;
   const detail::Reference ref =
