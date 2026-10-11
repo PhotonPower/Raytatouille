@@ -23,6 +23,7 @@
 #include <tbb/global_control.h>
 
 #include <Eigen/Geometry>
+#include <algorithm>
 #include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
@@ -655,5 +656,341 @@ TEST_CASE("Jones pupil: bitwise the same at every thread count", "[jones]") {
     CHECK(same_bits(jp.diattenuation, all.diattenuation));
     CHECK(same_bits(jp.retardance, all.retardance));
     CHECK(same_bits(jp.retardance_orientation, all.retardance_orientation));
+  }
+}
+
+// -------------------------------------- the form for given start rays (addendum, PR C) -----
+
+namespace {
+
+/// A 45 deg fold in vacuum (ADR 0034, point 9; the roadmap acceptance): a collimated beam along
+/// +z on a mirror at z = 10 tilted 45 deg about x (normal (0, -sin 45, cos 45)) that reflects it
+/// into +y, and a detector at (0, 20, 10) facing +y (Rx(-90 deg): local z = +y, local x = x),
+/// optionally turned in its plane. Not rotationally symmetric: only the form for given rays.
+System fold45(std::optional<std::string> material, double detector_turn_deg = 0.0) {
+  System s;
+  s.name = "fold 45";
+  s.environment.medium = "VACUUM";
+  s.wavelengths = {{0.55, 1.0, true}};
+  s.aperture = {rtt::model::SystemApertureType::EntrancePupilDiameter, Param(6.0)};
+  s.fields = {rtt::model::FieldType::AngleDeg, {{0.0, 0.0, 1.0}}};
+  s.root.name = "root";
+  Surface m;
+  m.id = SurfaceId("M");
+  Pose mirror_pose = Pose::along_z(10.0);
+  mirror_pose.rotation_deg[0] = Param(45.0);
+  Surface image;
+  image.id = SurfaceId("IMG");
+  Pose detector_pose = Pose::along_z(10.0);
+  detector_pose.position[1] = Param(20.0);
+  detector_pose.rotation_deg[0] = Param(-90.0);
+  detector_pose.rotation_deg[2] = Param(detector_turn_deg);
+  s.root.children = {
+      {Element{"M", ElementKind::Mirror, mirror_pose, std::move(material), {m}}},
+      {Element{"image", ElementKind::Detector, detector_pose, std::nullopt, {image}}}};
+  s.paths = {
+      {"fold",
+       false,
+       {{SurfaceId("M"), EventKind::Reflect, 0}, {SurfaceId("IMG"), EventKind::Transmit, 0}}}};
+  return s;
+}
+
+/// 5 x 5 parallel rays along +z from z = 0 at x, y in {-3, -1.5, 0, 1.5, 3}, labelled with
+/// pupil coordinates (x, y) / 3; the chief ray (0, 0) has index 12.
+rtt::trace::RayBatch parallel_rays() {
+  rtt::trace::RayBatch rays(25);
+  for (std::size_t i = 0; i < 25; ++i) {
+    const double x = -3.0 + 1.5 * static_cast<double>(i % 5);
+    const double y = -3.0 + 1.5 * static_cast<double>(i / 5);
+    rays.pos_x()[i] = x;
+    rays.pos_y()[i] = y;
+    rays.pupil_x()[i] = x / 3.0;
+    rays.pupil_y()[i] = y / 3.0;
+  }
+  return rays;
+}
+
+constexpr std::size_t kChief = 12;
+
+}  // namespace
+
+TEST_CASE("45 deg fold, collimated: J = diag(r_s, r_p) in the s/p basis", "[jones][fold]") {
+  // ADR 0034, point 5 (example) and point 9: k0 = z, so B_in = (x, y) = (s, p_in) with
+  // s = k_in x N / |...| = x; on the detector k_c = y, x'_c = x, y'_c = k_c x x'_c = -z = p_out.
+  // Hence J = B_out^T P B_in = diag(r_s, r_p) at every point (Convention A, Byrnes (6) at
+  // 45 deg), D = (|r_s|^2 - |r_p|^2) / (|r_s|^2 + |r_p|^2) and the physical retardance
+  // |arg(-r_p / r_s)| (point 4). The ideal conductor (no material) gives r_s = -1, r_p = 1, D = 0,
+  // delta = 0. Tolerances: J 1e-9, since the phase comes from OPL differences of rays of about
+  // 30 mm whose rounding (a few 1e-14 mm) is up to about 3e-10 rad at 0.55 um; D and delta 1e-10.
+  const auto a = rtt::polar::fresnel_at_angle<double>(Cx(1.0), kMetal, std::cos(kPi / 4.0));
+  struct Case {
+    const char* name;
+    std::optional<std::string> material;
+    Cx rs, rp;
+  };
+  for (const Case& c : {Case{"metal", std::string("CONST:1.2,7.26"), a.rs, a.rp},
+                        Case{"ideal conductor", std::nullopt, Cx(-1.0), Cx(1.0)}}) {
+    INFO(c.name);
+    const CompiledSystem cs = compiled(fold45(c.material));
+    const JonesPupil jp = rtt::analysis::jones_pupil(cs, PathId{0}, parallel_rays(), kChief);
+    CHECK((jp.x_in - Vec3::UnitX()).norm() <= 1e-15);
+    CHECK((jp.y_in - Vec3::UnitY()).norm() <= 1e-15);
+    CHECK((jp.k_out - Vec3::UnitY()).norm() <= 1e-15);
+    CHECK((jp.x_out - Vec3::UnitX()).norm() <= 1e-15);
+    CHECK((jp.y_out + Vec3::UnitZ()).norm() <= 1e-15);
+    CHECK(std::isnan(jp.sphere.radius));
+    const double d = (std::norm(c.rs) - std::norm(c.rp)) / (std::norm(c.rs) + std::norm(c.rp));
+    const double delta = std::abs(std::arg(-c.rp / c.rs));
+    REQUIRE(jp.status.size() == 25);
+    for (std::size_t r = 0; r < 25; ++r) {
+      INFO("point " << r);
+      REQUIRE(jp.status[r] == RayStatus::Alive);
+      CHECK(std::abs(jp.w[r]) <= 1e-9);
+      CHECK(std::abs(jp.j[4 * r + 0] - c.rs) <= 1e-9);
+      CHECK(std::abs(jp.j[4 * r + 1]) <= 1e-9);
+      CHECK(std::abs(jp.j[4 * r + 2]) <= 1e-9);
+      CHECK(std::abs(jp.j[4 * r + 3] - c.rp) <= 1e-9);
+      CHECK(std::abs(jp.diattenuation[r] - d) <= 1e-10);
+      CHECK(std::abs(jp.retardance[r] - delta) <= 1e-10);
+    }
+    if (c.material) {
+      CHECK(d > 1e-2);      // content guard: a real diattenuation
+      CHECK(delta > 1e-2);  // and a real physical retardance
+    }
+  }
+}
+
+TEST_CASE("45 deg fold with the detector turned in its plane: J = D(-alpha) diag(r_s, r_p)",
+          "[jones][fold]") {
+  // The detector turned by alpha = 30 deg about its normal: Rx(-90) Rz(30) x = (cos 30, 0,
+  // -sin 30), so x'_new = cos 30 x' + sin 30 y' with y' = -z, and J = [[c, s], [-s, c]] diag
+  // (ADR 0034, point 5, example: a change of basis only). D and delta stay. 1e-9 as above.
+  const auto a = rtt::polar::fresnel_at_angle<double>(Cx(1.0), kMetal, std::cos(kPi / 4.0));
+  const CompiledSystem cs = compiled(fold45(std::string("CONST:1.2,7.26"), 30.0));
+  const JonesPupil jp = rtt::analysis::jones_pupil(cs, PathId{0}, parallel_rays(), kChief);
+  const double c = std::cos(kPi / 6.0);
+  const double s = std::sin(kPi / 6.0);
+  CHECK((jp.x_out - Vec3(c, 0.0, -s)).norm() <= 1e-15);
+  REQUIRE(jp.status.size() == 25);
+  for (std::size_t r = 0; r < 25; ++r) {
+    INFO("point " << r);
+    CHECK(std::abs(jp.j[4 * r + 0] - c * a.rs) <= 1e-9);
+    CHECK(std::abs(jp.j[4 * r + 1] - s * a.rp) <= 1e-9);
+    CHECK(std::abs(jp.j[4 * r + 2] + s * a.rs) <= 1e-9);
+    CHECK(std::abs(jp.j[4 * r + 3] - c * a.rp) <= 1e-9);
+    CHECK(std::abs(jp.retardance[r] - std::abs(std::arg(-a.rp / a.rs))) <= 1e-10);
+  }
+}
+
+TEST_CASE("converging beam over a 45 deg fold: per point against Fresnel, phase from the OPL",
+          "[jones][fold]") {
+  // An ideal lens f = 50 (ADR 0031, P = Q = R(k_in -> k_out)) at z = 0, the metal fold at z = 20,
+  // the detector at (0, 32, 20), 2 mm behind the focus (at the focus every ray would reach the
+  // same point and the plane OPD would vanish). Collimated start rays inside r = 5 (F/5). Per
+  // point as in the coaxial acceptance, with the phase of this form, phi = 2 pi (OPL - OPL_c) /
+  // lambda from the recorded OPL: the OPD against the image plane, about 2 mm (1 / cos theta - 1)
+  // = 18 waves at the rim. J 1e-9 (phase rounding as above), D and delta 1e-10.
+  System s = fold45(std::string("CONST:1.2,7.26"));
+  child(s, 0).pose = Pose::along_z(20.0);
+  child(s, 0).pose.rotation_deg[0] = Param(45.0);
+  child(s, 1).pose.position = {Param(0.0), Param(32.0), Param(20.0)};
+  Surface lens;
+  lens.id = SurfaceId("IL");
+  lens.interaction = rtt::model::IdealLens{Param(50.0), std::nullopt};
+  s.root.children.insert(
+      s.root.children.begin(),
+      {Element{"IL", ElementKind::ThinElement, Pose::along_z(0.0), std::nullopt, {lens}}});
+  s.paths = {{"fold",
+              false,
+              {{SurfaceId("IL"), EventKind::Transmit, 0},
+               {SurfaceId("M"), EventKind::Reflect, 0},
+               {SurfaceId("IMG"), EventKind::Transmit, 0}}}};
+  const CompiledSystem cs = compiled(s);
+  rtt::trace::RayBatch start(0);
+  std::size_t chief = 0;
+  for (int iy = -4; iy <= 4; ++iy) {
+    for (int ix = -4; ix <= 4; ++ix) {
+      const double x = 1.25 * ix;
+      const double y = 1.25 * iy;
+      if (x * x + y * y > 25.0) continue;
+      const std::size_t i = start.size();
+      start.resize(i + 1);
+      start.pos_x()[i] = x;
+      start.pos_y()[i] = y;
+      start.pos_z()[i] = -1.0;
+      start.pupil_x()[i] = x / 5.0;
+      start.pupil_y()[i] = y / 5.0;
+      if (ix == 0 && iy == 0) chief = i;
+    }
+  }
+  const JonesPupil jp = rtt::analysis::jones_pupil(cs, PathId{0}, start, chief);
+  rtt::trace::RayBatch traced = start;
+  rtt::trace::RayPaths paths;
+  [[maybe_unused]] const auto stats =
+      rtt::trace::SequentialTracer().trace(cs, PathId{0}, traced, paths);
+  const Vec3 n = Vec3(0.0, -std::sin(kPi / 4.0), std::cos(kPi / 4.0));
+  const double lambda_mm = 0.55e-3;
+  const double opl_c = paths.opl[chief * paths.slots + 3];
+  const Vec3 k_c = paths.direction_at(chief, 3);
+  const Vec3 x_out = (Vec3::UnitX() - Vec3::UnitX().dot(k_c) * k_c).normalized();
+  const Vec3 y_out = k_c.cross(x_out);
+  double w_max = 0.0;
+  double d_min = 1.0;
+  double d_max = 0.0;
+  REQUIRE(jp.status.size() == start.size());
+  for (std::size_t r = 0; r < start.size(); ++r) {
+    INFO("point " << r);
+    REQUIRE(jp.status[r] == RayStatus::Alive);
+    // Slots: 0 start, 1 after IL, 2 after M, 3 after IMG.
+    const Vec3 k0 = paths.direction_at(r, 0);
+    const Vec3 k1 = paths.direction_at(r, 1);
+    const Vec3 k = paths.direction_at(r, 2);
+    const Mat3 lens_r = rtt::trace::rotation_between(k0, k1);
+    const auto a = rtt::polar::fresnel_at_angle<double>(Cx(1.0), kMetal, std::abs(k1.dot(n)));
+    Expected e;
+    e.k0 = k0;
+    e.k = k;
+    e.p = reflection(k1, k, n, a.rs, a.rp) * lens_r.cast<Cx>();
+    e.q = rtt::polar::geometric_transform<double>(k1, k, n, true) * lens_r;
+    const double opl = paths.opl[r * paths.slots + 3];
+    const double w = (opl_c - opl) / lambda_mm;  // waves at lambda_ref = lambda
+    CHECK(std::abs(jp.w[r] - w) <= 1e-9);
+    const auto in = lam_double_pole(k0);  // the chief ray starts along z
+    const auto out = lam_double_pole_about(x_out, y_out, k_c, k);
+    const auto j = expected_j(e, in, out, w, 0.55, 0.55);
+    for (std::size_t i = 0; i < 4; ++i) CHECK(std::abs(jp.j[4 * r + i] - j[i]) <= 1e-9);
+    const auto d = rtt::polar::diattenuation(e.p, e.k0, e.k);
+    CHECK(std::abs(jp.diattenuation[r] - d.value) <= 1e-10);
+    const auto ret = rtt::polar::physical_retardance(e.p, e.q, e.k0);
+    CHECK(std::abs(jp.retardance[r] - ret.value) <= 1e-10);
+    w_max = std::max(w_max, std::abs(w));
+    d_min = std::min(d_min, jp.diattenuation[r]);
+    d_max = std::max(d_max, jp.diattenuation[r]);
+  }
+  CHECK(w_max > 1.0);           // content guard: the plane OPD of a converging wave
+  CHECK(d_max - d_min > 1e-4);  // and the angle of incidence varies over the pupil
+}
+
+TEST_CASE("the two forms agree on a rotationally symmetric path up to the phase", "[jones][fold]") {
+  // The start rays of make_rays (hexapolar, ring 2; its first ray is the chief ray, aimed as the
+  // chief ray of the convenience form) on the metal paraboloid: the same rays, so the same P, Q,
+  // k0 and k and the same chief frames, hence D, delta, psi, chi and the transmission bit for
+  // bit. Only the phase differs, a reference sphere against the image plane:
+  // J_given = J_convenience exp(-2 pi i (w_given - w_convenience)) at lambda = lambda_ref (1e-12).
+  // The detector 1 mm before the focus (z = -99): at the focus the paraboloid images the axis point
+  // perfectly and both phases vanish; defocused they differ by about 1 mm ((1 / cos theta - 1)
+  // -+ (1 - cos theta)) = 3 waves or more at the rim.
+  System s = metal_paraboloid();
+  child(s, 2).pose = Pose::along_z(-99.0);
+  const CompiledSystem cs = compiled(s);
+  const rtt::trace::HexapolarPupil hex{2};
+  JonesPupilOptions o;
+  o.sampling = hex;
+  const JonesPupil convenience = rtt::analysis::jones_pupil(cs, PathId{0}, 0, 0, o);
+  const std::uint16_t fields[] = {0};
+  const auto start = rtt::trace::make_rays(cs, PathId{0}, fields, 0, hex, rtt::trace::Aiming::Real);
+  REQUIRE(start.pupil_x()[0] == 0.0);
+  REQUIRE(start.pupil_y()[0] == 0.0);
+  const JonesPupil given = rtt::analysis::jones_pupil(cs, PathId{0}, start, 0);
+  CHECK(given.x_in == convenience.x_in);
+  CHECK(given.y_in == convenience.y_in);
+  CHECK(given.x_out == convenience.x_out);
+  CHECK(given.y_out == convenience.y_out);
+  CHECK(same_bits(given.diattenuation, convenience.diattenuation));
+  CHECK(same_bits(given.diattenuation_orientation, convenience.diattenuation_orientation));
+  CHECK(same_bits(given.diattenuation_ellipticity, convenience.diattenuation_ellipticity));
+  CHECK(same_bits(given.retardance, convenience.retardance));
+  CHECK(same_bits(given.retardance_orientation, convenience.retardance_orientation));
+  CHECK(same_bits(given.retardance_ellipticity, convenience.retardance_ellipticity));
+  CHECK(same_bits(given.transmission, convenience.transmission));
+  REQUIRE(given.status.size() == convenience.status.size());
+  double phase_differs = 0.0;
+  for (std::size_t r = 0; r < given.status.size(); ++r) {
+    INFO("point " << r);
+    const Cx turn = std::polar(1.0, -2.0 * kPi * (given.w[r] - convenience.w[r]));
+    for (std::size_t i = 0; i < 4; ++i) {
+      CHECK(std::abs(given.j[4 * r + i] - convenience.j[4 * r + i] * turn) <= 1e-12);
+    }
+    phase_differs = std::max(phase_differs, std::abs(given.w[r] - convenience.w[r]));
+  }
+  CHECK(phase_differs > 1e-3);  // content guard: sphere and plane differ for a converging beam
+}
+
+TEST_CASE("the form for given start rays: a point that does not arrive", "[jones][fold]") {
+  // Ray 0 of the fold runs away from the mirror (along -z): it keeps the status of its ray, and as
+  // in opd_points() and the convenience form w = 0 (masked by the status) and J and the maps NaN;
+  // the losses count it (review of #236).
+  const CompiledSystem cs = compiled(fold45(std::string("CONST:1.2,7.26")));
+  auto start = parallel_rays();
+  start.dir_z()[0] = -1.0;
+  const JonesPupil jp = rtt::analysis::jones_pupil(cs, PathId{0}, start, kChief);
+  REQUIRE(jp.status.size() == 25);
+  CHECK(jp.status[0] != RayStatus::Alive);
+  CHECK(jp.w[0] == 0.0);
+  CHECK(std::isnan(jp.j[0].real()));
+  CHECK(std::isnan(jp.diattenuation[0]));
+  CHECK(std::isnan(jp.transmission[0]));
+  CHECK(jp.status[1] == RayStatus::Alive);  // the others arrive
+  CHECK(jp.losses.launched == 25);
+  CHECK(jp.losses.by_status[static_cast<std::size_t>(RayStatus::Alive)] == 24);
+}
+
+TEST_CASE("the form for given start rays: input errors", "[jones][fold][errors]") {
+  const CompiledSystem fold = compiled(fold45(std::string("CONST:1.2,7.26")));
+  const auto start = parallel_rays();
+  CHECK_THROWS_AS(rtt::analysis::jones_pupil(fold, PathId{0}, start, 25),
+                  std::invalid_argument);  // chief out of range
+  CHECK_THROWS_AS(rtt::analysis::jones_pupil(fold, PathId{0}, rtt::trace::RayBatch(0), 0),
+                  std::invalid_argument);  // empty batch
+  {
+    // Rays of different wavelengths (a system with three).
+    const CompiledSystem three = compiled(convergent_mirror());
+    rtt::trace::RayBatch mixed(2);
+    mixed.wl()[1] = 1;
+    CHECK_THROWS_AS(rtt::analysis::jones_pupil(three, PathId{0}, mixed, 0), std::invalid_argument);
+  }
+  {
+    // The chief ray runs away from the mirror: lost, an AnalysisError with the lost ray.
+    auto away = start;
+    away.dir_z()[kChief] = -1.0;
+    try {
+      static_cast<void>(rtt::analysis::jones_pupil(fold, PathId{0}, away, kChief));
+      FAIL("no AnalysisError");
+    } catch (const AnalysisError& e) {
+      CHECK(e.ray_status().has_value());
+    }
+  }
+  {
+    // The chief ray grazes the image surface: the detector in the plane x = 0 with its local x
+    // along z (Ry(-90 deg)), the chief ray from (-1e-6, 0, 0) along (1e-7, 0, 1) hits it at
+    // z = 10 with |x_B x k_c| = 1e-7 <= 1e-6 (ADR 0034, point 5): an error at the image surface.
+    System s = fold45(std::nullopt);
+    s.root.children.erase(s.root.children.begin());
+    child(s, 0).pose = Pose::along_z(0.0);
+    child(s, 0).pose.rotation_deg = {Param(0.0), Param(-90.0), Param(0.0)};
+    s.paths = {{"graze", false, {{SurfaceId("IMG"), EventKind::Transmit, 0}}}};
+    const CompiledSystem cs = compiled(s);
+    rtt::trace::RayBatch graze(1);
+    graze.pos_x()[0] = -1e-6;
+    const Vec3 d = Vec3(1e-7, 0.0, 1.0).normalized();
+    graze.dir_x()[0] = d.x();
+    graze.dir_y()[0] = d.y();
+    graze.dir_z()[0] = d.z();
+    try {
+      static_cast<void>(rtt::analysis::jones_pupil(cs, PathId{0}, graze, 0));
+      FAIL("no AnalysisError");
+    } catch (const AnalysisError& e) {
+      CHECK(e.location() == std::optional<std::string>(cs.surfaces()[0].location));
+    }
+  }
+  {
+    // A path with crystal modes, before anything is traced.
+    const CompiledSystem crystal = compiled(load("m4/calcite_walkoff.rtt.json"));
+    try {
+      static_cast<void>(rtt::analysis::jones_pupil(crystal, PathId{0}, rtt::trace::RayBatch(1), 0));
+      FAIL("no AnalysisError");
+    } catch (const AnalysisError& e) {
+      CHECK(e.location() == std::optional<std::string>("/paths/0"));
+    }
   }
 }

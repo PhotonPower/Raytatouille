@@ -12,6 +12,7 @@
 #include <variant>
 #include <vector>
 
+#include "rtt/analysis/jones.hpp"
 #include "rtt/analysis/opd.hpp"
 #include "rtt/analysis/psf.hpp"
 #include "rtt/analysis/pupil.hpp"
@@ -23,6 +24,7 @@
 #include "rtt/io/json_io.hpp"
 #include "rtt/material/material.hpp"
 #include "rtt/model/model.hpp"
+#include "rtt/trace/ray_batch.hpp"
 
 using rtt::compile::CompiledSystem;
 using rtt::compile::PathId;
@@ -224,6 +226,41 @@ TEST_CASE("psf.aliasing and psf.pupil_undersampled at the path", "[analysis][war
   CHECK(w[1].location == "/paths/0");
 }
 
+TEST_CASE("pupil.basis_pole for a given ray at the pole of the double-pole basis, at the path",
+          "[analysis][warnings]") {
+  // A single detector at z = 10 (ADR 0034, point 5, form for given start rays, #208 C): the chief
+  // ray from the origin along +z, ray 1 from (1, 0, 30) along -z, so k = -k_c at the input and the
+  // output, the pole of both double-pole bases. Its J is NaN, the ray itself arrives.
+  System s;
+  s.name = "pole";
+  s.root.name = "root";
+  s.wavelengths = {{0.55, 1.0, true}};
+  s.aperture = {rtt::model::SystemApertureType::EntrancePupilDiameter, rtt::model::Param(2.0)};
+  s.fields = {rtt::model::FieldType::AngleDeg, {{0.0, 0.0, 1.0}}};
+  rtt::model::Surface image;
+  image.id = rtt::model::SurfaceId("IMG");
+  s.root.children = {{rtt::model::Element{"image",
+                                          rtt::model::ElementKind::Detector,
+                                          rtt::model::Pose::along_z(10.0),
+                                          std::nullopt,
+                                          {image}}}};
+  s.paths = {
+      {"single", false, {{rtt::model::SurfaceId("IMG"), rtt::model::EventKind::Transmit, 0}}}};
+  const CompiledSystem cs = compiled(s);
+  rtt::trace::RayBatch rays(2);
+  rays.pos_x()[1] = 1.0;
+  rays.pos_z()[1] = 30.0;
+  rays.dir_z()[1] = -1.0;
+  const auto jp = rtt::analysis::jones_pupil(cs, PathId{0}, rays, 0);
+  REQUIRE(jp.status.size() == 2);
+  CHECK(jp.status[1] == rtt::trace::RayStatus::Alive);
+  CHECK(std::isnan(jp.j[4].real()));
+  CHECK(!std::isnan(jp.j[0].real()));
+  REQUIRE(jp.warnings.size() == 1);
+  CHECK(jp.warnings[0].code == "pupil.basis_pole");
+  CHECK(jp.warnings[0].location == "/paths/0");
+}
+
 TEST_CASE("every analysis code has a case in this file", "[analysis][warnings]") {
   const std::set<std::string> covered = {"rays.lost",
                                          "stop.clips_beam",
@@ -231,7 +268,8 @@ TEST_CASE("every analysis code has a case in this file", "[analysis][warnings]")
                                          "pupil.mapping_nonlinear",
                                          "zernike.pupil_incomplete",
                                          "psf.aliasing",
-                                         "psf.pupil_undersampled"};
+                                         "psf.pupil_undersampled",
+                                         "pupil.basis_pole"};
   for (const rtt::diagnostics::CodeInfo& info : rtt::diagnostics::kCodes) {
     if (info.producer != "analysis") continue;
     INFO("no case for " << info.code);
