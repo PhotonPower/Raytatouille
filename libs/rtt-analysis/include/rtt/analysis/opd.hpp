@@ -20,6 +20,11 @@
 ///   +infinity; W = OPL_chief - OPL_ray + |n'| d . (p - C) with p the hit, d the direction of
 ///   the ray and C the centre, i.e. the OPL to the foot of the perpendicular from C on the ray.
 ///   Continuous with a finite but distant exit pupil from both sides.
+/// - Through focus (ADR 0032, point 5; #202): OpdOptions::focus_shift moves the centre along the
+///   chief ray of the reference wavelength, C' = C + Delta d_c (Delta > 0 in the direction of
+///   propagation), with radius |C' - E| to the exit-pupil centre E (still +infinity for an exit
+///   pupil at infinity). Exact without tracing again: the OPL up to the sphere follows from the
+///   position and direction of each ray on the image surface in the homogeneous image space.
 /// - Reference ray: the chief ray of the same wavelength, so W(0, 0) = 0 at every wavelength.
 ///   Piston and tilt are not removed; lateral colour shows up as tilt.
 /// - Unit: waves at the reference wavelength, W = OPD[mm] / lambda_ref[mm], for every
@@ -41,7 +46,9 @@ namespace rtt::analysis {
 
 /// Reference sphere in global coordinates.
 struct ReferenceSphere {
-  math::Vec3 centre = math::Vec3::Zero();  ///< chief-ray point on the image surface, mm
+  /// Chief-ray point on the image surface, moved by OpdOptions::focus_shift along the chief ray
+  /// (global, mm).
+  math::Vec3 centre = math::Vec3::Zero();
   /// Distance to the exit-pupil centre, mm; +infinity if the exit pupil is at infinity.
   double radius = 0.0;
 };
@@ -65,6 +72,11 @@ struct OpdOptions {
   /// Warning "rays.lost" if more than this fraction of the launched rays is lost (ADR 0023);
   /// in [0, 1]. Vignetting at the field edge is intended, hence the default of one half.
   double lost_warning_fraction = 0.5;
+  /// Through focus (ADR 0032, point 5): the centre of the reference sphere moves to
+  /// C' = C + focus_shift d_c, mm, d_c the unit direction of the chief ray of the reference
+  /// wavelength on the image surface (> 0 in the direction of propagation). 0 gives the sphere
+  /// of before bit for bit. Finite; C' on the exit-pupil centre is an AnalysisError.
+  double focus_shift = 0.0;
 };
 
 /// OPD map over the pupil.
