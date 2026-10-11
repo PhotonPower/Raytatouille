@@ -119,6 +119,14 @@ std::size_t cell(const Psf& psf, int k1, int k2) {
          static_cast<std::size_t>(k1 + h);
 }
 
+/// n' = |Re n| of the image medium at `wavelength`, read from the compiled media (not through the
+/// PSF code). The paraboloid lies in AIR: n' = 1.00027 at 0.5876 um, and the direction sines and
+/// the OPD both carry it (ADR 0032, points 4 and 5).
+double image_index(const CompiledSystem& cs, std::uint16_t wavelength) {
+  const auto& last = cs.path(PathId{0}).events.back();
+  return std::abs(cs.media()[last.medium_after].index[wavelength].real());
+}
+
 /// The lattice exists before it is indexed, so that the tests fail cleanly against a stub
 /// instead of reading out of range.
 void require_lattice(const Psf& psf) {
@@ -153,9 +161,7 @@ TEST_CASE("psf: the mapping M against the geometry and first_order (guard, ADR 0
   const PupilFunction p = pupil(cs, 16);
   REQUIRE(p.mapping.has_value());
   const auto& m = p.mapping->m;
-  const auto& last = cs.path(PathId{0}).events.back();
-  const double n_image =
-      std::abs(cs.media()[last.medium_after].index[cs.reference_wavelength()].real());
+  const double n_image = image_index(cs, cs.reference_wavelength());
   REQUIRE(n_image > 1.0);  // content guard: really AIR, the case the first form missed
   const double f_number_geometry = kF / epd;
   const double expected = n_image / (2.0 * f_number_geometry);
@@ -242,14 +248,16 @@ TEST_CASE("psf: Airy profile [2 J1(v) / v]^2", "[psf]") {
 TEST_CASE("psf: defocus Strehl sinc^2(w), through_focus and psf agree", "[psf]") {
   // F/50 (D = 2 mm): the wavefront of a focus shift is w rho^2 up to a relative rho^4 term below
   // alpha_m^2 / 12 + 2 (h / 2f)^2 ~ 6e-5, which changes S by less than |dS/dw| w 6e-5.
-  // w from the exact sphere formula at the rim (ADR 0032, point 5), with n' = 1:
-  // W = Delta (1 - cos alpha_m) + sqrt(R'^2 - Delta^2 sin^2 alpha_m) - R', both terms ~ rho^2;
+  // w from the exact sphere formula at the rim (ADR 0032, point 5):
+  // W = n' [Delta (1 - cos alpha_m) + sqrt(R'^2 - Delta^2 sin^2 alpha_m) - R'], both terms
+  // ~ rho^2, with n' of AIR (image_index; without it w would be 2.7e-4 too small, S off by 2e-4);
   // sin alpha_m = h / (f + h^2 / (4 f)) of the paraboloid, h = D / 2. R' = |C' - E| with the focus
   // C at z = -f, C' = C + Delta (0, 0, -1) (the chief ray runs in -z after the mirror) and the exit
   // pupil E from first_order (on the side of the incoming light, so the formula's branch holds).
   // At Delta ~ 10 mm the second term is ~10 % of W: it must not be dropped.
   const double epd = 2.0;
   const CompiledSystem cs = paraboloid(epd);
+  const double n_image = image_index(cs, 0);
   const double h = epd / 2.0;
   const double sin_a = h / (kF + h * h / (4.0 * kF));
   const double one_minus_cos = sin_a * sin_a / (1.0 + std::sqrt(1.0 - sin_a * sin_a));
@@ -264,25 +272,29 @@ TEST_CASE("psf: defocus Strehl sinc^2(w), through_focus and psf agree", "[psf]")
     const double delta = w_target * kLambdaMm / one_minus_cos;
     const double r = std::abs(-kF - delta - z_exit);
     const double t = delta * delta * sin_a * sin_a;
-    const double w_mm = delta * one_minus_cos - t / (std::sqrt(r * r - t) + r);
+    const double w_mm = n_image * (delta * one_minus_cos - t / (std::sqrt(r * r - t) + r));
     shifts.push_back(delta);
     ws.push_back(w_mm / kLambdaMm);
   }
-  PupilFunctionOptions o64;
-  o64.grid = 64;
+  // Grids 128 and 256 as for the MTF in ADR 0033, point 10: at 64 / 128 the bound e was
+  // 1.15e-3 at w = 0.49 (a defocused pupil needs finer cells), while N = 128 was already 5.5e-5
+  // from sinc^2; the tolerance 1e-3 stays (coordinator, F2 slot).
   PupilFunctionOptions o128;
   o128.grid = 128;
-  const std::vector<double> s64 = rtt::analysis::through_focus(cs, PathId{0}, 0, 0, shifts, o64);
+  PupilFunctionOptions o256;
+  o256.grid = 256;
   const std::vector<double> s128 = rtt::analysis::through_focus(cs, PathId{0}, 0, 0, shifts, o128);
+  const std::vector<double> s256 = rtt::analysis::through_focus(cs, PathId{0}, 0, 0, shifts, o256);
   REQUIRE(s128.size() == shifts.size());
+  REQUIRE(s256.size() == shifts.size());
   for (std::size_t i = 0; i < shifts.size(); ++i) {
     const double w = ws[i];
     const double ds_dw = 2.0 * std::numbers::pi;  // bound of |d sinc^2 / dw| on [0, 1]
-    const double e = 2.0 * std::abs(s64[i] - s128[i]) + ds_dw * w * 6e-5 + 1e-12;
-    INFO("w = " << w << ": N=64 " << s64[i] << ", N=128 " << s128[i] << ", sinc^2 " << sinc2(w));
+    const double e = 2.0 * std::abs(s128[i] - s256[i]) + ds_dw * w * 6e-5 + 1e-12;
+    INFO("w = " << w << ": N=128 " << s128[i] << ", N=256 " << s256[i] << ", sinc^2 " << sinc2(w));
     CHECK(e <= 1e-3);
-    CHECK(std::abs(s128[i] - sinc2(w)) <= e);
-    CHECK(s128[i] < 1.0);  // content guard
+    CHECK(std::abs(s256[i] - sinc2(w)) <= e);
+    CHECK(s256[i] < 1.0);  // content guard
     // psf().strehl with the same focus shift: the same formula on the same cells.
     PsfOptions po;
     po.pupil = o128;
@@ -316,9 +328,13 @@ TEST_CASE("psf: energy, deficit and the ideal peak", "[psf]") {
 }
 
 TEST_CASE("psf: two wavelengths sum with weights w_i E_i on the reference lattice", "[psf]") {
-  // lambda_2 = 1.25 lambda_1 with Q = 4: L_2 = 5 N gives exactly the lattice of the reference
-  // (lambda / (L a m) equal), so the polychromatic PSF is the weighted sum of the single PSFs, the
-  // second computed alone with padding 5.
+  // lambda_2 = 1.25 lambda_1 with Q = 4: L_2 = 5 N gives the lattice of the reference up to the
+  // index of AIR, so the polychromatic PSF is the weighted sum of the single PSFs, the second
+  // computed alone with padding 5 (the same L_2 and M_2). The mirror reflects the same rays at
+  // both wavelengths, so the direction sines differ only by n'_i: M_i = (n'_i / n'_1) M_1, and
+  // B_i = lambda_i / (L_i a) M_i^-T gives ||B_2 - B_1|| / ||B_1|| = |(lambda_2 L_1 n'_1) /
+  // (lambda_1 L_2 n'_2) - 1| = |n'_1 / n'_2 - 1| for L_2 = 1.25 L_1 (ADR 0033, point 7: the
+  // difference of the mappings). n'_i from the compiled media, not from the PSF code.
   rtt::model::System s =
       rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m2/paraboloid_stop.rtt.json");
   s.aperture.value = rtt::model::Param(10.0);
@@ -339,7 +355,9 @@ TEST_CASE("psf: two wavelengths sum with weights w_i E_i on the reference lattic
   REQUIRE(b.wavelengths.size() == 1);
   REQUIRE(poly.wavelengths.size() == 2);
   CHECK(poly.wavelengths[1].length == 5 * 32);
-  CHECK(poly.polychromatic_scale_error <= 1e-15);
+  const double dispersion = std::abs(image_index(cs, 0) / image_index(cs, 1) - 1.0);
+  CHECK(dispersion > 1e-7);  // content guard: AIR disperses (about 1.6e-6 here)
+  CHECK(std::abs(poly.polychromatic_scale_error - dispersion) <= 1e-12);
   const double wa = 0.25 * a.wavelengths[0].energy;
   const double wb = 0.75 * b.wavelengths[0].energy;
   for (int k2 = -8; k2 <= 8; k2 += 4) {
@@ -380,14 +398,17 @@ TEST_CASE("psf: two wavelengths sum with weights w_i E_i on the reference lattic
   REQUIRE(shorter.wavelengths.size() == 2);
   CHECK(shorter.wavelengths[1].length == 102);
   CHECK(shorter.wavelengths[1].outside_field == 0.0);
-  // A ratio without a whole L: the scale error stays within the rounding of L_i.
+  // A ratio without a whole L: the scale error stays within the rounding of L_i plus the
+  // difference of the mappings, 1 / (2 L_2) + |n'_1 / n'_2 - 1| (ADR 0033, point 7).
   s.wavelengths = {{0.5876, 1.0, true}, {0.5876 * 1.1, 1.0, false}};
-  const Psf rounded = rtt::analysis::psf(rtt::compile::compile(s, rtt::material::MaterialLibrary{}),
-                                         PathId{0}, 0, both);
+  const CompiledSystem cs_rounded = rtt::compile::compile(s, rtt::material::MaterialLibrary{});
+  const Psf rounded = rtt::analysis::psf(cs_rounded, PathId{0}, 0, both);
   REQUIRE(rounded.wavelengths.size() == 2);
   const double l2 = static_cast<double>(rounded.wavelengths[1].length);
+  const double dispersion_rounded =
+      std::abs(image_index(cs_rounded, 0) / image_index(cs_rounded, 1) - 1.0);
   CHECK(rounded.polychromatic_scale_error > 0.0);
-  CHECK(rounded.polychromatic_scale_error <= 1.0 / (2.0 * l2) + 1e-15);
+  CHECK(rounded.polychromatic_scale_error <= 1.0 / (2.0 * l2) + dispersion_rounded + 1e-15);
 }
 
 TEST_CASE("psf: warnings psf.aliasing and psf.pupil_undersampled", "[psf]") {
