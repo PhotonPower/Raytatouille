@@ -544,18 +544,20 @@ RayState apply_event(const RayState& incoming,
     ray.wave = ray.dir;
     ray.mode_index = 0.0;
   }
-  RayState out = ray;
+  // The unchanged ray only for a miss; a hit starts from move_to_hit, without a copy of `ray`
+  // that would be overwritten at once (#207: RayState grew by Q, every copy counts).
   switch (hit.status) {
     case geom::HitStatus::Hit:
       break;
     case geom::HitStatus::Missed:
-      out.status = RayStatus::Missed;
-      return out;
-    case geom::HitStatus::NoConvergence:
-      out.status = RayStatus::NoConvergence;
-      return out;
+    case geom::HitStatus::NoConvergence: {
+      RayState missed = ray;
+      missed.status =
+          hit.status == geom::HitStatus::Missed ? RayStatus::Missed : RayStatus::NoConvergence;
+      return missed;
+    }
   }
-  out = move_to_hit(ray, surface, hit, surface_index, media);
+  RayState out = move_to_hit(ray, surface, hit, surface_index, media);
   if (std::holds_alternative<model::Absorber>(surface.interaction)) {
     out.status = RayStatus::Absorbed;
     out.weight = 0.0;
