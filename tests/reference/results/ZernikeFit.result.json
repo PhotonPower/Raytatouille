@@ -1,0 +1,31 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.8",
+ "type": "ZernikeFit",
+ "data": {
+  "path": 0,
+  "field": 1,
+  "wavelength": 1,
+  "wavelength_um": 0.5876,
+  "reference_wavelength_um": 0.5876,
+  "coefficients": {
+   "dtype": "float64",
+   "shape": [
+    4
+   ],
+   "values": [
+    3.23988408714723,
+    1.6532315029916326e-17,
+    0.6606741285631595,
+    2.1434235669175234
+   ]
+  },
+  "residual_rms": 0.6474998496302311,
+  "sigma": 1.9926782286006766,
+  "sigma_bf": 0.6474998496302311,
+  "strehl": 6.482557515398861e-08,
+  "cells": 16,
+  "arrived_fraction": 1.0,
+  "warnings": []
+ }
+}

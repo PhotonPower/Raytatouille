@@ -5,7 +5,7 @@ For each field of tests/reference/m2/cooke_triplet.rtt.json at the reference wav
 pupil function on 48 x 48 cells is fitted with 37 Noll terms. The table shows defocus (Z4),
 astigmatism (Z5, Z6), coma (Z7, Z8) and spherical aberration (Z11) in waves, the RMS about the
 diffraction focus and the Strehl approximation after Marechal, exp(-(2 pi sigma_bf)^2) (good
-down to about 0.1). A through-focus line for the axis follows: refocus() moves the reference
+down to about 0.1; the outer fields lie far below, where the number only says "aberrated"). A through-focus line for the axis follows: refocus() moves the reference
 point along the chief ray without tracing again.
 
 main() returns 1 if a value is not finite or a Strehl value lies outside (0, 1].
@@ -47,12 +47,13 @@ def main() -> int:
               + f"  {fit.sigma_bf:8.4f}  {fit.strehl:6.3f}")
         ok = ok and all(math.isfinite(float(x)) for x in c) and 0.0 < fit.strehl <= 1.0
 
+    print("focus shift (mm)   Z4 (waves)   Strehl")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", rt.errors.RaytatouilleWarning)
         axis = an.pupil_function(cs, field=0, grid=48)
-    print("focus shift (mm)   Z4 (waves)   Strehl")
-    for shift in (-0.05, 0.0, 0.05):
-        fit = an.zernike_fit(an.refocus(cs, axis, shift))
+        moved = {shift: an.refocus(cs, axis, shift) for shift in (-0.05, 0.0, 0.05)}
+    for shift, pupil in moved.items():
+        fit = an.zernike_fit(pupil)
         print(f"{shift:16.3f}   {fit.coefficients[3]:10.4f}   {fit.strehl:6.3f}")
         ok = ok and 0.0 < fit.strehl <= 1.0
     return 0 if ok else 1
