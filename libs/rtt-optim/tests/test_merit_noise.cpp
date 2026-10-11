@@ -17,7 +17,8 @@
 //   the other seven, a kink if one second difference exceeds 100 times the median of the other
 //   six; the median counts at least as the rounding floor eps_M ||f(theta_0)||_inf, so that
 //   values repeating bit for bit (median 0) do not turn rounding into a step. Known causes: the
-//   switch to object-space telecentric aiming at the pupil-at-infinity threshold, and an RMS at its
+//   switch to object-space telecentric aiming at the pupil-at-infinity threshold (before #35 B;
+//   since then the labels are continuous there, ADR 0007 addendum #35 B), and an RMS at its
 //   minimum (ADR 0030, point 3).
 
 #include <algorithm>

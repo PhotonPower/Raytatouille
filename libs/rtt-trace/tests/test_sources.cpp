@@ -1469,15 +1469,17 @@ TEST_CASE("pupil labels are continuous through an entrance pupil at infinity (#3
   // of telecentric_singlet and by 0.02 mm in the 4f relay (ADR 0030, addendum #167). The singlet
   // has the fields 0, 1 and 2 mm, the relay 0 and 1 mm.
   //
-  // Tolerance, derived beforehand: real aiming meets the stop target within kAimTolerance =
-  // 1e-9 mm; a stop error e moves the image point by at most about e times the ratio of the
-  // distances from the last lens to the image and from the first lens to the stop (singlet
-  // 353 / 126 = 2.8, 4f about 1), so 2 * 2.8e-9 between two runs. The stop target moves with
-  // delta by u_m |dy/dz| delta (slope of the axial ray at the stop: 0.05 * 0.5625 delta in the
-  // singlet, 0.1 * 1 delta in the 4f), the image point by at most 2.8 times that: 0.3 delta, so
-  // 2 * 0.3 * 1e-9 = 6e-10 for the largest |delta|. Paraxial aiming has no iteration; its start
-  // ray changes with the same bound. The tolerance 1e-7 mm lies more than 10 times above both
-  // and 1e5 times below the jumps.
+  // Tolerance, derived beforehand: the object point is fixed, so two runs differ only in the
+  // pupil coordinate their ray really has. Real aiming meets the stop target within
+  // kAimTolerance = 1e-9 mm, a pupil error of 1e-9 / |R_s| <= 1.6e-10 (|R_s| = 6.4 mm in the
+  // singlet, about 12.8 mm in the 4f). The stop target moves with delta by |dR_s/d delta| delta
+  // (0.028 delta in the singlet, test "the finite-EP path converges to it") plus the axial shift
+  // u_m delta, a pupil error below 1e-10 for |delta| <= 1e-9. The image point moves by the
+  // transverse aberration slope |d eps / dp| times the pupil error; |d eps / dp| is of the order
+  // of the spot size, about 1 mm here (the jump of 1.14 mm is eps(p) - eps(-p) of field 2), so
+  // below 1e-9 mm between two runs. Paraxial aiming has no iteration; its start ray changes only
+  // with delta. The tolerance 1e-7 mm lies about 100 times above that and 2e5 times below the
+  // jumps.
   constexpr double kTolerance = 1e-7;
   const MaterialLibrary lib;
   const System four_f =

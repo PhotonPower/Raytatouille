@@ -16,7 +16,8 @@
 ///   finite object), so a field point is the same physical point for every wavelength. Pupil,
 ///   stop target and start plane belong to the wavelength of each ray (#31, fix of #8).
 /// - Normalised pupil coordinates (px, py): the unit circle is the rim of the paraxial entrance
-///   pupil, +y is the meridional direction.
+///   pupil, +y is the meridional direction. With a finite object py > 0 is a ray rising in object
+///   space against the chief ray (sigma, ADR 0007 addendum #35 B; aim_ray).
 /// - Positions in mm and unit directions in global coordinates (right-handed, optical axis +z).
 
 #include <cstddef>
