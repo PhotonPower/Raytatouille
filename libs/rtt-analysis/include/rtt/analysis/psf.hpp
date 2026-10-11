@@ -210,12 +210,16 @@ struct MtfOptions {
   double undersampled_waves = 0.5;
 };
 
-/// One MTF curve along a pupil direction, samples l = 0 ... N.
+/// One MTF curve along a pupil direction: samples l = 0 ... N for one wavelength; for several,
+/// in the steps of the reference up to the first sample at or above the largest cut-off of the
+/// chosen wavelengths (a shorter wavelength reaches beyond the cut-off of the reference).
 struct MtfCurve {
-  /// Unit direction of nu(l) for l > 0 in (e_x, e_y) of the PSF plane (reference wavelength).
+  /// Unit direction of nu(l) for l > 0 in (e_x, e_y) of the PSF plane (reference wavelength;
+  /// polychromatic curves assume the same direction for every wavelength, exact where M_i e is
+  /// parallel to M_ref e, as for centred systems with the field on +-y).
   std::array<double, 2> direction{};
-  /// |nu(l)|, cycles per mm, increasing; the last sample (l = N) is the cut-off, where the
-  /// shifted pupil no longer overlaps and the value is exactly 0.
+  /// |nu(l)|, cycles per mm, increasing; the last sample lies at or above every cut-off (l = N for
+  /// one wavelength, where the shifted pupil no longer overlaps), and its value is exactly 0.
   std::vector<double> frequency;
   /// MTF = |OTF|, 1 at l = 0 (C(0) is replaced by the exact energy E, ADR 0033, point 5).
   std::vector<double> modulation;
@@ -286,7 +290,8 @@ enum class EeCentre : std::uint8_t {
   /// (a / lambda) M^T x0 = (arg C(e1), arg C(e2)) / (2 pi). Exact for a tilted wavefront (a moved
   /// PSF). It is **not** the first moment (centroid) of the PSF: for an asymmetric PSF such as
   /// coma it differs from it by about (2 pi / P)^2 <x^3> / 6, P = N lambda F#_w the period, i.e.
-  /// about 1e-2 lambda F#_w at N = 64.
+  /// about 1e-2 lambda F#_w at N = 64. arg C is defined modulo 2 pi, so x0 is unique for shifts
+  /// below half a period along each lattice direction (N lambda F#_w / 2 on the axis).
   LinearPhase,
 };
 

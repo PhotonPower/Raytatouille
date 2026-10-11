@@ -30,6 +30,7 @@
 #include <cstring>
 #include <limits>
 #include <numbers>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -575,6 +576,130 @@ TEST_CASE("mtf, encircled energy: two wavelengths combine with weights w_i E_i",
     CHECK(std::abs(ea.energy[i] - eb.energy[i]) > 0.01);  // content guard
   }
   CHECK(same_bits(ep.radius_max, std::min(ea.radius_max, eb.radius_max)));
+}
+
+TEST_CASE("mtf: a shorter wavelength extends the polychromatic curve to its cut-off", "[mtf]") {
+  // Review of #239 (8d): with lambda_2 = 0.8 lambda_1 shorter than the reference, its cut-off
+  // nu_c,2 = nu_c,1 (n'_2 / n'_1) / 0.8 lies above that of the reference. The polychromatic curve
+  // continues in the steps of the reference up to the largest cut-off, where every OTF is 0 and
+  // so is the last value; below it, the combination of the reference OTF (0 above its cut-off)
+  // and the interpolated OTF of lambda_2, as in the case above.
+  rtt::model::System sys = paraboloid_model(10.0);
+  sys.wavelengths = {{0.5876, 1.0, true}, {0.5876 * 0.8, 1.0, false}};
+  const CompiledSystem cs = compiled(sys);
+  MtfOptions both;
+  both.pupil.grid = 32;
+  both.outputs.complex_otf = true;
+  MtfOptions first = both;
+  first.wavelengths = std::vector<std::uint16_t>{0};
+  MtfOptions second = both;
+  second.wavelengths = std::vector<std::uint16_t>{1};
+  const Mtf poly = rtt::analysis::mtf(cs, PathId{0}, 0, both);
+  const Mtf a = rtt::analysis::mtf(cs, PathId{0}, 0, first);
+  const Mtf b = rtt::analysis::mtf(cs, PathId{0}, 0, second);
+  require_curves(a, 32);
+  require_curves(b, 32);
+  REQUIRE(a.wavelengths.size() == 1);
+  REQUIRE(b.wavelengths.size() == 1);
+  const double step = a.tangential.frequency[1];
+  const double nu_c2 = b.tangential.frequency.back();
+  REQUIRE(nu_c2 > 1.2 * a.tangential.frequency.back());  // content guard: a shorter wavelength
+  // The axis: steps of the reference up to the first sample at or above nu_c,2.
+  const auto samples = static_cast<std::size_t>(std::ceil(nu_c2 / step)) + 1;
+  REQUIRE(poly.tangential.frequency.size() == samples);
+  REQUIRE(poly.tangential.modulation.size() == samples);
+  REQUIRE(poly.tangential.otf.size() == samples);
+  CHECK(poly.tangential.frequency.back() >= nu_c2);
+  CHECK(poly.tangential.modulation.back() == 0.0);
+  const double wa = 0.5 * a.wavelengths[0].energy;
+  const double wb = 0.5 * b.wavelengths[0].energy;
+  const auto interp = [](const MtfCurve& c, double nu) -> std::complex<double> {
+    if (nu >= c.frequency.back()) return 0.0;
+    const auto hi = std::upper_bound(c.frequency.begin(), c.frequency.end(), nu);
+    const auto k = static_cast<std::size_t>(hi - c.frequency.begin());
+    const double g = (nu - c.frequency[k - 1]) / (c.frequency[k] - c.frequency[k - 1]);
+    return (1.0 - g) * c.otf[k - 1] + g * c.otf[k];
+  };
+  for (std::size_t l = 0; l < samples; ++l) {
+    const double nu = static_cast<double>(l) * step;
+    CHECK(std::abs(poly.tangential.frequency[l] - nu) <= 1e-12 * nu_c2);
+    const std::complex<double> ref = l <= 32 ? a.tangential.otf[l] : std::complex<double>(0.0);
+    const std::complex<double> otf = (wa * ref + wb * interp(b.tangential, nu)) / (wa + wb);
+    INFO("l = " << l);
+    CHECK(std::abs(poly.tangential.modulation[l] - std::abs(otf)) <= 1e-14);
+  }
+  // Content guard: at the cut-off of the reference the shorter wavelength still transmits.
+  CHECK(poly.tangential.modulation[32] > 0.01);
+}
+
+TEST_CASE("mtf: F, d and C against the weighted analytic MTFs", "[mtf]") {
+  // Review of #239 (coordinator): the lines F, d (reference) and C with weights 1 : 1 : 1 on the
+  // aberration-free paraboloid. Each OTF is real and positive, so the polychromatic MTF is
+  // sum_i omega_i MTF_circle(nu / nu_c,i) / sum_i omega_i with omega_i = w_i E_i and nu_c,i the
+  // cut-off of each line (n' of AIR included, from its own run), 0 above it. Bound per curve,
+  // absolute over the whole curve up to the largest cut-off (values near the cut-off are small;
+  // ADR 0033, point 10 with the addendum of #229): e_max = max 2 |X_N - X_2N| <= 1e-3 at
+  // N = 128 / 256, and every point of X_2N within e_max of the expected value. It covers the
+  // discretisation and the linear interpolation onto the reference frequencies, both falling with
+  // N.
+  rtt::model::System sys = paraboloid_model(10.0);
+  sys.wavelengths = {{0.4861, 1.0, false}, {0.5876, 1.0, true}, {0.6563, 1.0, false}};
+  const CompiledSystem cs = compiled(sys);
+  const auto run = [&](int n, std::optional<std::uint16_t> only) {
+    MtfOptions o;
+    o.pupil.grid = n;
+    if (only) o.wavelengths = std::vector<std::uint16_t>{*only};
+    return rtt::analysis::mtf(cs, PathId{0}, 0, o);
+  };
+  const Mtf p128 = run(128, std::nullopt);
+  const Mtf p256 = run(256, std::nullopt);
+  REQUIRE(p128.wavelengths.size() == 3);
+  std::array<double, 3> cutoff{};
+  std::array<double, 3> omega{};
+  for (std::uint16_t i = 0; i < 3; ++i) {
+    const Mtf single = run(128, i);
+    require_curves(single, 128);
+    REQUIRE(single.wavelengths.size() == 1);
+    cutoff[i] = single.tangential.frequency.back();
+    omega[i] = p128.wavelengths[i].weight * p128.wavelengths[i].energy;
+  }
+  // The axis runs to the cut-off of F (the shortest line) in the steps of d.
+  CHECK(cutoff[0] > 1.15 * cutoff[1]);  // content guard: F lies above d
+  REQUIRE(p128.tangential.frequency.back() >= cutoff[0]);
+  CHECK(p128.tangential.modulation.back() == 0.0);
+  const MtfCurve& a = p128.tangential;
+  const MtfCurve& b = p256.tangential;
+  // Shared points l of 128 and 2 l of 256 (each axis ends at its own first sample at or above
+  // the cut-off of F, so the finer one may end a step earlier; beyond it both are 0).
+  const std::size_t shared = std::min(a.frequency.size(), (b.frequency.size() + 1) / 2);
+  REQUIRE(shared > a.frequency.size() - 3);
+  const auto expected = [&](double nu) {
+    double sum = 0.0;
+    double weights = 0.0;
+    for (std::size_t i = 0; i < 3; ++i) {
+      const double x = nu / cutoff[i];
+      if (x < 1.0) sum += omega[i] * mtf_circle(x);
+      weights += omega[i];
+    }
+    return sum / weights;
+  };
+  double e_max = 0.0;
+  for (std::size_t l = 0; l < shared; ++l) {
+    CHECK(std::abs(b.frequency[2 * l] - a.frequency[l]) <= 1e-12 * cutoff[0]);
+    e_max = std::max(e_max, 2.0 * std::abs(a.modulation[l] - b.modulation[2 * l]));
+  }
+  INFO("e_max (absolute) " << e_max);
+  CHECK(e_max <= 1e-3);
+  for (std::size_t l = 0; l < shared; ++l) {
+    const double nu = a.frequency[l];
+    INFO("nu / nu_c,d = " << nu / cutoff[1]);
+    CHECK(std::abs(b.modulation[2 * l] - expected(nu)) <= e_max + 1e-12);
+  }
+  // Content guard: beyond the cut-off of d only F transmits.
+  const auto beyond = static_cast<std::size_t>(std::ceil(cutoff[1] / a.frequency[1])) + 2;
+  REQUIRE(beyond < a.frequency.size());
+  CHECK(a.modulation[beyond] > 0.0);
+  CHECK(expected(a.frequency[beyond]) > 0.0);
 }
 
 TEST_CASE("mtf, encircled energy: bitwise the same for 1, 4 and all threads", "[mtf][ee]") {
