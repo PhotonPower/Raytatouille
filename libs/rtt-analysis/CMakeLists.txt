@@ -1,6 +1,19 @@
-add_library(rtt_analysis src/spot.cpp src/opd.cpp src/field.cpp src/chromatic.cpp
-  src/paths.cpp src/ghosts.cpp src/reports.cpp src/fft.cpp src/pupil.cpp src/reference.cpp
-  src/zernike.cpp src/psf.cpp src/jones.cpp)
+# One file per line, sorted: parallel PRs then add lines at different places and do not
+# conflict in these lists.
+add_library(rtt_analysis
+  src/chromatic.cpp
+  src/fft.cpp
+  src/field.cpp
+  src/ghosts.cpp
+  src/jones.cpp
+  src/opd.cpp
+  src/paths.cpp
+  src/psf.cpp
+  src/pupil.cpp
+  src/reference.cpp
+  src/reports.cpp
+  src/spot.cpp
+  src/zernike.cpp)
 add_library(rtt::analysis ALIAS rtt_analysis)
 target_include_directories(rtt_analysis PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
@@ -13,16 +26,36 @@ if(RTT_BUILD_TESTS)
   # determinism test; rtt::polar (Stokes, diattenuation) and rtt::coating (catalogues) only for
   # the M3 acceptance (#63).
   rtt_add_test(rtt_analysis_tests
-    SOURCES tests/test_spot.cpp tests/test_fans.cpp tests/test_opd.cpp tests/test_field.cpp
-            tests/test_chromatic.cpp tests/test_m2_acceptance.cpp tests/test_m3_acceptance.cpp
-            tests/test_no_stop.cpp tests/test_error_context.cpp tests/test_losses.cpp
-            tests/test_warnings.cpp tests/test_loss_counter.cpp tests/test_run_control.cpp
-            tests/test_paths.cpp tests/test_ghost_ranking.cpp tests/test_m4_acceptance.cpp
-            tests/test_relative_ghosts.cpp tests/test_gauss_rejected.cpp tests/test_reports.cpp
-            tests/test_opd_points.cpp tests/test_point_list_pupil.cpp tests/test_fft.cpp
-            tests/test_jones_pupil.cpp
-            tests/test_pupil_cells.cpp tests/test_focus_shift.cpp tests/test_pupil_function.cpp
-            tests/test_zernike.cpp tests/test_ideal_lens_analysis.cpp tests/test_psf.cpp
+    SOURCES
+      tests/test_chromatic.cpp
+      tests/test_error_context.cpp
+      tests/test_fans.cpp
+      tests/test_fft.cpp
+      tests/test_field.cpp
+      tests/test_focus_shift.cpp
+      tests/test_gauss_rejected.cpp
+      tests/test_ghost_ranking.cpp
+      tests/test_ideal_lens_analysis.cpp
+      tests/test_jones_pupil.cpp
+      tests/test_loss_counter.cpp
+      tests/test_losses.cpp
+      tests/test_m2_acceptance.cpp
+      tests/test_m3_acceptance.cpp
+      tests/test_m4_acceptance.cpp
+      tests/test_no_stop.cpp
+      tests/test_opd.cpp
+      tests/test_opd_points.cpp
+      tests/test_paths.cpp
+      tests/test_point_list_pupil.cpp
+      tests/test_psf.cpp
+      tests/test_pupil_cells.cpp
+      tests/test_pupil_function.cpp
+      tests/test_relative_ghosts.cpp
+      tests/test_reports.cpp
+      tests/test_run_control.cpp
+      tests/test_spot.cpp
+      tests/test_warnings.cpp
+      tests/test_zernike.cpp
     LIBS rtt::analysis rtt::io rtt::polar rtt::coating rtt::model_test_support TBB::tbb)
   target_compile_definitions(rtt_analysis_tests PRIVATE
     RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs")
