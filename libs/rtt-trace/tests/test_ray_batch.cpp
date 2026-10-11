@@ -5,6 +5,7 @@
 
 using rtt::math::CMat3;
 using rtt::math::Complex;
+using rtt::math::Mat3;
 using rtt::trace::kNoSurface;
 using rtt::trace::RayBatch;
 using rtt::trace::RayStatus;
@@ -99,4 +100,29 @@ TEST_CASE("prt(row, col) addresses the matrix element P(row, col)", "[ray_batch]
 
   b.prt(2, 0)[2] = Complex(0.0, 4.0);
   REQUIRE(b.prt_matrix(2)(2, 0) == Complex(0.0, 4.0));
+}
+
+TEST_CASE("q(row, col): Q starts as the identity and addresses Q(row, col) (#207)", "[ray_batch]") {
+  // ADR 0034, point 2: 9 real columns, row-major like P, I for new and grown rays.
+  RayBatch b(2);
+  for (int r = 0; r < 3; ++r) {
+    for (int c = 0; c < 3; ++c) REQUIRE(b.q(r, c).size() == 2);
+  }
+  REQUIRE(b.q_matrix(0) == Mat3::Identity());
+  Mat3 q;
+  for (int r = 0; r < 3; ++r) {
+    for (int c = 0; c < 3; ++c) q(r, c) = 10.0 * r + c;
+  }
+  b.set_q_matrix(1, q);
+  REQUIRE(b.q_matrix(1) == q);
+  for (int r = 0; r < 3; ++r) {
+    for (int c = 0; c < 3; ++c) REQUIRE(b.q(r, c)[1] == q(r, c));
+  }
+  REQUIRE(b.q_matrix(0) == Mat3::Identity());
+  b.resize(4);
+  REQUIRE(b.q_matrix(1) == q);
+  REQUIRE(b.q_matrix(2) == Mat3::Identity());
+  REQUIRE(b.q_matrix(3) == Mat3::Identity());
+  b.q(2, 0)[3] = -4.0;
+  REQUIRE(b.q_matrix(3)(2, 0) == -4.0);
 }

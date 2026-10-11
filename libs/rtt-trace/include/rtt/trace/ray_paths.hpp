@@ -19,6 +19,13 @@
 /// lost_at = -1; a ray that passes all events has count = S and lost_at = -1. The last valid slot,
 /// count - 1, is bitwise the state that the trace leaves in the RayBatch.
 ///
+/// Polarization (ADR 0034, point 3): with `polarization` set before the trace, prt and q hold the
+/// accumulated P and Q of every slot, 9 values each at [(r * S + s) * 9 + 3 * row + col]
+/// (row-major), NaN in the unused slots like the other values. Slot 0 is the state of the input
+/// batch (I for rays from a source); slot s the product after event s - 1; P and Q of the last
+/// valid slot are bitwise those of the RayBatch. The P of one event follows from two slots. Without
+/// the request prt and q stay empty and everything else is bitwise the same.
+///
 /// Units and frames as RayBatch: positions in mm and unit directions in global coordinates,
 /// OPL in mm, weight dimensionless (ADR 0021).
 
@@ -51,6 +58,10 @@ struct RayPaths {
   std::vector<RayStatus> status;              ///< [r * S + s]
   std::vector<std::uint32_t> count;           ///< number of valid slots of ray r
   std::vector<std::int32_t> lost_at;          ///< event where ray r stopped, -1 if none
+  /// Request to record P and Q per slot, set by the caller before the trace; kept by it.
+  bool polarization = false;
+  std::vector<math::Complex> prt;  ///< P per slot (RayBatch::prt), only with `polarization`
+  std::vector<double> q;           ///< Q per slot (RayBatch::q), only with `polarization`
 
   /// Number of recorded rays.
   [[nodiscard]] std::size_t ray_count() const noexcept { return ray_indices.size(); }
@@ -65,6 +76,31 @@ struct RayPaths {
   [[nodiscard]] math::Vec3 direction_at(std::size_t r, std::size_t s) const {
     const std::size_t i = (r * slots + s) * 3;
     return {direction[i], direction[i + 1], direction[i + 2]};
+  }
+
+  /// Accumulated P of recorded ray r in slot s (power-normalised, global; ADR 0021).
+  /// @pre polarization was set for the trace (prt is not empty)
+  [[nodiscard]] math::CMat3 prt_at(std::size_t r, std::size_t s) const {
+    const std::size_t i = (r * slots + s) * 9;
+    math::CMat3 p;
+    for (int row = 0; row < 3; ++row) {
+      for (int col = 0; col < 3; ++col) {
+        p(row, col) = prt[i + static_cast<std::size_t>(3 * row + col)];
+      }
+    }
+    return p;
+  }
+
+  /// Accumulated Q of recorded ray r in slot s (global; ADR 0034, point 1).
+  /// @pre polarization was set for the trace (q is not empty)
+  [[nodiscard]] math::Mat3 q_at(std::size_t r, std::size_t s) const {
+    const std::size_t i = (r * slots + s) * 9;
+    math::Mat3 m;
+    for (int row = 0; row < 3; ++row) {
+      for (int col = 0; col < 3; ++col)
+        m(row, col) = q[i + static_cast<std::size_t>(3 * row + col)];
+    }
+    return m;
   }
 };
 

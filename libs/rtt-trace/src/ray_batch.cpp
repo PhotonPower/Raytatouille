@@ -21,6 +21,7 @@ void RayBatch::resize(std::size_t size) {
   for (std::size_t k = 0; k < prt_.size(); ++k) {
     const bool diagonal = k % 4 == 0;  // row-major indices 0, 4, 8
     prt_[k].resize(size, diagonal ? math::Complex(1.0) : math::Complex(0.0));
+    q_[k].resize(size, diagonal ? 1.0 : 0.0);
   }
   weight_.resize(size, 1.0);
   status_.resize(size, RayStatus::Alive);
@@ -36,7 +37,7 @@ void RayBatch::resize(std::size_t size) {
 
 namespace {
 
-/// Row-major index of P(row, col) in RayBatch::prt_.
+/// Row-major index of element (row, col) in RayBatch::prt_ and RayBatch::q_.
 std::size_t prt_index(int row, int col) noexcept {
   assert(row >= 0 && row < 3 && col >= 0 && col < 3);
   return 3 * static_cast<std::size_t>(row) + static_cast<std::size_t>(col);
@@ -63,6 +64,28 @@ math::CMat3 RayBatch::prt_matrix(std::size_t i) const {
 void RayBatch::set_prt_matrix(std::size_t i, const math::CMat3& p) {
   for (int r = 0; r < 3; ++r) {
     for (int c = 0; c < 3; ++c) prt(r, c)[i] = p(r, c);
+  }
+}
+
+std::span<double> RayBatch::q(int row, int col) noexcept {
+  return q_[prt_index(row, col)];
+}
+
+std::span<const double> RayBatch::q(int row, int col) const noexcept {
+  return q_[prt_index(row, col)];
+}
+
+math::Mat3 RayBatch::q_matrix(std::size_t i) const {
+  math::Mat3 m;
+  for (int r = 0; r < 3; ++r) {
+    for (int c = 0; c < 3; ++c) m(r, c) = q(r, c)[i];
+  }
+  return m;
+}
+
+void RayBatch::set_q_matrix(std::size_t i, const math::Mat3& m) {
+  for (int r = 0; r < 3; ++r) {
+    for (int c = 0; c < 3; ++c) q(r, c)[i] = m(r, c);
   }
 }
 
