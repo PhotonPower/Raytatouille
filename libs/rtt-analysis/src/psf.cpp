@@ -6,6 +6,7 @@
 #include <complex>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <numbers>
 #include <optional>
 #include <span>
@@ -543,6 +544,50 @@ ThroughFocus through_focus(const compile::CompiledSystem& system,
     result.arrived_fraction.push_back(p.arrived_fraction);
   }
   return result;
+}
+
+// STUB for the red run of #206 (tests first): MTF and encircled energy link, compute nothing.
+
+Mtf mtf(const compile::CompiledSystem& /*system*/,
+        compile::PathId /*path*/,
+        std::uint16_t /*field*/,
+        const MtfOptions& /*options*/) {
+  return {};
+}
+
+Mtf mtf(const compile::CompiledSystem& /*system*/,
+        compile::PathId /*path*/,
+        std::uint16_t /*field*/,
+        const MtfOptions& /*options*/,
+        const trace::RunControl& /*control*/) {
+  return {};
+}
+
+Mtf mtf(const PupilFunction& /*pupil*/, const MtfOutputs& /*outputs*/) {
+  return {};
+}
+
+EncircledEnergy encircled_energy(const compile::CompiledSystem& /*system*/,
+                                 compile::PathId /*path*/,
+                                 std::uint16_t /*field*/,
+                                 std::span<const double> /*radii*/,
+                                 const EncircledEnergyOptions& /*options*/) {
+  return {};
+}
+
+EncircledEnergy encircled_energy(const compile::CompiledSystem& /*system*/,
+                                 compile::PathId /*path*/,
+                                 std::uint16_t /*field*/,
+                                 std::span<const double> /*radii*/,
+                                 const EncircledEnergyOptions& /*options*/,
+                                 const trace::RunControl& /*control*/) {
+  return {};
+}
+
+EncircledEnergy encircled_energy(const PupilFunction& /*pupil*/,
+                                 std::span<const double> /*radii*/,
+                                 EeCentre /*centre*/) {
+  return {};
 }
 
 }  // namespace rtt::analysis
