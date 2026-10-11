@@ -8,6 +8,7 @@
     "eigen3",
     "nlohmann-json",
     "catch2",
-    "tbb"
+    "tbb",
+    "pocketfft"
   ]
 }
