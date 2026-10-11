@@ -233,6 +233,7 @@ TEST_CASE("pupil.basis_pole for a given ray at the pole of the double-pole basis
   // output, the pole of both double-pole bases. Its J is NaN, the ray itself arrives.
   System s;
   s.name = "pole";
+  s.root.name = "root";
   s.wavelengths = {{0.55, 1.0, true}};
   s.aperture = {rtt::model::SystemApertureType::EntrancePupilDiameter, rtt::model::Param(2.0)};
   s.fields = {rtt::model::FieldType::AngleDeg, {{0.0, 0.0, 1.0}}};

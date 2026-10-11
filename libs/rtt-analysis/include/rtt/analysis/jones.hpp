@@ -168,9 +168,9 @@ struct JonesPupil {
 /// beam on an image surface perpendicular to it; for a converging beam it is the OPD against the
 /// image plane, not against a sphere. `sphere.radius` is NaN, `sphere.centre` the chief-ray
 /// point on the image surface. A point arrives (status Alive) if its ray ends Alive on the image
-/// surface (Alive elsewhere counts as Vignetted); a point that does not has w = NaN. A point within 1e-6 rad of a pole of a basis gets
-/// J = NaN and NaN maps, with the warning "pupil.basis_pole" (location /paths/i, the number of
-/// points in the message).
+/// surface (Alive elsewhere counts as Vignetted); a point that does not has w = NaN. A point within
+/// 1e-6 rad of a pole of a basis gets J = NaN and NaN maps, with the warning "pupil.basis_pole"
+/// (location /paths/i, the number of points in the message).
 /// @throws std::invalid_argument for an invalid path, an empty batch, chief >= start.size(), rays
 ///         of different wavelengths or an invalid wavelength index, lost_warning_fraction
 ///         outside [0, 1]
