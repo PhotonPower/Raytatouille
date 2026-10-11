@@ -89,7 +89,7 @@ void bind_pupil(nb::module_& m) {
           "py", [](const analysis::PupilCells& c) { return copy(c.py); }, nb::rv_policy::reference,
           "Sample point y (copy).")
       .def("__len__", [](const analysis::PupilCells& c) { return c.fraction.size(); });
-  m.def("pupil_cells", &analysis::pupil_cells, "grid"_a,
+  m.def("pupil_cells", nb::overload_cast<int>(&analysis::pupil_cells), "grid"_a,
         "Cells of an N x N grid (ADR 0032, point 1); ValueError for N outside [2, "
         "MAX_PUPIL_GRID].");
 
