@@ -7,10 +7,10 @@
 // its points (relative where the acceptance is relative). Every expected value that uses F#_w is
 // preceded by a guard that ties the mapping M to quantities that do not use it.
 //
-// Cases: 1 Airy zero (F/10), 4 defocus Strehl (F/50), 5 Zernike from W040 (plano-convex), 6 and 7
-// Jones pupil of a 45 deg metal fold (collimated, converging), 8 ideal lens (Airy zero, Strehl 1),
-// and the reproducibility at 1, 4 and all threads. The encircled energy (2) and the MTF (3) follow
-// with #206, the annular pupil (9) with #229.
+// Cases: 1 Airy zero, 2 encircled energy and 3 MTF (F/10), 4 defocus Strehl (F/50), 5 Zernike
+// from W040 (plano-convex), 6 and 7 Jones pupil of a 45 deg metal fold (collimated, converging),
+// 8 ideal lens (Airy zero, Strehl 1), and the reproducibility at 1, 4 and all threads. The
+// annular pupil (9) follows with #229.
 
 #include <tbb/global_control.h>
 
@@ -159,6 +159,18 @@ void check_airy_zero(const CompiledSystem& cs, PathId path, double n_u) {
   CHECK(along_x(p128, r128) < 1e-4);  // content guard: a zero of the pattern, not any minimum
 }
 
+/// Diffraction-limited MTF of the circular pupil, (2 / pi) [acos x - x sqrt(1 - x^2)].
+double mtf_circle(double x) {
+  return 2.0 / kPi * (std::acos(x) - x * std::sqrt(1.0 - x * x));
+}
+
+/// Encircled energy of the Airy pattern, 1 - J0(v)^2 - J1(v)^2, v = pi r / (lambda F#_w).
+double ee_airy(double v) {
+  const double j0 = std::cyl_bessel_j(0.0, v);
+  const double j1 = std::cyl_bessel_j(1.0, v);
+  return 1.0 - j0 * j0 - j1 * j1;
+}
+
 double sinc2(double w) {
   if (w == 0.0) return 1.0;
   const double t = std::sin(kPi * w) / (kPi * w);
@@ -257,6 +269,91 @@ TEST_CASE("M6 case 1: Airy zero at j11 lambda F#_w / pi, paraboloid F/10", "[m6]
   const double n_u = n_image * 10.0 / (2.0 * kF);
   CHECK(std::abs(std::abs(fo.power) * *fo.entrance_pupil->diameter / 2.0 / n_u - 1.0) <= 1e-12);
   check_airy_zero(cs, PathId{0}, n_u);
+}
+
+TEST_CASE("M6 case 2: encircled energy 1 - J0^2 - J1^2, paraboloid F/10", "[m6]") {
+  // tests/reference/m6/paraboloid_f10.rtt.json, W = 0: EE(r) of the Airy pattern with
+  // v = pi r / (lambda F#_w) at r = 0.5, 1, r0 = j11 / pi, 2, 3 and 5 lambda F#_w. Bound per
+  // curve, relative as the acceptance (ADR 0033, point 10 with the addendum of #229): e_max =
+  // max 2 |X_N - X_2N| / X <= 1e-3 on the grids 128/256 (erratum #206), and every radius against
+  // e_max; EE(r0) on its own lies in (0.83, 0.84) (content guard).
+  const CompiledSystem cs = compiled(load("m6/paraboloid_f10.rtt.json"));
+  const double n_u = image_index(cs, PathId{0}) * 10.0 / (2.0 * kF);
+  const PupilFunction p = pupil(cs, PathId{0}, 16);
+  guard_mapping(p, n_u);
+  const double unit = kLambdaMm * f_number(p);  // lambda F#_w, mm
+  const std::vector<double> units{0.5, 1.0, j11() / kPi, 2.0, 3.0, 5.0};
+  std::vector<double> radii;
+  for (const double u : units) radii.push_back(u * unit);
+  rtt::analysis::EncircledEnergyOptions o128;
+  o128.pupil.grid = 128;
+  rtt::analysis::EncircledEnergyOptions o256;
+  o256.pupil.grid = 256;
+  const auto a = rtt::analysis::encircled_energy(cs, PathId{0}, 0, radii, o128);
+  const auto b = rtt::analysis::encircled_energy(cs, PathId{0}, 0, radii, o256);
+  REQUIRE(a.energy.size() == radii.size());
+  REQUIRE(b.energy.size() == radii.size());
+  double e_max = 0.0;
+  for (std::size_t i = 0; i < radii.size(); ++i) {
+    e_max = std::max(e_max, 2.0 * std::abs(a.energy[i] - b.energy[i]) / ee_airy(kPi * units[i]));
+  }
+  INFO("e_max (relative) " << e_max);
+  CHECK(e_max <= 1e-3);
+  for (std::size_t i = 0; i < radii.size(); ++i) {
+    const double expected = ee_airy(kPi * units[i]);
+    INFO("r = " << units[i] << " lambda F#_w: N=256 " << b.energy[i] << ", expected " << expected);
+    CHECK(std::abs(b.energy[i] - expected) / expected <= e_max + 1e-12);
+  }
+  CHECK(b.energy[2] > 0.83);  // 83.8 % at the first zero
+  CHECK(b.energy[2] < 0.84);
+}
+
+TEST_CASE("M6 case 3: MTF (2 / pi) [acos x - x sqrt(1 - x^2)], paraboloid F/10", "[m6]") {
+  // tests/reference/m6/paraboloid_f10.rtt.json, W = 0: tangential and sagittal against the
+  // circular MTF at every lattice point with x = nu / nu_c in [0.1, 0.9], nu_c = 1 / (lambda
+  // F#_w) from the guarded mapping. Grids 256/512 (erratum #206), samples l of N and 2 l of 2 N
+  // share x; bound per curve, relative (as case 2); x taken from the result's frequencies, so a
+  // wrong frequency scale fails too.
+  const CompiledSystem cs = compiled(load("m6/paraboloid_f10.rtt.json"));
+  const double n_u = image_index(cs, PathId{0}) * 10.0 / (2.0 * kF);
+  const PupilFunction p = pupil(cs, PathId{0}, 16);
+  guard_mapping(p, n_u);
+  const double nu_c = 1.0 / (kLambdaMm * f_number(p));
+  rtt::analysis::MtfOptions o256;
+  o256.pupil.grid = 256;
+  rtt::analysis::MtfOptions o512;
+  o512.pupil.grid = 512;
+  const auto a = rtt::analysis::mtf(cs, PathId{0}, 0, o256);
+  const auto b = rtt::analysis::mtf(cs, PathId{0}, 0, o512);
+  int checked = 0;
+  for (int d = 0; d < 2; ++d) {
+    INFO((d == 0 ? "tangential" : "sagittal"));
+    const auto& ca = d == 0 ? a.tangential : a.sagittal;
+    const auto& cb = d == 0 ? b.tangential : b.sagittal;
+    REQUIRE(ca.modulation.size() == 257);
+    REQUIRE(ca.frequency.size() == 257);
+    REQUIRE(cb.modulation.size() == 513);
+    CHECK(std::abs(ca.frequency.back() / nu_c - 1.0) <= 1e-12);
+    double e_max = 0.0;
+    for (std::size_t l = 0; l <= 256; ++l) {
+      const double x = ca.frequency[l] / nu_c;
+      if (x < 0.1 || x > 0.9) continue;
+      e_max =
+          std::max(e_max, 2.0 * std::abs(ca.modulation[l] - cb.modulation[2 * l]) / mtf_circle(x));
+    }
+    INFO("e_max (relative) " << e_max);
+    CHECK(e_max <= 1e-3);
+    for (std::size_t l = 0; l <= 256; ++l) {
+      const double x = ca.frequency[l] / nu_c;
+      if (x < 0.1 || x > 0.9) continue;
+      INFO("x = " << x << ": N=512 " << cb.modulation[2 * l] << ", expected " << mtf_circle(x));
+      CHECK(std::abs(cb.modulation[2 * l] - mtf_circle(x)) / mtf_circle(x) <= e_max + 1e-12);
+      ++checked;
+    }
+    CHECK(ca.modulation[26] > 0.8);    // content guard: x = 0.10
+    CHECK(ca.modulation[230] < 0.05);  // x = 0.90
+  }
+  CHECK(checked > 400);
 }
 
 TEST_CASE("M6 case 4: defocus Strehl sinc^2(w), paraboloid F/50", "[m6]") {
