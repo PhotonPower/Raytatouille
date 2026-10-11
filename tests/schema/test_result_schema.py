@@ -93,3 +93,26 @@ def test_ray_batch_from_0_1_5_needs_wave(key: str, version: str):
     doc["schema_version"] = version
     with pytest.raises(jsonschema.ValidationError):
         VALIDATOR.validate(doc)
+
+
+# RayBatch gained q, RayPaths polarization, prt and q in 0.1.9 (#207, ADR 0034, ADR 0023
+# addendum): files of an older version stay valid without them, from 0.1.9 on they are required.
+ADDED_0_1_9 = [("RayBatch.result.json", "q"), ("RayPaths.result.json", "polarization"),
+               ("RayPaths.result.json", "prt"), ("RayPaths.result.json", "q")]
+
+
+@pytest.mark.parametrize("name,key", ADDED_0_1_9)
+def test_older_files_without_the_0_1_9_keys_are_valid(name: str, key: str):
+    for version in ("0.1.5", "0.1.8"):
+        doc = _broken(lambda d: d["data"].pop(key), name)
+        doc["schema_version"] = version
+        VALIDATOR.validate(doc)
+
+
+@pytest.mark.parametrize("name,key", ADDED_0_1_9)
+@pytest.mark.parametrize("version", ["0.1.9", "0.1.12"])
+def test_files_from_0_1_9_need_the_new_keys(name: str, key: str, version: str):
+    doc = _broken(lambda d: d["data"].pop(key), name)
+    doc["schema_version"] = version
+    with pytest.raises(jsonschema.ValidationError):
+        VALIDATOR.validate(doc)
