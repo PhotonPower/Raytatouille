@@ -227,7 +227,7 @@ TEST_CASE("pupil function: W and status bit for bit those of opd_points on the s
   // ADR 0032, point 2; also with a focus shift (point 5) and off the axis.
   const CompiledSystem cs = compiled(load("m2/cooke_triplet.rtt.json"));
   for (const double delta : {0.0, 0.3}) {
-    for (const std::uint16_t field : {0, 2}) {
+    for (const std::uint16_t field : {std::uint16_t{0}, std::uint16_t{2}}) {
       INFO("Delta = " << delta << ", field " << field);
       PupilFunctionOptions o;
       o.grid = 24;
