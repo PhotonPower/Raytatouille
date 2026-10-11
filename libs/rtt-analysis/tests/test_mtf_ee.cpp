@@ -154,16 +154,27 @@ std::complex<double> cell_value(const PupilFunction& p, std::size_t j) {
   return p.fraction[j] * p.amplitude[j] * std::polar(1.0, phase);
 }
 
+/// Centre coordinate (2 i + 1 - N) / N of cell column or row i: the lattice of the FFT, on which
+/// the model places every cell (also a boundary cell, whose W was sampled at its centroid).
+double cell_centre(std::size_t i, int n) {
+  return (2.0 * static_cast<double>(i) + 1.0 - n) / n;
+}
+
 /// Adds a tilt to W so that the PSF moves by t (mm in e_x, e_y): u_j gets the factor
-/// exp(+2 pi i t . M p_j / lambda), since U(x - t) = sum_j u_j exp(2 pi i t . M p_j / lambda)
-/// exp(-2 pi i x . M p_j / lambda) with the kernel of ADR 0033, point 2.
+/// exp(+2 pi i t . M c_j / lambda), since U(x - t) = sum_j u_j exp(2 pi i t . M c_j / lambda)
+/// exp(-2 pi i x . M c_j / lambda) with the kernel of ADR 0033, point 2 and c_j the cell centre.
+/// (The first form used the sample points px, py: at the centroids of the boundary cells the
+/// tilt is not linear on the lattice, and the move was off by 3e-3 relative; found in the slot.)
 PupilFunction tilted(const PupilFunction& p, const Point2& t) {
   REQUIRE(p.mapping.has_value());
   const auto& m = p.mapping->m;
+  const auto n = static_cast<std::size_t>(p.grid);
   PupilFunction q = p;
   for (std::size_t j = 0; j < q.w.size(); ++j) {
-    const double sx = m[0] * q.px[j] + m[1] * q.py[j];
-    const double sy = m[2] * q.px[j] + m[3] * q.py[j];
+    const double cx = cell_centre(j % n, p.grid);
+    const double cy = cell_centre(j / n, p.grid);
+    const double sx = m[0] * cx + m[1] * cy;
+    const double sy = m[2] * cx + m[3] * cy;
     // -2 pi i W' lambda_ref / lambda = -2 pi i W lambda_ref / lambda + 2 pi i t . s / lambda
     q.w[j] -= (t.x * sx + t.y * sy) / (p.reference_wavelength_um * 1e-3);
   }
@@ -252,13 +263,18 @@ TEST_CASE("mtf: tangential equals sagittal on the axis, along e_y and e_x", "[mt
 }
 
 TEST_CASE("mtf: a cylindrical defocus w py^2 lowers only the tangential curve", "[mtf]") {
-  // For shifts along px the phases of u_(j+l) and u_j cancel (same py), so the sagittal curve is
-  // that of the undisturbed pupil; the tangential one is checked against the autocorrelation
-  // summed here directly, without FFT. Swapped axes in the code fail both checks.
+  // For shifts along px the phases of u_(j+l) and u_j cancel (the same row centre), so the
+  // sagittal curve is that of the undisturbed pupil; the tangential one is checked against the
+  // autocorrelation summed here directly, without FFT. Swapped axes in the code fail both checks.
+  // The defocus uses the row centre, not the sample point py: at a boundary cell the centroid
+  // differs from the row centre, and the phases would not cancel (first form, found in the slot).
   const int n = 64;
   const PupilFunction p = pupil(paraboloid(10.0), n);
   PupilFunction q = p;
-  for (std::size_t j = 0; j < q.w.size(); ++j) q.w[j] += 0.5 * q.py[j] * q.py[j];
+  for (std::size_t j = 0; j < q.w.size(); ++j) {
+    const double cy = cell_centre(j / static_cast<std::size_t>(n), n);
+    q.w[j] += 0.5 * cy * cy;
+  }
   const Mtf m0 = rtt::analysis::mtf(p);
   const Mtf m1 = rtt::analysis::mtf(q);
   require_curves(m0, n);
@@ -286,9 +302,12 @@ TEST_CASE("mtf: a cylindrical defocus w py^2 lowers only the tangential curve", 
 }
 
 TEST_CASE("mtf: fields +y and -y give mirrored curves", "[mtf]") {
-  // 2 degrees: the tangential coma of the paraboloid is about 3 theta / (16 F#^2) f = 6.5 um,
-  // close to the Airy radius 1.22 lambda F# = 7.2 um, so tangential and sagittal differ visibly
-  // (estimate; the content guard below checks it).
+  // 2 degrees off the axis tangential and sagittal differ (coma and astigmatism of the
+  // paraboloid with the stop in front of it). The content guard only shows that they differ, so
+  // that the mirror comparison to 1e-12 is not trivial; it checks no accuracy. Measured: largest
+  // |T - S| = 9.3e-3, nine orders above the comparison tolerance; guard 1e-3. (The first form asked
+  // for 0.02 from an estimate of the coma, 3 theta / (16 F#^2) f, which was too high; changed with
+  // the coordinator's approval in the F3 slot.)
   rtt::model::System s = paraboloid_model(10.0);
   s.fields.points = {{0.0, 2.0, 1.0}, {0.0, -2.0, 1.0}};
   const CompiledSystem cs = compiled(s);
@@ -315,18 +334,21 @@ TEST_CASE("mtf: fields +y and -y give mirrored curves", "[mtf]") {
     CHECK(std::abs(std::abs(m->sagittal.direction[0]) - 1.0) <= 1e-12);
     CHECK(std::abs(std::abs(m->e_x.x()) - 1.0) <= 1e-12);
   }
-  CHECK(largest > 0.02);  // content guard: off the axis the two curves differ
+  CHECK(largest > 1e-3);  // content guard: off the axis the two curves differ (9.3e-3)
 }
 
-TEST_CASE("encircled energy: 1 - J0^2 - J1^2 of the circular pupil at N = 64 and 128", "[ee]") {
+TEST_CASE("encircled energy: 1 - J0^2 - J1^2 of the circular pupil at N = 128 and 256", "[ee]") {
   const CompiledSystem cs = paraboloid(10.0);
   const double s = airy_unit(pupil(cs, 16));
   const double r0 = j11() / std::numbers::pi;
   const std::vector<double> units{0.5, 1.0, r0, 2.0, 3.0, 5.0};
   std::vector<double> radii;
   for (const double u : units) radii.push_back(u * s);
-  const EncircledEnergy a = ee_n(cs, 64, radii);
-  const EncircledEnergy b = ee_n(cs, 128, radii);
+  // Grids 128 and 256 (coordinator, F3 slot; erratum to ADR 0033, point 10): at 64 / 128 the
+  // per-curve bound is 1.12e-3, from r = 5 lambda F#_w (the C++ value and an independent lag-sum
+  // prototype agree); at 128 / 256 it is 2.9e-4.
+  const EncircledEnergy a = ee_n(cs, 128, radii);
+  const EncircledEnergy b = ee_n(cs, 256, radii);
   REQUIRE(a.energy.size() == radii.size());
   REQUIRE(b.energy.size() == radii.size());
   CHECK(a.radii == radii);
@@ -341,7 +363,7 @@ TEST_CASE("encircled energy: 1 - J0^2 - J1^2 of the circular pupil at N = 64 and
   CHECK(e_max <= 1e-3);
   for (std::size_t i = 0; i < radii.size(); ++i) {
     const double expected = ee_airy(std::numbers::pi * units[i]);
-    INFO("r = " << units[i] << " lambda F#: N=64 " << a.energy[i] << ", N=128 " << b.energy[i]
+    INFO("r = " << units[i] << " lambda F#: N=128 " << a.energy[i] << ", N=256 " << b.energy[i]
                 << ", expected " << expected);
     CHECK(std::abs(b.energy[i] - expected) / expected <= e_max + 1e-12);
   }
@@ -355,9 +377,13 @@ TEST_CASE("encircled energy: 1 - J0^2 - J1^2 of the circular pupil at N = 64 and
 TEST_CASE("encircled energy: up to radius_max, a quarter of the period", "[ee]") {
   // The periodic PSF of the discrete model has the period N lambda F#_w on the axis; within
   // r_max = N lambda F#_w / 4 the neighbouring periods add only their Airy tails, about
-  // 4 r^2 / (pi^2 N^3) (ADR 0033, point 6): at r = 16 lambda F#_w that is 4e-4 for N = 64 and
-  // 5e-5 for N = 128, falling like N^-3, so the rule e = 2 |X_N - X_2N| covers it; e stays below
-  // 2e-3 (twice the tail plus the discretisation of point 9).
+  // 4 r^2 / (pi^2 N^3) (ADR 0033, point 6). At large r the deviation from 1 - J0^2 - J1^2 is
+  // dominated by the discretisation, which grows with r towards the edge deficit eps_N (the energy
+  // the boundary cells put outside the period; eps = 9.7e-3 at N = 64, 4.9e-3 at N = 128). The
+  // comparison at r = 16 lambda F#_w (radius_max of N = 64) therefore runs on the EE grids 128 and
+  // 256 (coordinator, F3 slot, as the other EE case): at 64 / 128 it was e = 3.2e-3 (EE -2.2e-3
+  // and -5.9e-4 off), above the bound 2e-3 of the first form, whose reasoning ("tail plus the
+  // discretisation of point 9") left out this growth.
   const CompiledSystem cs = paraboloid(10.0);
   const double s = airy_unit(pupil(cs, 16));
   const std::array<double, 0> none{};
@@ -369,16 +395,18 @@ TEST_CASE("encircled energy: up to radius_max, a quarter of the period", "[ee]")
   const EncircledEnergy full = ee_n(cs, 64, at_max);
   require_energy(full, 1);
   CHECK(full.energy[0] <= 1.0 - full.edge_energy_deficit + 1e-12);
-  const std::array<double, 1> r16{16.0 * s};
-  const EncircledEnergy at64 = ee_n(cs, 64, r16);
+  // The radius radius_max of N = 64 itself (16 lambda F#_w up to rounding): 16 s computed from
+  // the mapping of another grid can be an ulp above it (first form, found in the slot).
+  const std::array<double, 1> r16{probe.radius_max};
   const EncircledEnergy at128 = ee_n(cs, 128, r16);
-  require_energy(at64, 1);
+  const EncircledEnergy at256 = ee_n(cs, 256, r16);
   require_energy(at128, 1);
-  const double a = at64.energy[0];
-  const double b = at128.energy[0];
-  const double expected = ee_airy(16.0 * std::numbers::pi);
+  require_energy(at256, 1);
+  const double a = at128.energy[0];
+  const double b = at256.energy[0];
+  const double expected = ee_airy(std::numbers::pi * probe.radius_max / s);
   const double e = 2.0 * std::abs(a - b) + 1e-12;
-  INFO("N=64 " << a << ", N=128 " << b << ", expected " << expected);
+  INFO("N=128 " << a << ", N=256 " << b << ", expected " << expected);
   CHECK(e <= 2e-3);
   CHECK(std::abs(b - expected) <= e);
   const std::array<double, 1> beyond{
