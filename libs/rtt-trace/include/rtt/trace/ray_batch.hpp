@@ -148,6 +148,17 @@ class RayBatch {
   /// @pre has_q() and i < size() (not checked)
   void set_q_matrix(std::size_t i, const math::Mat3& q);
 
+  /// Marks the rays as virtual reference rays (ADR 0032, addendum #229): the sequential tracer
+  /// then does not test the inner radius of circular apertures (central obscurations), so the
+  /// chief ray of an obscured pupil reaches the image as the ray of the same system without the
+  /// obscuration; outer rims vignette as before. A ray that never meets an inner rim is traced
+  /// bitwise as without the request. Analyses request it for their reference rays (chief,
+  /// parabasal, zone rays), never for sampled rays. Off for a new batch; kept by resize().
+  void set_ignore_obscurations(bool ignore) noexcept { ignore_obscurations_ = ignore; }
+
+  /// True after set_ignore_obscurations(true).
+  [[nodiscard]] bool ignores_obscurations() const noexcept { return ignore_obscurations_; }
+
   /// Power for an unpolarized source, dimensionless (source normalised to 1): weight =
   /// s ||P_T||_F^2 / 2 with P_T = P - k k_0^T and s the polarization-independent factors (volume
   /// absorption, absorber). Power for a polarized state E: weight |P E|^2 / (||P_T||_F^2 / 2)
@@ -183,6 +194,7 @@ class RayBatch {
   std::array<std::vector<math::Complex>, 9> prt_;  // row-major: prt_[3 * row + col]
   std::array<std::vector<double>, 9> q_;           // row-major like prt_; empty without enable_q()
   bool q_enabled_ = false;
+  bool ignore_obscurations_ = false;
   std::vector<double> weight_;
   std::vector<RayStatus> status_;
   std::vector<std::uint16_t> field_;

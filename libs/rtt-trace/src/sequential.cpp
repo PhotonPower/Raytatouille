@@ -136,6 +136,8 @@ TraceStats trace_rays(const compile::CompiledSystem& system,
 
   // Q only on request (ADR 0034, addendum #207): only a batch with enable_q() carries it.
   const bool with_q = rays.has_q();
+  // Virtual reference rays (ADR 0032, addendum #229): no inner rims of circular apertures.
+  const bool ignore_obscurations = rays.ignores_obscurations();
   // Rays are independent; every ray is written by exactly one task, so the result does not
   // depend on the partitioning (ADR 0004).
   const auto trace_range = [&](const oneapi::tbb::blocked_range<std::size_t>& range) {
@@ -151,6 +153,7 @@ TraceStats trace_rays(const compile::CompiledSystem& system,
         ray.q = rays.q_matrix(i);
         ray.track_q = true;
       }
+      ray.ignore_obscurations = ignore_obscurations;
       ray.weight = rays.weight()[i];
       // Reading rule (ADR 0026, point 3): wave counts only inside a crystal (mode_index > 0);
       // otherwise wave := dir, so that a batch which sets only dir starts correctly.

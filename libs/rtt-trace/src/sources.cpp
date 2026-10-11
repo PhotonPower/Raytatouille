@@ -821,6 +821,12 @@ RayBatch make_rays_impl(const compile::CompiledSystem& system,
 
 }  // namespace
 
+double stop_radius(const CompiledSystem& system, PathId path, std::uint16_t wavelength) {
+  // The aim target of pupil point p is label_sign p r_ep stop_scale (aim()); |label_sign| = 1.
+  const Context c = make_context(system, path, wavelength);
+  return std::abs(c.r_ep * c.stop_scale);
+}
+
 RayBatch make_rays(const compile::CompiledSystem& system,
                    compile::PathId path,
                    std::span<const std::uint16_t> fields,

@@ -42,6 +42,11 @@ struct RayState {
   /// Request to form Q (ADR 0034, addendum #207): set by the tracer for a batch with
   /// RayBatch::has_q(); false for every other ray, e.g. while aiming.
   bool track_q = false;
+  /// Virtual reference ray (ADR 0032, addendum #229): sequential_step() does not test the inner
+  /// radius of circular apertures (central obscurations) and tests every outer rim as before.
+  /// Set by the tracer for a batch with RayBatch::ignores_obscurations(); false for every other
+  /// ray.
+  bool ignore_obscurations = false;
   /// Power for an unpolarized source (source normalised to 1): weight = s ||P_T||^2 / 2 with
   /// P_T = P - k k_0^T and s the polarization-independent factors (ADR 0021).
   double weight = 1.0;
@@ -194,6 +199,13 @@ inline constexpr double kApertureTolerance = 1e-9;
 [[nodiscard]] bool inside_aperture(const compile::CompiledSurface& surface,
                                    const SurfaceHit& hit) noexcept;
 
+/// inside_aperture() for a virtual reference ray (ADR 0032, addendum #229): with `ignore_inner`
+/// the inner radius of a circular aperture (a central obscuration) is not tested, every outer
+/// rim is, with the same tolerance; without it the same as the overload above.
+[[nodiscard]] bool inside_aperture(const compile::CompiledSurface& surface,
+                                   const SurfaceHit& hit,
+                                   bool ignore_inner) noexcept;
+
 /// Moves the ray to the hit point: position (global), OPL += Re(n_before) t (inside a crystal,
 /// mode_index > 0: OPL += mode_index t (wave . dir), Lam, Eq. (2.17), ADR 0026), last_surface, and
 /// volume absorption weight *= exp(-4 pi kappa t / lambda_vac) with kappa = Im(n_before), t the
@@ -305,7 +317,8 @@ inline constexpr double kApertureTolerance = 1e-9;
                                    double n_after) noexcept;
 
 /// One sequential step: intersect_surface(), then Vignetted (ray at the hit point) if the hit
-/// lies outside the aperture, otherwise apply_event(). Parameters as for apply_event().
+/// lies outside the aperture (for a ray with ignore_obscurations without the inner rims of
+/// circular apertures), otherwise apply_event(). Parameters as for apply_event().
 [[nodiscard]] RayState sequential_step(const RayState& ray,
                                        const compile::CompiledSurface& surface,
                                        std::uint32_t surface_index,

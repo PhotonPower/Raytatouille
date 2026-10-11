@@ -231,6 +231,18 @@ struct AimedRay {
                                double py,
                                Aiming aiming = Aiming::Real);
 
+/// Radius of the stop belonging to pupil coordinates |(px, py)| = 1, mm, > 0: |R_s| of the aim
+/// target sigma (px R_s, py R_s) of aim_ray() at `wavelength` (paraxial: the entrance pupil
+/// radius times the paraxial stop height per unit entrance-pupil height; for an object-space
+/// telecentric system the marginal slope times the stop height per unit slope). With real
+/// aiming a ray of pupil point p meets the stop at |p| |R_s| within kAimTolerance, so a centred
+/// obscuration of radius r_i at the stop is the pupil circle |p| = r_i / |R_s| (ADR 0032,
+/// addendum #229).
+/// @throws as aim_ray() for the path, the wavelength, the stop and the entrance pupil
+[[nodiscard]] double stop_radius(const compile::CompiledSystem& system,
+                                 compile::PathId path,
+                                 std::uint16_t wavelength);
+
 /// Rays for the given fields and one wavelength: for every field (outer loop) every pupil point
 /// (inner loop) of `sampling`, aimed with `aiming`. Sets pos, dir, wl, field, pupil_x, pupil_y,
 /// status (Alive or NoConvergence); OPL 0, weight 1, P = identity, last_surface = kNoSurface.
