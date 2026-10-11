@@ -6,9 +6,12 @@
 # the commit of the vcpkg port in the builtin-baseline, checked by the same SHA512. There is no
 # copy in the repository. tools/check_pins.py compares the two pins below with the vcpkg port in CI.
 #
-# The include directory is SYSTEM on purpose: GCC 16 reports -Wmaybe-uninitialized inside the
-# header at -O2 (pocketfft_hdronly.h:3307), and we build with -Werror; clang-tidy skips SYSTEM
-# headers through its HeaderFilter. Only libs/rtt-analysis/src/fft.cpp includes the header.
+# The include directory is SYSTEM on purpose: warnings of the third-party header must not break
+# -Werror (in the probe for ADR 0033, with SIMD paths enabled, GCC 16 reported
+# -Wmaybe-uninitialized at pocketfft_hdronly.h:3307), and clang-tidy skips SYSTEM headers through
+# its HeaderFilter. SYSTEM does not cover middle-end warnings after inlining such as
+# -Wnull-dereference; libs/rtt-analysis/src/fft.cpp, the only file that includes the header,
+# suppresses that one for GCC.
 
 # Pins of the vcpkg port "pocketfft" 2024-11-30 (ports/pocketfft/portfile.cmake at the
 # builtin-baseline). Keep both lines in this form: tools/check_pins.py reads them.

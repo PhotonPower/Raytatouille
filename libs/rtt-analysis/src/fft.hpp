@@ -6,12 +6,13 @@
 
 #include <complex>
 #include <cstddef>
+#include <cstdint>
 #include <span>
 
 namespace rtt::analysis::detail {
 
 /// Direction of the transform.
-enum class FftDirection {
+enum class FftDirection : std::uint8_t {
   Forward,   ///< y_k = sum_j x_j exp(-2 pi i j k / n) along each axis
   Backward,  ///< y_k = sum_j x_j exp(+2 pi i j k / n) along each axis
 };

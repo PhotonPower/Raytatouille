@@ -204,7 +204,8 @@ TEST_CASE("fft: Parseval", "[fft]") {
 TEST_CASE("fft: delta and constant", "[fft]") {
   for (const std::size_t n : {std::size_t{64}, std::size_t{100}, std::size_t{1018}}) {
     std::vector<C> d(n, C(0.0, 0.0));
-    d[0] = C(1.0, 0.0);
+    // at(): with d[0], GCC 16 at -O2 reports -Wnull-dereference although n >= 64.
+    d.at(0) = C(1.0, 0.0);
     std::vector<C> y = d;
     fft1(y, FftDirection::Forward);
     CHECK(max_diff(y, std::vector<C>(n, C(1.0, 0.0))) <= bound1(n, 1.0));
