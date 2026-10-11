@@ -55,6 +55,23 @@ nb::ndarray<nb::numpy, const std::complex<double>, nb::ndim<3>, nb::c_contig> jo
   return {owned_by_capsule->data(), 3, shape, owner};
 }
 
+/// Options of both forms; sampling and aiming apply to the convenience form only.
+analysis::JonesPupilOptions jones_options(JonesBasis basis,
+                                          bool remove_global_phase,
+                                          bool field_amplitude,
+                                          double lost_warning_fraction,
+                                          const trace::PupilSampling& sampling,
+                                          trace::Aiming aiming) {
+  analysis::JonesPupilOptions options;
+  options.sampling = sampling;
+  options.aiming = aiming;
+  options.basis = basis;
+  options.remove_global_phase = remove_global_phase;
+  options.field_amplitude = field_amplitude;
+  options.lost_warning_fraction = lost_warning_fraction;
+  return options;
+}
+
 }  // namespace
 
 void bind_jones(nb::module_& m) {
@@ -155,26 +172,41 @@ void bind_jones(nb::module_& m) {
               "pupil.chief_phase_unavailable (ADR 0023, 0034); raytatouille.analysis also issues "
               "them as RaytatouilleWarning.");
 
-  // STUB for the red run of #208 B2: replaced by the calls in the next commit.
   m.def(
       "jones_pupil",
-      [](const compile::CompiledSystem& /*s*/, const PathArg& /*path*/, std::uint16_t /*field*/,
-         std::optional<std::uint16_t> /*wavelength*/, const trace::PupilSampling& /*sampling*/,
-         trace::Aiming /*aiming*/, JonesBasis /*basis*/, bool /*remove_global_phase*/,
-         bool /*field_amplitude*/, double /*lost_warning_fraction*/, std::optional<int> /*threads*/,
-         const std::optional<trace::CancelToken>& /*cancel*/,
-         const std::optional<nb::callable>& /*progress*/) { return JonesPupil{}; },
+      [](const compile::CompiledSystem& s, const PathArg& path, std::uint16_t field,
+         std::optional<std::uint16_t> wavelength, const trace::PupilSampling& sampling,
+         trace::Aiming aiming, JonesBasis basis, bool remove_global_phase, bool field_amplitude,
+         double lost_warning_fraction, std::optional<int> threads,
+         const std::optional<trace::CancelToken>& cancel,
+         const std::optional<nb::callable>& progress) {
+        const trace::RunControl control = run_control(cancel, progress);
+        const analysis::JonesPupilOptions options = jones_options(
+            basis, remove_global_phase, field_amplitude, lost_warning_fraction, sampling, aiming);
+        return released(threads, [&] {
+          return analysis::jones_pupil(s, path_id(s, path), field, wavelength_index(s, wavelength),
+                                       options, control);
+        });
+      },
       "system"_a, "path"_a, "field"_a, "wavelength"_a.none(), "sampling"_a, "aiming"_a, "basis"_a,
       "remove_global_phase"_a, "field_amplitude"_a, "lost_warning_fraction"_a, "threads"_a.none(),
       "cancel"_a.none(), "progress"_a.none(),
       "Jones pupil of `field` (convenience form); wavelength None means the reference.");
   m.def(
       "jones_pupil_rays",
-      [](const compile::CompiledSystem& /*s*/, const PathArg& /*path*/,
-         const trace::RayBatch& /*start*/, std::size_t /*chief*/, JonesBasis /*basis*/,
-         bool /*remove_global_phase*/, bool /*field_amplitude*/, double /*lost_warning_fraction*/,
-         std::optional<int> /*threads*/, const std::optional<trace::CancelToken>& /*cancel*/,
-         const std::optional<nb::callable>& /*progress*/) { return JonesPupil{}; },
+      [](const compile::CompiledSystem& s, const PathArg& path, const trace::RayBatch& start,
+         std::size_t chief, JonesBasis basis, bool remove_global_phase, bool field_amplitude,
+         double lost_warning_fraction, std::optional<int> threads,
+         const std::optional<trace::CancelToken>& cancel,
+         const std::optional<nb::callable>& progress) {
+        const trace::RunControl control = run_control(cancel, progress);
+        const analysis::JonesPupilOptions options =
+            jones_options(basis, remove_global_phase, field_amplitude, lost_warning_fraction,
+                          trace::GridPupil{33}, trace::Aiming::Real);
+        return released(threads, [&] {
+          return analysis::jones_pupil(s, path_id(s, path), start, chief, options, control);
+        });
+      },
       "system"_a, "path"_a, "start"_a, "chief"_a, "basis"_a, "remove_global_phase"_a,
       "field_amplitude"_a, "lost_warning_fraction"_a, "threads"_a.none(), "cancel"_a.none(),
       "progress"_a.none(), "Jones pupil of the start rays `start` with chief ray `chief`.");

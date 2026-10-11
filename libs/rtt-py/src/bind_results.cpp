@@ -23,6 +23,7 @@ void bind_result_methods(nb::module_& m) {
                            "PupilCells",
                            "PupilFunction",
                            "ZernikeFit",
+                           "JonesPupil",
                            "LongitudinalColour",
                            "LateralColour",
                            "DistortionSweep",

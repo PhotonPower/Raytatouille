@@ -62,6 +62,7 @@ SCHEMA_VERSION = "0.1.10"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84)
 # 0.1.8: OpdPupilPoints, PupilCells, PupilFunction, ZernikeFit (#209)
 # 0.1.9: RayBatch q, RayPaths polarization, prt, q (#207)
 # 0.1.10: Interferogram (#210)
+# 0.1.11: JonesPupil (#208)
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a
@@ -106,6 +107,13 @@ _FIELDS: dict[str, tuple[str, ...]] = {
     "ZernikeFit": ("path", "field", "wavelength", "wavelength_um", "reference_wavelength_um",
                    "coefficients", "residual_rms", "sigma", "sigma_bf", "strehl", "cells",
                    "arrived_fraction", "warnings"),
+    # Jones pupil (ADR 0034, points 5, 6 and 8; #208)
+    "JonesPupil": ("path", "field", "wavelength", "wavelength_um", "reference_wavelength_um",
+                   "basis", "remove_global_phase", "field_amplitude", "global_phase", "x_in",
+                   "y_in", "k_in", "x_out", "y_out", "k_out", "sphere", "px", "py", "status",
+                   "w", "j", "transmission", "diattenuation", "diattenuation_orientation",
+                   "diattenuation_ellipticity", "retardance", "retardance_orientation",
+                   "retardance_ellipticity", "losses", "warnings"),
     "Foci": ("wavelength", "paraxial_z", "real_z"),
     "LongitudinalColour": ("pair", "foci", "paraxial", "real"),
     "LateralColour": ("field", "chief", "offset"),
@@ -190,7 +198,7 @@ _FIELDS: dict[str, tuple[str, ...]] = {
 #: Types that to_json writes and load_json accepts as "type".
 TYPES: tuple[str, ...] = (
     "SpotDiagram", "RayFan", "OpdMap", "OpdFan", "OpdPupilPoints", "PupilCells", "PupilFunction",
-    "ZernikeFit", "LongitudinalColour", "LateralColour",
+    "ZernikeFit", "JonesPupil", "LongitudinalColour", "LateralColour",
     "DistortionSweep", "DistortionPoint", "FieldCurvatureSweep", "FieldCurvaturePoint",
     "PathTransmission", "PathOplDifference", "Interferogram", "GhostRanking",
     "RaytraceReport", "SystemReport", "DimensionReport",

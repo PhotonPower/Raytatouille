@@ -386,6 +386,7 @@ JonesPupil jones_pupil(const CompiledSystem& system,
   jp.reference_wavelength_um = system.wavelengths_um()[reference];
   jp.basis = options.basis;
   jp.remove_global_phase = options.remove_global_phase;
+  jp.field_amplitude = options.field_amplitude;
   jp.sphere = ref.sphere;
 
   // Chief frames, both from the chief ray of the reference wavelength (addendum #208).
@@ -515,6 +516,7 @@ JonesPupil jones_pupil(const CompiledSystem& system,
   jp.reference_wavelength_um = system.wavelengths_um()[system.reference_wavelength()];
   jp.basis = options.basis;
   jp.remove_global_phase = options.remove_global_phase;
+  jp.field_amplitude = options.field_amplitude;
   jp.sphere.centre = position(rays, chief);
   jp.sphere.radius = std::numeric_limits<double>::quiet_NaN();  // no sphere in this form
   set_frames(jp, k0[chief], k_c, x_b);
