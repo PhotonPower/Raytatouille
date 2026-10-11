@@ -59,6 +59,19 @@ struct JonesPupilOptions {
   /// |det J(0, 0)| <= 1e-12 ||J(0, 0)||_F^2 (e.g. an ideal polarizer at the chief ray) psi is the
   /// argument of the element of J(0, 0) with the largest modulus.
   bool remove_global_phase = false;
+  /// Field amplitudes instead of the power-normalised P (ADR 0034, point 5, F4; addendum #208
+  /// B): J_field = J / prod_q sqrt(c_q) with the power factors c_q of the transmissions of the
+  /// path (Byrnes, Eqs. (21), (22)), reconstructed from the recorded path. The field in the
+  /// image-space medium, not normalised to vacuum. Only j changes; transmission, D and delta do
+  /// not depend on it. A point whose ray crosses an interface with |c_s - c_p| > 1e-9 c_s
+  /// (absorbing media; weak absorption such as glasses at their UV edge stays below) gets
+  /// j = NaN, with the warning "pupil.field_amplitude_absorbing"; with remove_global_phase and
+  /// a chief ray without J the phase stays, with "pupil.chief_phase_unavailable".
+  /// Cost: the trace records the path of every point, about points x (events + 1) x 65 bytes
+  /// (ray_paths.hpp), e.g. GridPupil{512} (about 206 000 points) on a path of 5 events about
+  /// 80 MB. rtt-trace has no recording trace with RunControl, so the trace then runs as one
+  /// block: a cancellation request is honoured only before it, progress is reported after it.
+  bool field_amplitude = false;
   trace::Aiming aiming = trace::Aiming::Real;  ///< aiming of all rays, chief rays included
   /// Warning "rays.lost" if more than this fraction of the launched rays is lost; in [0, 1].
   double lost_warning_fraction = 0.5;

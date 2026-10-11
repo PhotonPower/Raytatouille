@@ -32,6 +32,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <numbers>
 #include <optional>
 #include <string>
@@ -40,11 +41,13 @@
 
 #include "rtt/analysis/jones.hpp"
 #include "rtt/analysis/opd.hpp"
+#include "rtt/coating/catalog.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/io/json_io.hpp"
 #include "rtt/material/material.hpp"
 #include "rtt/model/model.hpp"
 #include "rtt/polar/fresnel.hpp"
+#include "rtt/polar/interface.hpp"
 #include "rtt/polar/prt.hpp"
 #include "rtt/polar/prt_analysis.hpp"
 #include "rtt/trace/apply_event.hpp"
@@ -992,5 +995,264 @@ TEST_CASE("the form for given start rays: input errors", "[jones][fold][errors]"
     } catch (const AnalysisError& e) {
       CHECK(e.location() == std::optional<std::string>("/paths/0"));
     }
+  }
+}
+
+// ------------------------------- option field amplitude (ADR 0034, point 5, F4; #208 B1) -----
+
+namespace {
+
+/// The system compiled with the demo and M3 coating catalogues (as test_m3_acceptance.cpp).
+CompiledSystem compiled_coated(const System& s) {
+  const auto coatings = std::make_unique<rtt::coating::CoatingLibrary>();
+  coatings->add_catalog(std::string(RTT_CATALOG_DIR) + "/coatings/demo.json");
+  coatings->add_catalog(std::string(RTT_CATALOG_DIR) + "/coatings/m3.json");
+  return rtt::compile::compile(s, rtt::material::MaterialLibrary{}, *coatings);
+}
+
+/// A glass plate in vacuum: front surface B.S1 at z = 10 (Refract with diffraction order
+/// `order`; a linear grating of 300 lines/mm, grooves along y, if order != 0) and back surface
+/// B.S2 at z = 10 + thickness as the image surface (Transmit, a pass without effect): the rays
+/// end inside the glass, so the image-space medium is the glass (addendum #208 B).
+System glass_block(const std::string& material, double thickness, int order = 0) {
+  System s;
+  s.name = "glass block";
+  s.environment.medium = "VACUUM";
+  s.wavelengths = {{0.55, 1.0, true}};
+  s.aperture = {rtt::model::SystemApertureType::EntrancePupilDiameter, Param(6.0)};
+  s.fields = {rtt::model::FieldType::AngleDeg, {{0.0, 0.0, 1.0}}};
+  s.root.name = "root";
+  Surface front;
+  front.id = SurfaceId("B.S1");
+  if (order != 0) front.phases = {rtt::model::LinearGrating{Param(300.0)}};
+  Surface back;
+  back.id = SurfaceId("B.S2");
+  back.pose = Pose::along_z(thickness);
+  s.root.children = {
+      {Element{"block", ElementKind::Plate, Pose::along_z(10.0), material, {front, back}}}};
+  s.paths = {{"into the glass",
+              false,
+              {{SurfaceId("B.S1"), EventKind::Refract, order},
+               {SurfaceId("B.S2"), EventKind::Transmit, 0}}}};
+  return s;
+}
+
+/// 5 x 5 parallel rays along k0 = (0, sin theta, cos theta), started on the plane through the
+/// origin perpendicular to k0 at x, y in {-3, -1.5, 0, 1.5, 3} (along x and (0, cos, -sin)),
+/// labelled (x, y) / 3; the chief ray has index kChief.
+rtt::trace::RayBatch tilted_rays(double theta) {
+  const Vec3 k0(0.0, std::sin(theta), std::cos(theta));
+  const Vec3 v(0.0, std::cos(theta), -std::sin(theta));
+  rtt::trace::RayBatch rays(25);
+  for (std::size_t i = 0; i < 25; ++i) {
+    const double x = -3.0 + 1.5 * static_cast<double>(i % 5);
+    const double y = -3.0 + 1.5 * static_cast<double>(i / 5);
+    const Vec3 p = x * Vec3::UnitX() + y * v;
+    rays.pos_x()[i] = p.x();
+    rays.pos_y()[i] = p.y();
+    rays.pos_z()[i] = p.z();
+    rays.dir_x()[i] = k0.x();
+    rays.dir_y()[i] = k0.y();
+    rays.dir_z()[i] = k0.z();
+    rays.pupil_x()[i] = x / 3.0;
+    rays.pupil_y()[i] = y / 3.0;
+  }
+  return rays;
+}
+
+JonesPupilOptions field_amplitude(bool on, bool remove_global_phase = false) {
+  JonesPupilOptions o;
+  o.field_amplitude = on;
+  o.remove_global_phase = remove_global_phase;
+  return o;
+}
+
+bool has_warning(const JonesPupil& jp, const std::string& code) {
+  return std::any_of(jp.warnings.begin(), jp.warnings.end(),
+                     [&](const auto& d) { return d.code == code && d.location == "/paths/0"; });
+}
+
+}  // namespace
+
+TEST_CASE("field amplitude: refraction into glass gives J = diag(t_s, t_p)", "[jones][field]") {
+  // A collimated beam at 30 deg onto glass n = 1.5 (Byrnes, Eqs. (21), (22), with the Fresnel
+  // amplitudes of polar::fresnel), the rays ending inside the glass. The power-normalised J is
+  // diag(t_s sqrt(c), t_p sqrt(c)) times the phase, c = n cos(theta_t) / cos(theta_i) (s = x =
+  // x_in = x_out, p_in = y_in, p_out = y_out as in the 45 deg fold); the field amplitude divides
+  // the sqrt(c) out (ADR 0034, point 5, F4): J_field = exp(-2 pi i w) diag(t_s, t_p), the field in
+  // the image-space medium (addendum #208 B). J 1e-9 (phase rounding of the 45 deg fold), the
+  // ratio to the power-normalised J 1e-14; the maps and w stay bit for bit.
+  const double theta = kPi / 6.0;
+  const CompiledSystem cs = compiled(glass_block("CONST:1.5", 10.0));
+  const auto start = tilted_rays(theta);
+  const JonesPupil power = rtt::analysis::jones_pupil(cs, PathId{0}, start, kChief);
+  const JonesPupil field =
+      rtt::analysis::jones_pupil(cs, PathId{0}, start, kChief, field_amplitude(true));
+  const auto a = rtt::polar::fresnel<double>(Cx(1.0), Cx(1.5), std::sin(theta));
+  const double sin_t = std::sin(theta) / 1.5;
+  const double c = 1.5 * std::sqrt(1.0 - sin_t * sin_t) / std::cos(theta);
+  REQUIRE(field.status.size() == 25);
+  for (std::size_t r = 0; r < 25; ++r) {
+    INFO("point " << r);
+    REQUIRE(field.status[r] == RayStatus::Alive);
+    const Cx phase = std::polar(1.0, -2.0 * kPi * field.w[r]);
+    CHECK(std::abs(field.j[4 * r + 0] - phase * a.ts) <= 1e-9);
+    CHECK(std::abs(field.j[4 * r + 1]) <= 1e-9);
+    CHECK(std::abs(field.j[4 * r + 2]) <= 1e-9);
+    CHECK(std::abs(field.j[4 * r + 3] - phase * a.tp) <= 1e-9);
+    for (std::size_t e = 0; e < 4; ++e) {
+      CHECK(std::abs(field.j[4 * r + e] * std::sqrt(c) - power.j[4 * r + e]) <= 1e-14);
+    }
+  }
+  CHECK(same_bits(field.w, power.w));
+  CHECK(same_bits(field.transmission, power.transmission));
+  CHECK(same_bits(field.diattenuation, power.diattenuation));
+  CHECK(same_bits(field.retardance, power.retardance));
+  CHECK(field.warnings.empty());
+  CHECK(std::sqrt(c) > 1.2);  // content guard: the power factor is not 1
+}
+
+TEST_CASE("field amplitude: the coated singlet against c from the geometry", "[jones][field]") {
+  // m3/ar_singlet (AR coating DEMO:AR_MGF2 on both surfaces, a sphere R = 52 and a plane) in the
+  // convenience form. Per point the power factors of both refractions from the recorded
+  // directions and the normals of the geometry (sphere: (P - C) / R; plane: z), independent of the
+  // tracer's normals and of the tangential invariant: c = n_t |k_out . N| / (n_i |k_in . N|)
+  // (Byrnes, Eq. (21), real indices). J_field = J / sqrt(c_1 c_2) to 1e-12 (the normals of
+  // geometry and tracer differ by rounding); the maps stay bit for bit.
+  const CompiledSystem cs = compiled_coated(load("m3/ar_singlet.rtt.json"));
+  const auto& events = cs.path(PathId{0}).events;
+  double largest_change = 0.0;
+  for (const std::uint16_t field : {std::uint16_t{0}, std::uint16_t{2}}) {
+    INFO("field " << field);
+    JonesPupilOptions on;
+    on.field_amplitude = true;
+    const JonesPupil power = rtt::analysis::jones_pupil(cs, PathId{0}, field, 1);
+    const JonesPupil amplitude = rtt::analysis::jones_pupil(cs, PathId{0}, field, 1, on);
+    const auto paths = recorded(cs, field, 1, on.sampling);
+    REQUIRE(amplitude.status.size() == paths.ray_count());
+    for (std::size_t r = 0; r < paths.ray_count(); ++r) {
+      if (amplitude.status[r] != RayStatus::Alive) continue;
+      INFO("point " << r);
+      double product = 1.0;
+      for (std::size_t q = 0; q < events.size(); ++q) {
+        if (events[q].kind != EventKind::Refract) continue;
+        const auto& surface = cs.surfaces()[events[q].surface];
+        const Vec3 k_in = paths.direction_at(r, q);
+        const Vec3 k_out = paths.direction_at(r, q + 1);
+        const Vec3 hit = paths.position_at(r, q + 1);
+        const Vec3 vertex = surface.to_global.apply_point(Vec3::Zero());
+        const Vec3 n = surface.id == SurfaceId("L1.S1")
+                           ? Vec3((hit - (vertex + 52.0 * Vec3::UnitZ())) / 52.0)
+                           : Vec3::UnitZ();
+        const double n_i = cs.media()[events[q].medium_before].index[1].real();
+        const double n_t = cs.media()[events[q].medium_after].index[1].real();
+        product *= n_t * std::abs(k_out.dot(n)) / (n_i * std::abs(k_in.dot(n)));
+      }
+      const double factor = std::sqrt(product);
+      for (std::size_t e = 0; e < 4; ++e) {
+        CHECK(std::abs(amplitude.j[4 * r + e] - power.j[4 * r + e] / factor) <= 1e-12);
+      }
+      largest_change = std::max(largest_change, std::abs(factor - 1.0));
+    }
+    CHECK(same_bits(amplitude.w, power.w));
+    CHECK(same_bits(amplitude.transmission, power.transmission));
+    CHECK(same_bits(amplitude.diattenuation, power.diattenuation));
+    CHECK(same_bits(amplitude.retardance, power.retardance));
+  }
+  CHECK(largest_change > 1e-3);  // content guard: about 4e-3 at the rim (c_1 c_2 = 1.008)
+}
+
+TEST_CASE("field amplitude: reflections carry no power factor", "[jones][field]") {
+  // The 45 deg fold of PR C: c = 1 at a reflection (ADR 0021, point 1), so J_field is J bit for
+  // bit.
+  const CompiledSystem cs = compiled(fold45(std::string("CONST:1.2,7.26")));
+  const auto start = parallel_rays();
+  const JonesPupil power = rtt::analysis::jones_pupil(cs, PathId{0}, start, kChief);
+  const JonesPupil field =
+      rtt::analysis::jones_pupil(cs, PathId{0}, start, kChief, field_amplitude(true));
+  CHECK(same_bits(field.j, power.j));
+  CHECK(field.warnings.empty());
+}
+
+TEST_CASE("field amplitude: a diffraction order keeps the power factor of order 0",
+          "[jones][field]") {
+  // A grating of 300 lines/mm on the front of the glass, order +1, at normal incidence. The
+  // tracer forms P_m = R(k_0 -> k_m) P_0 with P_0 the refraction of order 0 (ADR 0025), whose
+  // power factor at normal incidence is c = n_t / n_i = 1.5 exactly (Byrnes, Eq. (21) with
+  // q = n): J_field = J / sqrt(1.5) to 1e-14. The factor of the diffracted direction,
+  // 1.5 cos(theta_1), would differ by about 3e-3.
+  const CompiledSystem cs = compiled(glass_block("CONST:1.5", 5.0, 1));
+  const auto start = tilted_rays(0.0);
+  const JonesPupil power = rtt::analysis::jones_pupil(cs, PathId{0}, start, kChief);
+  const JonesPupil field =
+      rtt::analysis::jones_pupil(cs, PathId{0}, start, kChief, field_amplitude(true));
+  REQUIRE(field.status.size() == 25);
+  for (std::size_t r = 0; r < 25; ++r) {
+    INFO("point " << r);
+    REQUIRE(field.status[r] == RayStatus::Alive);
+    for (std::size_t e = 0; e < 4; ++e) {
+      CHECK(std::abs(field.j[4 * r + e] * std::sqrt(1.5) - power.j[4 * r + e]) <= 1e-14);
+    }
+  }
+  // Content guard: the order is diffracted (sin theta_1 = 300 lambda / 1.5 = 0.11 in the glass).
+  CHECK(std::abs(field.k_out.x()) > 0.1);
+  const double cos_1 = std::sqrt(1.0 - field.k_out.x() * field.k_out.x());
+  CHECK(std::abs(std::sqrt(1.5 * cos_1) - std::sqrt(1.5)) > 1e-3);
+}
+
+TEST_CASE("field amplitude: absorbing glass gives J = NaN with warnings", "[jones][field]") {
+  // n = 1.5 + 1e-3 i: |c_s - c_p| / c_s = 1.1e-7 at 30 deg (Byrnes, Eqs. (21), (22); about
+  // 2 kappa^2 xi^2 / (n^2 q^2)), far above the threshold 1e-9, so J_field is no scalar multiple of
+  // J and is NaN at every point, with one warning pupil.field_amplitude_absorbing (ADR 0034,
+  // point 5). Transmission, D and delta do not depend on the option and stay. With the global
+  // phase requested the chief ray has no J: the option does nothing, pupil.chief_phase_unavailable.
+  // A 0.1 mm plate keeps the volume absorption small (exp(-4 pi kappa t / lambda) = 0.1).
+  const auto factors = rtt::polar::transmission_power_factors<double>(Cx(1.0), Cx(1.5, 1e-3), 0.5);
+  REQUIRE(std::abs(factors.s - factors.p) > 1e-8 * factors.s);  // premise: well above 1e-9
+  const CompiledSystem cs = compiled(glass_block("CONST:1.5,1e-3", 0.1));
+  const auto start = tilted_rays(kPi / 6.0);
+  const JonesPupil power = rtt::analysis::jones_pupil(cs, PathId{0}, start, kChief);
+  const JonesPupil field =
+      rtt::analysis::jones_pupil(cs, PathId{0}, start, kChief, field_amplitude(true, true));
+  REQUIRE(field.status.size() == 25);
+  for (std::size_t r = 0; r < 25; ++r) {
+    INFO("point " << r);
+    CHECK(field.status[r] == RayStatus::Alive);
+    CHECK(std::isnan(field.j[4 * r].real()));
+    CHECK(std::isfinite(field.diattenuation[r]));
+  }
+  CHECK(same_bits(field.transmission, power.transmission));
+  CHECK(same_bits(field.diattenuation, power.diattenuation));
+  CHECK(same_bits(field.retardance, power.retardance));
+  CHECK(has_warning(field, "pupil.field_amplitude_absorbing"));
+  CHECK(has_warning(field, "pupil.chief_phase_unavailable"));
+  CHECK(field.global_phase == 0.0);
+  CHECK(power.warnings.empty());  // without the option: no warning
+}
+
+TEST_CASE("field amplitude: weak absorption below the threshold keeps J", "[jones][field]") {
+  // n = 1.5 + 1e-5 i, the order of catalogue glasses at their UV edge (kappa from the transmission
+  // data, ADR 0021): |c_s - c_p| / c_s = 1.1e-11 at 30 deg, below the threshold 1e-9 (review of
+  // #242), so no NaN and no warning. Dividing by sqrt(c_s) leaves the p part off by
+  // |c_s - c_p| / (2 c_s) = 6e-12: J_field = exp(-2 pi i w) diag(t_s, t_p) with the Fresnel
+  // amplitudes of the absorbing glass to 1e-9, as for real glass.
+  const Cx n(1.5, 1e-5);
+  const auto factors = rtt::polar::transmission_power_factors<double>(Cx(1.0), n, 0.5);
+  const double gap = std::abs(factors.s - factors.p) / factors.s;
+  REQUIRE(gap > 1e-12);  // premise: above the threshold rejected in the review
+  REQUIRE(gap < 1e-10);  // and well below the threshold 1e-9
+  const CompiledSystem cs = compiled(glass_block("CONST:1.5,1e-5", 1.0));
+  const auto start = tilted_rays(kPi / 6.0);
+  const JonesPupil field =
+      rtt::analysis::jones_pupil(cs, PathId{0}, start, kChief, field_amplitude(true));
+  const auto a = rtt::polar::fresnel<double>(Cx(1.0), n, 0.5);
+  CHECK(field.warnings.empty());
+  REQUIRE(field.status.size() == 25);
+  for (std::size_t r = 0; r < 25; ++r) {
+    INFO("point " << r);
+    REQUIRE(field.status[r] == RayStatus::Alive);
+    const Cx phase = std::polar(1.0, -2.0 * kPi * field.w[r]);
+    CHECK(std::abs(field.j[4 * r + 0] - phase * a.ts) <= 1e-9);
+    CHECK(std::abs(field.j[4 * r + 3] - phase * a.tp) <= 1e-9);
   }
 }

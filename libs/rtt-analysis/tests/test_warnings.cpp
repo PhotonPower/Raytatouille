@@ -261,6 +261,50 @@ TEST_CASE("pupil.basis_pole for a given ray at the pole of the double-pole basis
   CHECK(jp.warnings[0].location == "/paths/0");
 }
 
+TEST_CASE("pupil.field_amplitude_absorbing and pupil.chief_phase_unavailable at the path",
+          "[analysis][warnings]") {
+  // ADR 0034, point 5, option field amplitude (#208 B1): a collimated ray at 30 deg into a
+  // 0.1 mm plate of n = 1.5 + 1e-3 i, ending inside it. |c_s - c_p| / c_s = 1.1e-7 > 1e-9, so J
+  // is NaN (one warning with the number of points); the global phase then has no chief J (second
+  // warning).
+  System s;
+  s.name = "absorbing plate";
+  s.root.name = "root";
+  s.environment.medium = "VACUUM";
+  s.wavelengths = {{0.55, 1.0, true}};
+  s.aperture = {rtt::model::SystemApertureType::EntrancePupilDiameter, rtt::model::Param(2.0)};
+  s.fields = {rtt::model::FieldType::AngleDeg, {{0.0, 0.0, 1.0}}};
+  rtt::model::Surface front;
+  front.id = rtt::model::SurfaceId("B.S1");
+  rtt::model::Surface back;
+  back.id = rtt::model::SurfaceId("B.S2");
+  back.pose = rtt::model::Pose::along_z(0.1);
+  s.root.children = {{rtt::model::Element{"block",
+                                          rtt::model::ElementKind::Plate,
+                                          rtt::model::Pose::along_z(10.0),
+                                          std::string("CONST:1.5,1e-3"),
+                                          {front, back}}}};
+  s.paths = {{"into the glass",
+              false,
+              {{rtt::model::SurfaceId("B.S1"), rtt::model::EventKind::Refract, 0},
+               {rtt::model::SurfaceId("B.S2"), rtt::model::EventKind::Transmit, 0}}}};
+  const CompiledSystem cs = compiled(s);
+  rtt::trace::RayBatch rays(1);
+  rays.dir_y()[0] = 0.5;
+  rays.dir_z()[0] = std::sqrt(0.75);
+  rtt::analysis::JonesPupilOptions o;
+  o.field_amplitude = true;
+  const auto plain = rtt::analysis::jones_pupil(cs, PathId{0}, rays, 0, o);
+  REQUIRE(plain.warnings.size() == 1);
+  CHECK(plain.warnings[0].code == "pupil.field_amplitude_absorbing");
+  CHECK(plain.warnings[0].location == "/paths/0");
+  o.remove_global_phase = true;
+  const auto global = rtt::analysis::jones_pupil(cs, PathId{0}, rays, 0, o);
+  REQUIRE(global.warnings.size() == 2);
+  CHECK(global.warnings[1].code == "pupil.chief_phase_unavailable");
+  CHECK(global.warnings[1].location == "/paths/0");
+}
+
 TEST_CASE("every analysis code has a case in this file", "[analysis][warnings]") {
   const std::set<std::string> covered = {"rays.lost",
                                          "stop.clips_beam",
@@ -269,7 +313,9 @@ TEST_CASE("every analysis code has a case in this file", "[analysis][warnings]")
                                          "zernike.pupil_incomplete",
                                          "psf.aliasing",
                                          "psf.pupil_undersampled",
-                                         "pupil.basis_pole"};
+                                         "pupil.basis_pole",
+                                         "pupil.field_amplitude_absorbing",
+                                         "pupil.chief_phase_unavailable"};
   for (const rtt::diagnostics::CodeInfo& info : rtt::diagnostics::kCodes) {
     if (info.producer != "analysis") continue;
     INFO("no case for " << info.code);
