@@ -149,6 +149,7 @@ TEST_CASE("quarter-wave plate at 45 deg: |S3| = S0 over the whole pupil", "[stok
   // Content guard: the rays converge (different k), and light along the fast axis stays linear.
   CHECK(std::abs(jp.k_out.z() - 1.0) <= 1e-15);
   const StokesPupil along = rtt::analysis::stokes_pupil(jp, Cx(1.0), Cx(1.0));
+  REQUIRE(along.s3.size() == 25);
   for (std::size_t r = 0; r < 25; ++r) {
     INFO("point " << r);
     CHECK(std::abs(along.s3[r]) <= 1e-12);
@@ -202,6 +203,9 @@ TEST_CASE("handedness: right circular stays S3 = +S0 in free space", "[stokes]")
   const StokesPupil st = rtt::analysis::stokes_pupil(jp, Cx(0.0, 3.0), Cx(3.0));
   CHECK(std::abs(st.e1 - Cx(0.0, std::sqrt(0.5))) <= 1e-15);
   CHECK(std::abs(st.e2 - Cx(std::sqrt(0.5))) <= 1e-15);
+  REQUIRE(st.s0.size() == 25);
+  REQUIRE(st.s3.size() == 25);
+  REQUIRE(st.ellipticity.size() == 25);
   for (std::size_t r = 0; r < 25; ++r) {
     INFO("point " << r);
     CHECK(std::abs(st.s3[r] - 1.0) <= 1e-15);
@@ -233,6 +237,8 @@ TEST_CASE("power scale with absorption: S0(x) + S0(y) = 2 weight", "[stokes]") {
       rtt::analysis::jones_pupil(compiled(s), PathId{0}, rays, kChief, JonesPupilOptions{});
   const StokesPupil x = rtt::analysis::stokes_pupil(jp, Cx(1.0), Cx(0.0));
   const StokesPupil y = rtt::analysis::stokes_pupil(jp, Cx(0.0), Cx(1.0));
+  REQUIRE(x.s0.size() == 25);
+  REQUIRE(y.s0.size() == 25);
   for (std::size_t r = 0; r < 25; ++r) {
     INFO("point " << r);
     REQUIRE(jp.status[r] == RayStatus::Alive);
