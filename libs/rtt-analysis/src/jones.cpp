@@ -404,7 +404,7 @@ JonesPupil jones_pupil(const CompiledSystem& system,
     jp.py[i] = rays.pupil_y()[i];
     jp.status[i] = status;
     if (status != trace::RayStatus::Alive) {
-      jp.w[i] = std::numeric_limits<double>::quiet_NaN();
+      jp.w[i] = 0.0;  // as opd_points(): masked by the status
       continue;
     }
     jp.w[i] = (opl_chief - rays.opl()[i]) / lambda_ref_mm;
