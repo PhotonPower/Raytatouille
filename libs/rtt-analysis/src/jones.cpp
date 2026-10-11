@@ -9,17 +9,23 @@
 #include <cstdint>
 #include <limits>
 #include <numbers>
+#include <numeric>
 #include <optional>
+#include <span>
 #include <stdexcept>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "common.hpp"
 #include "reference.hpp"
 #include "rtt/diagnostics/codes.hpp"
 #include "rtt/math/types.hpp"
+#include "rtt/polar/interface.hpp"
 #include "rtt/polar/prt_analysis.hpp"
 #include "rtt/trace/apply_event.hpp"
+#include "rtt/trace/ray_paths.hpp"
+#include "rtt/trace/run_control.hpp"
 #include "rtt/trace/sequential.hpp"
 
 namespace rtt::analysis {
@@ -38,6 +44,11 @@ constexpr double kGrazingLimit = 1e-6;
 /// |det J(0, 0)| at or below this times ||J(0, 0)||_F^2: the global phase from the largest
 /// element instead of the determinant (ADR 0034, point 5).
 constexpr double kSingularDeterminant = 1e-12;
+/// |c_s - c_p| above this times c_s: the power factors of a transmission differ (absorbing
+/// media), so J_field is no scalar multiple of J (ADR 0034, point 5; addendum #208 B). For real
+/// indices both are Re(q_t) / Re(q_i) analytically (Byrnes, Eqs. (21), (22) with
+/// Re(n^2 q*) / |n|^2 = Re(q) for real n) and differ only by rounding, a few ulp.
+constexpr double kEqualPowerFactors = 1e-12;
 
 std::string path_pointer(PathId path) {
   return "/paths/" + std::to_string(path.index);
@@ -147,9 +158,14 @@ void resize_points(JonesPupil& jp, std::size_t n) {
 }
 
 /// J and the maps of point i that arrived (ADR 0034, points 5 and 6): ray i of the traced
-/// `rays` with start direction k0, jp.w[i] already set. False at a pole of a basis, where the
-/// point keeps NaN.
-bool fill_point(JonesPupil& jp, const trace::RayBatch& rays, std::size_t i, const Vec3& k0) {
+/// `rays` with start direction k0, jp.w[i] already set; J divided by `field_factor` (option
+/// field amplitude, 1 without it; NaN: j stays NaN, the maps are filled). False at a pole of a
+/// basis, where the point keeps NaN.
+bool fill_point(JonesPupil& jp,
+                const trace::RayBatch& rays,
+                std::size_t i,
+                const Vec3& k0,
+                double field_factor = 1.0) {
   const Vec3 k = direction(rays, i);
   const std::optional<std::array<Vec3, 2>> in = double_pole_basis(jp.x_in, jp.y_in, jp.k_in, k0);
   const std::optional<std::array<Vec3, 2>> out = output_basis(jp, k);
@@ -162,8 +178,10 @@ bool fill_point(JonesPupil& jp, const trace::RayBatch& rays, std::size_t i, cons
   // Phase factor exp(-2 pi i W lambda_ref / lambda) (ADR 0034, point 5).
   const double phase_scale =
       -2.0 * std::numbers::pi * jp.reference_wavelength_um / jp.wavelength_um;
-  const Complex factor = std::polar(1.0, phase_scale * jp.w[i]);
-  for (std::size_t e = 0; e < 4; ++e) jp.j[4 * i + e] = factor * j[e];
+  if (!std::isnan(field_factor)) {
+    const Complex factor = std::polar(1.0 / field_factor, phase_scale * jp.w[i]);
+    for (std::size_t e = 0; e < 4; ++e) jp.j[4 * i + e] = factor * j[e];
+  }
   jp.transmission[i] = rays.weight()[i];
   const polar::Diattenuation d = polar::diattenuation(p, k0, k);
   jp.diattenuation[i] = d.value;
@@ -183,6 +201,92 @@ void remove_global_phase(JonesPupil& jp, const std::array<Complex, 4>& j00) {
   jp.global_phase = global_phase_of(j00);
   const Complex turn = std::polar(1.0, -jp.global_phase);
   for (Complex& z : jp.j) z *= turn;
+}
+
+/// Traces `rays` (Q requested). With the field-amplitude option it records the paths of all
+/// rays for the power factors: rtt-trace has no recording trace with RunControl, so the trace is
+/// one block then, cancellation is checked before it and progress reported after it; the batch
+/// ends bitwise as without recording (sequential.hpp).
+std::optional<trace::RayPaths> trace_points(const CompiledSystem& system,
+                                            PathId path,
+                                            trace::RayBatch& rays,
+                                            bool record,
+                                            const trace::RunControl& control) {
+  if (!record) {
+    [[maybe_unused]] const auto stats =
+        trace::SequentialTracer().trace(system, path, rays, control);
+    return std::nullopt;
+  }
+  trace::RunMonitor monitor(control, rays.size(), "trace");
+  if (monitor.stop()) monitor.finish();  // throws Cancelled
+  std::vector<std::size_t> all(rays.size());
+  std::iota(all.begin(), all.end(), std::size_t{0});
+  trace::RayPaths paths;
+  [[maybe_unused]] const auto stats =
+      trace::SequentialTracer().trace(system, path, rays, paths, std::span<const std::size_t>(all));
+  monitor.add(rays.size());
+  monitor.finish();
+  return paths;
+}
+
+/// prod_q sqrt(c_q) of recorded ray r (ADR 0034, point 5, F4): c_q = c_s of every Refract at a
+/// Fresnel or coated surface, the only events whose P carries sqrt(c) (apply_event.cpp; a
+/// diffraction order inherits P_0 of order 0 with the same tangential invariant; reflections and
+/// ideal elements carry none). The same computation as the tracer: the hit from the recorded
+/// state before the event (slot q, bitwise the tracer's), the global normal of that hit,
+/// polar::tangential_invariant and polar::transmission_power_factors (Byrnes, Eqs. (21), (22)).
+/// NaN if c_s and c_p differ by more than kEqualPowerFactors (absorbing media).
+double field_factor(const CompiledSystem& system,
+                    PathId path,
+                    std::uint16_t wavelength,
+                    const trace::RayPaths& paths,
+                    std::size_t r) {
+  const auto& events = system.path(path).events;
+  double product = 1.0;
+  for (std::size_t q = 0; q < events.size(); ++q) {
+    const compile::CompiledEvent& e = events[q];
+    if (e.kind != model::EventKind::Refract) continue;
+    const compile::CompiledSurface& surface = system.surfaces()[e.surface];
+    const bool fresnel = std::holds_alternative<model::Fresnel>(surface.interaction);
+    const bool coated =
+        std::holds_alternative<model::CoatingRef>(surface.interaction) && surface.coating;
+    if (!fresnel && !coated) continue;
+    trace::RayState in;
+    in.pos = paths.position_at(r, q);
+    in.dir = paths.direction_at(r, q);
+    const trace::SurfaceHit hit = trace::intersect_surface(in, surface);
+    const Vec3 normal = surface.to_global.apply_vector(hit.normal);
+    const Complex n_i = system.media()[e.medium_before].index[wavelength];
+    const Complex n_t = system.media()[e.medium_after].index[wavelength];
+    const double xi = polar::tangential_invariant(in.dir, normal, n_i);
+    const polar::PowerFactors<double> c = polar::transmission_power_factors(n_i, n_t, xi);
+    if (!(std::abs(c.s - c.p) <= kEqualPowerFactors * std::abs(c.s))) {
+      return std::numeric_limits<double>::quiet_NaN();
+    }
+    product *= c.s;
+  }
+  return std::sqrt(product);
+}
+
+/// "pupil.field_amplitude_absorbing" with the number of points, if any (ADR 0034, point 5).
+void warn_absorbing(JonesPupil& jp, std::size_t absorbing) {
+  if (absorbing == 0) return;
+  constexpr diagnostics::DiagnosticCode kCode = "pupil.field_amplitude_absorbing";
+  jp.warnings.push_back({kCode.severity(), path_pointer(jp.path),
+                         std::to_string(absorbing) +
+                             " point(s) of the Jones pupil cross an absorbing interface "
+                             "(c_s != c_p): the field amplitude is no scalar multiple of J, j is "
+                             "NaN there",
+                         std::string(kCode.str())});
+}
+
+/// "pupil.chief_phase_unavailable": the global phase was requested, but the chief ray has no J.
+void warn_chief_phase(JonesPupil& jp) {
+  constexpr diagnostics::DiagnosticCode kCode = "pupil.chief_phase_unavailable";
+  jp.warnings.push_back({kCode.severity(), path_pointer(jp.path),
+                         "the chief ray has no J (field amplitude NaN): the global phase is not "
+                         "removed",
+                         std::string(kCode.str())});
 }
 
 /// "pupil.basis_pole" with the number of points at a pole, if any (ADR 0034, point 5).
@@ -297,11 +401,13 @@ JonesPupil jones_pupil(const CompiledSystem& system,
       trace::make_rays(system, path, fields, wavelength, options.sampling, options.aiming, control);
   const std::vector<Vec3> k0 = start_directions(rays);
   rays.enable_q();
-  [[maybe_unused]] const auto stats = trace::SequentialTracer().trace(system, path, rays, control);
+  const std::optional<trace::RayPaths> paths =
+      trace_points(system, path, rays, options.field_amplitude, control);
 
   const std::size_t n = rays.size();
   resize_points(jp, n);
   std::size_t poles = 0;
+  std::size_t absorbing = 0;
   for (std::size_t i = 0; i < n; ++i) {
     const OpdPoint q = detail::point_against(position(rays, i), direction(rays, i), rays.opl()[i],
                                              detail::arrived(rays, i, image), rays.status()[i],
@@ -312,21 +418,40 @@ JonesPupil jones_pupil(const CompiledSystem& system,
     jp.status[i] = q.status;
     jp.w[i] = q.w;
     if (q.status != trace::RayStatus::Alive) continue;
-    if (!fill_point(jp, rays, i, k0[i])) ++poles;  // unreachable in this form, see jones.hpp
+    const double ff = paths ? field_factor(system, path, wavelength, *paths, i) : 1.0;
+    if (std::isnan(ff)) ++absorbing;
+    if (!fill_point(jp, rays, i, k0[i], ff)) ++poles;  // unreachable in this form, see jones.hpp
   }
 
+  bool chief_phase_unavailable = false;
   if (options.remove_global_phase) {
-    // J(0, 0) of the chief ray of the evaluated wavelength (W = 0 there by construction).
+    // J(0, 0) of the chief ray of the evaluated wavelength (W = 0 there by construction). The
+    // field amplitude scales it by a positive factor, which leaves psi; it only matters whether
+    // the chief ray has a J at all.
+    bool chief_has_j = true;
+    if (options.field_amplitude) {
+      trace::RayBatch again = chief_start;
+      const std::optional<trace::RayPaths> chief_path =
+          trace_points(system, path, again, true, trace::RunControl{});
+      chief_has_j =
+          chief_path && !std::isnan(field_factor(system, path, wavelength, *chief_path, 0));
+    }
     const Vec3 k0_c = direction(chief_start, 0);
     const Vec3 k_c = direction(chief, 0);
     const auto in = double_pole_basis(jp.x_in, jp.y_in, jp.k_in, k0_c);
     const auto out = output_basis(jp, k_c);
-    if (in && out) remove_global_phase(jp, jones_matrix(chief.prt_matrix(0), *in, *out));
+    if (!chief_has_j) {
+      chief_phase_unavailable = true;
+    } else if (in && out) {
+      remove_global_phase(jp, jones_matrix(chief.prt_matrix(0), *in, *out));
+    }
   }
 
   jp.losses = losses.result();
   jp.warnings = losses.warnings();
   warn_poles(jp, poles);
+  warn_absorbing(jp, absorbing);
+  if (chief_phase_unavailable) warn_chief_phase(jp);
   return jp;
 }
 
@@ -362,7 +487,8 @@ JonesPupil jones_pupil(const CompiledSystem& system,
   trace::RayBatch rays = start;
   const std::vector<Vec3> k0 = start_directions(rays);
   rays.enable_q();
-  [[maybe_unused]] const auto stats = trace::SequentialTracer().trace(system, path, rays, control);
+  const std::optional<trace::RayPaths> paths =
+      trace_points(system, path, rays, options.field_amplitude, control);
 
   // The chief ray gives both frames and the reference of the phase (addendum #208, PR C).
   const std::uint32_t image = detail::image_surface(system, path);
@@ -394,6 +520,7 @@ JonesPupil jones_pupil(const CompiledSystem& system,
   const std::size_t n = rays.size();
   resize_points(jp, n);
   std::size_t poles = 0;
+  std::size_t absorbing = 0;
   for (std::size_t i = 0; i < n; ++i) {
     trace::RayStatus status = rays.status()[i];
     if (status == trace::RayStatus::Alive && rays.last_surface()[i] != image) {
@@ -408,11 +535,16 @@ JonesPupil jones_pupil(const CompiledSystem& system,
       continue;
     }
     jp.w[i] = (opl_chief - rays.opl()[i]) / lambda_ref_mm;
-    if (!fill_point(jp, rays, i, k0[i])) ++poles;
+    const double ff = paths ? field_factor(system, path, wavelength, *paths, i) : 1.0;
+    if (std::isnan(ff)) ++absorbing;
+    if (!fill_point(jp, rays, i, k0[i], ff)) ++poles;
   }
 
-  // J(0, 0) is the chief ray's: w = 0 there exactly, never at a pole (k0 = k_in, k = k_c).
-  if (options.remove_global_phase) {
+  // J(0, 0) is the chief ray's: w = 0 there exactly, never at a pole (k0 = k_in, k = k_c); with
+  // the field amplitude it is NaN if the chief ray crosses an absorbing interface.
+  const bool chief_phase_unavailable =
+      options.remove_global_phase && std::isnan(jp.j[4 * chief].real());
+  if (options.remove_global_phase && !chief_phase_unavailable) {
     remove_global_phase(
         jp, {jp.j[4 * chief], jp.j[4 * chief + 1], jp.j[4 * chief + 2], jp.j[4 * chief + 3]});
   }
@@ -420,6 +552,8 @@ JonesPupil jones_pupil(const CompiledSystem& system,
   jp.losses = losses.result();
   jp.warnings = losses.warnings();
   warn_poles(jp, poles);
+  warn_absorbing(jp, absorbing);
+  if (chief_phase_unavailable) warn_chief_phase(jp);
   return jp;
 }
 

@@ -64,7 +64,12 @@ struct JonesPupilOptions {
   /// path (Byrnes, Eqs. (21), (22)), reconstructed from the recorded path. The field in the
   /// image-space medium, not normalised to vacuum. Only j changes; transmission, D and delta do
   /// not depend on it. A point whose ray crosses an absorbing interface (c_s != c_p) gets
-  /// j = NaN, with the warning "pupil.field_amplitude_absorbing".
+  /// j = NaN, with the warning "pupil.field_amplitude_absorbing"; with remove_global_phase and
+  /// a chief ray without J the phase stays, with "pupil.chief_phase_unavailable".
+  /// Cost: the trace records the path of every point, about points x (events + 1) x 65 bytes
+  /// (ray_paths.hpp), e.g. GridPupil{512} (about 206 000 points) on a path of 5 events about
+  /// 80 MB. rtt-trace has no recording trace with RunControl, so the trace then runs as one
+  /// block: a cancellation request is honoured only before it, progress is reported after it.
   bool field_amplitude = false;
   trace::Aiming aiming = trace::Aiming::Real;  ///< aiming of all rays, chief rays included
   /// Warning "rays.lost" if more than this fraction of the launched rays is lost; in [0, 1].
