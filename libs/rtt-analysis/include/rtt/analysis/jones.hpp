@@ -23,6 +23,7 @@
 
 #include <array>
 #include <complex>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -72,9 +73,9 @@ struct PolarizationEllipse {
 /// Jones pupil of one field at one wavelength (ADR 0034, points 5 and 6). Per pupil point; a
 /// point whose ray did not arrive on the image surface or misses the reference sphere carries
 /// the status of opd_points() and NaN in j and in every map, a point near a pole of a basis
-/// (closer than 1e-6 rad) NaN in j and the maps with its status Alive. In this form the rays stay
-/// close to the chief ray and no pole is reached; the warning "pupil.basis_pole" comes with the
-/// form for given start rays (#208, PR C).
+/// (closer than 1e-6 rad) NaN in j and the maps with its status Alive, with the warning
+/// "pupil.basis_pole". In the convenience form the rays stay close to the chief ray and no pole
+/// is reached; with given start rays it can be.
 struct JonesPupil {
   compile::PathId path{};
   std::uint16_t field = 0;               ///< index into CompiledSystem::fields().points
@@ -95,7 +96,8 @@ struct JonesPupil {
   math::Vec3 x_out = math::Vec3::UnitX();
   math::Vec3 y_out = math::Vec3::UnitY();
   math::Vec3 k_out = math::Vec3::UnitZ();  ///< k_c
-  ReferenceSphere sphere;                  ///< of W, as opd_points()
+  /// Of W, as opd_points(); radius NaN in the form for given start rays (no sphere there).
+  ReferenceSphere sphere;
   // Per pupil point, in the order of the sampling:
   std::vector<double> px, py;
   std::vector<trace::RayStatus> status;  ///< as OpdPoint::status
@@ -116,7 +118,8 @@ struct JonesPupil {
   std::vector<double> retardance_orientation;  ///< psi of the fast state, rad
   std::vector<double> retardance_ellipticity;  ///< chi of the fast state, rad
   RayLosses losses;  ///< every launched ray by the status of its point (ADR 0023)
-  /// Warnings with stable codes: "rays.lost", "stop.clips_beam" as opd_points().
+  /// Warnings with stable codes: "rays.lost", "stop.clips_beam" as opd_points(),
+  /// "pupil.basis_pole" (location /paths/i, the number of points in the message).
   std::vector<model::Diagnostic> warnings;
 };
 
@@ -145,6 +148,42 @@ struct JonesPupil {
                                      compile::PathId path,
                                      std::uint16_t field,
                                      std::uint16_t wavelength,
+                                     const JonesPupilOptions& options,
+                                     const trace::RunControl& control);
+
+/// Jones pupil of given start rays (ADR 0034, addendum #208, PR C): the form for paths that are
+/// not rotationally symmetric (folds, tilts), without aiming and without paraxial data. The rays
+/// of `start` (a copy, traced with Q requested) need one wavelength; `chief` is the index of the
+/// chief ray among them, which gives both chief frames (its start direction and its direction on
+/// the image surface, the surface of the last event) and the reference of the phase. px, py are
+/// taken from start.pupil_x() and start.pupil_y(). Of the options, basis, remove_global_phase
+/// and lost_warning_fraction apply; sampling and aiming do not.
+///
+/// The phase has no reference sphere: phi = 2 pi (OPL - OPL_c) / lambda with the OPL up to the
+/// image surface, so w = (OPL_c - OPL) / lambda_ref in waves at lambda_ref (the sign of W) and
+/// phi = -2 pi w lambda_ref / lambda as in the convenience form. This is exact for a collimated
+/// beam on an image surface perpendicular to it; for a converging beam it is the OPD against the
+/// image plane, not against a sphere. `sphere.radius` is NaN. A point arrives (status Alive) if
+/// its ray ends Alive on the image surface. A point within 1e-6 rad of a pole of a basis gets
+/// J = NaN and NaN maps, with the warning "pupil.basis_pole" (location /paths/i, the number of
+/// points in the message).
+/// @throws std::invalid_argument for an invalid path, an empty batch, chief >= start.size(), rays
+///         of different wavelengths or an invalid wavelength index, lost_warning_fraction
+///         outside [0, 1]
+/// @throws AnalysisError with location /paths/i for a path with crystal modes (before tracing);
+///         with the lost chief ray if it does not end Alive on the image surface; with the
+///         location of the image surface if the chief ray grazes it (|x_B x k_c| <= 1e-6)
+[[nodiscard]] JonesPupil jones_pupil(const compile::CompiledSystem& system,
+                                     compile::PathId path,
+                                     const trace::RayBatch& start,
+                                     std::size_t chief,
+                                     const JonesPupilOptions& options = {});
+
+/// The form for given start rays with cancellation and progress (#83), stage "trace".
+[[nodiscard]] JonesPupil jones_pupil(const compile::CompiledSystem& system,
+                                     compile::PathId path,
+                                     const trace::RayBatch& start,
+                                     std::size_t chief,
                                      const JonesPupilOptions& options,
                                      const trace::RunControl& control);
 

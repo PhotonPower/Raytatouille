@@ -286,4 +286,22 @@ JonesPupil jones_pupil(const CompiledSystem& system,
   return jp;
 }
 
+// STUB for the red run of PR C (#208): replaced by the implementation in the next commit.
+JonesPupil jones_pupil(const CompiledSystem& system,
+                       PathId path,
+                       const trace::RayBatch& start,
+                       std::size_t chief,
+                       const JonesPupilOptions& options) {
+  return jones_pupil(system, path, start, chief, options, trace::RunControl{});
+}
+
+JonesPupil jones_pupil(const CompiledSystem& /*system*/,
+                       PathId /*path*/,
+                       const trace::RayBatch& /*start*/,
+                       std::size_t /*chief*/,
+                       const JonesPupilOptions& /*options*/,
+                       const trace::RunControl& /*control*/) {
+  return {};
+}
+
 }  // namespace rtt::analysis
