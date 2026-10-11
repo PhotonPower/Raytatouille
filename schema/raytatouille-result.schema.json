@@ -29,6 +29,7 @@
         "PupilCells",
         "PupilFunction",
         "ZernikeFit",
+        "JonesPupil",
         "LongitudinalColour",
         "LateralColour",
         "DistortionSweep",
@@ -1107,6 +1108,53 @@
               "strehl",
               "cells",
               "arrived_fraction",
+              "warnings"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "JonesPupil"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "path",
+              "field",
+              "wavelength",
+              "wavelength_um",
+              "reference_wavelength_um",
+              "basis",
+              "remove_global_phase",
+              "field_amplitude",
+              "global_phase",
+              "x_in",
+              "y_in",
+              "k_in",
+              "x_out",
+              "y_out",
+              "k_out",
+              "sphere",
+              "px",
+              "py",
+              "status",
+              "w",
+              "j",
+              "transmission",
+              "diattenuation",
+              "diattenuation_orientation",
+              "diattenuation_ellipticity",
+              "retardance",
+              "retardance_orientation",
+              "retardance_ellipticity",
+              "losses",
               "warnings"
             ]
           }

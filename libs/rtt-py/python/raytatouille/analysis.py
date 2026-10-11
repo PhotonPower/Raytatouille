@@ -60,6 +60,8 @@ from ._core import (
     Interferogram,
     InterferogramArrival,
     InterferogramPoints,
+    JonesBasis,
+    JonesPupil,
     LateralColour,
     LongitudinalColour,
     MaterialLibrary,
@@ -118,6 +120,8 @@ __all__ = [
     "Interferogram",
     "InterferogramArrival",
     "InterferogramPoints",
+    "JonesBasis",
+    "JonesPupil",
     "LateralColour",
     "LongitudinalColour",
     "MAX_PUPIL_GRID",
@@ -152,6 +156,7 @@ __all__ = [
     "field_curvature_at",
     "ghost_ranking",
     "interferogram",
+    "jones_pupil",
     "lateral_colour",
     "longitudinal_colour",
     "noll_from_nm",
@@ -241,7 +246,7 @@ def sampling(rays: str | PupilSampling) -> PupilSampling:
 
 _R = TypeVar("_R", SpotDiagram, RayFan, OpdMap, OpdFan, OpdPupilPoints, PupilFunction,
               ZernikeFit, PathTransmission, PathOplDifference, Interferogram, GhostRanking,
-              SystemReport)
+              SystemReport, JonesPupil)
 
 
 def _warn(result: _R) -> _R:
@@ -602,6 +607,80 @@ def field_curvature_at(
     return _core.field_curvature_at(
         compiled(system, materials), path, _field(field), wavelength, delta, aiming, threads
     )
+
+
+# ---------------------------------------------------------------- Jones pupil (#208, ADR 0034) ---
+
+def jones_pupil(
+    system: SystemLike,
+    path: int | str = 0,
+    *,
+    start: RayBatch | None = None,
+    chief: int | None = None,
+    field: int | None = None,
+    wavelength: int | None = None,
+    rays: str | PupilSampling | None = None,
+    aiming: Aiming | None = None,
+    basis: JonesBasis = JonesBasis.DOUBLE_POLE,
+    remove_global_phase: bool = False,
+    field_amplitude: bool = False,
+    materials: MaterialLibrary | None = None,
+    threads: int | None = None,
+    lost_warning_fraction: float = 0.5,
+    cancel: CancelToken | None = None,
+    progress: ProgressCallback | None = None,
+) -> JonesPupil:
+    """Jones pupil of ``path`` (ADR 0034, points 5 and 6; #208): per pupil point the 2 x 2
+    Jones matrix ``j`` (shape (n, 2, 2), rows the output, columns the input basis) and the maps
+    transmission, diattenuation and physical retardance with orientation and ellipticity.
+
+    Two forms, as path_transmission():
+
+    - make_rays (convenience form; rotationally symmetric paths only): ``field`` (default 0)
+      at ``wavelength`` (None: reference) with the pupil sampling ``rays`` (default "grid:33")
+      and ``aiming`` (default REAL); the phase w is W of opd_points (reference sphere)::
+
+          jp = rt.analysis.jones_pupil(compiled, field=1, rays="grid:17")
+
+    - Start rays (for folded and tilted paths): ``start`` is a RayBatch of one wavelength from a
+      source (P = identity), ``chief`` the index of the chief ray in it, which gives both
+      frames; the phase is the OPL difference up to the image surface without a reference
+      sphere (sphere.radius NaN). ``field``, ``wavelength``, ``rays`` and ``aiming`` are not
+      allowed then (ValueError)::
+
+          jp = rt.analysis.jones_pupil(compiled, "periscope", start=rays, chief=12)
+
+    ``basis``: output basis, DOUBLE_POLE (default) or DIPOLE. ``remove_global_phase``: multiply
+    every J by exp(-i psi), psi = arg det J(0, 0) / 2. ``field_amplitude``: J without the power
+    factors sqrt(c) of the transmissions (the field in the image-space medium); points across
+    an absorbing interface get j = NaN.
+
+    Check ``status`` first: a point that did not arrive has w = 0 and NaN in j and the maps.
+    Raises ValueError for an invalid path, chief or wavelength, mixed forms or empty start rays;
+    ParaxialError (convenience form) for a path that is not rotationally symmetric;
+    AnalysisError for a path with crystal modes (location /paths/i), a lost or grazing chief
+    ray; Cancelled after a cancellation. Warnings (rays.lost, stop.clips_beam,
+    pupil.basis_pole, pupil.field_amplitude_absorbing, pupil.chief_phase_unavailable) stay in
+    ``warnings`` and are also issued as RaytatouilleWarning.
+    """
+    _start_form(start, field, rays, aiming, wavelength)
+    if (start is None) != (chief is None):
+        raise ValueError("start and chief go together: the chief ray is an index into start")
+    cs = compiled(system, materials)
+    if start is not None:
+        assert chief is not None
+        if chief < 0:
+            raise ValueError(f"chief ray index {chief} is negative")
+        return _warn(_core.jones_pupil_rays(
+            cs, path, start, chief, basis, remove_global_phase, field_amplitude,
+            lost_warning_fraction, threads, cancel, progress,
+        ))
+    return _warn(_core.jones_pupil(
+        cs, path, 0 if field is None else field, wavelength,
+        sampling("grid:33" if rays is None else rays),
+        Aiming.REAL if aiming is None else aiming, basis, remove_global_phase, field_amplitude,
+        lost_warning_fraction, threads, cancel, progress,
+    ))
 
 
 # ----------------------------------------------- path evaluation and ghosts (#122 to #124) ---

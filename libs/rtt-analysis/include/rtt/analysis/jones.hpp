@@ -97,6 +97,8 @@ struct JonesPupil {
   double reference_wavelength_um = 0.0;  ///< reference wavelength in vacuum, um (unit of W)
   JonesBasis basis = JonesBasis::DoublePole;
   bool remove_global_phase = false;
+  /// true: j holds field amplitudes (JonesPupilOptions::field_amplitude), false: power-normalised
+  bool field_amplitude = false;
   double global_phase = 0.0;  ///< psi removed, rad; 0 without remove_global_phase
   /// Chief frame at the input, global: x_c, y_c = R(z -> k0_c) (x, y) (R = diag(1, -1, -1) for
   /// k0_c = -z), k0_c the start direction of the chief ray of the reference wavelength.
