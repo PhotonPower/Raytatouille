@@ -113,7 +113,8 @@ struct Psf {
 /// by the direct sum over the cells (O(N^2) per point), **in Strehl units**:
 /// |sum_j u_j exp(-2 pi i x . M p_j / lambda)|^2 / |sum_j f_j A_j|^2, so 1 is the peak of the
 /// same pupil without aberration and the value at x = 0 is the Strehl ratio. The lattice values
-/// of psf() are these values times |sum f A|^2 / (L^2 E).
+/// of psf() are these values times |sum f A|^2 / (L^2 E). lambda and lambda_ref are
+/// pupil.wavelength_um and pupil.reference_wavelength_um (vacuum, um), so no system is needed.
 /// @throws AnalysisError if the pupil function has no mapping (afocal) or no arrived cell
 [[nodiscard]] std::vector<double> psf_at(const PupilFunction& pupil, std::span<const Point2> x);
 
