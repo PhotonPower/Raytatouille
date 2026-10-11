@@ -212,7 +212,7 @@ TEST_CASE("focus_shift = 0 gives the sphere and W of before bit for bit", "[opd]
   zero.focus_shift = 0.0;
   OpdOptions minus_zero;
   minus_zero.focus_shift = -0.0;
-  for (const std::uint16_t field : {0, 1}) {
+  for (const std::uint16_t field : {std::uint16_t{0}, std::uint16_t{1}}) {
     const auto a = rtt::analysis::opd_map(cs, kPath, field, 0);
     for (const OpdOptions& o : {zero, minus_zero}) {
       const auto b = rtt::analysis::opd_map(cs, kPath, field, 0, o);
