@@ -42,7 +42,7 @@ TEST_CASE("ideal lens: the spot of every field is a point", "[ideal][analysis]")
   const rtt::compile::PathId path = *cs.find_path("ideal lens");
   // Object heights of the fields; the image lies at m (x0, y0) with m = s'/s = -2.
   const std::array<std::array<double, 2>, 3> object{{{0.0, 0.0}, {0.0, 5.0}, {3.0, -4.0}}};
-  for (const std::uint16_t field : {0, 1, 2}) {
+  for (const std::uint16_t field : {std::uint16_t{0}, std::uint16_t{1}, std::uint16_t{2}}) {
     INFO("field " << field);
     const rtt::analysis::SpotDiagram spot =
         rtt::analysis::spot(cs, path, field, cs.reference_wavelength());
@@ -57,7 +57,7 @@ TEST_CASE("ideal lens: the spot of every field is a point", "[ideal][analysis]")
 TEST_CASE("ideal lens: OPD map 0 for the design conjugate", "[ideal][analysis][opd]") {
   const rtt::compile::CompiledSystem cs = compiled(reference());
   const rtt::compile::PathId path = *cs.find_path("ideal lens");
-  for (const std::uint16_t field : {0, 1, 2}) {
+  for (const std::uint16_t field : {std::uint16_t{0}, std::uint16_t{1}, std::uint16_t{2}}) {
     INFO("field " << field);
     const rtt::analysis::OpdMap map =
         rtt::analysis::opd_map(cs, path, field, cs.reference_wavelength());
