@@ -256,8 +256,9 @@ TEST_CASE("ideal lens: the OPL jump is the eikonal of the direction change",
           "[ideal][trace][opl]") {
   // For the rays of a point of the design plane Delta is a function W(q) of the hit point, and
   // grad W = n (t'_par - t_par) (ADR 0031, point 3). Central difference with h = 1e-3 mm:
-  // truncation h^2 |W'''| / 6 with |W'''| <~ 3 n / f^2 is about 2e-10, rounding u |W| / h about
-  // 1e-13 (W up to 1 mm); tolerance 1e-8.
+  // truncation h^2 |W'''| / 6 with |W'''| <~ 3 n / f^2 is about 2e-10. delta() forms
+  // after.opl - n t with |opl| about 75 mm, so the rounding is about u 75 / h = 1e-11; tolerance
+  // 1e-8.
   const CompiledSystem cs = compiled(reference());
   const rtt::compile::CompiledSurface& lens = surface(cs, "IL");
   const std::uint32_t index = *cs.find_surface(rtt::model::SurfaceId{"IL"});
@@ -394,6 +395,9 @@ TEST_CASE("ideal cylinder lens: crossed cylinder lenses act as the ideal lens", 
     const auto c =
         rtt::trace::apply_event(ray, il, hit_il, 0, rtt::model::EventKind::Transmit, 0, media);
     REQUIRE((a.status == RayStatus::Alive && b.status == RayStatus::Alive));
+    // Same hit point and same direction as the ideal lens, whose rays meet in the image within
+    // 1e-9 mm (first test): the spot of the crossed lenses follows (ADR 0031, point 9).
+    CHECK((b.pos - c.pos).norm() < 1e-12);
     CHECK((b.dir - c.dir).norm() < 1e-15);
   }
 }
@@ -510,6 +514,107 @@ TEST_CASE("ideal lens: the backward passage is the mirrored forward passage", "[
     // The backward image lies mirrored at z = -150 (local), up to 1e-9 mm.
     const Vec3 image = at_z(b.pos, b.dir, -150.0);
     CHECK((image - Vec3(-6.0, 8.0, -150.0)).norm() < kPositionTolerance);
+  }
+}
+
+TEST_CASE("ideal lens: lens -> mirror -> lens in the tracer", "[ideal][trace]") {
+  // ADR 0031, point 9 (Rueckweg): a plane ideal mirror M at z = d = 25 behind IL, the path
+  // STO, IL, M, IL. The forward image at z = s' = 150 is mirrored to z = 2 d - 150 = -100, a
+  // virtual object s_b = 100 mm behind the lens along the backward propagation; its image lies
+  // at s_b' = 1 / (1/f + 1/s_b) along -z with m_b = s_b'/s_b. The tracer hits IL from behind with
+  // the reflected local direction; the second passage must equal the mirrored forward passage
+  // of the same ray (apply_event at the lens in its basic pose), Delta included. The backward
+  // object s_b = 100 is not the design conjugate (object_distance 75), so the OPL of the
+  // backward image is not equal for all rays (the r^4 rest of point 3); hence the comparison
+  // with the mirrored passage and no OPL span.
+  const double d = 25.0;
+  const double f = 50.0;
+  System s = reference();
+  rtt::model::Node mirror_node = s.root.children[1];  // a copy of the thin element IL
+  Element& mirror = std::get<Element>(mirror_node.value);
+  mirror.kind = rtt::model::ElementKind::Mirror;
+  mirror.name = "mirror";
+  mirror.pose.position[2] = Param(d);
+  mirror.surfaces[0].id = rtt::model::SurfaceId{"M"};
+  mirror.surfaces[0].interaction = rtt::model::IdealMirror{};
+  s.root.children.push_back(mirror_node);
+  const double s_back = 2.0 * d - 150.0;  // z of the mirrored forward image: -100
+  const double sb = -s_back;              // virtual object 100 mm along the backward propagation
+  const double sb_image = 1.0 / (1.0 / f + 1.0 / sb);
+  rtt::model::Node detector_node = s.root.children[3];  // a copy of the detector IMG
+  Element& detector = std::get<Element>(detector_node.value);
+  detector.name = "back image";
+  detector.pose.position[2] = Param(-sb_image);
+  detector.surfaces[0].id = rtt::model::SurfaceId{"BIMG"};
+  s.root.children.push_back(detector_node);
+  using rtt::model::EventKind;
+  using rtt::model::SurfaceId;
+  const auto path = [](std::string name, std::vector<rtt::model::Event> events) {
+    return rtt::model::Path{std::move(name), false, std::move(events)};
+  };
+  const rtt::model::Event sto{SurfaceId{"STO"}, EventKind::Transmit, 0};
+  const rtt::model::Event il{SurfaceId{"IL"}, EventKind::Transmit, 0};
+  const rtt::model::Event m{SurfaceId{"M"}, EventKind::Reflect, 0};
+  s.paths.push_back(path("to mirror", {sto, il, m}));
+  s.paths.push_back(path("back to lens", {sto, il, m, il}));
+  s.paths.push_back(
+      path("back image", {sto, il, m, il, {SurfaceId{"BIMG"}, EventKind::Transmit, 0}}));
+  const CompiledSystem cs = compiled(s);
+  const rtt::compile::CompiledSurface& lens = surface(cs, "IL");
+  const rtt::trace::EventMedia media = environment(cs);
+
+  const Vec3 object(3.0, -4.0, -75.0);
+  RayBatch at_mirror = rays_from(object);
+  RayBatch at_lens = rays_from(object);
+  RayBatch at_image = rays_from(object);
+  trace(cs, "to mirror", at_mirror);
+  trace(cs, "back to lens", at_lens);
+  trace(cs, "back image", at_image);
+  all_alive(at_mirror);
+  all_alive(at_lens);
+  all_alive(at_image);
+  const double m_back = sb_image / sb;
+  const Vec3 image(-2.0 * m_back * object.x(), -2.0 * m_back * object.y(), -sb_image);
+  for (std::size_t i = 0; i < at_mirror.size(); ++i) {
+    INFO("ray " << i);
+    // The mirrored forward passage: the ray after M with z -> -z, through IL in +z.
+    rtt::trace::RayState mirrored;
+    mirrored.pos = pos(at_mirror, i).cwiseProduct(Vec3(1.0, 1.0, -1.0));
+    mirrored.dir = dir(at_mirror, i).cwiseProduct(Vec3(1.0, 1.0, -1.0));
+    mirrored.opl = at_mirror.opl()[i];
+    const auto hit = rtt::trace::intersect_surface(mirrored, lens);
+    const auto forward =
+        rtt::trace::apply_event(mirrored, lens, hit, 0, EventKind::Transmit, 0, media);
+    REQUIRE(forward.status == RayStatus::Alive);
+    CHECK(std::abs(at_lens.pos_x()[i] - forward.pos.x()) < 1e-12);
+    CHECK(std::abs(at_lens.pos_y()[i] - forward.pos.y()) < 1e-12);
+    CHECK(std::abs(at_lens.dir_x()[i] - forward.dir.x()) < 1e-15);
+    CHECK(std::abs(at_lens.dir_y()[i] - forward.dir.y()) < 1e-15);
+    CHECK(std::abs(at_lens.dir_z()[i] + forward.dir.z()) < 1e-15);
+    CHECK(std::abs(at_lens.opl()[i] - forward.opl) < 1e-12);  // Delta of the backward passage
+    // The backward image: every ray in m_back times the mirrored forward image.
+    CHECK((pos(at_image, i) - image).norm() < kPositionTolerance);
+  }
+  // Content guard: the second passage deflects (without it the rays would meet at z = -100).
+  CHECK(std::abs(at_lens.dir_y()[at_lens.size() - 1] - dir(at_mirror, at_mirror.size() - 1).y()) >
+        1e-3);
+}
+
+TEST_CASE("ideal lens: refract and reflect at the lens are EventImpossible", "[ideal][trace]") {
+  // ADR 0031, point 7: only transmit; compile rejects the other kinds at the path
+  // (paths.ideal_lens_event), apply_event itself gives EventImpossible as before.
+  const CompiledSystem cs = compiled(reference());
+  for (const char* id : {"IL", "CL"}) {
+    const rtt::compile::CompiledSurface& lens = surface(cs, id);
+    rtt::trace::RayState ray;
+    ray.pos = Vec3(0.0, 0.0, -75.0);
+    ray.dir = (Vec3(2.0, 3.0, 0.0) - ray.pos).normalized();
+    const auto hit = rtt::trace::intersect_surface(ray, lens);
+    for (const auto kind : {rtt::model::EventKind::Refract, rtt::model::EventKind::Reflect}) {
+      INFO(id << ", kind " << static_cast<int>(kind));
+      CHECK(rtt::trace::apply_event(ray, lens, hit, 0, kind, 0, environment(cs)).status ==
+            RayStatus::EventImpossible);
+    }
   }
 }
 
