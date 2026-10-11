@@ -28,6 +28,9 @@ struct Step {
   EventKind kind = EventKind::Transmit;
   bool stop = false;  ///< surface of a Stop element
   std::uint32_t surface = 0;
+  /// 1/f of an ideal lens (ADR 0031, point 6), 1/mm; 0 for every other surface. The power of the
+  /// step is then phi = |n| / f with n the index of the surrounding medium.
+  double inverse_focal_length = 0.0;
 };
 
 /// Paraxial ray in reduced form: height y and optical direction cosine nu = n * u (signed n).
@@ -74,9 +77,11 @@ std::vector<Step> prepare(const CompiledSystem& cs, PathId path, std::uint16_t w
     // ADR 0025, point 4: order 0 at a surface with phase layers is the surface without them
     // (point 2); other orders have no paraxial model in M4.
     if (event.order != 0) fail("diffraction orders other than 0 have no paraxial model");
-    // Interim state of #178 until rtt-paraxial knows the ideal lens (ADR 0031, point 8): an
-    // error, never an EFL without the lens. The cylinder lens stays an error afterwards.
-    if (s.ideal_lens) fail("ideal lenses have no paraxial model yet (#178)");
+    // ADR 0031, point 6: the ideal lens is a y-nu step with phi = |n| / f; the cylinder lens is
+    // not rotationally symmetric (an anamorphic model is a later extension).
+    if (s.ideal_lens && s.ideal_lens->power_axis) {
+      fail("the ideal cylinder lens is not rotationally symmetric; no paraxial model (ADR 0031)");
+    }
     const math::Vec3 vertex = s.to_global.translation();
     const math::Vec3 axis = s.to_global.apply_vector(math::Vec3::UnitZ());
     if (std::abs(vertex.x()) > kSymmetryTolerance || std::abs(vertex.y()) > kSymmetryTolerance) {
@@ -96,6 +101,7 @@ std::vector<Step> prepare(const CompiledSystem& cs, PathId path, std::uint16_t w
     step.kind = event.kind;
     step.stop = s.element_kind == model::ElementKind::Stop;
     step.surface = event.surface;
+    if (s.ideal_lens) step.inverse_focal_length = 1.0 / s.ideal_lens->focal_length;
     steps.push_back(step);
   }
   return steps;
@@ -118,12 +124,17 @@ double object_index(const CompiledSystem& cs, PathId path, std::uint16_t wavelen
 /// equation numbers; see docs/quellen.md.
 /// With the signed index n * u is |n| times the direction cosine along the propagation
 /// direction, so both equations hold unchanged after mirrors with global z and c.
+///
+/// Ideal lens (ADR 0031, point 6, derived there from its slope rule xi' = xi - q/f with u the
+/// slope along the propagation): phi = |n| / f with n the index of the surrounding medium (the
+/// medium does not change). In -z the local slope is -u, which gives the same phi = |n| / f with
+/// the signed index. It adds to the power of the surface (c = 0 for its plane).
 void apply(State& st, const Step& step) {
   st.y += (step.z - st.z) * st.nu / st.n;
   st.z = step.z;
   const double direction = st.n > 0.0 ? 1.0 : -1.0;
   const double n_after = step.kind == EventKind::Reflect ? -st.n : direction * step.n_after;
-  const double phi = step.c * (n_after - st.n);
+  const double phi = step.c * (n_after - st.n) + std::abs(st.n) * step.inverse_focal_length;
   st.nu -= st.y * phi;
   st.n = n_after;
 }
@@ -180,7 +191,7 @@ Magnitudes magnitude_trace(const std::vector<Step>& steps,
     z = step.z;
     const double direction = n > 0.0 ? 1.0 : -1.0;
     const double n_after = step.kind == EventKind::Reflect ? -n : direction * step.n_after;
-    nu += y * std::abs(step.c * (n_after - n));
+    nu += y * (std::abs(step.c * (n_after - n)) + std::abs(n * step.inverse_focal_length));
     n = n_after;
   }
   y += (std::abs(z_out) + std::abs(z)) * nu / std::abs(n);
@@ -222,7 +233,8 @@ bool zero_up_to_rounding(double value, std::size_t steps, double scale) {
 }
 
 bool changes_ray(const Step& step, double n_before) {
-  return step.kind == EventKind::Reflect || step.n_after != n_before;
+  return step.kind == EventKind::Reflect || step.n_after != n_before ||
+         step.inverse_focal_length != 0.0;
 }
 
 }  // namespace

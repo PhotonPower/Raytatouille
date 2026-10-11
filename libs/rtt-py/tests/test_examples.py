@@ -157,3 +157,12 @@ def test_wavefront_example(capsys: pytest.CaptureFixture[str]) -> None:
     assert namespace["main"]() == 0
     out = capsys.readouterr().out
     assert "sigma_bf  Strehl" in out and "focus shift (mm)" in out
+
+
+def test_ideal_lens_example(capsys: pytest.CaptureFixture[str]) -> None:
+    # main() returns 1 if a spot or an OPD of the ideal lens is not as described (#178).
+    namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "ideal_lens.py"))
+    assert namespace["main"]() == 0
+    out = capsys.readouterr().out
+    assert "rear focal length 50.000000 mm" in out and "magnification -2.000000" in out
+    assert "cylinder lens: y from -4.000000000" in out

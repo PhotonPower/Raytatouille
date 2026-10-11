@@ -1,6 +1,5 @@
 """The ideal lens and the ideal cylinder lens from Python (#178, ADR 0031): read types in
-raytatouille.model, the edit form, the tracer, and the interim error until rtt-paraxial knows
-them."""
+raytatouille.model, the edit form, the tracer and the paraxial data."""
 
 from __future__ import annotations
 
@@ -58,14 +57,20 @@ def test_edit_form_and_patch() -> None:
                                  "value": 0.0}])
 
 
-def test_the_tracer_images_the_object_point_and_paraxial_waits() -> None:
-    # PR 2 of #178: the axial ray of the object point reaches its image at z = 150 on the axis;
-    # rtt-paraxial follows with PR 3 (ADR 0031, point 8): until then a ParaxialError.
+def test_the_tracer_images_the_object_point_and_paraxial_knows_the_lens() -> None:
+    # The axial ray of the object point reaches its image at z = 150 on the axis (PR 2); the
+    # paraxial data have phi = |n| / f (PR 3): rear focal length f, image at 150, m = -2. The
+    # cylinder lens has no paraxial model (ADR 0031, point 6).
     cs = rt.compile(rt.load(FILE))
     rays = rt.trace.RayBatch(1)
     rays.pos_z[0] = -75.0  # the object point, in front of the stop plane z = -1
     rt.trace.trace(cs, rays, path="ideal lens")
     assert rays.status[0] == int(rt.trace.RayStatus.ALIVE)
     assert (rays.pos_x[0], rays.pos_y[0], rays.pos_z[0]) == (0.0, 0.0, 150.0)
+    fo = rt.paraxial.first_order(cs, path="ideal lens")
+    assert fo.rear_focal_length is not None and fo.image_z is not None
+    assert fo.lateral_magnification is not None
+    assert abs(fo.rear_focal_length - 50.0) <= 1e-12
+    assert abs(fo.image_z - 150.0) <= 1e-12 and abs(fo.lateral_magnification + 2.0) <= 1e-14
     with pytest.raises(rt.ParaxialError):
-        rt.paraxial.first_order(cs, path="ideal lens")
+        rt.paraxial.first_order(cs, path="cylinder lens")
