@@ -472,3 +472,21 @@ def test_older_files_read_without_q(singlet: rt.CompiledSystem) -> None:
         envelope["schema_version"] = "0.1.9"
         with pytest.raises(ValueError, match="misses " + ", ".join(keys)):
             rt.results.load_json(json.dumps(envelope))
+
+
+def test_upgrade_over_two_versions(singlet: rt.CompiledSystem) -> None:
+    """A RayBatch file of 0.1.4 lacks both the keys of 0.1.5 (wave_x/y/z, mode_index) and that
+    of 0.1.9 (q): load_json adds all of them by the reading rules (wave = dir, mode_index 0,
+    q None, ADR 0023 addenda #134 and #207), in the key order of to_dict."""
+    rays, _ = traced_with_q(singlet)
+    data = rays.to_dict()
+    envelope = json.loads(rays.to_json())
+    for key in WAVE_KEYS + ["q"]:
+        del envelope["data"][key]
+    envelope["schema_version"] = "0.1.4"
+    loaded = rt.results.load_json(json.dumps(envelope))
+    assert list(loaded.data) == list(data)
+    for axis in "xyz":
+        same(loaded.data[f"wave_{axis}"], data[f"dir_{axis}"])
+    same(loaded.data["mode_index"], np.zeros(len(rays)))
+    assert loaded.data["q"] is None

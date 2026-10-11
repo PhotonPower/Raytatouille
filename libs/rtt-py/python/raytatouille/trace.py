@@ -152,8 +152,8 @@ def trace(system: CompiledSystem, rays: RayBatch, *, path: int | str = 0,
 
     Raises ValueError for an unknown path name, a wavelength index that is not a system
     wavelength, an invalid status or an invalid selection, cancel/progress with record_path,
-    or record_rays/polarization without it, IndexError for an unknown path index, raytatouille.errors.Cancelled after a
-    cancellation and the exception of ``progress``."""
+    or record_rays/polarization without it, IndexError for an unknown path index,
+    raytatouille.errors.Cancelled after a cancellation and the exception of ``progress``."""
     if not record_path:
         if record_rays is not None:
             raise ValueError("record_rays needs record_path=True")
