@@ -96,7 +96,8 @@ struct JonesPupil {
   math::Vec3 x_out = math::Vec3::UnitX();
   math::Vec3 y_out = math::Vec3::UnitY();
   math::Vec3 k_out = math::Vec3::UnitZ();  ///< k_c
-  /// Of W, as opd_points(); radius NaN in the form for given start rays (no sphere there).
+  /// Of W, as opd_points(); in the form for given start rays the chief-ray point and radius NaN
+  /// (no sphere there).
   ReferenceSphere sphere;
   // Per pupil point, in the order of the sampling:
   std::vector<double> px, py;
@@ -156,15 +157,18 @@ struct JonesPupil {
 /// of `start` (a copy, traced with Q requested) need one wavelength; `chief` is the index of the
 /// chief ray among them, which gives both chief frames (its start direction and its direction on
 /// the image surface, the surface of the last event) and the reference of the phase. px, py are
-/// taken from start.pupil_x() and start.pupil_y(). Of the options, basis, remove_global_phase
-/// and lost_warning_fraction apply; sampling and aiming do not.
+/// taken from start.pupil_x() and start.pupil_y(), `field` from the chief ray's field index. The
+/// P (and Q, if enabled) of `start` are the start values, identity for a fresh batch. Of the
+/// options, basis, remove_global_phase and lost_warning_fraction apply; sampling and aiming do
+/// not.
 ///
 /// The phase has no reference sphere: phi = 2 pi (OPL - OPL_c) / lambda with the OPL up to the
 /// image surface, so w = (OPL_c - OPL) / lambda_ref in waves at lambda_ref (the sign of W) and
 /// phi = -2 pi w lambda_ref / lambda as in the convenience form. This is exact for a collimated
 /// beam on an image surface perpendicular to it; for a converging beam it is the OPD against the
-/// image plane, not against a sphere. `sphere.radius` is NaN. A point arrives (status Alive) if
-/// its ray ends Alive on the image surface. A point within 1e-6 rad of a pole of a basis gets
+/// image plane, not against a sphere. `sphere.radius` is NaN, `sphere.centre` the chief-ray
+/// point on the image surface. A point arrives (status Alive) if its ray ends Alive on the image
+/// surface (Alive elsewhere counts as Vignetted); a point that does not has w = NaN. A point within 1e-6 rad of a pole of a basis gets
 /// J = NaN and NaN maps, with the warning "pupil.basis_pole" (location /paths/i, the number of
 /// points in the message).
 /// @throws std::invalid_argument for an invalid path, an empty batch, chief >= start.size(), rays

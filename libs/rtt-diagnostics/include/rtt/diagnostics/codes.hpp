@@ -217,6 +217,8 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "the diffraction PSF is wider than its field and folds in; increase the pupil grid"},
     {"psf.pupil_undersampled", Severity::Warning, "analysis",
      "the pupil grid is too coarse for the aberration (phase step above the threshold)"},
+    {"pupil.basis_pole", Severity::Warning, "analysis",
+     "Jones pupil: points within 1e-6 rad of a pole of the basis get J = NaN"},
     {"pupil.mapping_nonlinear", Severity::Warning, "analysis",
      "pupil coordinates map nonlinearly onto the direction sines (delta_max above the threshold)"},
     {"rays.lost", Severity::Warning, "analysis",
