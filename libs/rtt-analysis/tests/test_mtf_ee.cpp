@@ -493,7 +493,8 @@ TEST_CASE("mtf: complex OTF, phase of a moved PSF and the 2D map", "[mtf]") {
   const std::size_t side = 2 * 32 - 1;
   REQUIRE(mm.map.size() == side * side);
   REQUIRE(mm.otf_map.size() == side * side);
-  const auto at = [side](int l1, int l2) {
+  // Default capture: a constant `side` needs no capture under clang (-Wunused-lambda-capture).
+  const auto at = [&](int l1, int l2) {
     return static_cast<std::size_t>(l2 + 31) * side + static_cast<std::size_t>(l1 + 31);
   };
   CHECK(mm.map[at(0, 0)] == 1.0);
