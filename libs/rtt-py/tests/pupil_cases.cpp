@@ -82,6 +82,7 @@ void write_pupil(const Writer& w, const PupilFunction& p) {
   w.f8("amplitude", p.amplitude);
   w.f8("w", p.w);
   std::vector<std::uint8_t> status;
+  status.reserve(p.status.size());
   for (const trace::RayStatus s : p.status) status.push_back(static_cast<std::uint8_t>(s));
   w.u1("status", status);
   w.c16("prt", p.prt);
@@ -112,6 +113,10 @@ void write_points(const Writer& w, const OpdPupilPoints& p) {
   std::vector<double> py;
   std::vector<double> wv;
   std::vector<std::uint8_t> status;
+  px.reserve(p.points.size());
+  py.reserve(p.points.size());
+  wv.reserve(p.points.size());
+  status.reserve(p.points.size());
   for (const OpdPoint& q : p.points) {
     px.push_back(q.px);
     py.push_back(q.py);

@@ -147,4 +147,4 @@ def test_options_out_of_range(reference_dir: Path) -> None:
     for kwargs in ({"grid": 1}, {"apodization": -1.0}, {"focus_shift": math.nan},
                    {"lost_warning_fraction": 2.0}, {"mapping_warning": -0.1}):
         with pytest.raises(ValueError):
-            an.pupil_function(cs, **kwargs)  # type: ignore[arg-type]
+            an.pupil_function(cs, **kwargs)

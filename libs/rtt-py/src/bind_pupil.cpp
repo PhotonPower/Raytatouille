@@ -7,6 +7,7 @@
 #include <nanobind/stl/complex.h>
 #include <nanobind/stl/optional.h>
 #include <nanobind/stl/string.h>
+#include <nanobind/stl/variant.h>
 #include <nanobind/stl/vector.h>
 
 #include <complex>
@@ -48,12 +49,11 @@ nb::ndarray<nb::numpy, const double, nb::ndim<2>, nb::c_contig> matrix(std::vect
                                                                        std::size_t cols) {
   auto data = std::make_unique<std::vector<double>>(std::move(values));
   const std::size_t shape[2] = {rows, cols};
-  const double* p = data->data();
-  nb::capsule owner(data.get(), [](void* q) noexcept {
+  const nb::capsule owner(data.get(), [](void* q) noexcept {
     const std::unique_ptr<std::vector<double>> owned(static_cast<std::vector<double>*>(q));
   });
-  static_cast<void>(data.release());
-  return {p, 2, shape, owner};
+  const std::vector<double>* owned_by_capsule = data.release();  // freed by the capsule
+  return {owned_by_capsule->data(), 2, shape, owner};
 }
 
 /// Read-only (n, 3, 3) array of the PRT matrices (9 complex per cell, row-major).
@@ -61,13 +61,12 @@ nb::ndarray<nb::numpy, const std::complex<double>, nb::ndim<3>, nb::c_contig> pr
     const std::vector<std::complex<double>>& prt) {
   auto data = std::make_unique<std::vector<std::complex<double>>>(prt);
   const std::size_t shape[3] = {prt.size() / 9, 3, 3};
-  const std::complex<double>* p = data->data();
-  nb::capsule owner(data.get(), [](void* q) noexcept {
+  const nb::capsule owner(data.get(), [](void* q) noexcept {
     const std::unique_ptr<std::vector<std::complex<double>>> owned(
         static_cast<std::vector<std::complex<double>>*>(q));
   });
-  static_cast<void>(data.release());
-  return {p, 3, shape, owner};
+  const std::vector<std::complex<double>>* owned_by_capsule = data.release();  // the capsule frees
+  return {owned_by_capsule->data(), 3, shape, owner};
 }
 
 }  // namespace
