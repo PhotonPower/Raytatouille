@@ -63,7 +63,8 @@ SCHEMA_VERSION = "0.1.12"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84)
 # 0.1.9: RayBatch q, RayPaths polarization, prt, q (#207)
 # 0.1.10: Interferogram (#210)
 # 0.1.11: JonesPupil (#208)
-# 0.1.12: Psf, ThroughFocus, Mtf, EncircledEnergy (#209, P1b)
+# 0.1.12: Psf, ThroughFocus, Mtf, EncircledEnergy; PupilCells obscuration, inner_rim,
+# PupilFunction obscuration (#209 P1b, #229 C)
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a
@@ -78,8 +79,8 @@ _ADDED: dict[str, tuple[tuple[int, tuple[str, ...]], ...]] = {
     "RayBatch": ((5, ("wave_x", "wave_y", "wave_z", "mode_index")),  # 0.1.5 (#134)
                  (9, ("q",))),  # 0.1.9 (#207)
     "RayPaths": ((9, ("polarization", "prt", "q")),),  # 0.1.9 (#207)
-    "PupilCells": ((13, ("obscuration", "inner_rim")),),  # 0.1.13 (#229 C, Python #209 P1b)
-    "PupilFunction": ((13, ("obscuration",)),),  # 0.1.13 (#229 C, Python #209 P1b)
+    "PupilCells": ((12, ("obscuration", "inner_rim")),),  # 0.1.12 (#229 C, Python #209 P1b)
+    "PupilFunction": ((12, ("obscuration",)),),  # 0.1.12 (#229 C, Python #209 P1b)
 }
 _FIELDS: dict[str, tuple[str, ...]] = {
     # analysis

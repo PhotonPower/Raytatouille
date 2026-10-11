@@ -88,10 +88,24 @@ void bind_pupil(nb::module_& m) {
       .def_prop_ro(
           "py", [](const analysis::PupilCells& c) { return copy(c.py); }, nb::rv_policy::reference,
           "Sample point y (copy).")
+      .def_ro("obscuration", &analysis::PupilCells::obscuration,
+              "Radius epsilon of a central obscuration in pupil units, [0, 1): the cells cover the "
+              "annulus epsilon <= |p| <= 1 (ADR 0032, addendum #229); 0 without.")
+      .def_prop_ro(
+          "inner_rim",
+          [](const analysis::PupilCells& c) {
+            return read_only_array<std::uint8_t>(c.inner_rim, [](std::uint8_t v) { return v; });
+          },
+          nb::rv_policy::reference,
+          "1 for a cell on the inner rim of the annulus (traced as a virtual ray), else 0 (copy).")
       .def("__len__", [](const analysis::PupilCells& c) { return c.fraction.size(); });
-  m.def("pupil_cells", nb::overload_cast<int>(&analysis::pupil_cells), "grid"_a,
-        "Cells of an N x N grid (ADR 0032, point 1); ValueError for N outside [2, "
-        "MAX_PUPIL_GRID].");
+  m.def(
+      "pupil_cells",
+      [](int grid, double obscuration) { return analysis::pupil_cells(grid, obscuration); },
+      "grid"_a, "obscuration"_a = 0.0,
+      "Cells of an N x N grid (ADR 0032, point 1), of the annulus obscuration <= |p| <= 1 for "
+      "obscuration > 0 (addendum #229); ValueError for N outside [2, MAX_PUPIL_GRID] or "
+      "obscuration outside [0, 1).");
 
   nb::class_<PupilMapping>(
       m, "PupilMapping",
@@ -141,6 +155,10 @@ void bind_pupil(nb::module_& m) {
       .def_ro("lost_warning_fraction", &PupilFunction::lost_warning_fraction)
       .def_ro("mapping_warning", &PupilFunction::mapping_warning)
       .def_ro("sphere", &PupilFunction::sphere, "Reference sphere after focus_shift.")
+      .def_ro("obscuration", &PupilFunction::obscuration,
+              "Radius epsilon of the stop's central obscuration in pupil units (the inner radius "
+              "of its circular aperture over the stop radius); 0 without (ADR 0032, addendum "
+              "#229).")
       .def_prop_ro(
           "fraction", [](const PupilFunction& p) { return copy(p.fraction); },
           nb::rv_policy::reference, "Area fraction f per cell (copy).")

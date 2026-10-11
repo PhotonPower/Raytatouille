@@ -212,7 +212,7 @@ def test_annular_cells_and_pupil_function(f10: rt.CompiledSystem) -> None:
 
 
 def test_older_pupil_files_read_without_obscuration(f10: rt.CompiledSystem) -> None:
-    # PupilCells and PupilFunction gained their obscuration keys in 0.1.13 (ADR 0023): an older
+    # PupilCells and PupilFunction gained their obscuration keys in 0.1.12 (ADR 0023): an older
     # file reads as a pupil without obscuration, a newer one must have them.
     cases = ((an.pupil_cells(8, 0.4), ("obscuration", "inner_rim")),
              (an.pupil_function(f10, grid=8), ("obscuration",)))
@@ -220,7 +220,7 @@ def test_older_pupil_files_read_without_obscuration(f10: rt.CompiledSystem) -> N
         envelope = json.loads(obj.to_json())
         for key in keys:
             del envelope["data"][key]
-        envelope["schema_version"] = "0.1.12"
+        envelope["schema_version"] = "0.1.11"
         loaded = rt.results.load_json(json.dumps(envelope))
         assert loaded.data["obscuration"] == 0.0
         if "inner_rim" in keys:
@@ -228,6 +228,6 @@ def test_older_pupil_files_read_without_obscuration(f10: rt.CompiledSystem) -> N
             assert not loaded.data["inner_rim"].any()
             assert loaded.data["inner_rim"].shape == loaded.data["fraction"].shape
         assert list(loaded.data) == list(obj.to_dict())
-        envelope["schema_version"] = "0.1.13"
+        envelope["schema_version"] = "0.1.12"
         with pytest.raises(ValueError, match="misses"):
             rt.results.load_json(json.dumps(envelope))

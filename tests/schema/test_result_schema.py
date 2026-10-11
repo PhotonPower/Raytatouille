@@ -118,23 +118,23 @@ def test_files_from_0_1_9_need_the_new_keys(name: str, key: str, version: str):
         VALIDATOR.validate(doc)
 
 
-# PupilCells gained obscuration and inner_rim, PupilFunction obscuration in 0.1.13 (#229 C,
+# PupilCells gained obscuration and inner_rim, PupilFunction obscuration in 0.1.12 (#229 C,
 # Python #209 P1b, ADR 0023 addendum): older files stay valid without them.
-ADDED_0_1_13 = [("PupilCells.result.json", "obscuration"), ("PupilCells.result.json", "inner_rim"),
+ADDED_0_1_12 = [("PupilCells.result.json", "obscuration"), ("PupilCells.result.json", "inner_rim"),
                 ("PupilFunction.result.json", "obscuration")]
 
 
-@pytest.mark.parametrize("name,key", ADDED_0_1_13)
-def test_older_files_without_the_0_1_13_keys_are_valid(name: str, key: str):
-    for version in ("0.1.8", "0.1.12"):
+@pytest.mark.parametrize("name,key", ADDED_0_1_12)
+def test_older_files_without_the_0_1_12_keys_are_valid(name: str, key: str):
+    for version in ("0.1.8", "0.1.11"):
         doc = _broken(lambda d: d["data"].pop(key), name)
         doc["schema_version"] = version
         VALIDATOR.validate(doc)
 
 
-@pytest.mark.parametrize("name,key", ADDED_0_1_13)
-@pytest.mark.parametrize("version", ["0.1.13", "0.1.20"])
-def test_files_from_0_1_13_need_the_new_keys(name: str, key: str, version: str):
+@pytest.mark.parametrize("name,key", ADDED_0_1_12)
+@pytest.mark.parametrize("version", ["0.1.12", "0.1.20"])
+def test_files_from_0_1_12_need_the_new_keys(name: str, key: str, version: str):
     doc = _broken(lambda d: d["data"].pop(key), name)
     doc["schema_version"] = version
     with pytest.raises(jsonschema.ValidationError):
