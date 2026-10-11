@@ -2,6 +2,11 @@
 
 Neue Entscheidungen bekommen die nächste Nummer. Bestehende ADRs werden nicht umgeschrieben, sondern durch ein neues ADR mit Status „ersetzt durch“ abgelöst.
 
+Präzisierungen und Ergänzungen einer angenommenen Entscheidung kommen als datierter Nachtrag ans Ende des ADR (mit Issue- oder PR-Nummer). Für Fehler gilt:
+
+- **Falsche Formel, falsches Vorzeichen oder falscher Sollwert:** Korrektur direkt im Text, mit Verweis auf einen Nachtrag „Erratum“, der die Herleitung und den Beleg (Rechnung, Messung) nennt. So baut niemand nach der falschen Fassung (Beispiel: ADR 0033, #225).
+- **Ungenaue oder unvollständige Begründung bei richtiger Entscheidung:** Der Text bleibt stehen und bekommt den Hinweis „(Korrigiert im Nachtrag unten.)“ (Beispiel: ADR 0031, #220).
+
 | Nr. | Titel | Status |
 | --- | --- | --- |
 | [0001](0001.md) | Kern in C++20 mit CMake und vcpkg | angenommen |
