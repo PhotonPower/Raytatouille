@@ -213,6 +213,8 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "relative_to_sibling without a preceding sibling"},
     {"pose.relative_first_surface", Severity::Error, "validate",
      "first surface of an element placed relatively"},
+    {"pupil.mapping_nonlinear", Severity::Warning, "analysis",
+     "pupil coordinates map nonlinearly onto the direction sines (delta_max above the threshold)"},
     {"rays.lost", Severity::Warning, "analysis",
      "more rays lost than the threshold of the analysis (default 50 %)"},
     {"report.paraxial_unavailable", Severity::Warning, "analysis",

@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "rtt/analysis/opd.hpp"
+#include "rtt/analysis/pupil.hpp"
 #include "rtt/analysis/reports.hpp"
 #include "rtt/analysis/spot.hpp"
 #include "rtt/compile/compiled_system.hpp"
@@ -161,9 +162,25 @@ TEST_CASE("report.paraxial_unavailable for a path the prescription rejects",
   CHECK(rtt::analysis::system_report(cs, *cs.find_path("order 0"), 0).warnings.empty());
 }
 
+TEST_CASE("pupil.mapping_nonlinear above the threshold, at the path", "[analysis][warnings]") {
+  // The paraboloid at F/1.7 (#202): delta_max is about 0.0225 at the rim (ADR 0032, point 4),
+  // above the default 1e-2; with the threshold 0.05 there is no warning.
+  const CompiledSystem cs = rtt::compile::compile(
+      rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m2/paraboloid_stop.rtt.json"),
+      rtt::material::MaterialLibrary{});
+  rtt::analysis::PupilFunctionOptions o;
+  o.grid = 16;
+  const auto w = rtt::analysis::pupil_function(cs, PathId{0}, 0, 0, o).warnings;
+  REQUIRE(w.size() == 1);
+  CHECK(w[0].code == "pupil.mapping_nonlinear");
+  CHECK(w[0].location == "/paths/0");
+  o.mapping_warning = 0.05;
+  CHECK(rtt::analysis::pupil_function(cs, PathId{0}, 0, 0, o).warnings.empty());
+}
+
 TEST_CASE("every analysis code has a case in this file", "[analysis][warnings]") {
   const std::set<std::string> covered = {"rays.lost", "stop.clips_beam",
-                                         "report.paraxial_unavailable"};
+                                         "report.paraxial_unavailable", "pupil.mapping_nonlinear"};
   for (const rtt::diagnostics::CodeInfo& info : rtt::diagnostics::kCodes) {
     if (info.producer != "analysis") continue;
     INFO("no case for " << info.code);
