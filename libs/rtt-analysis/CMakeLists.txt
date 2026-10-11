@@ -13,6 +13,7 @@ add_library(rtt_analysis
   src/reference.cpp
   src/reports.cpp
   src/spot.cpp
+  src/stokes.cpp
   src/zernike.cpp)
 add_library(rtt::analysis ALIAS rtt_analysis)
 target_include_directories(rtt_analysis PUBLIC
@@ -57,6 +58,7 @@ if(RTT_BUILD_TESTS)
       tests/test_reports.cpp
       tests/test_run_control.cpp
       tests/test_spot.cpp
+      tests/test_stokes_pupil.cpp
       tests/test_warnings.cpp
       tests/test_zernike.cpp
     LIBS rtt::analysis rtt::io rtt::polar rtt::coating rtt::model_test_support TBB::tbb)
