@@ -557,6 +557,8 @@ namespace {
 /// point 5): Backward(|Forward(u)|^2) = L^2 C (derived from the two DFT sums).
 class Autocorrelation {
  public:
+  Autocorrelation() = default;
+
   explicit Autocorrelation(const PupilFunction& p)
       : n_(p.grid), length_(2 * static_cast<std::size_t>(p.grid)) {
     const auto n = static_cast<std::size_t>(p.grid);
@@ -581,8 +583,8 @@ class Autocorrelation {
   }
 
  private:
-  int n_;
-  std::size_t length_;
+  int n_ = 0;
+  std::size_t length_ = 0;
   std::vector<Complex> c_;
 };
 
@@ -591,7 +593,7 @@ struct Spectral {
   PupilFunction pupil;
   PupilSums sums;
   double weight = 0.0;  ///< normalised model weight w_i
-  std::optional<Autocorrelation> c;
+  Autocorrelation c;    ///< of the pupil function, set with it
 };
 
 /// F = M a / lambda, row-major, cycles per mm per cell (ADR 0033, point 5).
@@ -660,7 +662,7 @@ std::vector<Spectral> spectral_parts(const CompiledSystem& system,
     part.pupil = pupil_function(system, path, field, w, pupil_options, control);
     part.sums = require_evaluable(part.pupil);
     part.weight = weight;
-    part.c.emplace(part.pupil);
+    part.c = Autocorrelation(part.pupil);
     parts.push_back(std::move(part));
   }
   return parts;
@@ -731,13 +733,13 @@ Mtf mtf_of(const std::vector<Spectral>& parts, std::size_t ref, const MtfOutputs
   double sum_we = 0.0;
   for (const Spectral& part : parts) sum_we += part.weight * part.sums.fa2;
   if (parts.size() == 1) {
-    result.sagittal = curve_of(*r.c, r.sums, result.frequency_matrix, n, 0);
-    result.tangential = curve_of(*r.c, r.sums, result.frequency_matrix, n, 1);
+    result.sagittal = curve_of(r.c, r.sums, result.frequency_matrix, n, 0);
+    result.tangential = curve_of(r.c, r.sums, result.frequency_matrix, n, 1);
   } else {
     // ADR 0033, point 7: the complex OTF of each wavelength on its own frequencies, interpolated
     // linearly in |nu| onto those of the reference, summed with w_i E_i.
     for (int col = 0; col < 2; ++col) {
-      MtfCurve sum = curve_of(*r.c, r.sums, result.frequency_matrix, n, col);
+      MtfCurve sum = curve_of(r.c, r.sums, result.frequency_matrix, n, col);
       std::vector<Complex> acc(sum.otf.size(), Complex(0.0, 0.0));
       for (const Spectral& part : parts) {
         const double we = part.weight * part.sums.fa2;
@@ -745,7 +747,7 @@ Mtf mtf_of(const std::vector<Spectral>& parts, std::size_t ref, const MtfOutputs
           for (std::size_t l = 0; l < acc.size(); ++l) acc[l] += we * sum.otf[l];
           continue;
         }
-        const MtfCurve own = curve_of(*part.c, part.sums, frequency_matrix_of(part.pupil), n, col);
+        const MtfCurve own = curve_of(part.c, part.sums, frequency_matrix_of(part.pupil), n, col);
         for (std::size_t l = 0; l < acc.size(); ++l) {
           acc[l] += we * interpolated(own, sum.frequency[l]);
         }
@@ -763,7 +765,7 @@ Mtf mtf_of(const std::vector<Spectral>& parts, std::size_t ref, const MtfOutputs
     if (outputs.complex_otf) result.otf_map.reserve(side * side);
     for (int l2 = -(n - 1); l2 <= n - 1; ++l2) {
       for (int l1 = -(n - 1); l1 <= n - 1; ++l1) {
-        const Complex otf = otf_at(*r.c, r.sums, l1, l2);
+        const Complex otf = otf_at(r.c, r.sums, l1, l2);
         result.map.push_back(std::abs(otf));
         if (outputs.complex_otf) result.otf_map.push_back(otf);
       }
@@ -793,8 +795,8 @@ double radius_max_of(const PupilFunction& p) {
 /// I(x - t) has C(l) exp(+2 pi i nu(l) . t) (ADR 0033, erratum).
 Point2 linear_phase_centre(const Spectral& part) {
   const std::array<double, 4> b = lattice_matrix(part.pupil, 1);
-  const double phi1 = std::arg(part.c->at(1, 0)) / (2.0 * std::numbers::pi);
-  const double phi2 = std::arg(part.c->at(0, 1)) / (2.0 * std::numbers::pi);
+  const double phi1 = std::arg(part.c.at(1, 0)) / (2.0 * std::numbers::pi);
+  const double phi2 = std::arg(part.c.at(0, 1)) / (2.0 * std::numbers::pi);
   return {b[0] * phi1 + b[1] * phi2, b[2] * phi1 + b[3] * phi2};
 }
 
@@ -822,7 +824,7 @@ std::vector<double> energy_of(const Spectral& part,
         re = part.sums.f2a2;  // C(0) = sum |u|^2, the discrete sum (ADR 0033, point 6)
       } else {
         const Complex shift = std::polar(1.0, -2.0 * std::numbers::pi * (nx * x0.x + ny * x0.y));
-        re = (part.c->at(l1, l2) * shift).real();
+        re = (part.c.at(l1, l2) * shift).real();
       }
       for (std::size_t i = 0; i < radii.size(); ++i) {
         const double r = radii[i];
@@ -901,7 +903,7 @@ std::vector<Spectral> single_part(const PupilFunction& pupil) {
   parts[0].pupil = pupil;
   parts[0].sums = require_evaluable(parts[0].pupil);
   parts[0].weight = 1.0;
-  parts[0].c.emplace(parts[0].pupil);
+  parts[0].c = Autocorrelation(parts[0].pupil);
   return parts;
 }
 
