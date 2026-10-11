@@ -101,6 +101,8 @@ PRODUCERS: dict[str, Callable[[rt.CompiledSystem, rt.MaterialLibrary], Any]] = {
         cs, field=1, grid=6, with_prt=True, mapping_warning=1.0),
     "ZernikeFit": lambda cs, lib: rt.analysis.zernike_fit(
         rt.analysis.pupil_function(cs, field=1, grid=12, mapping_warning=1.0), terms=11),
+    # Jones pupil (#208 B2)
+    "JonesPupil": lambda cs, lib: rt.analysis.jones_pupil(cs, field=1, rays="grid:5"),
     "LongitudinalColour": lambda cs, lib: rt.analysis.longitudinal_colour(cs, pair=(0, 2)),
     "LateralColour": lambda cs, lib: rt.analysis.lateral_colour(cs, field=2),
     "DistortionSweep": lambda cs, lib: rt.analysis.distortion(cs, samples=3),

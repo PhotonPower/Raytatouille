@@ -34,6 +34,7 @@ nanobind_add_module(_core NB_STATIC NB_SUPPRESS_WARNINGS
   src/bind_paraxial.cpp
   src/bind_trace.cpp
   src/bind_analysis.cpp src/bind_pupil.cpp
+  src/bind_jones.cpp
   src/bind_paths.cpp
   src/bind_reports.cpp
   src/bind_optim.cpp
@@ -128,7 +129,8 @@ if(RTT_BUILD_TESTS)
   add_executable(rtt_py_reference tests/rtt_py_reference.cpp tests/analysis_cases.cpp
     tests/paths_cases.cpp tests/diffraction_cases.cpp tests/crystal_cases.cpp
     tests/configuration_cases.cpp tests/reports_cases.cpp tests/optim_cases.cpp
-    tests/ideal_lens_cases.cpp tests/pupil_cases.cpp tests/q_cases.cpp src/polar_batch.cpp)
+    tests/ideal_lens_cases.cpp tests/jones_cases.cpp tests/pupil_cases.cpp tests/q_cases.cpp
+    src/polar_batch.cpp)
   target_include_directories(rtt_py_reference PRIVATE src)
   target_link_libraries(rtt_py_reference PRIVATE
     rtt::io rtt::material rtt::coating rtt::compile rtt::paraxial rtt::trace rtt::analysis
