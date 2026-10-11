@@ -119,6 +119,14 @@ std::size_t cell(const Psf& psf, int k1, int k2) {
          static_cast<std::size_t>(k1 + h);
 }
 
+/// The lattice exists before it is indexed, so that the tests fail cleanly against a stub
+/// instead of reading out of range.
+void require_lattice(const Psf& psf) {
+  REQUIRE(psf.length > 0);
+  REQUIRE(psf.intensity.size() ==
+          static_cast<std::size_t>(psf.length) * static_cast<std::size_t>(psf.length));
+}
+
 double sinc2(double w) {
   if (w == 0.0) return 1.0;
   const double t = std::sin(std::numbers::pi * w) / (std::numbers::pi * w);
@@ -137,13 +145,20 @@ TEST_CASE("psf: the mapping M against the geometry and first_order (guard, ADR 0
   // shared by expected and computed values, so it is tied here to quantities that do not use M.
   // Tolerance: the central difference at delta = 1e-3 of s(p) = m p (1 - p^2 / (16 F#^2) + ...)
   // has the relative error (delta / (4 F#))^2, plus rounding.
+  // The direction sines carry the image-space index, s = n' (d . e) (ADR 0032, point 4), and the
+  // paraboloid lies in AIR (n' = 1.00027 at 0.5876 um): |M| = n' / (2 F#). The first form of this
+  // test assumed n' = 1 and failed by 2.7e-4 in the red run, while first_order (n' u') agreed.
   const double epd = 10.0;
   const CompiledSystem cs = paraboloid(epd);
   const PupilFunction p = pupil(cs, 16);
   REQUIRE(p.mapping.has_value());
   const auto& m = p.mapping->m;
+  const auto& last = cs.path(PathId{0}).events.back();
+  const double n_image =
+      std::abs(cs.media()[last.medium_after].index[cs.reference_wavelength()].real());
+  REQUIRE(n_image > 1.0);  // content guard: really AIR, the case the first form missed
   const double f_number_geometry = kF / epd;
-  const double expected = 1.0 / (2.0 * f_number_geometry);
+  const double expected = n_image / (2.0 * f_number_geometry);
   const double tol = 2.0 * std::pow(1e-3 / (4.0 * f_number_geometry), 2) + 1e-12;
   INFO("M = [" << m[0] << ", " << m[1] << "; " << m[2] << ", " << m[3] << "]");
   CHECK(std::abs(std::abs(m[0]) / expected - 1.0) <= tol);
@@ -170,6 +185,7 @@ TEST_CASE("psf: the FFT lattice equals the direct sum psf_at", "[psf]") {
   o.pupil.grid = 32;
   o.padding = 4;
   const Psf psf = rtt::analysis::psf(cs, PathId{0}, 0, o);
+  require_lattice(psf);
   const PupilFunction p = pupil(cs, 32);
   double sum_fa = 0.0;
   double energy = 0.0;
@@ -318,6 +334,9 @@ TEST_CASE("psf: two wavelengths sum with weights w_i E_i on the reference lattic
   second.padding = 5;
   const Psf a = rtt::analysis::psf(cs, PathId{0}, 0, first);
   const Psf b = rtt::analysis::psf(cs, PathId{0}, 0, second);
+  for (const Psf* x : {&poly, &a, &b}) require_lattice(*x);
+  REQUIRE(a.wavelengths.size() == 1);
+  REQUIRE(b.wavelengths.size() == 1);
   REQUIRE(poly.wavelengths.size() == 2);
   CHECK(poly.wavelengths[1].length == 5 * 32);
   CHECK(poly.polychromatic_scale_error <= 1e-15);
@@ -337,6 +356,8 @@ TEST_CASE("psf: two wavelengths sum with weights w_i E_i on the reference lattic
   // energy balance holds with it: sum I = sum w E (1 - deficit - outside) / sum w E.
   CHECK(b.wavelengths[0].outside_field == 0.0);  // alone, its own lattice is the field
   CHECK(poly.wavelengths[0].outside_field == 0.0);
+  REQUIRE(b.length == 5 * 32);  // its own lattice: k in [-80, 80)
+  REQUIRE(poly.length == 4 * 32);
   double outside_b = 0.0;
   for (int k2 = -80; k2 < 80; ++k2) {
     for (int k1 = -80; k1 < 80; ++k1) {
@@ -363,6 +384,7 @@ TEST_CASE("psf: two wavelengths sum with weights w_i E_i on the reference lattic
   s.wavelengths = {{0.5876, 1.0, true}, {0.5876 * 1.1, 1.0, false}};
   const Psf rounded = rtt::analysis::psf(rtt::compile::compile(s, rtt::material::MaterialLibrary{}),
                                          PathId{0}, 0, both);
+  REQUIRE(rounded.wavelengths.size() == 2);
   const double l2 = static_cast<double>(rounded.wavelengths[1].length);
   CHECK(rounded.polychromatic_scale_error > 0.0);
   CHECK(rounded.polychromatic_scale_error <= 1.0 / (2.0 * l2) + 1e-15);
@@ -405,6 +427,7 @@ TEST_CASE("psf: bitwise the same for 1, 4 and all threads", "[psf]") {
     return arena.execute([&] { return rtt::analysis::psf(cs, PathId{0}, 0, o); });
   };
   const Psf all = rtt::analysis::psf(cs, PathId{0}, 0, o);
+  require_lattice(all);  // content guard: there is a lattice to compare
   for (const int t : {1, 4}) {
     const Psf p = run(t);
     INFO("threads " << t);
@@ -414,6 +437,7 @@ TEST_CASE("psf: bitwise the same for 1, 4 and all threads", "[psf]") {
     CHECK(same_bits(p.strehl, all.strehl));
   }
   CHECK(all.strehl < 1.0);  // content guard: the focus shift lowers the peak
+  CHECK(all.strehl > 0.0);
 }
 
 TEST_CASE("psf: input errors", "[psf]") {
