@@ -1366,6 +1366,41 @@ TEST_CASE("pupil labels are oriented at the reference wavelength (#96)",
   }
 }
 
+TEST_CASE("pupil labels are oriented at the stop, also with stop_scale < 0 at the reference "
+          "wavelength (#35 B)",
+          "[sources][aiming][telecentric]") {
+  // The stop between the rear focal points of d and C: F and d (reference) see their EP beyond
+  // infinity (stop_scale < 0, the pupil image turned over), C sees it in front (stop_scale > 0).
+  // Labels oriented at the stop (ADR 0007, addendum #35 B): pupil point (px, py) reaches the
+  // target (px, py) |R_s(lambda)| at every wavelength, the upper half of the stop for py > 0.
+  // Before #35 B the reference wavelength itself used the mirrored target -(px, py) |R_s| (the
+  // rule of #96 compensated only between wavelengths). Tolerance as in "pupil rays hit their
+  // target on the stop": 1e-9 mm.
+  MaterialLibrary lib;
+  lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/schott.agf");
+  const CompiledSystem probe = compile(dispersive_lens(129.0), lib);
+  const double z_d = *rtt::paraxial::first_order(probe, PathId{0}, 1).rear_focal_z;
+  const double z_c = *rtt::paraxial::first_order(probe, PathId{0}, 2).rear_focal_z;
+  REQUIRE(z_d < z_c);
+  const CompiledSystem cs = compile(dispersive_lens(0.5 * (z_d + z_c)), lib);
+  // Content guards: the reference wavelength has stop_scale < 0, C has stop_scale > 0.
+  REQUIRE(stop_radius_at(cs, 1) < 0.0);
+  REQUIRE(stop_radius_at(cs, 2) > 0.0);
+  for (std::uint16_t wl = 0; wl < 3; ++wl) {
+    const double r_s = std::abs(stop_radius_at(cs, wl));
+    for (std::uint16_t f = 0; f < 3; ++f) {
+      for (const auto& [px, py] :
+           {std::pair{0.0, 1.0}, std::pair{1.0, 0.0}, std::pair{0.6, -0.8}}) {
+        INFO("wavelength " << wl << ", field " << f << ", p = (" << px << ", " << py << ")");
+        const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, f, wl, px, py);
+        REQUIRE(aimed.ray.status == RayStatus::Alive);
+        const Vec3 hit = hit_on_stop_at(cs, aimed.ray, wl);
+        REQUIRE(std::hypot(hit.x() - px * r_s, hit.y() - py * r_s) < 1e-9);
+      }
+    }
+  }
+}
+
 TEST_CASE("without a change of the EP side over the wavelengths: rays as before (#96)",
           "[sources][telecentric]") {
   // The same dispersive lens with the stop well before the rear focal points (z = 60): the EP
@@ -1419,7 +1454,7 @@ TEST_CASE("pupil labels are continuous through an entrance pupil at infinity (#3
   // image points change continuously with delta. Before, stop_scale < 0 on the delta > 0 side
   // mirrored (px, py) on the stop: the marginal ray of field 2 jumped by 1.14 mm on the image
   // of telecentric_singlet and by 0.02 mm in the 4f relay (ADR 0030, addendum #167). The singlet
-  has the fields 0, 1 and 2 mm, the relay 0 and 1 mm.
+  // has the fields 0, 1 and 2 mm, the relay 0 and 1 mm.
   //
   // Tolerance, derived beforehand: real aiming meets the stop target within kAimTolerance =
   // 1e-9 mm; a stop error e moves the image point by at most about e times the ratio of the
