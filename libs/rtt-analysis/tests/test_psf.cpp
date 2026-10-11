@@ -127,6 +127,19 @@ double image_index(const CompiledSystem& cs, std::uint16_t wavelength) {
   return std::abs(cs.media()[last.medium_after].index[wavelength].real());
 }
 
+/// The ideal peak (sum f A)^2 / (L^2 E) of a pupil function on a lattice of length L: the
+/// intensity at k = 0 of the same pupil without aberration (ADR 0033, point 4).
+double ideal_peak(const PupilFunction& p, int length) {
+  double fa = 0.0;
+  double energy = 0.0;
+  for (std::size_t j = 0; j < p.fraction.size(); ++j) {
+    fa += p.fraction[j] * p.amplitude[j];
+    energy += p.fraction[j] * p.amplitude[j] * p.amplitude[j];
+  }
+  const auto l = static_cast<double>(length);
+  return fa * fa / (l * l * energy);
+}
+
 /// The lattice exists before it is indexed, so that the tests fail cleanly against a stub
 /// instead of reading out of range.
 void require_lattice(const Psf& psf) {
@@ -235,6 +248,9 @@ TEST_CASE("psf: Airy profile [2 J1(v) / v]^2", "[psf]") {
   const PupilFunction p64 = pupil(cs, 64);
   const PupilFunction p128 = pupil(cs, 128);
   const double s = kLambdaMm * f_number(p128) / std::numbers::pi;  // r per unit of v
+  // Strehl units: the bound e <= 1e-3 is relative to the peak (1), not to the value at v (at
+  // v = 5 the pattern is 0.017). The profile is no quantity of the acceptance grid of ADR 0033,
+  // point 10 (review of #233).
   for (const double v : {1.0, 2.0, 3.0, 5.0}) {
     const double i64 = on_axis_x(p64, v * s);
     const double i128 = on_axis_x(p128, v * s);
@@ -247,7 +263,9 @@ TEST_CASE("psf: Airy profile [2 J1(v) / v]^2", "[psf]") {
 
 TEST_CASE("psf: defocus Strehl sinc^2(w), through_focus and psf agree", "[psf]") {
   // F/50 (D = 2 mm): the wavefront of a focus shift is w rho^2 up to a relative rho^4 term below
-  // alpha_m^2 / 12 + 2 (h / 2f)^2 ~ 6e-5, which changes S by less than |dS/dw| w 6e-5.
+  // alpha_m^2 / 12 + 2 (h / 2f)^2 ~ 6e-5, |delta W| <= 6e-5 w waves. Its effect on S, with
+  // U = <exp(-2 pi i W)> over the pupil and |U| <= 1 (review of #233): |S' - S| =
+  // (|U'| + |U|) ||U'| - |U|| <= 2 |U' - U| <= 2 <|exp(-2 pi i delta W) - 1|> <= 4 pi 6e-5 w.
   // w from the exact sphere formula at the rim (ADR 0032, point 5):
   // W = n' [Delta (1 - cos alpha_m) + sqrt(R'^2 - Delta^2 sin^2 alpha_m) - R'], both terms
   // ~ rho^2, with n' of AIR (image_index; without it w would be 2.7e-4 too small, S off by 2e-4);
@@ -283,14 +301,27 @@ TEST_CASE("psf: defocus Strehl sinc^2(w), through_focus and psf agree", "[psf]")
   o128.grid = 128;
   PupilFunctionOptions o256;
   o256.grid = 256;
-  const std::vector<double> s128 = rtt::analysis::through_focus(cs, PathId{0}, 0, 0, shifts, o128);
-  const std::vector<double> s256 = rtt::analysis::through_focus(cs, PathId{0}, 0, 0, shifts, o256);
+  const rtt::analysis::ThroughFocus t128 =
+      rtt::analysis::through_focus(cs, PathId{0}, 0, 0, shifts, o128);
+  const rtt::analysis::ThroughFocus t256 =
+      rtt::analysis::through_focus(cs, PathId{0}, 0, 0, shifts, o256);
+  const std::vector<double>& s128 = t128.strehl;
+  const std::vector<double>& s256 = t256.strehl;
   REQUIRE(s128.size() == shifts.size());
   REQUIRE(s256.size() == shifts.size());
+  // The result type of ADR 0033, point 11 (review of #233): shifts, the arrived area per shift
+  // (every cell crosses these mildly shifted spheres) and the losses of the trace.
+  CHECK(t256.shifts == shifts);
+  CHECK(t256.field == 0);
+  CHECK(t256.wavelength == 0);
+  REQUIRE(t256.arrived_fraction.size() == shifts.size());
+  for (const double a : t256.arrived_fraction) CHECK(a == 1.0);
+  CHECK(t256.losses.launched > 0);
+  CHECK(t256.losses.count(rtt::trace::RayStatus::Alive) == t256.losses.launched);
+  CHECK(t256.warnings.empty());
   for (std::size_t i = 0; i < shifts.size(); ++i) {
     const double w = ws[i];
-    const double ds_dw = 2.0 * std::numbers::pi;  // bound of |d sinc^2 / dw| on [0, 1]
-    const double e = 2.0 * std::abs(s128[i] - s256[i]) + ds_dw * w * 6e-5 + 1e-12;
+    const double e = 2.0 * std::abs(s128[i] - s256[i]) + 4.0 * std::numbers::pi * 6e-5 * w + 1e-12;
     INFO("w = " << w << ": N=128 " << s128[i] << ", N=256 " << s256[i] << ", sinc^2 " << sinc2(w));
     CHECK(e <= 1e-3);
     CHECK(std::abs(s256[i] - sinc2(w)) <= e);
@@ -325,6 +356,15 @@ TEST_CASE("psf: energy, deficit and the ideal peak", "[psf]") {
   CHECK(std::abs(psf.strehl - 1.0) <= 1e-12);
   CHECK(psf.peak.k1 == 0);
   CHECK(psf.peak.k2 == 0);
+  // Strehl as the peak ratio (review of #233): strehl times the ideal peak is the intensity at
+  // k = 0 (x = 0 exactly; the DC value of the FFT is sum u). With a focus shift, so S < 1.
+  o.pupil.focus_shift = 0.5;
+  const Psf shifted = rtt::analysis::psf(cs, PathId{0}, 0, o);
+  require_lattice(shifted);
+  const PupilFunction ps = pupil(cs, 64, 0.5);
+  const double centre = shifted.intensity[cell(shifted, 0, 0)];
+  CHECK(shifted.strehl < 0.9);  // content guard
+  CHECK(std::abs(shifted.strehl * ideal_peak(ps, shifted.length) - centre) <= 1e-12 * centre);
 }
 
 TEST_CASE("psf: two wavelengths sum with weights w_i E_i on the reference lattice", "[psf]") {
@@ -360,6 +400,44 @@ TEST_CASE("psf: two wavelengths sum with weights w_i E_i on the reference lattic
   CHECK(std::abs(poly.polychromatic_scale_error - dispersion) <= 1e-12);
   const double wa = 0.25 * a.wavelengths[0].energy;
   const double wb = 0.75 * b.wavelengths[0].energy;
+  // Polychromatic Strehl ratio as the peak ratio of the summed images (review of #233): the
+  // intensity at k = 0 over the weighted ideal peaks, which scale as 1 / lambda_i^2; not the mean
+  // of the monochromatic S_i. Without aberration both are 1, so the check needs one: a focus
+  // shift of 0.2 mm at F/10 gives about 0.43 waves of defocus at lambda_1 and 0.34 at lambda_2,
+  // S_1 ~ 0.5 and S_2 ~ 0.66; the peak ratio (~0.605) and the mean (~0.62) differ by ~0.015.
+  // (The first form of this check used the aberration-free pupil and stayed green against the
+  // mean; found in the red run.)
+  PsfOptions shifted = both;
+  shifted.pupil.focus_shift = 0.2;
+  const Psf poly_s = rtt::analysis::psf(cs, PathId{0}, 0, shifted);
+  PsfOptions first_s = shifted;
+  first_s.wavelengths = std::vector<std::uint16_t>{0};
+  PsfOptions second_s = shifted;
+  second_s.wavelengths = std::vector<std::uint16_t>{1};
+  second_s.padding = 5;
+  const Psf a_s = rtt::analysis::psf(cs, PathId{0}, 0, first_s);
+  const Psf b_s = rtt::analysis::psf(cs, PathId{0}, 0, second_s);
+  require_lattice(poly_s);
+  REQUIRE(poly_s.wavelengths.size() == 2);
+  REQUIRE(a_s.wavelengths.size() == 1);
+  REQUIRE(b_s.wavelengths.size() == 1);
+  PupilFunctionOptions po32 = shifted.pupil;
+  const PupilFunction pa = rtt::analysis::pupil_function(cs, PathId{0}, 0, 0, po32);
+  const PupilFunction pb = rtt::analysis::pupil_function(cs, PathId{0}, 0, 1, po32);
+  const double wa_s = 0.25 * a_s.wavelengths[0].energy;
+  const double wb_s = 0.75 * b_s.wavelengths[0].energy;
+  const double ideal_poly = (wa_s * ideal_peak(pa, poly_s.wavelengths[0].length) +
+                             wb_s * ideal_peak(pb, poly_s.wavelengths[1].length)) /
+                            (wa_s + wb_s);
+  const double centre = poly_s.intensity[cell(poly_s, 0, 0)];
+  CHECK(std::abs(poly_s.strehl * ideal_poly - centre) <= 1e-12 * centre);
+  // Content guards: the ideal peaks differ (1 / lambda^2), the monochromatic S_i differ, and so
+  // the mean of the S_i is not the peak ratio.
+  CHECK(ideal_peak(pa, poly_s.wavelengths[0].length) >
+        1.5 * ideal_peak(pb, poly_s.wavelengths[1].length));
+  CHECK(b_s.strehl - a_s.strehl > 0.1);
+  const double mean = (wa_s * a_s.strehl + wb_s * b_s.strehl) / (wa_s + wb_s);
+  CHECK(std::abs(poly_s.strehl - mean) > 1e-3);
   for (int k2 = -8; k2 <= 8; k2 += 4) {
     for (int k1 = -8; k1 <= 8; ++k1) {
       const double expected =
@@ -398,6 +476,22 @@ TEST_CASE("psf: two wavelengths sum with weights w_i E_i on the reference lattic
   REQUIRE(shorter.wavelengths.size() == 2);
   CHECK(shorter.wavelengths[1].length == 102);
   CHECK(shorter.wavelengths[1].outside_field == 0.0);
+  // L grows in steps of 2 until every L_i >= 2 N - 1 (ADR 0033, point 7; review of #233):
+  // lambda_2 = 0.6 lambda_1 at Q = 2, N = 32 gives L_2 = 38 < 63 for L = 64. The expected L is
+  // the smallest 64 + 2k with round(L lambda_2 / lambda_1 n'_1 / n'_2) >= 63, computed here.
+  s.wavelengths = {{0.5876, 1.0, true}, {0.5876 * 0.6, 1.0, false}};
+  const CompiledSystem cs_short = rtt::compile::compile(s, rtt::material::MaterialLibrary{});
+  PsfOptions q2 = both;
+  q2.padding = 2;
+  const Psf grown = rtt::analysis::psf(cs_short, PathId{0}, 0, q2);
+  REQUIRE(grown.wavelengths.size() == 2);
+  const double ratio = 0.6 * image_index(cs_short, 0) / image_index(cs_short, 1);
+  long long expected_l = 64;
+  while (std::llround(static_cast<double>(expected_l) * ratio) < 63) expected_l += 2;
+  CHECK(expected_l > 64);  // content guard: L had to grow
+  CHECK(grown.length == expected_l);
+  CHECK((grown.length - 64) % 2 == 0);  // steps of 2 from Q N (review of #233)
+  for (const auto& wl : grown.wavelengths) CHECK(wl.length >= 63);  // every L_i >= 2 N - 1
   // A ratio without a whole L: the scale error stays within the rounding of L_i plus the
   // difference of the mappings, 1 / (2 L_2) + |n'_1 / n'_2 - 1| (ADR 0033, point 7).
   s.wavelengths = {{0.5876, 1.0, true}, {0.5876 * 1.1, 1.0, false}};
@@ -474,9 +568,14 @@ TEST_CASE("psf: input errors", "[psf]") {
   CHECK_THROWS_AS(rtt::analysis::psf(cs, PathId{0}, 0, w), std::invalid_argument);
   w.wavelengths = std::vector<std::uint16_t>{7};
   CHECK_THROWS_AS(rtt::analysis::psf(cs, PathId{0}, 0, w), std::invalid_argument);
+  w.wavelengths = std::vector<std::uint16_t>{0, 0};  // repeated (review of #233)
+  CHECK_THROWS_AS(rtt::analysis::psf(cs, PathId{0}, 0, w), std::invalid_argument);
   PsfOptions f;
   f.aliasing_factor = 0.5;
   CHECK_THROWS_AS(rtt::analysis::psf(cs, PathId{0}, 0, f), std::invalid_argument);
+  PsfOptions u;
+  u.undersampled_waves = 0.0;
+  CHECK_THROWS_AS(rtt::analysis::psf(cs, PathId{0}, 0, u), std::invalid_argument);
   const std::array<double, 1> bad{std::nan("")};
   CHECK_THROWS_AS(rtt::analysis::through_focus(cs, PathId{0}, 0, 0, bad), std::invalid_argument);
 }
@@ -494,4 +593,9 @@ TEST_CASE("psf: an afocal image space has no PSF lattice", "[psf]") {
   s.fields.points.resize(1);
   const CompiledSystem cs = rtt::compile::compile(s, rtt::material::MaterialLibrary{});
   CHECK_THROWS_AS(rtt::analysis::psf(cs, PathId{0}, 0), rtt::analysis::AnalysisError);
+  // through_focus rejects it as well (review of #233): the reference of an afocal image space is
+  // not settled in ADR 0032.
+  const std::array<double, 1> shift{0.1};
+  CHECK_THROWS_AS(rtt::analysis::through_focus(cs, PathId{0}, 0, 0, shift),
+                  rtt::analysis::AnalysisError);
 }

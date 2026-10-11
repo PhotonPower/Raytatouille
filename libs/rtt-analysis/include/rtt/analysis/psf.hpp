@@ -89,8 +89,13 @@ struct Psf {
   /// matches the reference within polychromatic_scale_error; a shorter wavelength with L_i < L
   /// adds nothing outside its own field (|k| beyond L_i / 2).
   std::vector<double> intensity;
-  /// |sum u|^2 / |sum f A|^2 at C' (Wyant & Creath (64) for the discrete pupil); polychromatic:
-  /// weighted with w_i E_i like the intensity.
+  /// Strehl ratio: the intensity at C' (k = 0) relative to that of the same pupils without
+  /// aberration (Wyant & Creath (64) for the discrete pupil). Monochromatic |sum u|^2 /
+  /// |sum f A|^2. Polychromatic the peak ratio of the summed images with the weights of the
+  /// intensity, omega_i = w_i E_i / sum w E:
+  ///   sum_i omega_i |sum u|_i^2 / (L_i^2 E_i)  /  sum_i omega_i (sum f A)_i^2 / (L_i^2 E_i),
+  /// so strehl times the denominator is intensity at k = 0 (review of #233). It is not the mean
+  /// of the monochromatic S_i: the ideal peaks scale as 1 / lambda_i^2.
   double strehl = 0.0;
   PsfPeak peak;
   double edge_energy_deficit = 0.0;  ///< 1 - sum f^2 A^2 / sum f A^2, weighted
@@ -105,8 +110,8 @@ struct Psf {
 };
 
 /// Diffraction PSF of `field` on `path` (ADR 0033).
-/// @throws std::invalid_argument for padding < 2, L > 8192, an unknown wavelength, an empty
-///         wavelength list, aliasing_factor < 1 or undersampled_waves <= 0 (and as
+/// @throws std::invalid_argument for padding < 2, L > 8192, an unknown or repeated wavelength,
+///         an empty wavelength list, aliasing_factor < 1 or undersampled_waves <= 0 (and as
 ///         pupil_function())
 /// @throws AnalysisError (location /paths/i) for an afocal image space (no mapping), a path with
 ///         crystal modes or no arrived cell (and as pupil_function())
@@ -133,15 +138,44 @@ struct Psf {
 /// @throws AnalysisError if the pupil function has no mapping (afocal) or no arrived cell
 [[nodiscard]] std::vector<double> psf_at(const PupilFunction& pupil, std::span<const Point2> x);
 
-/// Strehl ratio |sum u|^2 / |sum f A|^2 for every focus shift in `shifts` (mm along the chief
-/// ray, ADR 0032, point 5), at `wavelength`; one trace, W recomputed per shift without tracing
-/// again. options.focus_shift is ignored.
-/// @throws as pupil_function(), and std::invalid_argument for a non-finite shift
-[[nodiscard]] std::vector<double> through_focus(const compile::CompiledSystem& system,
-                                                compile::PathId path,
-                                                std::uint16_t field,
-                                                std::uint16_t wavelength,
-                                                std::span<const double> shifts,
-                                                const PupilFunctionOptions& options = {});
+/// Strehl ratio through focus at one wavelength (ADR 0033, points 8 and 11).
+struct ThroughFocus {
+  std::uint16_t field = 0;
+  std::uint16_t wavelength = 0;  ///< index into CompiledSystem::wavelengths_um()
+  std::vector<double> shifts;    ///< focus shifts, mm along the chief ray (ADR 0032, point 5)
+  /// |sum u|^2 / |sum f A|^2 per shift (monochromatic Strehl ratio, as Psf::strehl).
+  std::vector<double> strehl;
+  /// sum f over the cells that cross the shifted reference sphere / sum f over all cells, per
+  /// shift: cells far from the focus can miss a strongly shifted sphere (refocus()).
+  std::vector<double> arrived_fraction;
+  /// Losses and warnings of the traced pupil function (focus shift 0): rays.lost,
+  /// stop.clips_beam, pupil.mapping_nonlinear.
+  RayLosses losses;
+  std::vector<model::Diagnostic> warnings;
+};
+
+/// The Strehl ratio |sum u|^2 / |sum f A|^2 for every focus shift in `shifts` (mm along the chief
+/// ray, ADR 0032, point 5), at `wavelength`: one trace, W recomputed per shift with refocus(),
+/// without tracing again. options.focus_shift is ignored. The PSF per shift (ADR 0033, point 8,
+/// optional there) is left to an addendum; psf() with focus_shift gives it with one trace each.
+/// @throws std::invalid_argument for a non-finite shift (before any ray), and as
+///         pupil_function()
+/// @throws AnalysisError (location /paths/i) for an afocal image space, as psf(), a path with
+///         crystal modes, or no arrived cell at a shift
+[[nodiscard]] ThroughFocus through_focus(const compile::CompiledSystem& system,
+                                         compile::PathId path,
+                                         std::uint16_t field,
+                                         std::uint16_t wavelength,
+                                         std::span<const double> shifts,
+                                         const PupilFunctionOptions& options = {});
+
+/// through_focus() with cancellation and progress (run_control.hpp).
+[[nodiscard]] ThroughFocus through_focus(const compile::CompiledSystem& system,
+                                         compile::PathId path,
+                                         std::uint16_t field,
+                                         std::uint16_t wavelength,
+                                         std::span<const double> shifts,
+                                         const PupilFunctionOptions& options,
+                                         const trace::RunControl& control);
 
 }  // namespace rtt::analysis
