@@ -79,12 +79,12 @@ struct Context {
   paraxial::FirstOrder first_order_ref;
   double z_ep_ref = 0.0;         ///< global z of the paraxial entrance pupil for the conversion, mm
   bool telecentric_ref = false;  ///< EP at infinity for the conversion (finite object, #96)
-  /// Orientation of the pupil labels at the stop (ADR 0007, addendum #35 B; replaces the
-  /// orientation at the reference wavelength of #96): the sign of stop_scale. Pupil point
-  /// (px, py) is the EP point label_sign * (px, py) * r_ep (telecentric: the slopes
-  /// label_sign * (px, py) * u_m) with the stop target (px, py) * r_ep * |stop_scale|, so py > 0
-  /// is the upper half of the stop for every wavelength and on both sides of an entrance pupil
-  /// at infinity.
+  /// Orientation of the pupil labels at the object-space slope (ADR 0007, addendum #35 B;
+  /// replaces the orientation at the reference wavelength of #96): -1 for a finite object whose
+  /// entrance pupil at this wavelength lies on the far side of the object (z_ep < z_obj), else
+  /// +1. Pupil point (px, py) is the EP point label_sign * (px, py) * r_ep with the stop target
+  /// label_sign * (px, py) * r_ep * stop_scale, so py > 0 is a ray rising in object space for
+  /// every wavelength and on both sides of an entrance pupil at infinity.
   double label_sign = 1.0;
 };
 
@@ -201,14 +201,18 @@ Context make_context(const CompiledSystem& system, PathId path, std::uint16_t wa
       c.z_ep_ref = *ep_ref->z;
     }
   }
-  // Pupil labels oriented at the stop (ADR 0007, addendum #35 B): the image of the pupil turns
-  // over when the EP passes through infinity, and stop_scale changes its sign there. With
-  // label_sign = sign(stop_scale) the target (px, py) * r_ep * stop_scale * label_sign stays on
-  // the same half of the stop, so the rays change continuously through an EP at infinity, at
-  // every wavelength (this replaces the orientation at the reference wavelength of #96, which
-  // left the jump at the reference wavelength itself). stop_scale > 0 gives label_sign = 1, and
-  // 1 * p == p exactly: the rays are bit for bit those of before.
-  c.label_sign = c.stop_scale < 0.0 ? -1.0 : 1.0;
+  // Pupil labels oriented at the object-space slope (ADR 0007, addendum #35 B, decided by the
+  // maintainer): with a finite object sigma = side(lambda) = sign(z_ep - z_obj) at every
+  // wavelength, an EP at infinity (object-space telecentric) counting as the + side, so py > 0
+  // is always a ray rising in object space. The EP passes through infinity from the + to the -
+  // side and stop_scale changes its sign with it, so the rays change continuously there (the
+  // jump of ADR 0030, addendum #167). This replaces sigma = side(ref) side(lambda) of #96,
+  // which left the jump at the reference wavelength itself. An object at infinity keeps the EP
+  // convention of #8: sigma = +1. sigma = +1 gives 1 * p == p exactly, so the rays of every
+  // system without a virtual EP beyond the object are bit for bit those of before.
+  if (!infinite && !c.telecentric && c.z_ep < -system.object().distance.value) {
+    c.label_sign = -1.0;
+  }
   return c;
 }
 
@@ -466,7 +470,8 @@ std::optional<std::pair<double, double>> stop_hit(const Context& c, RayState ray
 }
 
 AimedRay aim(const Context& c, const FieldStart& f, double px, double py, Aiming aiming) {
-  // Pupil labels oriented at the stop (label_sign, ADR 0007 addendum #35 B); 1 * p == p exactly.
+  // Pupil labels oriented at the object-space slope (label_sign, ADR 0007 addendum #35 B);
+  // 1 * p == p exactly.
   const double sx = c.label_sign * px;
   const double sy = c.label_sign * py;
   // Paraxial solution: straight through the EP point (sx, sy) * r_ep, or with the slopes

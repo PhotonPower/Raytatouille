@@ -168,14 +168,16 @@ struct AimedRay {
 /// object (z_ep < z_obj, #93). Object-space telecentric (EP at infinity, #96): (px, py) are
 /// object-space slopes, d ~ (px u_m, py u_m, 1) with the paraxial marginal slope u_m (NA / n
 /// for object_na, r_stop / |s| for stop_size); the paraxial chief ray is parallel to the axis.
-/// Pupil points are oriented at the stop (ADR 0007, addendum #35 B; replaces the orientation at
-/// the reference wavelength of #96): py > 0 is always the upper half of the stop, for every
-/// wavelength and on both sides of an entrance pupil at infinity, so the rays change
-/// continuously when the EP passes through infinity. Where the image of the stop in the EP is
-/// inverted (paraxial stop_scale < 0), the EP point or slope of (px, py) is taken as -(px, py).
-/// The target is (px |R_s|, py |R_s|) in the local coordinates of the stop surface (first Stop
-/// event of the path), R_s = paraxial stop radius belonging to the entrance pupil. Apertures are
-/// ignored while aiming; vignetting is left to the tracer.
+/// Pupil points with a finite object are oriented at the object-space slope (ADR 0007, addendum
+/// #35 B; replaces the orientation at the reference wavelength of #96): py > 0 is always a ray
+/// rising in object space, for every wavelength and on both sides of an entrance pupil at
+/// infinity, so the rays change continuously when the EP passes through infinity. For a virtual
+/// EP on the far side of the object (z_ep < z_obj) the EP point of (px, py) is therefore
+/// -(px, py) r_ep. With the object at infinity (px, py) is the EP point (#8).
+/// The target is sigma (px R_s, py R_s) in the local coordinates of the stop surface (first Stop
+/// event of the path), sigma = -1 for a virtual EP beyond the object, else +1, and R_s = paraxial
+/// stop radius belonging to the entrance pupil (negative where the stop sees the EP inverted).
+/// Apertures are ignored while aiming; vignetting is left to the tracer.
 /// @throws std::invalid_argument if the path, field or wavelength does not exist; px or py is
 ///         not finite; the field type does not fit the object (object height at infinity); a
 ///         field angle is not in (-90, 90) degree; no start plane exists before an unbounded
