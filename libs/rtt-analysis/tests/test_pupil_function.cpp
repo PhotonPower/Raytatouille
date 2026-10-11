@@ -23,6 +23,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <numbers>
 #include <optional>
 #include <span>
 #include <stdexcept>
@@ -62,7 +63,7 @@ System load(const std::string& name) {
 
 CompiledSystem compiled(const System& s) {
   rtt::material::MaterialLibrary lib;
-  lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/schott.agf");
+  lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/m2/schott.agf");  // the Cooke triplet's glasses
   return rtt::compile::compile(s, lib);
 }
 
@@ -193,7 +194,7 @@ TEST_CASE("pupil function of a paraboloid: mapping, frame and the nonlinearity d
   CHECK(std::abs(m.m[1]) <= 1e-12);
   CHECK(std::abs(m.m[2]) <= 1e-12);
   // Expected deltas from the sample points: rho g / (1 + g), g = (rho r / 2f)^2.
-  const double f = *fo.rear_focal_length / n_image;
+  const double f = *fo.rear_focal_length;  // = |n'| / Phi = R / 2, the geometric focal length
   double expected_max = 0.0;
   double sum_f = 0.0;
   double sum_f_d2 = 0.0;
@@ -372,6 +373,37 @@ TEST_CASE("pupil function: s0 is the chief ray of the evaluated wavelength", "[p
   CHECK(pf.mapping->d_c == at_ref.mapping->d_c);  // the same frame for every wavelength
 }
 
+TEST_CASE("pupil function: the frame follows the image surface turned about z",
+          "[pupil][mapping]") {
+  // The detector turned by 30 deg about z (still rotationally symmetric for first_order): e_x is
+  // its local x axis (cos 30, sin 30, 0), e_y = d_c x e_x, and M turns with the frame while the
+  // deltas stay (they do not depend on the frame). A chief ray grazing the image surface
+  // (|x_B x d_c| <= 1e-6, ADR 0032, point 4) needs a tilted image surface, which first_order
+  // rejects before (ParaxialError); the check guards the parabasal extension.
+  System s = load("m2/paraboloid_stop.rtt.json");
+  PupilFunctionOptions o;
+  o.grid = 16;
+  const PupilFunction straight = rtt::analysis::pupil_function(compiled(s), kPath, 0, 0, o);
+  std::get<Element>(s.root.children[2].value).pose.rotation_deg[2] = Param(30.0);
+  const PupilFunction turned = rtt::analysis::pupil_function(compiled(s), kPath, 0, 0, o);
+  REQUIRE((straight.mapping && turned.mapping));
+  const double c = std::cos(std::numbers::pi / 6.0);
+  const double sn = std::sin(std::numbers::pi / 6.0);
+  CHECK((turned.mapping->e_x - Vec3(c, sn, 0.0)).norm() <= 1e-15);
+  CHECK((turned.mapping->e_y - turned.mapping->d_c.cross(turned.mapping->e_x)).norm() <= 1e-15);
+  // The rays are the same (the detector only turns in its plane). With d_c = -z the straight
+  // frame is (x, -y), the turned one (c x + s y, s x - c y), so s'_x = c s_x - s s_y and
+  // s'_y = s s_x + c s_y, row by row of M. Tolerance: rounding of the dot products (1e-16)
+  // over the difference step 2e-3, about 1e-13.
+  const auto& m = straight.mapping->m;
+  const auto& mt = turned.mapping->m;
+  CHECK(std::abs(mt[0] - (c * m[0] - sn * m[2])) <= 1e-11);
+  CHECK(std::abs(mt[1] - (c * m[1] - sn * m[3])) <= 1e-11);
+  CHECK(std::abs(mt[2] - (sn * m[0] + c * m[2])) <= 1e-11);
+  CHECK(std::abs(mt[3] - (sn * m[1] + c * m[3])) <= 1e-11);
+  CHECK(std::abs(turned.mapping->delta_max - straight.mapping->delta_max) <= 1e-12);
+}
+
 TEST_CASE("pupil function: an afocal image space has no mapping", "[pupil][mapping]") {
   // The singlet with the object in its front focal plane: the rays of an object point leave
   // parallel, s is the same for all of them, M = 0 (ADR 0032, point 4: |det M| <= 1e-12 n'^2).
@@ -389,24 +421,6 @@ TEST_CASE("pupil function: an afocal image space has no mapping", "[pupil][mappi
 }
 
 TEST_CASE("pupil function: errors with location", "[pupil][function]") {
-  SECTION("a chief ray grazing the image surface leaves the PSF plane without a frame") {
-    // The detector turned by 90 deg - 1e-5 deg about y: its local x axis lies within 1.7e-7 rad
-    // of d_c = -z, below the limit 1e-6 of ADR 0032, point 4.
-    System s = load("m2/paraboloid_stop.rtt.json");
-    std::get<Element>(s.root.children[2].value).pose.rotation_deg[1] = Param(90.0 - 1e-5);
-    const CompiledSystem cs = compiled(s);
-    PupilFunctionOptions o;
-    o.grid = 4;
-    try {
-      static_cast<void>(rtt::analysis::pupil_function(cs, kPath, 0, 0, o));
-      FAIL("no AnalysisError");
-    } catch (const AnalysisError& e) {
-      const std::uint32_t image = cs.path(kPath).events.back().surface;
-      CHECK(e.location() == std::optional<std::string>(cs.surfaces()[image].location));
-      CHECK_FALSE(e.surface().has_value());
-      CHECK_FALSE(e.ray_status().has_value());
-    }
-  }
   SECTION("a path with crystal modes is rejected before any ray is traced") {
     // The calcite plate of the OPD guard in test_opd.cpp, with an ordinary event.
     System s;
