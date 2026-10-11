@@ -263,9 +263,10 @@ TEST_CASE("pupil.basis_pole for a given ray at the pole of the double-pole basis
 
 TEST_CASE("pupil.field_amplitude_absorbing and pupil.chief_phase_unavailable at the path",
           "[analysis][warnings]") {
-  // ADR 0034, point 5, option field amplitude (#208 B1): a collimated ray at 30 deg into a 1 mm
-  // plate of n = 1.5 + 1e-4 i, ending inside it. c_s != c_p, so J is NaN (one warning with the
-  // number of points); the global phase then has no chief J (second warning).
+  // ADR 0034, point 5, option field amplitude (#208 B1): a collimated ray at 30 deg into a
+  // 0.1 mm plate of n = 1.5 + 1e-3 i, ending inside it. |c_s - c_p| / c_s = 1.1e-7 > 1e-9, so J
+  // is NaN (one warning with the number of points); the global phase then has no chief J (second
+  // warning).
   System s;
   s.name = "absorbing plate";
   s.root.name = "root";
@@ -277,11 +278,11 @@ TEST_CASE("pupil.field_amplitude_absorbing and pupil.chief_phase_unavailable at 
   front.id = rtt::model::SurfaceId("B.S1");
   rtt::model::Surface back;
   back.id = rtt::model::SurfaceId("B.S2");
-  back.pose = rtt::model::Pose::along_z(1.0);
+  back.pose = rtt::model::Pose::along_z(0.1);
   s.root.children = {{rtt::model::Element{"block",
                                           rtt::model::ElementKind::Plate,
                                           rtt::model::Pose::along_z(10.0),
-                                          std::string("CONST:1.5,1e-4"),
+                                          std::string("CONST:1.5,1e-3"),
                                           {front, back}}}};
   s.paths = {{"into the glass",
               false,

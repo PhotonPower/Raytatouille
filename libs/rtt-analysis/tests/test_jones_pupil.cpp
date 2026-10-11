@@ -1201,14 +1201,15 @@ TEST_CASE("field amplitude: a diffraction order keeps the power factor of order 
 }
 
 TEST_CASE("field amplitude: absorbing glass gives J = NaN with warnings", "[jones][field]") {
-  // n = 1.5 + 1e-4 i: c_s != c_p (Byrnes, Eqs. (21), (22)), so J_field is no scalar multiple of
+  // n = 1.5 + 1e-3 i: |c_s - c_p| / c_s = 1.1e-7 at 30 deg (Byrnes, Eqs. (21), (22); about
+  // 2 kappa^2 xi^2 / (n^2 q^2)), far above the threshold 1e-9, so J_field is no scalar multiple of
   // J and is NaN at every point, with one warning pupil.field_amplitude_absorbing (ADR 0034,
   // point 5). Transmission, D and delta do not depend on the option and stay. With the global
   // phase requested the chief ray has no J: the option does nothing, pupil.chief_phase_unavailable.
-  // A 1 mm plate keeps the volume absorption small (exp(-4 pi kappa t / lambda) = 0.1).
-  const auto factors = rtt::polar::transmission_power_factors<double>(Cx(1.0), Cx(1.5, 1e-4), 0.5);
-  REQUIRE(std::abs(factors.s - factors.p) > 1e-10 * factors.s);  // premise: above 1e-12
-  const CompiledSystem cs = compiled(glass_block("CONST:1.5,1e-4", 1.0));
+  // A 0.1 mm plate keeps the volume absorption small (exp(-4 pi kappa t / lambda) = 0.1).
+  const auto factors = rtt::polar::transmission_power_factors<double>(Cx(1.0), Cx(1.5, 1e-3), 0.5);
+  REQUIRE(std::abs(factors.s - factors.p) > 1e-8 * factors.s);  // premise: well above 1e-9
+  const CompiledSystem cs = compiled(glass_block("CONST:1.5,1e-3", 0.1));
   const auto start = tilted_rays(kPi / 6.0);
   const JonesPupil power = rtt::analysis::jones_pupil(cs, PathId{0}, start, kChief);
   const JonesPupil field =
@@ -1227,4 +1228,31 @@ TEST_CASE("field amplitude: absorbing glass gives J = NaN with warnings", "[jone
   CHECK(has_warning(field, "pupil.chief_phase_unavailable"));
   CHECK(field.global_phase == 0.0);
   CHECK(power.warnings.empty());  // without the option: no warning
+}
+
+TEST_CASE("field amplitude: weak absorption below the threshold keeps J", "[jones][field]") {
+  // n = 1.5 + 1e-5 i, the order of catalogue glasses at their UV edge (kappa from the transmission
+  // data, ADR 0021): |c_s - c_p| / c_s = 1.1e-11 at 30 deg, below the threshold 1e-9 (review of
+  // #242), so no NaN and no warning. Dividing by sqrt(c_s) leaves the p part off by
+  // |c_s - c_p| / (2 c_s) = 6e-12: J_field = exp(-2 pi i w) diag(t_s, t_p) with the Fresnel
+  // amplitudes of the absorbing glass to 1e-9, as for real glass.
+  const Cx n(1.5, 1e-5);
+  const auto factors = rtt::polar::transmission_power_factors<double>(Cx(1.0), n, 0.5);
+  const double gap = std::abs(factors.s - factors.p) / factors.s;
+  REQUIRE(gap > 1e-12);  // premise: above the threshold rejected in the review
+  REQUIRE(gap < 1e-10);  // and well below the threshold 1e-9
+  const CompiledSystem cs = compiled(glass_block("CONST:1.5,1e-5", 1.0));
+  const auto start = tilted_rays(kPi / 6.0);
+  const JonesPupil field =
+      rtt::analysis::jones_pupil(cs, PathId{0}, start, kChief, field_amplitude(true));
+  const auto a = rtt::polar::fresnel<double>(Cx(1.0), n, 0.5);
+  CHECK(field.warnings.empty());
+  REQUIRE(field.status.size() == 25);
+  for (std::size_t r = 0; r < 25; ++r) {
+    INFO("point " << r);
+    REQUIRE(field.status[r] == RayStatus::Alive);
+    const Cx phase = std::polar(1.0, -2.0 * kPi * field.w[r]);
+    CHECK(std::abs(field.j[4 * r + 0] - phase * a.ts) <= 1e-9);
+    CHECK(std::abs(field.j[4 * r + 3] - phase * a.tp) <= 1e-9);
+  }
 }
