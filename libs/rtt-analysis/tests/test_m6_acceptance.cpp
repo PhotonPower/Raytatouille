@@ -10,7 +10,7 @@
 // Cases: 1 Airy zero, 2 encircled energy and 3 MTF (F/10), 4 defocus Strehl (F/50), 5 Zernike
 // from W040 (plano-convex), 6 and 7 Jones pupil of a 45 deg metal fold (collimated, converging),
 // 8 ideal lens (Airy zero, Strehl 1), and the reproducibility at 1, 4 and all threads. The
-// annular pupil (9) follows with #229.
+// annular pupil (9) is in test_annular.cpp (#229, part C) with the same tolerance rule.
 
 #include <tbb/global_control.h>
 
