@@ -253,6 +253,8 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
     {"wavelengths.value_invalid", Severity::Error, "validate", "wavelength not finite or <= 0 um"},
     {"wavelengths.weight_invalid", Severity::Error, "validate",
      "wavelength weight not finite or < 0"},
+    {"zernike.pupil_incomplete", Severity::Warning, "analysis",
+     "Zernike fit on an incomplete pupil: the coefficients are a fit, not a decomposition"},
 });
 
 /// Registry entry of `code`, or nullptr if it is not registered.
