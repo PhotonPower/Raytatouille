@@ -4,6 +4,9 @@
 columns of a RayBatch are NumPy views without a copy. ``trace(..., record_path=True)`` also
 records the path of every ray (RayPaths) for drawing rays in a layout. ``GaussPupil`` samples
 the pupil for Gaussian quadrature; its weights are ``gauss_pupil_weights`` (#168).
+``PointListPupil(px, py)`` passes an explicit list of pupil points (ADR 0032); it is only
+available as an object, the short forms of ``raytatouille.analysis`` (``"grid:N"`` etc.) have
+none for it.
 
 Long runs can be cancelled and report progress (#83): pass ``cancel=CancelToken()`` and call
 its cancel() from another thread (raises raytatouille.errors.Cancelled), and ``progress``, a
@@ -33,6 +36,7 @@ from ._core import (
     GaussPupil,
     GridPupil,
     HexapolarPupil,
+    PointListPupil,
     RandomPupil,
     RayBatch,
     RayPaths,
@@ -48,7 +52,14 @@ ProgressCallback = Callable[[int, int, str], None]
 
 #: Any of the pupil samplings accepted by make_rays.
 PupilSampling = Union[
-    SinglePupilPoint, HexapolarPupil, GridPupil, FanXPupil, FanYPupil, RandomPupil, GaussPupil
+    SinglePupilPoint,
+    HexapolarPupil,
+    GridPupil,
+    FanXPupil,
+    FanYPupil,
+    RandomPupil,
+    GaussPupil,
+    PointListPupil,
 ]
 
 __all__ = [
@@ -61,6 +72,7 @@ __all__ = [
     "GaussPupil",
     "GridPupil",
     "HexapolarPupil",
+    "PointListPupil",
     "ProgressCallback",
     "PupilSampling",
     "RandomPupil",

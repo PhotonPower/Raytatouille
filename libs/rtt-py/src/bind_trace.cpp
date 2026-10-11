@@ -218,6 +218,32 @@ void bind_trace(nb::module_& m) {
           "rings"_a = 3, "arms"_a = 6)
       .def_rw("rings", &trace::GaussPupil::rings)
       .def_rw("arms", &trace::GaussPupil::arms);
+  auto point_list = columns<trace::PointListPupil>(
+      m, "PointListPupil",
+      "An explicit list of normalised pupil points (px[i], py[i]) in this order (ADR 0032): each "
+      "is aimed like a SinglePupilPoint; points outside the unit circle are allowed. Empty lists "
+      "and non-finite points raise ValueError when the rays are made.");
+  point_list.def(
+      "__init__",
+      [](trace::PointListPupil* t, const std::vector<double>& px, const std::vector<double>& py) {
+        if (px.size() != py.size()) {
+          throw std::invalid_argument("PointListPupil: px and py must have the same length");
+        }
+        new (t) trace::PointListPupil{};
+        t->points.reserve(px.size());
+        for (std::size_t i = 0; i < px.size(); ++i) t->points.push_back({px[i], py[i]});
+      },
+      "px"_a, "py"_a,
+      // Lists and one-dimensional NumPy arrays both convert (sequence of float).
+      nb::sig("def __init__(self, px: collections.abc.Sequence[float] | "
+              "numpy.typing.NDArray[numpy.float64], py: collections.abc.Sequence[float] | "
+              "numpy.typing.NDArray[numpy.float64]) -> None"));
+  column<double>(
+      point_list, "px", [](const trace::PupilPoint& p) { return p.px; },
+      "Normalised pupil x of the points (read-only copy).");
+  column<double>(
+      point_list, "py", [](const trace::PupilPoint& p) { return p.py; },
+      "Normalised pupil y of the points (read-only copy).");
   m.def(
       "gauss_pupil_weights", &trace::gauss_pupil_weights, "gauss"_a,
       "Quadrature weights of the points of `gauss` in the order of its rays (they sum to 1): "
