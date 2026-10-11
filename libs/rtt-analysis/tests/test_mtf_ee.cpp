@@ -638,10 +638,10 @@ TEST_CASE("mtf: F, d and C against the weighted analytic MTFs", "[mtf]") {
   // sum_i omega_i MTF_circle(nu / nu_c,i) / sum_i omega_i with omega_i = w_i E_i and nu_c,i the
   // cut-off of each line (n' of AIR included, from its own run), 0 above it. Bound per curve,
   // absolute over the whole curve up to the largest cut-off (values near the cut-off are small;
-  // ADR 0033, point 10 with the addendum of #229): e_max = max 2 |X_N - X_2N| <= 1e-3 at
-  // N = 128 / 256, and every point of X_2N within e_max of the expected value. It covers the
-  // discretisation and the linear interpolation onto the reference frequencies, both falling with
-  // N.
+  // ADR 0033, point 10 with the addendum of #229): e_max = max 2 |X_N - X_2N| <= 1e-3 on the MTF
+  // grids 256 / 512 of the erratum to point 10, and every point of X_2N within e_max of the
+  // expected value. It covers the discretisation and the linear interpolation onto the reference
+  // frequencies, both falling with N. (At 128 / 256 e_max was 1.03e-3, as for one wavelength.)
   rtt::model::System sys = paraboloid_model(10.0);
   sys.wavelengths = {{0.4861, 1.0, false}, {0.5876, 1.0, true}, {0.6563, 1.0, false}};
   const CompiledSystem cs = compiled(sys);
@@ -651,24 +651,24 @@ TEST_CASE("mtf: F, d and C against the weighted analytic MTFs", "[mtf]") {
     if (only) o.wavelengths = std::vector<std::uint16_t>{*only};
     return rtt::analysis::mtf(cs, PathId{0}, 0, o);
   };
-  const Mtf p128 = run(128, std::nullopt);
-  const Mtf p256 = run(256, std::nullopt);
-  REQUIRE(p128.wavelengths.size() == 3);
+  const Mtf coarse = run(256, std::nullopt);
+  const Mtf fine = run(512, std::nullopt);
+  REQUIRE(coarse.wavelengths.size() == 3);
   std::array<double, 3> cutoff{};
   std::array<double, 3> omega{};
   for (std::uint16_t i = 0; i < 3; ++i) {
-    const Mtf single = run(128, i);
-    require_curves(single, 128);
+    const Mtf single = run(256, i);
+    require_curves(single, 256);
     REQUIRE(single.wavelengths.size() == 1);
     cutoff[i] = single.tangential.frequency.back();
-    omega[i] = p128.wavelengths[i].weight * p128.wavelengths[i].energy;
+    omega[i] = coarse.wavelengths[i].weight * coarse.wavelengths[i].energy;
   }
   // The axis runs to the cut-off of F (the shortest line) in the steps of d.
   CHECK(cutoff[0] > 1.15 * cutoff[1]);  // content guard: F lies above d
-  REQUIRE(p128.tangential.frequency.back() >= cutoff[0]);
-  CHECK(p128.tangential.modulation.back() == 0.0);
-  const MtfCurve& a = p128.tangential;
-  const MtfCurve& b = p256.tangential;
+  REQUIRE(coarse.tangential.frequency.back() >= cutoff[0]);
+  CHECK(coarse.tangential.modulation.back() == 0.0);
+  const MtfCurve& a = coarse.tangential;
+  const MtfCurve& b = fine.tangential;
   // Shared points l of 128 and 2 l of 256 (each axis ends at its own first sample at or above
   // the cut-off of F, so the finer one may end a step earlier; beyond it both are 0).
   const std::size_t shared = std::min(a.frequency.size(), (b.frequency.size() + 1) / 2);
