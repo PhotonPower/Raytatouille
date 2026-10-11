@@ -158,6 +158,7 @@ void bind_analysis(nanobind::module_& m);
 /// Pupil function, refocus and the Zernike fit (#209); after bind_analysis (ReferenceSphere).
 void bind_pupil(nanobind::module_& m);
 void bind_jones(nanobind::module_& m);
+void bind_psf(nanobind::module_& m);
 /// Path evaluation (#122) and ghost ranking (#124); after bind_analysis (RayLosses).
 void bind_paths(nanobind::module_& m);
 /// Reports as data (#177); after bind_analysis (Prescription).

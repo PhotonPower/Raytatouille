@@ -13,13 +13,17 @@ import numpy as np
 
 from ._core import (
     DistortionSweep,
+    EncircledEnergy,
     FieldCurvatureSweep,
     LongitudinalColour,
+    Mtf,
     OpdFan,
     OpdMap,
+    Psf,
     RayFan,
     RayStatus,
     SpotDiagram,
+    ThroughFocus,
 )
 
 if TYPE_CHECKING:
@@ -27,12 +31,16 @@ if TYPE_CHECKING:
 
 __all__ = [
     "distortion",
+    "encircled_energy",
     "field_curvature",
     "longitudinal_colour",
+    "mtf",
     "opd_fan",
     "opd_map",
+    "psf",
     "ray_fan",
     "spot",
+    "through_focus",
 ]
 
 
@@ -143,4 +151,57 @@ def longitudinal_colour(colour: LongitudinalColour, ax: Axes | None = None) -> A
     ax.set_ylabel("wavelength index")
     ax.set_title("Longitudinal colour")
     ax.legend()
+    return ax
+
+
+def psf(result: Psf, ax: Axes | None = None, *, log: bool = True,
+        floor: float = 1e-6) -> Axes:
+    """PSF relative to its peak over the lattice positions in um (Psf.positions(), also for a
+    lattice that is not axis-parallel); ``log``: log10, cut at ``floor``."""
+    ax = _axes(ax)
+    xy = result.positions() * 1e3  # um
+    values = np.asarray(result.intensity) / max(result.peak.value, np.finfo(float).tiny)
+    if log:
+        values = np.log10(np.maximum(values, floor))
+    mesh = ax.pcolormesh(xy[..., 0], xy[..., 1], values, shading="nearest")
+    ax.figure.colorbar(mesh, ax=ax, label="log10 I / I_peak" if log else "I / I_peak")
+    ax.set_aspect("equal")
+    ax.set_xlabel("x / um (e_x)")
+    ax.set_ylabel("y / um (e_y)")
+    ax.set_title(f"PSF, field {result.field}, Strehl {result.strehl:.4g}")
+    return ax
+
+
+def mtf(result: Mtf, ax: Axes | None = None) -> Axes:
+    """Tangential and sagittal MTF over the spatial frequency in cycles per mm."""
+    ax = _axes(ax)
+    for name, curve in (("tangential", result.tangential), ("sagittal", result.sagittal)):
+        ax.plot(curve.frequency, curve.modulation, label=name)
+    ax.set_xlabel("frequency / (cycles/mm)")
+    ax.set_ylabel("MTF")
+    ax.set_ylim(0.0, 1.05)
+    ax.set_title(f"MTF, field {result.field}")
+    ax.legend()
+    return ax
+
+
+def encircled_energy(result: EncircledEnergy, ax: Axes | None = None) -> Axes:
+    """Encircled energy over the radius in um."""
+    ax = _axes(ax)
+    ax.plot(np.asarray(result.radii) * 1e3, result.energy, "o-")
+    ax.set_xlabel("radius / um")
+    ax.set_ylabel("encircled energy")
+    ax.set_ylim(0.0, 1.05)
+    ax.set_title(f"Encircled energy, field {result.field}")
+    return ax
+
+
+def through_focus(result: ThroughFocus, ax: Axes | None = None) -> Axes:
+    """Strehl ratio over the focus shift in mm."""
+    ax = _axes(ax)
+    ax.plot(result.shifts, result.strehl, "o-")
+    ax.set_xlabel("focus shift / mm")
+    ax.set_ylabel("Strehl ratio")
+    ax.set_ylim(0.0, 1.05)
+    ax.set_title(f"Through focus, field {result.field}, wavelength {result.wavelength}")
     return ax

@@ -36,6 +36,7 @@
 #include "optim_cases.hpp"
 #include "paths_cases.hpp"
 #include "polar_batch.hpp"
+#include "psf_cases.hpp"
 #include "pupil_cases.hpp"
 #include "q_cases.hpp"
 #include "reports_cases.hpp"
@@ -339,6 +340,7 @@ int main(int argc, char** argv) {
     rtt::py::reference::run_q_cases(args[0], args[2], threads);
     rtt::py::reference::run_pupil_cases(args[0], args[1], args[2], threads);
     rtt::py::reference::run_jones_cases(args[0], args[2], threads);
+    rtt::py::reference::run_psf_cases(args[0], args[2], threads);
     return 0;
   } catch (const std::exception& e) {
     std::cerr << "rtt_py_reference: " << e.what() << '\n';

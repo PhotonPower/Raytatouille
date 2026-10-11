@@ -30,6 +30,10 @@
         "PupilFunction",
         "ZernikeFit",
         "JonesPupil",
+        "Psf",
+        "ThroughFocus",
+        "Mtf",
+        "EncircledEnergy",
         "LongitudinalColour",
         "LateralColour",
         "DistortionSweep",
@@ -1154,6 +1158,123 @@
               "retardance",
               "retardance_orientation",
               "retardance_ellipticity",
+              "losses",
+              "warnings"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "Psf"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "field",
+              "grid",
+              "length",
+              "centre",
+              "e_x",
+              "e_y",
+              "lattice",
+              "intensity",
+              "strehl",
+              "peak",
+              "edge_energy_deficit",
+              "polychromatic_scale_error",
+              "wavelengths",
+              "losses",
+              "warnings"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ThroughFocus"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "field",
+              "wavelength",
+              "shifts",
+              "strehl",
+              "arrived_fraction",
+              "losses",
+              "warnings"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "Mtf"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "field",
+              "grid",
+              "centre",
+              "e_x",
+              "e_y",
+              "tangential",
+              "sagittal",
+              "frequency_matrix",
+              "map",
+              "otf_map",
+              "edge_energy_deficit",
+              "wavelengths",
+              "losses",
+              "warnings"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "EncircledEnergy"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "field",
+              "grid",
+              "centre",
+              "e_x",
+              "e_y",
+              "offset",
+              "radii",
+              "energy",
+              "radius_max",
+              "edge_energy_deficit",
+              "wavelengths",
               "losses",
               "warnings"
             ]
