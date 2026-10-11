@@ -521,6 +521,35 @@ TEST_CASE("interferogram: input errors (#210)", "[interferogram]") {
   one.pos_y()[0] = 0.3;
   REQUIRE_THROWS_AS(rtt::analysis::interferogram(cc, path(cc, "o in"), path(cc, "e in"), one),
                     std::invalid_argument);
+  // The same image surface, but different image media (review of #241): refracted into the lens
+  // of m1/singlet_const and reflected back into the VACUUM at L1.S1. The waves would not meet
+  // in one medium, so it is an error that names both paths.
+  System singlet = load("m1/singlet_const.rtt.json");
+  singlet.environment.medium = "VACUUM";
+  singlet.paths.push_back(
+      {"into the lens",
+       false,
+       {{SurfaceId("STO"), EventKind::Transmit, 0}, {SurfaceId("L1.S1"), EventKind::Refract, 0}}});
+  singlet.paths.push_back(
+      {"reflected",
+       false,
+       {{SurfaceId("STO"), EventKind::Transmit, 0}, {SurfaceId("L1.S1"), EventKind::Reflect, 0}}});
+  const CompiledSystem cl = rtt::compile::compile(singlet, lib);
+  const PathId into = path(cl, "into the lens");
+  const PathId back = path(cl, "reflected");
+  RayBatch ahead(1);
+  ahead.pos_z()[0] = -1.0;  // in front of the stop (AGENTS.md)
+  std::string message;
+  try {
+    [[maybe_unused]] const Interferogram bad_media =
+        rtt::analysis::interferogram(cl, into, back, ahead);
+  } catch (const std::invalid_argument& e) {
+    message = e.what();
+  }
+  INFO(message);
+  REQUIRE(message.find("/paths/" + std::to_string(into.index)) != std::string::npos);
+  REQUIRE(message.find("/paths/" + std::to_string(back.index)) != std::string::npos);
+  REQUIRE(message.find("image medium") != std::string::npos);
   // Through the plate into the vacuum behind it: allowed (the image medium is isotropic).
   const Interferogram oe = rtt::analysis::interferogram(cc, path(cc, "o"), path(cc, "e"), one);
   REQUIRE(oe.points.size() == 1);

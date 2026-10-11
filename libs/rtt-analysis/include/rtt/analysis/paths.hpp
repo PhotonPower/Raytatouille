@@ -190,9 +190,10 @@ struct PathOplDifference {
 ///   the OPL is n d: exact for a plane wave (Konijnenberg, Adam, Urbach, BSc Optics, 2nd ed.,
 ///   TU Delft Open 2024, Sec. 1.5.1, Eqs. (1.37)-(1.39)) and the first order for a curved wave,
 ///   whose rays are the normals of the wave fronts (ibid. Sec. 2.1). Estimate of the error of a
-///   curved wave: n'_b s^2 / (2 R_b), with s = |x_a - x_b| the shear and R_b the radius of
-///   curvature of wave b (the sagitta of its local wave-front sphere over s; an estimate, not a
-///   bound). R_b is not known here, so every point reports s and the result its maximum.
+///   curved wave: n'_b s_perp^2 / (2 R_b), with s_perp the part of x_a - x_b normal to d_b (the
+///   part along d_b is carried exactly) and R_b the radius of curvature of wave b (the sagitta of
+///   its local wave-front sphere; an estimate, not a bound). R_b is not known here, so every
+///   point reports the shear s = |x_a - x_b| >= s_perp and the result its maximum.
 ///   Without shear (x_b = x_a, e.g. an aligned Michelson) delta is opl_difference().
 /// - delta = OPL_b(x_a) - OPL_a(x_a) in mm; waves = delta / lambda; phase = 2 pi delta / lambda
 ///   in rad, unwrapped (the OPL is absolute), positive where path b is longer; lambda is the
@@ -204,8 +205,10 @@ struct PathOplDifference {
 ///   unpolarized source, ADR 0021); fringe = 1 + cos(phase), the form for equal amplitudes
 ///   (ibid. Eqs. (5.10), (5.11), without the factor 2). The visibility of different
 ///   polarisations (from P on both paths) is a later option.
-/// - Image medium: isotropic. A crystal as the image medium of either path is an error (the
-///   wave normal and the mode index differ from d and n there; H6 of the M6 plan, #35).
+/// - Image medium: isotropic and the same for both paths (the medium after their last events).
+///   A crystal as the image medium of either path is an error (the wave normal and the mode
+///   index differ from d and n there; H6 of the M6 plan, #35), and so are two different image
+///   media (the waves would not meet in one medium).
 /// - Rays not on both paths: see InterferogramArrival. delta, waves, phase, fringe and shear are
 ///   0 there, as in the other analyses; intensity is physical: w_a if only a arrived, w_b if only
 ///   b arrived, 0 if none.
@@ -253,7 +256,7 @@ struct Interferogram {
 /// Interferogram of `path_a` and `path_b` for the start rays `start` (main form; the start rays
 /// as for path_transmission()).
 /// @throws as opl_difference(), and std::invalid_argument if the image medium of either path is
-///         a crystal
+///         a crystal or the two image media differ (the message names both paths, /paths/i)
 [[nodiscard]] Interferogram interferogram(const compile::CompiledSystem& system,
                                           compile::PathId path_a,
                                           compile::PathId path_b,

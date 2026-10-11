@@ -7,10 +7,12 @@
 #include <numbers>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "common.hpp"
+#include "reference.hpp"
 #include "rtt/math/types.hpp"
 
 namespace rtt::analysis {
@@ -163,7 +165,7 @@ RayBatch start_rays(const CompiledSystem& system,
 /// of each path must be isotropic (a crystal mode has its own wave normal and index; H6, #35).
 void check_isotropic_image(const CompiledSystem& system, PathId path) {
   const auto& last = system.path(path).events.back();
-  if (system.media()[last.medium_after].optic_axis.has_value()) {
+  if (system.media()[last.medium_after].is_crystal()) {
     throw std::invalid_argument(
         "analysis: an interferogram needs an isotropic image medium, not a crystal (#35)");
   }
@@ -174,6 +176,15 @@ std::uint32_t interferogram_image(const CompiledSystem& system, PathId path_a, P
   const std::uint32_t image = common_image(system, path_a, path_b);
   check_isotropic_image(system, path_a);
   check_isotropic_image(system, path_b);
+  // Both waves must meet in one medium at the image surface (review of #241); isotropic media
+  // are interned per material reference by compile, so equal media have equal indices.
+  if (system.path(path_a).events.back().medium_after !=
+      system.path(path_b).events.back().medium_after) {
+    throw std::invalid_argument(
+        "analysis: an interferogram needs two paths that end in the same "
+        "image medium (/paths/" +
+        std::to_string(path_a.index) + " and /paths/" + std::to_string(path_b.index) + ")");
+  }
   return image;
 }
 
@@ -194,7 +205,6 @@ Interferogram interfere(const CompiledSystem& system,
   detail::LossCounter losses_b(system, path_b, options.lost_warning_fraction);
   const RayBatch a = traced(system, path_a, start, control);
   const RayBatch b = traced(system, path_b, start, control);
-  const auto& medium_b = system.media()[system.path(path_b).events.back().medium_after];
   Interferogram out;
   out.path_a = path_a;
   out.path_b = path_b;
@@ -217,7 +227,7 @@ Interferogram interfere(const CompiledSystem& system,
       const math::Vec3 xb = position(b, i);
       const math::Vec3 db(b.dir_x()[i], b.dir_y()[i], b.dir_z()[i]);
       const std::uint16_t wl = a.wl()[i];
-      const double n_b = std::abs(medium_b.index[wl].real());
+      const double n_b = detail::image_index(system, path_b, wl);
       p.delta = b.opl()[i] + n_b * db.dot(xa - xb) - a.opl()[i];
       const double lambda_mm = system.wavelengths_um()[wl] * 1e-3;
       p.waves = p.delta / lambda_mm;
