@@ -44,11 +44,17 @@ constexpr double kGrazingLimit = 1e-6;
 /// |det J(0, 0)| at or below this times ||J(0, 0)||_F^2: the global phase from the largest
 /// element instead of the determinant (ADR 0034, point 5).
 constexpr double kSingularDeterminant = 1e-12;
-/// |c_s - c_p| above this times c_s: the power factors of a transmission differ (absorbing
-/// media), so J_field is no scalar multiple of J (ADR 0034, point 5; addendum #208 B). For real
-/// indices both are Re(q_t) / Re(q_i) analytically (Byrnes, Eqs. (21), (22) with
-/// Re(n^2 q*) / |n|^2 = Re(q) for real n) and differ only by rounding, a few ulp.
-constexpr double kEqualPowerFactors = 1e-12;
+/// |c_s - c_p| above this times c_s: the power factors of a transmission differ, so J_field is
+/// no scalar multiple of J and becomes NaN (ADR 0034, point 5; addendum #208 B). The threshold
+/// comes from the accuracy (review of #242): below it J is divided by sqrt(c_s), which leaves the
+/// p part off by |c_s - c_p| / (2 c_s) <= 5e-10 relative, below every other tolerance of J. For
+/// real indices c_s = c_p = Re(q_t) / Re(q_i) analytically (Byrnes, Eqs. (21), (22), with
+/// Re(n^2 q*) / |n|^2 = Re(q) for real n), up to rounding. For a weakly absorbing medium
+/// n + i kappa they differ in second order: |c_s - c_p| / c_s ~ 2 kappa^2 xi^2 / (n^2 Re(q)^2)
+/// (derived in the review of #242, checked against transmission_power_factors to 2 %), e.g. at
+/// n = 1.5 and 80 deg 6.7e-13 for kappa = 1e-6 and 6.7e-11 for kappa = 1e-5, the order of
+/// catalogue glasses at their UV edge: they keep a finite J.
+constexpr double kEqualPowerFactors = 1e-9;
 
 std::string path_pointer(PathId path) {
   return "/paths/" + std::to_string(path.index);

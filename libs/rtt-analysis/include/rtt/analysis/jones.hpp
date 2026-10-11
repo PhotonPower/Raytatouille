@@ -63,7 +63,8 @@ struct JonesPupilOptions {
   /// B): J_field = J / prod_q sqrt(c_q) with the power factors c_q of the transmissions of the
   /// path (Byrnes, Eqs. (21), (22)), reconstructed from the recorded path. The field in the
   /// image-space medium, not normalised to vacuum. Only j changes; transmission, D and delta do
-  /// not depend on it. A point whose ray crosses an absorbing interface (c_s != c_p) gets
+  /// not depend on it. A point whose ray crosses an interface with |c_s - c_p| > 1e-9 c_s
+  /// (absorbing media; weak absorption such as glasses at their UV edge stays below) gets
   /// j = NaN, with the warning "pupil.field_amplitude_absorbing"; with remove_global_phase and
   /// a chief ray without J the phase stays, with "pupil.chief_phase_unavailable".
   /// Cost: the trace records the path of every point, about points x (events + 1) x 65 bytes
