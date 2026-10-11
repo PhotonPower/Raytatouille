@@ -66,7 +66,8 @@ double radial_coefficient(int n, int m, int s) {
   for (int i = 1; i <= s; ++i) den *= static_cast<std::uint64_t>(i);
   for (int i = 1; i <= (n + m) / 2 - s; ++i) den *= static_cast<std::uint64_t>(i);
   for (int i = 1; i <= (n - m) / 2 - s; ++i) den *= static_cast<std::uint64_t>(i);
-  const double c = static_cast<double>(num / den);
+  const std::uint64_t quotient = num / den;
+  const auto c = static_cast<double>(quotient);
   return s % 2 == 0 ? c : -c;
 }
 
@@ -309,11 +310,12 @@ TEST_CASE("zernike fit recovers synthetic coefficients (j <= 37)", "[zernike][fi
 
 TEST_CASE("zernike fit of the plano-convex lens: c11 and c4 from W040 = S_I / 8",
           "[zernike][fit]") {
-  // m1/singlet_const in vacuum at EPD 2 mm (NA 0.01), image surface in the paraxial focus, axis,
-  // both orientations (as the M2 Seidel case of #34). On the axis W = W040 rho^4 + W060 rho^6 +
-  // W080 rho^8 + ..., W040 = S_I / 8 exactly (Taylor coefficient). Exact decompositions (Niu/Tian
-  // Eqs. (3), (4)): rho^4 = Z11/(6 sqrt5) + Z4/(2 sqrt3) + 1/3 and rho^6 = Z22/(20 sqrt7) +
-  // Z11/(4 sqrt5) + 9 Z4/(20 sqrt3) + 1/4, so with W060 = 20 sqrt7 c22:
+  // m1/singlet_const in vacuum at EPD 10 mm (NA 0.05; the M2 Seidel case of #34 used EPD 2, where
+  // W040 is only 5e-4 waves), image surface in the paraxial focus, axis, both orientations. On the
+  // axis W = W040 rho^4 + W060 rho^6 + W080 rho^8 + ..., W040 = S_I / 8 exactly (Taylor
+  // coefficient). Exact decompositions (Niu/Tian Eqs. (3), (4)): rho^4 = Z11/(6 sqrt5) + Z4/(2
+  // sqrt3) + 1/3 and rho^6 = Z22/(20 sqrt7) + Z11/(4 sqrt5) + 9 Z4/(20 sqrt3) + 1/4, so with W060 =
+  // 20 sqrt7 c22:
   //   c11 = W040/(6 sqrt5) + sqrt35 c22,  c4 = W040/(2 sqrt3) + 3 sqrt21 c22
   // up to the terms from rho^8 on. Tolerance (ADR 0032, point 12): the rho^8 part, estimated from
   // c37 = W080 <rho^8, Z37> / ... through the exact projections <rho^8, Z_j> (the mean of rho^8
@@ -334,7 +336,7 @@ TEST_CASE("zernike fit of the plano-convex lens: c11 and c4 from W040 = S_I / 8"
   CHECK(std::abs(projection(3, 4) - 9.0 / (20.0 * std::sqrt(3.0))) <= 1e-15);
   const auto check = [&](System s) {
     s.environment.medium = "VACUUM";
-    s.aperture = {rtt::model::SystemApertureType::EntrancePupilDiameter, Param(2.0)};
+    s.aperture = {rtt::model::SystemApertureType::EntrancePupilDiameter, Param(10.0)};
     const CompiledSystem initial = compiled(s);
     const std::uint16_t ref = initial.reference_wavelength();
     std::get<Element>(s.root.children[2].value).pose =
@@ -357,7 +359,7 @@ TEST_CASE("zernike fit of the plano-convex lens: c11 and c4 from W040 = S_I / 8"
                  << ", c37 " << c[36]);
     CHECK(std::abs(c[10] - expected11) <= 2.0 * std::abs(e11) + 1e-6 * std::abs(w040));
     CHECK(std::abs(c[3] - expected4) <= 2.0 * std::abs(e4) + 1e-6 * std::abs(w040));
-    CHECK(std::abs(w040) > 0.01);  // content guard: a measurable spherical aberration
+    CHECK(std::abs(w040) > 0.1);  // content guard: a measurable spherical aberration
     return w040;
   };
   const double curved_first = check(load("m1/singlet_const.rtt.json"));
@@ -442,10 +444,32 @@ TEST_CASE("zernike fit: errors and the incomplete pupil", "[zernike][fit]") {
       CHECK(e.location() == std::optional<std::string>("/paths/0"));
     }
   }
+  SECTION("a nearly dependent column: a pivot below the floor") {
+    // Three terms on the row py = 1/N, where Z3 = 2 py is a multiple of Z1, plus one cell of
+    // another row with the tiny weight f = 1e-12: the normal equations are regular, but their
+    // pivot for Z3 is about 1e-12 of the largest diagonal element, below the floor 1e-8 of
+    // ADR 0032, point 6 (without the floor the fit would return coefficients of about 1e12).
+    PupilFunction pf = carrier("m2/paraboloid_stop.rtt.json", 0, 0, 64);
+    for (std::size_t k = 0; k < pf.fraction.size(); ++k) {
+      if (k / 64 != 32 && k != 40 * 64 + 32) pf.status[k] = rtt::trace::RayStatus::Vignetted;
+    }
+    pf.fraction[40 * 64 + 32] = 1e-12;
+    ZernikeOptions o;
+    o.terms = 3;
+    try {
+      static_cast<void>(rtt::analysis::zernike_fit(pf, o));
+      FAIL("no AnalysisError");
+    } catch (const AnalysisError& e) {
+      CHECK(e.location() == std::optional<std::string>("/paths/0"));
+    }
+  }
   SECTION("a clipped pupil gives the warning, the full one none") {
+    // Stop 28 mm instead of 30: about 13 % of the area is lost, above 1 %. (A strongly clipped
+    // pupil, e.g. 10 mm, leaves a disk of radius 1/3, on which 37 terms are too badly
+    // conditioned: an AnalysisError, as it should.)
     System s = load("m2/paraboloid_stop.rtt.json");
     std::get<Element>(s.root.children[0].value).surfaces[0].aperture =
-        rtt::model::CircularAperture{10.0, 0.0};
+        rtt::model::CircularAperture{28.0, 0.0};
     PupilFunctionOptions o;
     o.grid = 64;
     const auto fit =

@@ -44,7 +44,8 @@ double radial_coefficient(int n, int m, int s) {
   for (int i = 2; i <= s; ++i) den *= static_cast<std::uint64_t>(i);
   for (int i = 2; i <= (n + m) / 2 - s; ++i) den *= static_cast<std::uint64_t>(i);
   for (int i = 2; i <= (n - m) / 2 - s; ++i) den *= static_cast<std::uint64_t>(i);
-  const auto c = static_cast<double>(num / den);
+  const std::uint64_t quotient = num / den;  // exact: the coefficient is an integer
+  const auto c = static_cast<double>(quotient);
   return s % 2 == 0 ? c : -c;
 }
 

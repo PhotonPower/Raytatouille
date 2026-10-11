@@ -181,11 +181,11 @@ TEST_CASE("pupil.mapping_nonlinear above the threshold, at the path", "[analysis
 }
 
 TEST_CASE("zernike.pupil_incomplete on a clipped pupil, at the path", "[analysis][warnings]") {
-  // The paraboloid with its stop shrunk to 10 mm (EPD 60): about 1/9 of the pupil arrives (#203).
+  // The paraboloid with its stop shrunk to 28 mm (EPD 60): about 13 % of the pupil is lost (#203).
   rtt::model::System s =
       rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m2/paraboloid_stop.rtt.json");
   std::get<rtt::model::Element>(s.root.children[0].value).surfaces[0].aperture =
-      rtt::model::CircularAperture{10.0, 0.0};
+      rtt::model::CircularAperture{28.0, 0.0};
   const CompiledSystem cs = rtt::compile::compile(s, rtt::material::MaterialLibrary{});
   rtt::analysis::PupilFunctionOptions o;
   o.grid = 48;
