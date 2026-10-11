@@ -115,6 +115,13 @@ PupilSums require_evaluable(const PupilFunction& p) {
   return s;
 }
 
+/// The mapping of a pupil function that require_evaluable() accepted (checked again, so that
+/// every access is visibly checked).
+const PupilMapping& mapping_of(const PupilFunction& p) {
+  if (!p.mapping) throw std::logic_error("analysis: PSF without the checked mapping");
+  return *p.mapping;
+}
+
 /// |sum u|^2 / |sum f A|^2: the Strehl ratio of the discrete pupil (ADR 0033,
 /// point 4; Wyant & Creath Eq. (64)), the intensity at C' relative to the pupil
 /// without aberration.
@@ -197,7 +204,7 @@ double border_fraction(const std::vector<Complex>& u, std::size_t length) {
 
 /// Lattice matrix B = lambda / (L a) M^-T, row-major, mm (ADR 0033, point 3).
 std::array<double, 4> lattice_matrix(const PupilFunction& p, std::size_t length) {
-  const auto& m = p.mapping->m;
+  const auto& m = mapping_of(p).m;
   const double det = m[0] * m[3] - m[1] * m[2];
   const double a = 2.0 / static_cast<double>(p.grid);
   const double scale = p.wavelength_um * 1e-3 / (static_cast<double>(length) * a * det);
@@ -267,7 +274,7 @@ Psf psf(const compile::CompiledSystem& system,
   }
   const PupilFunction& p_ref = parts[ref].pupil;
   const auto det_of = [](const PupilFunction& p) {
-    const auto& m = p.mapping->m;
+    const auto& m = mapping_of(p).m;
     return std::abs(m[0] * m[3] - m[1] * m[2]);
   };
   // L_i = round(L_ref (lambda_i / lambda_ref) sqrt(|det M_ref| / |det M_i|)),
@@ -301,9 +308,9 @@ Psf psf(const compile::CompiledSystem& system,
   result.field = field;
   result.grid = n;
   result.length = static_cast<int>(l_ref);
-  result.centre = p_ref.mapping->centre;
-  result.e_x = p_ref.mapping->e_x;
-  result.e_y = p_ref.mapping->e_y;
+  result.centre = mapping_of(p_ref).centre;
+  result.e_x = mapping_of(p_ref).e_x;
+  result.e_y = mapping_of(p_ref).e_y;
   result.lattice = lattice_matrix(p_ref, l_ref);
   result.intensity.assign(l_ref * l_ref, 0.0);
 
@@ -401,9 +408,9 @@ Psf psf(const compile::CompiledSystem& system,
       if (p.fraction[j] > 0.0) losses.add_ray(p.status[j], p.end.last_surface[j]);
     }
     for (const model::Diagnostic& d : p.warnings) {
-      if (d.code == "pupil.mapping_nonlinear" && p.mapping->delta_max > mapping_delta) {
+      if (d.code == "pupil.mapping_nonlinear" && mapping_of(p).delta_max > mapping_delta) {
         mapping_warning = &d;
-        mapping_delta = p.mapping->delta_max;
+        mapping_delta = mapping_of(p).delta_max;
       }
     }
   }
@@ -434,7 +441,7 @@ Psf psf(const compile::CompiledSystem& system,
 
 std::vector<double> psf_at(const PupilFunction& pupil, std::span<const Point2> x) {
   const PupilSums s = require_evaluable(pupil);
-  const auto& m = pupil.mapping->m;
+  const auto& m = mapping_of(pupil).m;
   const double lambda_mm = pupil.wavelength_um * 1e-3;
   const int n = pupil.grid;
   // Cell values and their directions s_j = M c_j at the cell centres c_j (the
