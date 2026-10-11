@@ -546,48 +546,439 @@ ThroughFocus through_focus(const compile::CompiledSystem& system,
   return result;
 }
 
-// STUB for the red run of #206 (tests first): MTF and encircled energy link, compute nothing.
+// ---------------------------------------------------------------------------------------------
+// MTF and encircled energy (ADR 0033, points 5-7, with the erratum on the signs; #206).
+// ---------------------------------------------------------------------------------------------
 
-Mtf mtf(const compile::CompiledSystem& /*system*/,
-        compile::PathId /*path*/,
-        std::uint16_t /*field*/,
-        const MtfOptions& /*options*/) {
-  return {};
+namespace {
+
+/// Autocorrelation C(l) = sum_j u_(j+l) conj(u_j) of the cell values for every shift l (l1 along
+/// px, l2 along py), by FFT with L = 2 N >= 2 N - 1, so that no shift wraps around (ADR 0033,
+/// point 5): Backward(|Forward(u)|^2) = L^2 C (derived from the two DFT sums).
+class Autocorrelation {
+ public:
+  explicit Autocorrelation(const PupilFunction& p)
+      : n_(p.grid), length_(2 * static_cast<std::size_t>(p.grid)) {
+    const auto n = static_cast<std::size_t>(p.grid);
+    c_.assign(length_ * length_, Complex(0.0, 0.0));
+    for (std::size_t k = 0; k < n; ++k) {
+      for (std::size_t i = 0; i < n; ++i) c_[k * length_ + i] = cell_value(p, k * n + i);
+    }
+    detail::fft2(c_, length_, length_, detail::FftDirection::Forward);
+    for (Complex& v : c_) v = Complex(std::norm(v), 0.0);
+    detail::fft2(c_, length_, length_, detail::FftDirection::Backward);
+    const double scale = 1.0 / (static_cast<double>(length_) * static_cast<double>(length_));
+    for (Complex& v : c_) v *= scale;
+  }
+
+  /// C(l1, l2); exactly 0 for |l1| >= N or |l2| >= N, where the shifted pupil has no overlap.
+  [[nodiscard]] Complex at(int l1, int l2) const {
+    if (std::abs(l1) >= n_ || std::abs(l2) >= n_) return {0.0, 0.0};
+    const auto l = static_cast<long long>(length_);
+    const auto row = static_cast<std::size_t>(((l2 % l) + l) % l);
+    const auto col = static_cast<std::size_t>(((l1 % l) + l) % l);
+    return c_[row * length_ + col];
+  }
+
+ private:
+  int n_;
+  std::size_t length_;
+  std::vector<Complex> c_;
+};
+
+/// One wavelength of an MTF or EE in the making.
+struct Spectral {
+  PupilFunction pupil;
+  PupilSums sums;
+  double weight = 0.0;  ///< normalised model weight w_i
+  std::optional<Autocorrelation> c;
+};
+
+/// F = M a / lambda, row-major, cycles per mm per cell (ADR 0033, point 5).
+std::array<double, 4> frequency_matrix_of(const PupilFunction& p) {
+  const auto& m = mapping_of(p).m;
+  const double scale = 2.0 / static_cast<double>(p.grid) / (p.wavelength_um * 1e-3);
+  return {scale * m[0], scale * m[1], scale * m[2], scale * m[3]};
 }
 
-Mtf mtf(const compile::CompiledSystem& /*system*/,
-        compile::PathId /*path*/,
-        std::uint16_t /*field*/,
-        const MtfOptions& /*options*/,
-        const trace::RunControl& /*control*/) {
-  return {};
+/// OTF(nu(l)) = conj(C(l)) / E, with C(0) := E (ADR 0033, point 5 and the erratum): 1 at l = 0.
+Complex otf_at(const Autocorrelation& c, const PupilSums& s, int l1, int l2) {
+  if (l1 == 0 && l2 == 0) return {1.0, 0.0};
+  return std::conj(c.at(l1, l2)) / s.fa2;
 }
 
-Mtf mtf(const PupilFunction& /*pupil*/, const MtfOutputs& /*outputs*/) {
-  return {};
+/// The curve along column `col` of F (0: sagittal, l = (l, 0); 1: tangential, l = (0, l)),
+/// samples l = 0 ... N, with the complex OTF.
+MtfCurve curve_of(
+    const Autocorrelation& c, const PupilSums& s, const std::array<double, 4>& f, int n, int col) {
+  MtfCurve curve;
+  const double fx = col == 0 ? f[0] : f[1];
+  const double fy = col == 0 ? f[2] : f[3];
+  const double step = std::hypot(fx, fy);
+  curve.direction = {fx / step, fy / step};
+  for (int l = 0; l <= n; ++l) {
+    const Complex otf = col == 0 ? otf_at(c, s, l, 0) : otf_at(c, s, 0, l);
+    curve.frequency.push_back(static_cast<double>(l) * step);
+    curve.otf.push_back(otf);
+    curve.modulation.push_back(std::abs(otf));
+  }
+  return curve;
 }
 
-EncircledEnergy encircled_energy(const compile::CompiledSystem& /*system*/,
-                                 compile::PathId /*path*/,
-                                 std::uint16_t /*field*/,
-                                 std::span<const double> /*radii*/,
-                                 const EncircledEnergyOptions& /*options*/) {
-  return {};
+/// The complex OTF of `curve` at |nu|, linearly interpolated (real and imaginary part); 0 at and
+/// above the cut-off, the last sample (ADR 0033, point 7).
+Complex interpolated(const MtfCurve& curve, double nu) {
+  if (nu >= curve.frequency.back()) return {0.0, 0.0};
+  const auto hi = std::upper_bound(curve.frequency.begin(), curve.frequency.end(), nu);
+  const auto k = static_cast<std::size_t>(hi - curve.frequency.begin());
+  const double g = (nu - curve.frequency[k - 1]) / (curve.frequency[k] - curve.frequency[k - 1]);
+  return (1.0 - g) * curve.otf[k - 1] + g * curve.otf[k];
 }
 
-EncircledEnergy encircled_energy(const compile::CompiledSystem& /*system*/,
-                                 compile::PathId /*path*/,
-                                 std::uint16_t /*field*/,
-                                 std::span<const double> /*radii*/,
-                                 const EncircledEnergyOptions& /*options*/,
-                                 const trace::RunControl& /*control*/) {
-  return {};
+/// The part of the choice that serves as reference: the system reference wavelength if chosen,
+/// otherwise the first (as psf()).
+std::size_t reference_part(const CompiledSystem& system, const std::vector<Spectral>& parts) {
+  std::size_t ref = 0;
+  for (std::size_t i = 0; i < parts.size(); ++i) {
+    if (parts[i].pupil.wavelength == system.reference_wavelength()) ref = i;
+  }
+  return ref;
 }
 
-EncircledEnergy encircled_energy(const PupilFunction& /*pupil*/,
-                                 std::span<const double> /*radii*/,
-                                 EeCentre /*centre*/) {
-  return {};
+/// The pupil functions of the chosen wavelengths, each checked (mapping, an arrived cell).
+std::vector<Spectral> spectral_parts(const CompiledSystem& system,
+                                     PathId path,
+                                     std::uint16_t field,
+                                     const std::optional<std::vector<std::uint16_t>>& wavelengths,
+                                     const PupilFunctionOptions& pupil_options,
+                                     const trace::RunControl& control) {
+  const auto chosen = chosen_wavelengths(system, wavelengths);
+  std::vector<Spectral> parts;
+  parts.reserve(chosen.size());
+  for (const auto& [w, weight] : chosen) {
+    Spectral part;
+    part.pupil = pupil_function(system, path, field, w, pupil_options, control);
+    part.sums = require_evaluable(part.pupil);
+    part.weight = weight;
+    part.c.emplace(part.pupil);
+    parts.push_back(std::move(part));
+  }
+  return parts;
+}
+
+/// Losses and warnings over the pupil functions, counted as they count them, plus
+/// pupil.mapping_nonlinear (the largest delta) and psf.pupil_undersampled (as psf()).
+void losses_and_warnings(const CompiledSystem& system,
+                         PathId path,
+                         const std::vector<Spectral>& parts,
+                         double lost_warning_fraction,
+                         double undersampled_waves,
+                         RayLosses& losses_out,
+                         std::vector<model::Diagnostic>& warnings_out) {
+  detail::LossCounter losses(system, path, lost_warning_fraction);
+  const model::Diagnostic* mapping_warning = nullptr;
+  double mapping_delta = -1.0;
+  double worst_step = 0.0;
+  std::optional<std::uint16_t> step_wavelength;
+  for (const Spectral& part : parts) {
+    const PupilFunction& p = part.pupil;
+    for (std::size_t j = 0; j < p.fraction.size(); ++j) {
+      if (p.fraction[j] > 0.0) losses.add_ray(p.status[j], p.end.last_surface[j]);
+    }
+    for (const model::Diagnostic& d : p.warnings) {
+      if (d.code == "pupil.mapping_nonlinear" && mapping_of(p).delta_max > mapping_delta) {
+        mapping_warning = &d;
+        mapping_delta = mapping_of(p).delta_max;
+      }
+    }
+    const double step = largest_phase_step(p);
+    if (step > undersampled_waves && (!step_wavelength || step > worst_step)) {
+      worst_step = step;
+      step_wavelength = p.wavelength;
+    }
+  }
+  losses_out = losses.result();
+  warnings_out = losses.warnings();
+  if (mapping_warning) warnings_out.push_back(*mapping_warning);
+  if (step_wavelength) {
+    constexpr diagnostics::DiagnosticCode kCode = "psf.pupil_undersampled";
+    add_warning(warnings_out, kCode, path,
+                "the pupil grid is too coarse for the aberration (wavelength " +
+                    std::to_string(*step_wavelength) + "): neighbouring cells differ by " +
+                    std::to_string(worst_step) + " waves, more than " +
+                    std::to_string(undersampled_waves) + " (ADR 0033, point 3)");
+  }
+}
+
+void check_undersampled(double waves) {
+  if (!(waves > 0.0) || !std::isfinite(waves)) {
+    throw std::invalid_argument("analysis: undersampled_waves must be finite and > 0");
+  }
+}
+
+/// The MTF of the parts (one or several wavelengths), without losses and warnings.
+Mtf mtf_of(const std::vector<Spectral>& parts, std::size_t ref, const MtfOutputs& outputs) {
+  const Spectral& r = parts[ref];
+  const PupilFunction& pr = r.pupil;
+  const int n = pr.grid;
+  Mtf result;
+  result.field = pr.field;
+  result.grid = n;
+  result.centre = mapping_of(pr).centre;
+  result.e_x = mapping_of(pr).e_x;
+  result.e_y = mapping_of(pr).e_y;
+  result.frequency_matrix = frequency_matrix_of(pr);
+  double sum_we = 0.0;
+  for (const Spectral& part : parts) sum_we += part.weight * part.sums.fa2;
+  if (parts.size() == 1) {
+    result.sagittal = curve_of(*r.c, r.sums, result.frequency_matrix, n, 0);
+    result.tangential = curve_of(*r.c, r.sums, result.frequency_matrix, n, 1);
+  } else {
+    // ADR 0033, point 7: the complex OTF of each wavelength on its own frequencies, interpolated
+    // linearly in |nu| onto those of the reference, summed with w_i E_i.
+    for (int col = 0; col < 2; ++col) {
+      MtfCurve sum = curve_of(*r.c, r.sums, result.frequency_matrix, n, col);
+      std::vector<Complex> acc(sum.otf.size(), Complex(0.0, 0.0));
+      for (const Spectral& part : parts) {
+        const double we = part.weight * part.sums.fa2;
+        if (&part == &r) {
+          for (std::size_t l = 0; l < acc.size(); ++l) acc[l] += we * sum.otf[l];
+          continue;
+        }
+        const MtfCurve own = curve_of(*part.c, part.sums, frequency_matrix_of(part.pupil), n, col);
+        for (std::size_t l = 0; l < acc.size(); ++l) {
+          acc[l] += we * interpolated(own, sum.frequency[l]);
+        }
+      }
+      for (std::size_t l = 0; l < acc.size(); ++l) {
+        sum.otf[l] = acc[l] / sum_we;
+        sum.modulation[l] = std::abs(sum.otf[l]);
+      }
+      (col == 0 ? result.sagittal : result.tangential) = std::move(sum);
+    }
+  }
+  if (outputs.map) {  // monochromatic only (checked by the callers)
+    const std::size_t side = 2 * static_cast<std::size_t>(n) - 1;
+    result.map.reserve(side * side);
+    if (outputs.complex_otf) result.otf_map.reserve(side * side);
+    for (int l2 = -(n - 1); l2 <= n - 1; ++l2) {
+      for (int l1 = -(n - 1); l1 <= n - 1; ++l1) {
+        const Complex otf = otf_at(*r.c, r.sums, l1, l2);
+        result.map.push_back(std::abs(otf));
+        if (outputs.complex_otf) result.otf_map.push_back(otf);
+      }
+    }
+  }
+  if (!outputs.complex_otf) {
+    result.sagittal.otf.clear();
+    result.tangential.otf.clear();
+  }
+  for (const Spectral& part : parts) {
+    result.edge_energy_deficit +=
+        part.weight * part.sums.fa2 / sum_we * (1.0 - part.sums.f2a2 / part.sums.fa2);
+    result.wavelengths.push_back({part.pupil.wavelength, part.weight, part.sums.fa2, 2 * n, 0.0});
+  }
+  return result;
+}
+
+/// Largest EE radius of one wavelength: a quarter of the shortest period lambda / a |M^-T e_i|
+/// of the periodic PSF (ADR 0033, point 6).
+double radius_max_of(const PupilFunction& p) {
+  const std::array<double, 4> b = lattice_matrix(p, 1);  // lambda / a M^-T
+  return 0.25 * std::min(std::hypot(b[0], b[2]), std::hypot(b[1], b[3]));
+}
+
+/// EeCentre::LinearPhase: x0 with (a / lambda) M^T x0 = (arg C(e1), arg C(e2)) / (2 pi), i.e.
+/// x0 = (lambda / a) M^-T (arg C(e1), arg C(e2)) / (2 pi); exact for a moved PSF, since
+/// I(x - t) has C(l) exp(+2 pi i nu(l) . t) (ADR 0033, erratum).
+Point2 linear_phase_centre(const Spectral& part) {
+  const std::array<double, 4> b = lattice_matrix(part.pupil, 1);
+  const double phi1 = std::arg(part.c->at(1, 0)) / (2.0 * std::numbers::pi);
+  const double phi2 = std::arg(part.c->at(0, 1)) / (2.0 * std::numbers::pi);
+  return {b[0] * phi1 + b[1] * phi2, b[2] * phi1 + b[3] * phi2};
+}
+
+/// EE(r) of one wavelength about x0 (ADR 0033, point 6 with the erratum):
+/// (|det M| a^2 / lambda^2) sum_l Re[C(l) exp(-2 pi i nu(l) . x0)] K_r(nu(l)) / E with
+/// K_r(nu) = r J1(2 pi r |nu|) / |nu|, K_r(0) = pi r^2, C(0) = sum |u|^2; serial in grid order.
+std::vector<double> energy_of(const Spectral& part,
+                              const Point2& x0,
+                              std::span<const double> radii) {
+  const PupilFunction& p = part.pupil;
+  const int n = p.grid;
+  const auto& m = mapping_of(p).m;
+  const double a = 2.0 / static_cast<double>(n);
+  const double lambda = p.wavelength_um * 1e-3;
+  const double scale = std::abs(m[0] * m[3] - m[1] * m[2]) * a * a / (lambda * lambda);
+  const std::array<double, 4> f = frequency_matrix_of(p);
+  std::vector<double> sums(radii.size(), 0.0);
+  for (int l2 = -(n - 1); l2 <= n - 1; ++l2) {
+    for (int l1 = -(n - 1); l1 <= n - 1; ++l1) {
+      const double nx = f[0] * l1 + f[1] * l2;
+      const double ny = f[2] * l1 + f[3] * l2;
+      const double nu = std::hypot(nx, ny);
+      double re = 0.0;
+      if (l1 == 0 && l2 == 0) {
+        re = part.sums.f2a2;  // C(0) = sum |u|^2, the discrete sum (ADR 0033, point 6)
+      } else {
+        const Complex shift = std::polar(1.0, -2.0 * std::numbers::pi * (nx * x0.x + ny * x0.y));
+        re = (part.c->at(l1, l2) * shift).real();
+      }
+      for (std::size_t i = 0; i < radii.size(); ++i) {
+        const double r = radii[i];
+        const double kernel =
+            nu == 0.0 ? std::numbers::pi * r * r
+                      : r * std::cyl_bessel_j(1.0, 2.0 * std::numbers::pi * r * nu) / nu;
+        sums[i] += re * kernel;
+      }
+    }
+  }
+  for (double& s : sums) s *= scale / part.sums.fa2;
+  return sums;
+}
+
+void check_radii(std::span<const double> radii) {
+  for (const double r : radii) {
+    if (!std::isfinite(r) || r < 0.0) {
+      throw std::invalid_argument("analysis: encircled-energy radii must be finite and >= 0");
+    }
+  }
+}
+
+/// EE of the parts about EeCentre `centre` (one common centre for all wavelengths).
+EncircledEnergy energy_of_parts(const std::vector<Spectral>& parts,
+                                std::size_t ref,
+                                std::span<const double> radii,
+                                EeCentre centre) {
+  const PupilFunction& pr = parts[ref].pupil;
+  EncircledEnergy result;
+  result.field = pr.field;
+  result.grid = pr.grid;
+  result.e_x = mapping_of(pr).e_x;
+  result.e_y = mapping_of(pr).e_y;
+  result.radii.assign(radii.begin(), radii.end());
+  double sum_we = 0.0;
+  for (const Spectral& part : parts) sum_we += part.weight * part.sums.fa2;
+  result.radius_max = std::numeric_limits<double>::infinity();
+  for (const Spectral& part : parts) {
+    result.radius_max = std::min(result.radius_max, radius_max_of(part.pupil));
+  }
+  for (const double r : radii) {
+    if (r > result.radius_max) {
+      throw std::invalid_argument("analysis: encircled-energy radius " + std::to_string(r) +
+                                  " mm above radius_max " + std::to_string(result.radius_max) +
+                                  " mm (a quarter of the period of the PSF; ADR 0033, point 6)");
+    }
+  }
+  if (centre == EeCentre::LinearPhase) {
+    for (const Spectral& part : parts) {
+      const double we = part.weight * part.sums.fa2;
+      const Point2 x0 = linear_phase_centre(part);
+      result.offset.x += we * x0.x;
+      result.offset.y += we * x0.y;
+    }
+    result.offset.x /= sum_we;
+    result.offset.y /= sum_we;
+  }
+  result.centre =
+      mapping_of(pr).centre + result.offset.x * result.e_x + result.offset.y * result.e_y;
+  result.energy.assign(radii.size(), 0.0);
+  for (const Spectral& part : parts) {
+    const double we = part.weight * part.sums.fa2;
+    const std::vector<double> e = energy_of(part, result.offset, radii);
+    for (std::size_t i = 0; i < radii.size(); ++i) result.energy[i] += we * e[i];
+    result.edge_energy_deficit += we / sum_we * (1.0 - part.sums.f2a2 / part.sums.fa2);
+    result.wavelengths.push_back(
+        {part.pupil.wavelength, part.weight, part.sums.fa2, 2 * part.pupil.grid, 0.0});
+  }
+  for (double& e : result.energy) e /= sum_we;
+  return result;
+}
+
+/// The single part of a pupil function given directly (weight 1).
+std::vector<Spectral> single_part(const PupilFunction& pupil) {
+  std::vector<Spectral> parts(1);
+  parts[0].pupil = pupil;
+  parts[0].sums = require_evaluable(parts[0].pupil);
+  parts[0].weight = 1.0;
+  parts[0].c.emplace(parts[0].pupil);
+  return parts;
+}
+
+}  // namespace
+
+Mtf mtf(const compile::CompiledSystem& system,
+        compile::PathId path,
+        std::uint16_t field,
+        const MtfOptions& options) {
+  return mtf(system, path, field, options, trace::RunControl{});
+}
+
+Mtf mtf(const compile::CompiledSystem& system,
+        compile::PathId path,
+        std::uint16_t field,
+        const MtfOptions& options,
+        const trace::RunControl& control) {
+  detail::check_path(system, path);
+  check_undersampled(options.undersampled_waves);
+  if (options.outputs.map) {
+    const std::size_t count =
+        options.wavelengths ? options.wavelengths->size() : system.wavelengths_um().size();
+    if (count != 1) {
+      throw std::invalid_argument("analysis: the 2D MTF map needs exactly one wavelength");
+    }
+  }
+  const std::vector<Spectral> parts =
+      spectral_parts(system, path, field, options.wavelengths, options.pupil, control);
+  Mtf result = mtf_of(parts, reference_part(system, parts), options.outputs);
+  losses_and_warnings(system, path, parts, options.pupil.lost_warning_fraction,
+                      options.undersampled_waves, result.losses, result.warnings);
+  return result;
+}
+
+Mtf mtf(const PupilFunction& pupil, const MtfOutputs& outputs) {
+  const std::vector<Spectral> parts = single_part(pupil);
+  Mtf result = mtf_of(parts, 0, outputs);
+  result.losses = pupil.losses;
+  result.warnings = pupil.warnings;
+  return result;
+}
+
+EncircledEnergy encircled_energy(const compile::CompiledSystem& system,
+                                 compile::PathId path,
+                                 std::uint16_t field,
+                                 std::span<const double> radii,
+                                 const EncircledEnergyOptions& options) {
+  return encircled_energy(system, path, field, radii, options, trace::RunControl{});
+}
+
+EncircledEnergy encircled_energy(const compile::CompiledSystem& system,
+                                 compile::PathId path,
+                                 std::uint16_t field,
+                                 std::span<const double> radii,
+                                 const EncircledEnergyOptions& options,
+                                 const trace::RunControl& control) {
+  detail::check_path(system, path);
+  check_undersampled(options.undersampled_waves);
+  check_radii(radii);
+  const std::vector<Spectral> parts =
+      spectral_parts(system, path, field, options.wavelengths, options.pupil, control);
+  EncircledEnergy result =
+      energy_of_parts(parts, reference_part(system, parts), radii, options.centre);
+  losses_and_warnings(system, path, parts, options.pupil.lost_warning_fraction,
+                      options.undersampled_waves, result.losses, result.warnings);
+  return result;
+}
+
+EncircledEnergy encircled_energy(const PupilFunction& pupil,
+                                 std::span<const double> radii,
+                                 EeCentre centre) {
+  check_radii(radii);
+  const std::vector<Spectral> parts = single_part(pupil);
+  EncircledEnergy result = energy_of_parts(parts, 0, radii, centre);
+  result.losses = pupil.losses;
+  result.warnings = pupil.warnings;
+  return result;
 }
 
 }  // namespace rtt::analysis
