@@ -123,8 +123,9 @@ struct PupilPoint {
 
 /// An explicit list of pupil points, in this order (ADR 0032, point 2): for samplings computed
 /// elsewhere, e.g. the cells of the pupil function. Each point is aimed like a SinglePupilPoint;
-/// points outside the unit circle are allowed (they end vignetted at the stop if it has an
-/// aperture). The analyses that reject GaussPupil accept this list.
+/// points outside the unit circle are allowed and aimed like any other point (whether a ray is
+/// clipped, e.g. by a stop aperture, is left to the tracer). The analyses that reject GaussPupil
+/// accept this list.
 struct PointListPupil {
   std::vector<PupilPoint> points;  ///< non-empty, finite px and py
 };
