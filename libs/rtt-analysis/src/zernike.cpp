@@ -289,6 +289,17 @@ ZernikeFit zernike_fit(const PupilFunction& pupil, const ZernikeOptions& options
              " % of its area did not arrive; the Z_j are not orthogonal there, the coefficients "
              "are a fit, not a decomposition",
          std::string(kCode.str())});
+  } else if (pupil.obscuration > 0.0) {
+    // An annular pupil (ADR 0032, addendum #229): the Noll polynomials are not orthogonal on the
+    // annulus either, although every cell of it arrived (annular polynomials would be a follow-up).
+    constexpr diagnostics::DiagnosticCode kCode = "zernike.pupil_incomplete";
+    fit.warnings.push_back(
+        {kCode.severity(), path_pointer(pupil.path),
+         "Zernike fit on an annular pupil (central obscuration " +
+             std::to_string(pupil.obscuration) +
+             " of the pupil radius): the Z_j are not orthogonal there, the coefficients are a "
+             "fit, not a decomposition",
+         std::string(kCode.str())});
   }
   return fit;
 }

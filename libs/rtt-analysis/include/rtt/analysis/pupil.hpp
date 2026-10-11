@@ -50,14 +50,29 @@ struct PupilCells {
   std::vector<double> fraction;
   /// Sample point: the centre of a full cell (f = 1) and of an empty one (f = 0, not traced);
   /// the centroid of the part inside the circle for a boundary cell (0 < f < 1), which lies
-  /// strictly inside the circle.
+  /// strictly inside the circle. With an obscuration: the centroid of the part in the annulus,
+  /// which may lie inside the inner circle for a cell on the inner rim (that part is not convex).
   std::vector<double> px;
   std::vector<double> py;
+  /// Radius epsilon of a central obscuration in pupil units, [0, 1): the cells then cover the
+  /// annulus epsilon <= |p| <= 1 (ADR 0032, addendum #229). 0 without.
+  double obscuration = 0.0;
+  /// 1 for a cell on the inner rim (part of it in the annulus, part in the inner circle), else 0;
+  /// all 0 without an obscuration. The pupil function traces these cells as virtual rays.
+  std::vector<std::uint8_t> inner_rim;
 };
 
 /// Cells of an N x N grid, N = `grid`.
 /// @throws std::invalid_argument for grid < 2 or grid > kMaxPupilGrid
 [[nodiscard]] PupilCells pupil_cells(int grid);
+
+/// Cells of the annulus epsilon <= |p| <= 1, epsilon = `obscuration` (ADR 0032, addendum #229):
+/// f = f_1 - f_epsilon with the exact area f_epsilon of the cell inside the inner circle (the
+/// closed form of the unit circle, scaled by epsilon), the sample point the centroid of the part
+/// in the annulus. A cell inside the inner circle has f = 0 exactly and is not traced. With
+/// obscuration 0 bitwise pupil_cells(grid).
+/// @throws std::invalid_argument as pupil_cells(grid), and for obscuration not in [0, 1)
+[[nodiscard]] PupilCells pupil_cells(int grid, double obscuration);
 
 /// Options of the pupil function (ADR 0032, point 3).
 struct PupilFunctionOptions {
@@ -138,9 +153,15 @@ struct PupilFunction {
   int grid = 0;                          ///< N
   double focus_shift = 0.0;              ///< mm (PupilFunctionOptions::focus_shift)
   double apodization = 0.0;              ///< G
-  double lost_warning_fraction = 0.5;    ///< threshold of "rays.lost" (options, for refocus)
-  double mapping_warning = 1e-2;         ///< threshold of "pupil.mapping_nonlinear" (options)
-  ReferenceSphere sphere;                ///< after focus_shift
+  /// Radius epsilon of the central obscuration in pupil units (ADR 0032, addendum #229): the
+  /// inner radius r_i of the stop's circular aperture over trace::stop_radius() at this
+  /// wavelength, so that the cells cover the annulus epsilon <= |p| <= 1; 0 if the stop has no
+  /// inner radius. An obscuration on another surface is traced, not counted here: its cells end
+  /// lost, a staircase at the inner rim.
+  double obscuration = 0.0;
+  double lost_warning_fraction = 0.5;  ///< threshold of "rays.lost" (options, for refocus)
+  double mapping_warning = 1e-2;       ///< threshold of "pupil.mapping_nonlinear" (options)
+  ReferenceSphere sphere;              ///< after focus_shift
   // Per cell, N * N entries in the order of PupilCells:
   std::vector<double> fraction;  ///< f
   std::vector<double> px, py;    ///< sample point (centre or centroid)

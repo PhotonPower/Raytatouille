@@ -11,6 +11,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "common.hpp"
@@ -101,13 +102,54 @@ Part part_inside(double x0, double x1, double y0, double y1) {
   return part;
 }
 
-}  // namespace
-
-PupilCells pupil_cells(int grid) {
+/// @throws std::invalid_argument for grid < 2 or grid > kMaxPupilGrid
+void check_grid(int grid) {
   if (grid < 2 || grid > kMaxPupilGrid) {
     throw std::invalid_argument("analysis: pupil grid must lie in [2, " +
                                 std::to_string(kMaxPupilGrid) + "], got " + std::to_string(grid));
   }
+}
+
+/// Area and first moments (integrals of x and y) of the cell [x0, x1] x [y0, y1] inside the disc
+/// of radius r about 0, in pupil units (ADR 0032, addendum #229): the closed form of the unit
+/// circle on the cell scaled by 1 / r (area times r^2, moments times r^3). As in pupil_cells(),
+/// the cell is mirrored into x, y >= 0 and integrated along the coordinate nearer the axis, so
+/// that mirror and swap images give the same numbers. Empty if the cell lies outside the disc.
+Part disc_part(double x0, double x1, double y0, double y1, double r) {
+  const double sx = x1 <= 0.0 ? -1.0 : 1.0;
+  const double sy = y1 <= 0.0 ? -1.0 : 1.0;
+  if (sx < 0.0) {
+    const double t0 = x0;
+    x0 = -x1;
+    x1 = -t0;
+  }
+  if (sy < 0.0) {
+    const double t0 = y0;
+    y0 = -y1;
+    y1 = -t0;
+  }
+  const double u0 = x0 / r;
+  const double u1 = x1 / r;
+  const double v0 = y0 / r;
+  const double v1 = y1 / r;
+  Part part;
+  if (u0 == v0 && u1 == v1) {
+    part = part_inside(u0, u1, v0, v1);
+    part.mx = part.my = 0.5 * (part.mx + part.my);
+  } else if (std::max(std::abs(u0), std::abs(u1)) > std::max(std::abs(v0), std::abs(v1))) {
+    const Part swapped = part_inside(v0, v1, u0, u1);
+    part = {swapped.area, swapped.my, swapped.mx};
+  } else {
+    part = part_inside(u0, u1, v0, v1);
+  }
+  const double r2 = r * r;
+  return {part.area * r2, sx * part.mx * r2 * r, sy * part.my * r2 * r};
+}
+
+}  // namespace
+
+PupilCells pupil_cells(int grid) {
+  check_grid(grid);
   const int n = grid;
   const auto size = static_cast<std::size_t>(n) * static_cast<std::size_t>(n);
   PupilCells cells;
@@ -115,6 +157,7 @@ PupilCells pupil_cells(int grid) {
   cells.fraction.resize(size);
   cells.px.resize(size);
   cells.py.resize(size);
+  cells.inner_rim.assign(size, 0);
   const double nd = static_cast<double>(n);
   const double a = 2.0 / nd;
   // Edges and centres as (2 i - N) / N and (2 i + 1 - N) / N: the mirror cell has the negated
@@ -187,6 +230,60 @@ PupilCells pupil_cells(int grid) {
   return cells;
 }
 
+PupilCells pupil_cells(int grid, double obscuration) {
+  if (!(obscuration >= 0.0 && obscuration < 1.0)) {
+    throw std::invalid_argument("analysis: the obscuration must lie in [0, 1), got " +
+                                std::to_string(obscuration));
+  }
+  PupilCells cells = pupil_cells(grid);  // checks the grid; bitwise the same for obscuration 0
+  if (obscuration == 0.0) return cells;
+  cells.obscuration = obscuration;
+  const int n = grid;
+  const double nd = static_cast<double>(n);
+  const double a2 = (2.0 / nd) * (2.0 / nd);
+  const double e2 = obscuration * obscuration;
+  const auto edge = [nd, n](int i) { return static_cast<double>(2 * i - n) / nd; };
+  for (int k = 0; k < n; ++k) {
+    for (int i = 0; i < n; ++i) {
+      const std::size_t j =
+          static_cast<std::size_t>(k) * static_cast<std::size_t>(n) + static_cast<std::size_t>(i);
+      const double x0 = edge(i);
+      const double x1 = edge(i + 1);
+      const double y0 = edge(k);
+      const double y1 = edge(k + 1);
+      const double far_x = std::max(std::abs(x0), std::abs(x1));
+      const double far_y = std::max(std::abs(y0), std::abs(y1));
+      const double near_x = x0 <= 0.0 && x1 >= 0.0 ? 0.0 : std::min(std::abs(x0), std::abs(x1));
+      const double near_y = y0 <= 0.0 && y1 >= 0.0 ? 0.0 : std::min(std::abs(y0), std::abs(y1));
+      if (near_x * near_x + near_y * near_y >= e2) continue;  // outside the inner circle
+      const double cx = static_cast<double>(2 * i + 1 - n) / nd;
+      const double cy = static_cast<double>(2 * k + 1 - n) / nd;
+      if (far_x * far_x + far_y * far_y <= e2) {  // inside the inner circle: obscured
+        cells.fraction[j] = 0.0;
+        cells.px[j] = cx;
+        cells.py[j] = cy;
+        continue;
+      }
+      // On the inner rim: the annular part is the part in the unit circle minus the part in the
+      // inner circle (the inner circle lies inside the unit circle).
+      const double outer_area = cells.fraction[j] * a2;
+      const Part inner = disc_part(x0, x1, y0, y1, obscuration);
+      const double area = outer_area - inner.area;
+      if (!(area > 0.0)) {  // touches the annulus in a point only
+        cells.fraction[j] = 0.0;
+        cells.px[j] = cx;
+        cells.py[j] = cy;
+        continue;
+      }
+      cells.fraction[j] = std::min(1.0, area / a2);
+      cells.px[j] = (cells.px[j] * outer_area - inner.mx) / area;
+      cells.py[j] = (cells.py[j] * outer_area - inner.my) / area;
+      cells.inner_rim[j] = 1;
+    }
+  }
+  return cells;
+}
+
 namespace {
 
 using compile::CompiledSystem;
@@ -228,6 +325,22 @@ void reject_crystal_modes(const CompiledSystem& system, PathId path) {
                           path_pointer(path));
     }
   }
+}
+
+/// Radius of the stop's central obscuration in pupil units (ADR 0032, addendum #229): the inner
+/// radius r_i of the stop's circular aperture over |R_s| = trace::stop_radius() at `wavelength`.
+/// With real aiming the ray of pupil point p meets the stop at |p| |R_s|, so the obscuration is
+/// the pupil circle |p| = r_i / |R_s|. 0 if the stop has no inner radius.
+double stop_obscuration(const CompiledSystem& system, PathId path, std::uint16_t wavelength) {
+  for (const auto& event : system.path(path).events) {
+    const compile::CompiledSurface& surface = system.surfaces()[event.surface];
+    if (surface.element_kind != model::ElementKind::Stop) continue;
+    const auto* circle =
+        surface.aperture ? std::get_if<model::CircularAperture>(&*surface.aperture) : nullptr;
+    if (circle == nullptr || !(circle->inner_radius > 0.0)) return 0.0;
+    return circle->inner_radius / trace::stop_radius(system, path, wavelength);
+  }
+  return 0.0;
 }
 
 math::Vec3 end_pos(const PupilEndStates& e, std::size_t j) {
@@ -379,8 +492,16 @@ PupilFunction pupil_function(const compile::CompiledSystem& system,
   detail::check_path(system, path);
   detail::check_wavelength(system, wavelength);
   check_options(options);
-  PupilCells cells = pupil_cells(options.grid);  // checks the grid
-  reject_crystal_modes(system, path);            // before any ray is traced
+  check_grid(options.grid);
+  reject_crystal_modes(system, path);  // before any ray is traced
+  // A central obscuration at the stop is the pupil circle |p| = r_i / |R_s| (ADR 0032, addendum
+  // #229): its cells get the exact annular area.
+  const double epsilon = stop_obscuration(system, path, wavelength);
+  if (!(epsilon < 1.0)) {
+    throw AnalysisError("analysis: the central obscuration of the stop covers the whole pupil",
+                        path_pointer(path));
+  }
+  PupilCells cells = pupil_cells(options.grid, epsilon);
 
   const detail::Reference ref =
       detail::make_reference(system, path, field, options.aiming, options.focus_shift);
@@ -403,6 +524,7 @@ PupilFunction pupil_function(const compile::CompiledSystem& system,
   pf.grid = options.grid;
   pf.focus_shift = options.focus_shift;
   pf.apodization = options.apodization;
+  pf.obscuration = cells.obscuration;
   pf.lost_warning_fraction = options.lost_warning_fraction;
   pf.mapping_warning = options.mapping_warning;
   const std::size_t size = cells.fraction.size();
@@ -425,12 +547,21 @@ PupilFunction pupil_function(const compile::CompiledSystem& system,
   e.chief_pos = {chief.pos_x()[0], chief.pos_y()[0], chief.pos_z()[0]};
   e.chief_dir = {chief.dir_x()[0], chief.dir_y()[0], chief.dir_z()[0]};
   e.chief_opl = chief.opl()[0];
+  // Cells with f > 0 as a point list; the cells on the inner rim of an obscuration as virtual
+  // rays (ADR 0032, addendum #229): their area decides, the ray only samples W and A, and the
+  // sample point of their non-convex part may lie inside the inner circle.
   trace::PointListPupil list;
+  trace::PointListPupil rim;
   for (std::size_t j = 0; j < size; ++j) {
-    if (pf.fraction[j] > 0.0) list.points.push_back({pf.px[j], pf.py[j]});
+    if (!(pf.fraction[j] > 0.0)) continue;
+    (cells.inner_rim[j] != 0 ? rim : list).points.push_back({pf.px[j], pf.py[j]});
   }
   const trace::RayBatch rays =
       detail::trace_rays(system, path, field, wavelength, list, options.aiming, control);
+  const trace::RayBatch rim_rays =
+      rim.points.empty()
+          ? trace::RayBatch()
+          : detail::trace_reference_rays(system, path, field, wavelength, rim, options.aiming);
   const double nan = std::numeric_limits<double>::quiet_NaN();
   for (auto* column :
        {&e.pos_x, &e.pos_y, &e.pos_z, &e.dir_x, &e.dir_y, &e.dir_z, &e.opl, &e.weight}) {
@@ -439,27 +570,30 @@ PupilFunction pupil_function(const compile::CompiledSystem& system,
   e.ray_status.assign(size, trace::RayStatus::Vignetted);
   e.last_surface.assign(size, trace::kNoSurface);
   if (options.with_prt) pf.prt.assign(9 * size, std::complex<double>(0.0, 0.0));
-  std::size_t i = 0;
+  std::size_t next = 0;
+  std::size_t next_rim = 0;
   for (std::size_t j = 0; j < size; ++j) {
     if (pf.fraction[j] == 0.0) continue;
-    e.pos_x[j] = rays.pos_x()[i];
-    e.pos_y[j] = rays.pos_y()[i];
-    e.pos_z[j] = rays.pos_z()[i];
-    e.dir_x[j] = rays.dir_x()[i];
-    e.dir_y[j] = rays.dir_y()[i];
-    e.dir_z[j] = rays.dir_z()[i];
-    e.opl[j] = rays.opl()[i];
-    e.weight[j] = rays.weight()[i];
-    e.ray_status[j] = rays.status()[i];
-    e.last_surface[j] = rays.last_surface()[i];
+    const bool on_rim = cells.inner_rim[j] != 0;
+    const trace::RayBatch& from = on_rim ? rim_rays : rays;
+    const std::size_t i = on_rim ? next_rim++ : next++;
+    e.pos_x[j] = from.pos_x()[i];
+    e.pos_y[j] = from.pos_y()[i];
+    e.pos_z[j] = from.pos_z()[i];
+    e.dir_x[j] = from.dir_x()[i];
+    e.dir_y[j] = from.dir_y()[i];
+    e.dir_z[j] = from.dir_z()[i];
+    e.opl[j] = from.opl()[i];
+    e.weight[j] = from.weight()[i];
+    e.ray_status[j] = from.status()[i];
+    e.last_surface[j] = from.last_surface()[i];
     if (options.with_prt) {
       for (int row = 0; row < 3; ++row) {
         for (int col = 0; col < 3; ++col) {
-          pf.prt[9 * j + static_cast<std::size_t>(3 * row + col)] = rays.prt(row, col)[i];
+          pf.prt[9 * j + static_cast<std::size_t>(3 * row + col)] = from.prt(row, col)[i];
         }
       }
     }
-    ++i;
   }
 
   evaluate(system, pf, ref);

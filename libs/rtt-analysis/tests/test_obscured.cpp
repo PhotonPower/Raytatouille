@@ -129,21 +129,30 @@ TEST_CASE("pupil function of an obscured mirror: the reference and M of the open
     CHECK(same_bits(mo.centre[k], mp.centre[k]));
     CHECK(same_bits(mo.d_c[k], mp.d_c[k]));
   }
-  // Cells: arrived ones bitwise as in the open system, the ones sampled in the obscuration lost.
+  // Cells (annular cells, ADR 0032, addendum #229, PR C): f = 0 in the obscuration; a cell on the
+  // inner rim arrives as a virtual ray at the centroid of its annular part from pupil_cells(N,
+  // epsilon); every other arrived cell is bitwise that of the open system.
+  const rtt::analysis::PupilCells ring = rtt::analysis::pupil_cells(16, 0.4);
   std::size_t obscured_cells = 0;
+  std::size_t rim_cells = 0;
   for (std::size_t j = 0; j < fo.fraction.size(); ++j) {
-    if (fo.fraction[j] == 0.0) continue;
     INFO("cell " << j);
-    if (std::hypot(fo.px[j], fo.py[j]) < 0.4 - 1e-9) {
-      CHECK(fo.status[j] == RayStatus::Vignetted);
-      ++obscured_cells;
+    if (fo.fraction[j] == 0.0) {
+      if (fp.fraction[j] > 0.0) ++obscured_cells;
+      continue;
+    }
+    CHECK(fo.status[j] == RayStatus::Alive);
+    if (ring.inner_rim[j] != 0) {
+      ++rim_cells;
+      CHECK(same_bits(fo.px[j], ring.px[j]));
+      CHECK(same_bits(fo.py[j], ring.py[j]));
     } else {
-      CHECK(fo.status[j] == RayStatus::Alive);
       CHECK(same_bits(fo.w[j], fp.w[j]));
       CHECK(same_bits(fo.amplitude[j], fp.amplitude[j]));
     }
   }
-  CHECK(obscured_cells > 0);  // content guard
+  CHECK(obscured_cells > 0);  // content guards
+  CHECK(rim_cells > 0);
   CHECK_FALSE(has(fo.warnings, "stop.clips_beam"));
 }
 

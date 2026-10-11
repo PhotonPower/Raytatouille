@@ -27,6 +27,7 @@ if(RTT_BUILD_TESTS)
   # the M3 acceptance (#63).
   rtt_add_test(rtt_analysis_tests
     SOURCES
+      tests/test_annular.cpp
       tests/test_chromatic.cpp
       tests/test_error_context.cpp
       tests/test_fans.cpp
