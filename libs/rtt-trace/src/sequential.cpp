@@ -73,6 +73,16 @@ class Record {
     paths_.opl[i] = state.opl;
     paths_.weight[i] = state.weight;
     paths_.status[i] = state.status;
+    if (paths_.polarization) {
+      // Row-major 3x3 blocks (ray_paths.hpp; ADR 0034, point 3).
+      for (int r = 0; r < 3; ++r) {
+        for (int c = 0; c < 3; ++c) {
+          const std::size_t k = 9 * i + static_cast<std::size_t>(3 * r + c);
+          paths_.prt[k] = state.prt(r, c);
+          paths_.q[k] = state.q(r, c);
+        }
+      }
+    }
   }
 
   RayPaths& paths_;
@@ -134,6 +144,7 @@ TraceStats trace_rays(const compile::CompiledSystem& system,
       ray.status = rays.status()[i];
       ray.last_surface = rays.last_surface()[i];
       ray.prt = rays.prt_matrix(i);
+      ray.q = rays.q_matrix(i);
       ray.weight = rays.weight()[i];
       // Reading rule (ADR 0026, point 3): wave counts only inside a crystal (mode_index > 0);
       // otherwise wave := dir, so that a batch which sets only dir starts correctly.
@@ -162,6 +173,7 @@ TraceStats trace_rays(const compile::CompiledSystem& system,
       rays.status()[i] = ray.status;
       rays.last_surface()[i] = ray.last_surface;
       rays.set_prt_matrix(i, ray.prt);
+      rays.set_q_matrix(i, ray.q);
       rays.weight()[i] = ray.weight;
       rays.wave_x()[i] = ray.wave.x();
       rays.wave_y()[i] = ray.wave.y();
@@ -228,11 +240,13 @@ TraceStats SequentialTracer::trace(const compile::CompiledSystem& system,
         "record_rays is empty; pass no selection (std::nullopt, None in Python) to record all "
         "rays");
   }
+  const std::size_t bytes_per_slot =
+      kRecordedBytesPerSlot + (paths.polarization ? kRecordedPolarizationBytesPerSlot : 0);
   if (!record_rays) {
     if (n > max_recorded_rays) {
       throw std::invalid_argument(
           "recording " + std::to_string(n) + " rays of " + std::to_string(slots) +
-          " slots needs about " + std::to_string(n * slots * kRecordedBytesPerSlot) +
+          " slots needs about " + std::to_string(n * slots * bytes_per_slot) +
           " bytes, more than max_recorded_rays = " + std::to_string(max_recorded_rays) +
           " allows; select the rays to record with record_rays (or raise max_recorded_rays)");
     }
@@ -271,6 +285,12 @@ TraceStats SequentialTracer::trace(const compile::CompiledSystem& system,
   result.status.assign(recorded * slots, RayStatus::Alive);
   result.count.assign(recorded, 0);
   result.lost_at.assign(recorded, -1);
+  // P and Q per slot only on request (ADR 0034, point 3); the request stays in `paths`.
+  result.polarization = paths.polarization;
+  if (result.polarization) {
+    result.prt.assign(recorded * slots * 9, math::Complex(nan, nan));
+    result.q.assign(recorded * slots * 9, nan);
+  }
   const TraceStats stats = trace_rays(system, path, rays, Record(result, row));
   paths = std::move(result);
   return stats;

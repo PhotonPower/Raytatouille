@@ -46,6 +46,11 @@ inline constexpr std::size_t kDefaultMaxRecordedRays = 10000;
 /// status (1 byte).
 inline constexpr std::size_t kRecordedBytesPerSlot = 8 * sizeof(double) + 1;
 
+/// Additional bytes per ray and slot with RayPaths::polarization: P (9 complex) and Q (9 real),
+/// 216 bytes (ADR 0034, point 3).
+inline constexpr std::size_t kRecordedPolarizationBytesPerSlot =
+    9 * sizeof(math::Complex) + 9 * sizeof(double);
+
 /// Recorded path states of selected rays of a RayBatch (see the file comment).
 struct RayPaths {
   std::size_t slots = 0;                      ///< S = number of path events + 1
