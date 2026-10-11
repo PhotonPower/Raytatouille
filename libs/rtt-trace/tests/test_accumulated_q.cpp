@@ -465,3 +465,26 @@ TEST_CASE("a mirror with a material of the surrounding index is no ideal conduct
     CHECK(std::abs(rays.weight()[0] - (with_material ? 0.0 : 1.0)) <= 1e-15);
   }
 }
+
+TEST_CASE("Q at an ideal lens is its P: Q^T P = I", "[polarization][q]") {
+  // ADR 0034, point 1, with ADR 0031, point 5: P_event = R(k_in -> k_out) and Q the same
+  // rotation, so after the transmits of r2/ideal_lens (stop, lens) Q is the real part of P bit
+  // for bit, Im P = 0, and the physical part Q^T P is I (the lens does not polarize): 1e-15.
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(load("r2/ideal_lens.rtt.json"), lib);
+  const PathId path = path_named(cs, "ideal lens");
+  const Vec3 object(3.0, -4.0, -75.0);
+  std::size_t deflected = 0;
+  for (const Vec3& target : {Vec3(0.0, 0.0, -1.0), Vec3(5.0, 2.0, -1.0), Vec3(-7.0, 6.0, -1.0)}) {
+    INFO("through " << target.transpose());
+    const RayBatch rays = trace_one(cs, path, object, (target - object).normalized());
+    REQUIRE(rays.status()[0] == RayStatus::Alive);
+    const CMat3 p = rays.prt_matrix(0);
+    const Mat3 q = rays.q_matrix(0);
+    CHECK(p.real() == q);
+    CHECK(p.imag().cwiseAbs().maxCoeff() == 0.0);
+    CHECK((q.transpose().cast<Cx>() * p - CMat3::Identity()).cwiseAbs().maxCoeff() <= 1e-15);
+    if (max_abs(q - Mat3::Identity()) > 1e-3) ++deflected;
+  }
+  CHECK(deflected >= 2);  // content guard: the lens bends the off-axis rays
+}
