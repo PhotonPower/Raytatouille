@@ -82,7 +82,14 @@ PupilFunction pupil(const CompiledSystem& cs, int n, std::uint16_t field = 0) {
   return rtt::analysis::pupil_function(cs, PathId{0}, field, 0, o);
 }
 
-/// lambda F#_w in mm, F#_w = 1 / (2 |M_11|) of the mapping.
+/// n' = |Re n| of the image medium at `wavelength`, from the compiled media (not through the code
+/// under test). The paraboloid lies in AIR: n' = 1.00027 at 0.5876 um, carried by M.
+double image_index(const CompiledSystem& cs, std::uint16_t wavelength) {
+  const auto& last = cs.path(PathId{0}).events.back();
+  return std::abs(cs.media()[last.medium_after].index[wavelength].real());
+}
+
+/// lambda F#_w in mm, F#_w = 1 / (2 |M_11|) of the mapping (M includes n').
 double airy_unit(const PupilFunction& p) {
   REQUIRE(p.mapping.has_value());
   return kLambdaMm / (2.0 * std::abs(p.mapping->m[0]));
@@ -125,9 +132,19 @@ bool same_bits(double a, double b) {
   return std::memcmp(&a, &b, sizeof(double)) == 0;
 }
 
-/// Wavelength of a pupil function in mm.
-double lambda_mm(const PupilFunction& p) {
-  return p.wavelength_um * 1e-3;
+/// The curves exist with the samples l = 0 ... n before they are indexed, so that the tests fail
+/// cleanly against a stub instead of reading out of range.
+void require_curves(const Mtf& m, int n) {
+  const auto size = static_cast<std::size_t>(n) + 1;
+  REQUIRE(m.tangential.frequency.size() == size);
+  REQUIRE(m.tangential.modulation.size() == size);
+  REQUIRE(m.sagittal.frequency.size() == size);
+  REQUIRE(m.sagittal.modulation.size() == size);
+}
+
+/// The energies exist for every radius before they are indexed.
+void require_energy(const EncircledEnergy& e, std::size_t radii) {
+  REQUIRE(e.energy.size() == radii);
 }
 
 /// Cell value u_j = f A exp(-2 pi i W lambda_ref / lambda) (ADR 0032), W in waves of lambda_ref.
@@ -229,7 +246,8 @@ TEST_CASE("mtf: a cylindrical defocus w py^2 lowers only the tangential curve", 
   for (std::size_t j = 0; j < q.w.size(); ++j) q.w[j] += 0.5 * q.py[j] * q.py[j];
   const Mtf m0 = rtt::analysis::mtf(p);
   const Mtf m1 = rtt::analysis::mtf(q);
-  REQUIRE(m1.sagittal.modulation.size() == 65);
+  require_curves(m0, n);
+  require_curves(m1, n);
   for (std::size_t l = 0; l <= 64; ++l) {
     CHECK(std::abs(m1.sagittal.modulation[l] - m0.sagittal.modulation[l]) <= 1e-13);
   }
@@ -327,10 +345,15 @@ TEST_CASE("encircled energy: up to radius_max, a quarter of the period", "[ee]")
   REQUIRE(probe.edge_energy_deficit > 0.0);
   const std::array<double, 1> at_max{probe.radius_max};
   const EncircledEnergy full = ee_n(cs, 64, at_max);
+  require_energy(full, 1);
   CHECK(full.energy[0] <= 1.0 - full.edge_energy_deficit + 1e-12);
   const std::array<double, 1> r16{16.0 * s};
-  const double a = ee_n(cs, 64, r16).energy[0];
-  const double b = ee_n(cs, 128, r16).energy[0];
+  const EncircledEnergy at64 = ee_n(cs, 64, r16);
+  const EncircledEnergy at128 = ee_n(cs, 128, r16);
+  require_energy(at64, 1);
+  require_energy(at128, 1);
+  const double a = at64.energy[0];
+  const double b = at128.energy[0];
   const double expected = ee_airy(16.0 * std::numbers::pi);
   const double e = 2.0 * std::abs(a - b) + 1e-12;
   INFO("N=64 " << a << ", N=128 " << b << ", expected " << expected);
@@ -355,6 +378,7 @@ TEST_CASE("encircled energy: LinearPhase centre of a tilted wavefront", "[ee]") 
   const EncircledEnergy plain = rtt::analysis::encircled_energy(p, radii);
   const EncircledEnergy moved = rtt::analysis::encircled_energy(q, radii, EeCentre::LinearPhase);
   const EncircledEnergy fixed = rtt::analysis::encircled_energy(q, radii);
+  for (const EncircledEnergy* e : {&plain, &moved, &fixed}) require_energy(*e, radii.size());
   const double norm_t = std::hypot(t.x, t.y);
   CHECK(std::abs(moved.offset.x - t.x) <= 1e-12 * norm_t);
   CHECK(std::abs(moved.offset.y - t.y) <= 1e-12 * norm_t);
@@ -387,8 +411,11 @@ TEST_CASE("mtf: complex OTF, phase of a moved PSF and the 2D map", "[mtf]") {
   const Mtf m0 = rtt::analysis::mtf(p, out);
   const Mtf m1 = rtt::analysis::mtf(q, out);
   const auto& f = m1.frequency_matrix;
-  REQUIRE(m1.tangential.otf.size() == 33);
-  REQUIRE(m1.sagittal.otf.size() == 33);
+  for (const Mtf* m : {&m0, &m1}) {
+    require_curves(*m, 32);
+    REQUIRE(m->tangential.otf.size() == 33);
+    REQUIRE(m->sagittal.otf.size() == 33);
+  }
   double largest_phase = 0.0;
   for (std::size_t l = 0; l <= 32; ++l) {
     const auto ld = static_cast<double>(l);
@@ -410,6 +437,8 @@ TEST_CASE("mtf: complex OTF, phase of a moved PSF and the 2D map", "[mtf]") {
   // 2D map: the rows and columns through l = 0 are the curves.
   out.map = true;
   const Mtf mm = rtt::analysis::mtf(q, out);
+  require_curves(mm, 32);
+  REQUIRE(mm.sagittal.otf.size() == 33);
   const std::size_t side = 2 * 32 - 1;
   REQUIRE(mm.map.size() == side * side);
   REQUIRE(mm.otf_map.size() == side * side);
@@ -445,6 +474,11 @@ TEST_CASE("mtf, encircled energy: two wavelengths combine with weights w_i E_i",
   const Mtf poly = rtt::analysis::mtf(cs, PathId{0}, 0, both);
   const Mtf a = rtt::analysis::mtf(cs, PathId{0}, 0, first);
   const Mtf b = rtt::analysis::mtf(cs, PathId{0}, 0, second);
+  for (const Mtf* m : {&poly, &a, &b}) require_curves(*m, 32);
+  REQUIRE(a.tangential.otf.size() == 33);
+  REQUIRE(b.tangential.otf.size() == 33);
+  REQUIRE(a.wavelengths.size() == 1);
+  REQUIRE(b.wavelengths.size() == 1);
   REQUIRE(poly.wavelengths.size() == 2);
   const double wa = 0.25 * a.wavelengths[0].energy;
   const double wb = 0.75 * b.wavelengths[0].energy;
@@ -455,9 +489,12 @@ TEST_CASE("mtf, encircled energy: two wavelengths combine with weights w_i E_i",
     const double g = (nu - c.frequency[k - 1]) / (c.frequency[k] - c.frequency[k - 1]);
     return (1.0 - g) * c.otf[k - 1] + g * c.otf[k];
   };
-  // The second curve ends at the cut-off of lambda_2, nu_c / 1.25.
-  CHECK(std::abs(b.tangential.frequency.back() * 1.25 / a.tangential.frequency.back() - 1.0) <=
-        1e-12);
+  // The second curve ends at the cut-off of lambda_2. nu_c,i = 2 |M_i| / lambda_i with
+  // M_i = (n'_i / n'_1) M_1 (the mirror reflects the same rays, the direction sines carry the
+  // index of AIR; as in test_psf.cpp), so nu_c,2 / nu_c,1 = (n'_2 / n'_1) / 1.25.
+  const double n_ratio = image_index(cs, 1) / image_index(cs, 0);
+  CHECK(std::abs(b.tangential.frequency.back() * 1.25 / (n_ratio * a.tangential.frequency.back()) -
+                 1.0) <= 1e-12);
   double largest = 0.0;
   for (std::size_t l = 0; l <= 32; ++l) {
     const double nu = a.tangential.frequency[l];
@@ -478,6 +515,9 @@ TEST_CASE("mtf, encircled energy: two wavelengths combine with weights w_i E_i",
   const EncircledEnergy ea = rtt::analysis::encircled_energy(cs, PathId{0}, 0, radii, eo);
   eo.wavelengths = std::vector<std::uint16_t>{1};
   const EncircledEnergy eb = rtt::analysis::encircled_energy(cs, PathId{0}, 0, radii, eo);
+  for (const EncircledEnergy* e : {&ep, &ea, &eb}) require_energy(*e, radii.size());
+  REQUIRE(ea.wavelengths.size() == 1);
+  REQUIRE(eb.wavelengths.size() == 1);
   const double va = 0.25 * ea.wavelengths[0].energy;
   const double vb = 0.75 * eb.wavelengths[0].energy;
   for (std::size_t i = 0; i < radii.size(); ++i) {
@@ -499,6 +539,8 @@ TEST_CASE("mtf, encircled energy: bitwise the same for 1, 4 and all threads", "[
   const std::vector<double> radii{1.0 * s, 2.0 * s, 5.0 * s};
   const Mtf m_all = rtt::analysis::mtf(cs, PathId{0}, 0, mo);
   const EncircledEnergy e_all = rtt::analysis::encircled_energy(cs, PathId{0}, 0, radii, eo);
+  require_curves(m_all, 64);  // content guard: there are curves to compare
+  require_energy(e_all, radii.size());
   for (const int threads : {1, 4}) {
     oneapi::tbb::task_arena arena(threads);
     const Mtf m = arena.execute([&] { return rtt::analysis::mtf(cs, PathId{0}, 0, mo); });
