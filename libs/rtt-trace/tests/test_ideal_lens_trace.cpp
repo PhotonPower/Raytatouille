@@ -150,7 +150,8 @@ TEST_CASE("ideal lens: every ray of an object point meets in its image, m = -2",
   const double s = -75.0;
   const double s_image = 1.0 / (1.0 / 50.0 + 1.0 / s);  // 150 up to rounding
   const double m = s_image / s;
-  for (const Vec3 object : {Vec3(0.0, 0.0, -75.0), Vec3(0.0, 5.0, -75.0), Vec3(3.0, -4.0, -75.0)}) {
+  for (const Vec3& object :
+       {Vec3(0.0, 0.0, -75.0), Vec3(0.0, 5.0, -75.0), Vec3(3.0, -4.0, -75.0)}) {
     INFO("object " << object.transpose());
     RayBatch rays = rays_from(object);
     trace(cs, "ideal lens", rays);
@@ -226,7 +227,8 @@ TEST_CASE("ideal lens: a plane wave at 10 deg meets in (0, f tan 10 deg, f)", "[
 TEST_CASE("ideal lens: equal OPL from an object point of the design plane to its image",
           "[ideal][trace][opl]") {
   const CompiledSystem cs = compiled(reference());
-  for (const Vec3 object : {Vec3(0.0, 0.0, -75.0), Vec3(0.0, 5.0, -75.0), Vec3(3.0, -4.0, -75.0)}) {
+  for (const Vec3& object :
+       {Vec3(0.0, 0.0, -75.0), Vec3(0.0, 5.0, -75.0), Vec3(3.0, -4.0, -75.0)}) {
     INFO("object " << object.transpose());
     RayBatch rays = rays_from(object);
     trace(cs, "ideal lens", rays);
@@ -377,7 +379,7 @@ TEST_CASE("ideal cylinder lens: crossed cylinder lenses act as the ideal lens", 
   const auto& cl = surface(cs, "CL");
   const auto& cl90 = surface(cs, "CL90");
   const auto& il = surface(reference_cs, "IL");
-  for (const Vec3 q : {Vec3(4.0, -3.0, 0.0), Vec3(-7.0, 2.0, 0.0), Vec3(0.5, 9.0, 0.0)}) {
+  for (const Vec3& q : {Vec3(4.0, -3.0, 0.0), Vec3(-7.0, 2.0, 0.0), Vec3(0.5, 9.0, 0.0)}) {
     INFO("q = " << q.transpose());
     rtt::trace::RayState ray;
     ray.pos = Vec3(3.0, -4.0, -75.0);
@@ -446,7 +448,7 @@ TEST_CASE("ideal lens: P is the rotation k_in -> k_out, the weight stays", "[ide
   const rtt::compile::CompiledSurface& lens = surface(cs, "IL");
   const rtt::trace::EventMedia media = environment(cs);
   SECTION("off the centre") {
-    for (const Vec3 q : {Vec3(4.0, -3.0, 0.0), Vec3(-9.0, 1.0, 0.0)}) {
+    for (const Vec3& q : {Vec3(4.0, -3.0, 0.0), Vec3(-9.0, 1.0, 0.0)}) {
       rtt::trace::RayState ray;
       ray.pos = Vec3(3.0, -4.0, -75.0);
       ray.dir = (q - ray.pos).normalized();
@@ -492,7 +494,7 @@ TEST_CASE("ideal lens: the backward passage is the mirrored forward passage", "[
   const rtt::trace::EventMedia media = environment(cs);
   const Vec3 object(3.0, -4.0, -75.0);
   const Vec3 mirrored_object(3.0, -4.0, 75.0);
-  for (const Vec3 q : {Vec3(4.0, -3.0, 0.0), Vec3(-9.0, 1.0, 0.0), Vec3(0.0, 0.0, 0.0)}) {
+  for (const Vec3& q : {Vec3(4.0, -3.0, 0.0), Vec3(-9.0, 1.0, 0.0), Vec3(0.0, 0.0, 0.0)}) {
     INFO("q = " << q.transpose());
     rtt::trace::RayState forward;
     forward.pos = object;
