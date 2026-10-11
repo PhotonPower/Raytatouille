@@ -54,7 +54,7 @@ __all__ = [
 ]
 
 FORMAT = "raytatouille-result"
-SCHEMA_VERSION = "0.1.12"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
+SCHEMA_VERSION = "0.1.13"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
 # 0.1.3: status Evanescent, status arrays one entry longer (#127); 0.1.4: PathTransmission,
 # PathOplDifference, GhostRanking (#133); 0.1.5: RayBatch wave_x/y/z, mode_index (#134);
 # 0.1.6: RaytraceReport, SystemReport, DimensionReport (#177);
