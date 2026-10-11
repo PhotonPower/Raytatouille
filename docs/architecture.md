@@ -449,7 +449,7 @@ editor.apply(result.patch)                       # oder als ein Schritt mit Undo
 - `profile` und `outlines`. Die Fläche wird über Index oder Id gewählt, die Schnittebene über `"yz"` (Richtung +y), `"xz"` (Richtung +x) oder (Punkt, Normale), global.
 - Beispiel `examples/python/layout.py` (Linsenschnitt des Achromaten mit Kittglied).
 
-**Strahlpfade in Python (#80):** `rt.trace.trace(..., record_path=True, record_rays=None, max_recorded_rays=10000)` gibt `(TraceStats, RayPaths)` zurück. `RayPaths` hat schreibgeschützte NumPy-Views ohne Kopie: `position` und `direction` (N, S, 3), `opl`, `weight` und `status` (N, S), `count`, `lost_at` und `ray_indices` (N,), `event_surfaces` (S − 1,). Bitgleich gegen `rtt_py_reference` in allen Fällen von `test_bitwise.py`, die dabei mit Aufzeichnung tracen.
+**Strahlpfade in Python (#80):** `rt.trace.trace(..., record_path=True, record_rays=None, max_recorded_rays=10000)` gibt `(TraceStats, RayPaths)` zurück. `RayPaths` hat schreibgeschützte NumPy-Views ohne Kopie: `position` und `direction` (N, S, 3), `opl`, `weight` und `status` (N, S), `count`, `lost_at` und `ray_indices` (N,), `event_surfaces` (S − 1,). Bitgleich gegen `rtt_py_reference` in allen Fällen von `test_bitwise.py`, die dabei mit Aufzeichnung tracen. Mit `polarization=True` (#207, ADR 0034, Punkt 3) kommen `RayPaths.prt` (N, S, 3, 3, complex128) und, wenn der Batch Q führt, `RayPaths.q` (N, S, 3, 3) hinzu; sonst sind beide `None`. `RayBatch.enable_q()` vor dem Trace fordert Q an, `RayBatch.has_q`, `q(row, col)` (View) und `q_matrices()` (Kopie, `None` ohne Q) lesen es (Nachtrag #207 zu ADR 0034). Bitgleich in `test_bitwise_q.py`.
 
 **Stand M3 (#62):** Coatings und Polarisation in Python.
 - `rt.CoatingLibrary` mit `add_catalog` (Datei oder Verzeichnis) und `in`; `rt.compile(system, materials=None, coatings=None)`. Ohne `coatings` ist eine vergütete Fläche ein `CompileError` (ADR 0019). Fehlerhafte Kataloge ergeben `rt.CoatingCatalogError` mit `file` und `pointer`.
@@ -463,7 +463,7 @@ editor.apply(result.patch)                       # oder als ein Schritt mit Undo
   - `stokes`
 - Einzelmatrix-Funktionen: `prt_matrix`, `geometric_transform`, `diattenuation(p, k_in, k_out)`, `retardance(m, k)`, `physical_retardance(p, q, k_in)`, `stokes(e, axis, k)`.
 - Eingaben werden an der API-Grenze geprüft: Form, endlich, Einheitsvektoren und Transversalität auf 1e−12; sonst `ValueError`.
-- Die physikalische Retardance eines ganzen Pfads braucht das akkumulierte Q und folgt mit der Jones-Pupille (M6).
+- Die physikalische Retardance eines ganzen Pfads: `physical_retardance(rays.prt_matrices()[i], rays.q_matrices()[i], k₀)` nach `rays.enable_q()` und dem Trace (#207). Karten über die Pupille folgen mit der Jones-Pupille (#208).
 - Tests:
   - Bitgleich gegen `rtt_py_reference` mit P und den `rt.polar`-Größen je Fall. Neue Fälle: `ar_singlet` mit Coatings, absorbierende AR-Platte unter verschiedenen Winkeln, beide Michelson-Arme, Polarisator mit λ/4 und Analysator.
   - Analytische Prüfungen: Malus, (1 + ε)/4, |S3| = S0, π/2.

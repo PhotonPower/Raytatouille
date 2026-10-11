@@ -714,6 +714,29 @@
           },
           "schema_version": {
             "not": {
+              "pattern": "^0\\.1\\.[0-8]$"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "q"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RayBatch"
+          },
+          "schema_version": {
+            "not": {
               "pattern": "^0\\.1\\.[0-4]$"
             }
           }
@@ -781,6 +804,31 @@
               "status",
               "count",
               "lost_at"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RayPaths"
+          },
+          "schema_version": {
+            "not": {
+              "pattern": "^0\\.1\\.[0-8]$"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "polarization",
+              "prt",
+              "q"
             ]
           }
         }

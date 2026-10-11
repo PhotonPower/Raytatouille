@@ -83,7 +83,8 @@ std::tuple<trace::TraceStats, trace::RayPaths> run_trace_recorded(
     const PathArg& path,
     std::optional<int> threads,
     const std::optional<IndexArray>& record_rays,
-    std::size_t max_recorded_rays) {
+    std::size_t max_recorded_rays,
+    bool polarization) {
   std::vector<std::size_t> selection;
   std::optional<std::span<const std::size_t>> selected;
   if (record_rays) {
@@ -101,6 +102,7 @@ std::tuple<trace::TraceStats, trace::RayPaths> run_trace_recorded(
   const compile::PathId id = path_id(system, path);
   const trace::SequentialTracer tracer;
   trace::RayPaths paths;
+  paths.polarization = polarization;  // P (and Q of a batch with Q) per slot, ADR 0034
   const trace::TraceStats stats = with_threads(
       threads, [&] { return tracer.trace(system, id, rays, paths, selected, max_recorded_rays); });
   return {stats, std::move(paths)};
@@ -363,6 +365,53 @@ void bind_trace(nb::module_& m) {
       },
       "P of all rays as an (N, 3, 3) complex128 array, global coordinates, power-normalised as "
       "described at prt() (ADR 0021). This is a copy: P is stored as nine separate columns.");
+  batch.def("enable_q", &RayBatch::enable_q,
+            "Requests the accumulated geometric transformation Q (ADR 0034, addendum #207): adds "
+            "Q = I for every ray (values of a second call are kept), and trace() then forms Q for "
+            "every event. Only on request, since it costs about 7 % of the trace.");
+  batch.def_prop_ro("has_q", &RayBatch::has_q, "Whether the batch carries Q (enable_q()).");
+  batch.def(
+      "q",
+      [](nb::pointer_and_handle<RayBatch> self, int row, int col) -> Column<double> {
+        if (row < 0 || row > 2 || col < 0 || col > 2) {
+          throw std::out_of_range("q: row and col must be 0, 1 or 2");
+        }
+        if (!self.p->has_q()) {
+          throw std::invalid_argument("q: the batch carries no Q; call enable_q() before trace()");
+        }
+        return column<double>(self.h, self.p->q(row, col));
+      },
+      "row"_a, "col"_a,
+      "Element (row, col) of the accumulated geometric transformation Q (ADR 0034, point 1; Lam, "
+      "Eqs. (4.5)/(4.6)), global coordinates, float64; view without a copy. Q is real "
+      "orthogonal, Q k0 = k, and Q^T P is the physical part of the path "
+      "(rt.polar.physical_retardance); NaN from the entry into a crystal on. Raises ValueError "
+      "without enable_q().");
+  batch.def(
+      "q_matrices",
+      [](const RayBatch& rays)
+          -> std::optional<nb::ndarray<nb::numpy, double, nb::shape<-1, 3, 3>, nb::c_contig>> {
+        if (!rays.has_q()) return std::nullopt;
+        const std::size_t n = rays.size();
+        auto data = std::make_unique<std::vector<double>>(n * 9);
+        for (int row = 0; row < 3; ++row) {
+          for (int col = 0; col < 3; ++col) {
+            const auto element = rays.q(row, col);
+            for (std::size_t i = 0; i < n; ++i) (*data)[9 * i + 3 * row + col] = element[i];
+          }
+        }
+        const std::size_t shape[3] = {n, 3, 3};
+        double* values = data->data();
+        // The capsule owns the copy from here on and frees it with the array.
+        nb::capsule owner(data.get(), [](void* p) noexcept {
+          const std::unique_ptr<std::vector<double>> owned(static_cast<std::vector<double>*>(p));
+        });
+        static_cast<void>(data.release());
+        return nb::ndarray<nb::numpy, double, nb::shape<-1, 3, 3>, nb::c_contig>(values, 3, shape,
+                                                                                 owner);
+      },
+      "Q of all rays as an (N, 3, 3) float64 array (a copy), or None if the batch carries no Q "
+      "(enable_q()).");
 
   nb::class_<trace::RayPaths>(
       m, "RayPaths",
@@ -448,7 +497,32 @@ void bind_trace(nb::module_& m) {
             return paths_view<std::int32_t>(self.h, self.p->lost_at.data(), {self.p->ray_count()});
           },
           "Index of the event at which each ray stopped, (N,) int32; -1 if it passed all events "
-          "or did not start. The surface is event_surfaces[lost_at].");
+          "or did not start. The surface is event_surfaces[lost_at].")
+      .def_prop_ro(
+          "polarization", [](const trace::RayPaths& p) { return p.polarization; },
+          "Whether P (and Q of a batch with Q) were recorded per slot (trace(..., "
+          "polarization=True); ADR 0034, point 3).")
+      .def_prop_ro(
+          "prt",
+          [](nb::pointer_and_handle<trace::RayPaths> self)
+              -> std::optional<nb::ndarray<nb::numpy, const math::Complex, nb::c_contig>> {
+            if (self.p->prt.empty()) return std::nullopt;
+            return paths_view<math::Complex>(self.h, self.p->prt.data(),
+                                             {self.p->ray_count(), self.p->slots, 3, 3});
+          },
+          "Accumulated P per ray and slot, (N, S, 3, 3) complex128, power-normalised (ADR 0021); "
+          "slot 0 is the input, the last valid slot is bitwise RayBatch.prt_matrices(); NaN "
+          "after a loss. None without polarization.")
+      .def_prop_ro(
+          "q",
+          [](nb::pointer_and_handle<trace::RayPaths> self)
+              -> std::optional<nb::ndarray<nb::numpy, const double, nb::c_contig>> {
+            if (self.p->q.empty()) return std::nullopt;
+            return paths_view<double>(self.h, self.p->q.data(),
+                                      {self.p->ray_count(), self.p->slots, 3, 3});
+          },
+          "Accumulated Q per ray and slot, (N, S, 3, 3) float64 (ADR 0034); as prt. None "
+          "without polarization or if the batch carried no Q.");
 
   nb::class_<trace::CancelToken>(
       m, "CancelToken",
@@ -464,11 +538,13 @@ void bind_trace(nb::module_& m) {
   m.attr("DEFAULT_MAX_RECORDED_RAYS") = trace::kDefaultMaxRecordedRays;
   m.def("trace_recorded", &run_trace_recorded, "system"_a, "rays"_a, nb::kw_only(), "path"_a = 0,
         "threads"_a.none() = nb::none(), "record_rays"_a.none() = nb::none(),
-        "max_recorded_rays"_a = trace::kDefaultMaxRecordedRays,
+        "max_recorded_rays"_a = trace::kDefaultMaxRecordedRays, "polarization"_a = false,
         nb::call_guard<nb::gil_scoped_release>(),
         "trace() that also records the paths of the rays `record_rays` (int64 indices into "
         "`rays`, no duplicates; None: all rays) and returns (TraceStats, RayPaths). The rays end "
-        "bitwise as without recording. Use raytatouille.trace.trace(..., record_path=True).\n\n"
+        "bitwise as without recording. With `polarization` P is recorded per slot as well, and "
+        "Q if the batch carries Q (ADR 0034, point 3). Use raytatouille.trace.trace(..., "
+        "record_path=True).\n\n"
         "Raises ValueError for an index outside the batch, a duplicate, an empty selection, or "
         "more than `max_recorded_rays` rays without a selection (the message gives the memory "
         "need), and as trace().");

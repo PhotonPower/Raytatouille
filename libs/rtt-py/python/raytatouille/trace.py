@@ -2,7 +2,9 @@
 
 ``make_rays`` creates a RayBatch for a pupil sampling, ``trace`` traces it in place. The
 columns of a RayBatch are NumPy views without a copy. ``trace(..., record_path=True)`` also
-records the path of every ray (RayPaths) for drawing rays in a layout. ``GaussPupil`` samples
+records the path of every ray (RayPaths) for drawing rays in a layout; with
+``polarization=True`` also P (and Q) per slot. ``RayBatch.enable_q()`` before a trace requests
+the accumulated geometric transformation Q (``q_matrices()``; ADR 0034). ``GaussPupil`` samples
 the pupil for Gaussian quadrature; its weights are ``gauss_pupil_weights`` (#168).
 ``PointListPupil(px, py)`` passes an explicit list of pupil points (ADR 0032); it is only
 available as an object, the short forms of ``raytatouille.analysis`` (``"grid:N"`` etc.) have
@@ -92,6 +94,7 @@ def trace(system: CompiledSystem, rays: RayBatch, *, path: int | str = 0,
           threads: int | None = None, record_path: Literal[False] = False,
           record_rays: npt.ArrayLike | None = None,
           max_recorded_rays: int = DEFAULT_MAX_RECORDED_RAYS,
+          polarization: bool = False,
           cancel: CancelToken | None = None,
           progress: ProgressCallback | None = None) -> TraceStats: ...
 
@@ -101,6 +104,7 @@ def trace(system: CompiledSystem, rays: RayBatch, *, path: int | str = 0,
           threads: int | None = None, record_path: Literal[True],
           record_rays: npt.ArrayLike | None = None,
           max_recorded_rays: int = DEFAULT_MAX_RECORDED_RAYS,
+          polarization: bool = False,
           cancel: CancelToken | None = None,
           progress: ProgressCallback | None = None,
           ) -> tuple[TraceStats, RayPaths]: ...
@@ -111,6 +115,7 @@ def trace(system: CompiledSystem, rays: RayBatch, *, path: int | str = 0,
           threads: int | None = None, record_path: bool = False,
           record_rays: npt.ArrayLike | None = None,
           max_recorded_rays: int = DEFAULT_MAX_RECORDED_RAYS,
+          polarization: bool = False,
           cancel: CancelToken | None = None,
           progress: ProgressCallback | None = None,
           ) -> TraceStats | tuple[TraceStats, RayPaths]: ...
@@ -120,6 +125,7 @@ def trace(system: CompiledSystem, rays: RayBatch, *, path: int | str = 0,
           threads: int | None = None, record_path: bool = False,
           record_rays: npt.ArrayLike | None = None,
           max_recorded_rays: int = DEFAULT_MAX_RECORDED_RAYS,
+          polarization: bool = False,
           cancel: CancelToken | None = None,
           progress: ProgressCallback | None = None,
           ) -> TraceStats | tuple[TraceStats, RayPaths]:
@@ -136,17 +142,23 @@ def trace(system: CompiledSystem, rays: RayBatch, *, path: int | str = 0,
     (e.g. every k-th ray) rather than the first rays: those are only the inner rings of a
     hexapolar bundle.
 
+    ``polarization=True`` (with ``record_path``) also records the accumulated P per slot
+    (``RayPaths.prt``), and Q (``RayPaths.q``) if the batch carries Q (``RayBatch.enable_q()``
+    before the trace; ADR 0034, point 3; about 144 and 72 bytes more per ray and slot).
+
     ``cancel`` and ``progress`` (stage "trace") control a long trace, see the module
     documentation; they are not available with ``record_path`` (recording is meant for the few
     rays of a drawing).
 
     Raises ValueError for an unknown path name, a wavelength index that is not a system
-    wavelength, an invalid status or an invalid selection, or cancel/progress with
-    record_path, IndexError for an unknown path index, raytatouille.errors.Cancelled after a
+    wavelength, an invalid status or an invalid selection, cancel/progress with record_path,
+    or record_rays/polarization without it, IndexError for an unknown path index, raytatouille.errors.Cancelled after a
     cancellation and the exception of ``progress``."""
     if not record_path:
         if record_rays is not None:
             raise ValueError("record_rays needs record_path=True")
+        if polarization:
+            raise ValueError("polarization needs record_path=True")
         stats: TraceStats = _core.trace(system, rays, path=path, threads=threads,
                                         cancel=cancel, progress=progress)
         return stats
@@ -164,5 +176,5 @@ def trace(system: CompiledSystem, rays: RayBatch, *, path: int | str = 0,
         selection = np.ascontiguousarray(indices, dtype=np.int64)
     result: tuple[TraceStats, RayPaths] = _core.trace_recorded(
         system, rays, path=path, threads=threads, record_rays=selection,
-        max_recorded_rays=max_recorded_rays)
+        max_recorded_rays=max_recorded_rays, polarization=polarization)
     return result
