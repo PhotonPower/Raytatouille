@@ -4,6 +4,7 @@
 // the output basis; power scale S = weight / (||J||_F^2 / 2) Stokes(J E_in) (ADR 0021, point 2,
 // coordinator's decision for #211).
 
+#include <algorithm>
 #include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
@@ -24,6 +25,7 @@
 #include "rtt/model/model.hpp"
 #include "rtt/polar/fresnel.hpp"
 #include "rtt/trace/ray_batch.hpp"
+#include "rtt/trace/sequential.hpp"
 
 using Cx = std::complex<double>;
 using rtt::analysis::JonesPupil;
@@ -146,14 +148,68 @@ TEST_CASE("quarter-wave plate at 45 deg: |S3| = S0 over the whole pupil", "[stok
     CHECK(std::abs(st.s0[r] - 1.0) <= 1e-12);
     CHECK(std::abs(std::abs(st.ellipticity[r]) - kPi / 4.0) <= 1e-6);  // |chi| = pi/4
   }
-  // Content guard: the rays converge (different k), and light along the fast axis stays linear.
-  CHECK(std::abs(jp.k_out.z() - 1.0) <= 1e-15);
+  // Content guard: the rays converge, so the output directions differ (review of #248: the
+  // largest angle to the chief ray, about atan(3 / 50) = 0.06 rad at the rim), and light along
+  // the fast axis stays linear.
+  rtt::trace::RayBatch traced = parallel_rays();
+  [[maybe_unused]] const auto stats =
+      rtt::trace::SequentialTracer().trace(compiled(quarter_wave_lens()), PathId{0}, traced);
+  double largest = 0.0;
+  for (std::size_t r = 0; r < 25; ++r) {
+    const Vec3 k(traced.dir_x()[r], traced.dir_y()[r], traced.dir_z()[r]);
+    largest = std::max(largest, std::acos(std::min(1.0, k.dot(jp.k_out))));
+  }
+  CHECK(largest > 0.05);
   const StokesPupil along = rtt::analysis::stokes_pupil(jp, Cx(1.0), Cx(1.0));
   REQUIRE(along.s3.size() == 25);
   for (std::size_t r = 0; r < 25; ++r) {
     INFO("point " << r);
     CHECK(std::abs(along.s3[r]) <= 1e-12);
     CHECK(along.s2[r] > 0.999);
+  }
+}
+
+TEST_CASE("quarter-wave plate in a tilted beam: the rotation about k keeps circular light",
+          "[stokes]") {
+  // Review of #248: with the beam tilted by 5 deg in the y-z plane the chief ray leaves the
+  // lens along k_c != z, so the output basis R(k_c -> k) differs from the rotation R(z -> k) of
+  // the ideal lens; the remaining rotation is one about k, which keeps circular states (they are
+  // eigenvectors of every rotation about k). At oblique incidence the projected fast axis is no
+  // longer at 45 deg to x_in: in the input frame (x_in = x, y_in = (0, cos, -sin)) it is
+  // (1, cos 5 deg), so the linear input at 45 deg to it gives exactly circular light. 1e-12.
+  const double theta = 5.0 * kPi / 180.0;
+  const double alpha = std::atan2(std::cos(theta), 1.0);  // projected fast axis in (x_in, y_in)
+  rtt::trace::RayBatch rays(25);
+  const Vec3 k0(0.0, std::sin(theta), std::cos(theta));
+  const Vec3 v(0.0, std::cos(theta), -std::sin(theta));
+  for (std::size_t i = 0; i < 25; ++i) {
+    const double x = -3.0 + 1.5 * static_cast<double>(i % 5);
+    const double y = -3.0 + 1.5 * static_cast<double>(i / 5);
+    const Vec3 p = x * Vec3::UnitX() + y * v;
+    rays.pos_x()[i] = p.x();
+    rays.pos_y()[i] = p.y();
+    rays.pos_z()[i] = p.z();
+    rays.dir_x()[i] = k0.x();
+    rays.dir_y()[i] = k0.y();
+    rays.dir_z()[i] = k0.z();
+    rays.pupil_x()[i] = x / 3.0;
+    rays.pupil_y()[i] = y / 3.0;
+  }
+  const JonesPupil jp =
+      rtt::analysis::jones_pupil(compiled(quarter_wave_lens()), PathId{0}, rays, kChief, {});
+  REQUIRE(std::abs(jp.k_out.y()) > 0.05);  // content guard: k_c != z
+  const StokesPupil st = rtt::analysis::stokes_pupil(jp, Cx(std::cos(alpha + kPi / 4.0)),
+                                                     Cx(std::sin(alpha + kPi / 4.0)));
+  const StokesPupil along =
+      rtt::analysis::stokes_pupil(jp, Cx(std::cos(alpha)), Cx(std::sin(alpha)));
+  REQUIRE(st.s0.size() == 25);
+  REQUIRE(along.s3.size() == 25);
+  for (std::size_t r = 0; r < 25; ++r) {
+    INFO("point " << r);
+    REQUIRE(st.status[r] == RayStatus::Alive);
+    CHECK(std::abs(std::abs(st.s3[r]) - st.s0[r]) <= 1e-12);
+    CHECK(std::abs(st.s0[r] - 1.0) <= 1e-12);
+    CHECK(std::abs(along.s3[r]) <= 1e-12);  // along the projected fast axis: linear
   }
 }
 
@@ -217,7 +273,10 @@ TEST_CASE("handedness: right circular stays S3 = +S0 in free space", "[stokes]")
 TEST_CASE("power scale with absorption: S0(x) + S0(y) = 2 weight", "[stokes]") {
   // Scale (b): S = s Stokes(J E) with s = weight / (||J||_F^2 / 2) the polarization-independent
   // factor (here the volume absorption of the glass, ADR 0021). For two orthogonal inputs
-  // S0(x) + S0(y) = s ||J||_F^2 = 2 weight, independent of the polarization of the path.
+  // S0(x) + S0(y) = s ||J||_F^2 = 2 weight (an identity of the formula), and s itself against the
+  // absorption exp(-4 pi kappa L / lambda) along the path L = t / cos(theta') in the 1 mm glass,
+  // sin(theta') = sin(30 deg) / 1.5 (review of #248; the volume absorption of apply_event, ADR
+  // 0021; the imaginary part of the index moves theta' by about kappa^2, far below 1e-9).
   Surface front = surface("B.S1");
   Surface back = surface("B.S2");
   back.pose = Pose::along_z(1.0);
@@ -247,6 +306,10 @@ TEST_CASE("power scale with absorption: S0(x) + S0(y) = 2 weight", "[stokes]") {
     for (std::size_t e = 0; e < 4; ++e) frobenius2 += std::norm(jp.j[4 * r + e]);
     CHECK(jp.transmission[r] < 0.95 * 0.5 * frobenius2);  // content guard: s < 1 (absorption)
     CHECK(std::abs(x.s0[r] - y.s0[r]) > 1e-3);            // and the path polarizes (Fresnel)
+    const double sin_t = 0.5 / 1.5;
+    const double path = 1.0 / std::sqrt(1.0 - sin_t * sin_t);
+    const double s_expected = std::exp(-4.0 * kPi * 1e-5 * path / 0.55e-3);
+    CHECK(std::abs(jp.transmission[r] / (0.5 * frobenius2) - s_expected) <= 1e-9 * s_expected);
   }
 }
 
