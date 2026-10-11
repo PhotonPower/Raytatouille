@@ -12,8 +12,6 @@ namespace rtt::analysis {
 
 namespace {
 
-using compile::CompiledSystem;
-using compile::PathId;
 using detail::check_path;
 using detail::check_wavelength;
 using detail::make_reference;
