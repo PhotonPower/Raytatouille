@@ -2,6 +2,7 @@
 // rays end vignetted at the stop. Every analysis code of the registry has a case here.
 
 #include <catch2/catch_test_macros.hpp>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -12,6 +13,7 @@
 #include <vector>
 
 #include "rtt/analysis/opd.hpp"
+#include "rtt/analysis/psf.hpp"
 #include "rtt/analysis/pupil.hpp"
 #include "rtt/analysis/reports.hpp"
 #include "rtt/analysis/spot.hpp"
@@ -197,10 +199,39 @@ TEST_CASE("zernike.pupil_incomplete on a clipped pupil, at the path", "[analysis
   CHECK(fit.warnings[0].location == "/paths/0");
 }
 
+TEST_CASE("psf.aliasing and psf.pupil_undersampled at the path", "[analysis][warnings]") {
+  // The paraboloid at F/10 (EPD 10 mm, #205) at N = 32: without aberration neither warning; with
+  // a focus shift of 20 waves of defocus at the rim the blur exceeds the field N lambda F#
+  // (aliasing) and the phase steps by about 2.5 waves between rim cells (ADR 0033, point 3).
+  rtt::model::System s =
+      rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m2/paraboloid_stop.rtt.json");
+  s.aperture.value = rtt::model::Param(10.0);
+  const CompiledSystem cs = rtt::compile::compile(s, rtt::material::MaterialLibrary{});
+  rtt::analysis::PsfOptions o;
+  o.pupil.grid = 32;
+  CHECK(rtt::analysis::psf(cs, PathId{0}, 0, o).warnings.empty());
+  const double h = 5.0;    // rim height, mm
+  const double f = 100.0;  // focal length, mm
+  const double lambda = 0.5876e-3;
+  const double sin_a = h / (f + h * h / (4.0 * f));
+  const double one_minus_cos = sin_a * sin_a / (1.0 + std::sqrt(1.0 - sin_a * sin_a));
+  o.pupil.focus_shift = 20.0 * lambda / one_minus_cos;
+  const auto w = rtt::analysis::psf(cs, PathId{0}, 0, o).warnings;
+  REQUIRE(w.size() == 2);
+  CHECK(w[0].code == "psf.aliasing");
+  CHECK(w[0].location == "/paths/0");
+  CHECK(w[1].code == "psf.pupil_undersampled");
+  CHECK(w[1].location == "/paths/0");
+}
+
 TEST_CASE("every analysis code has a case in this file", "[analysis][warnings]") {
-  const std::set<std::string> covered = {"rays.lost", "stop.clips_beam",
-                                         "report.paraxial_unavailable", "pupil.mapping_nonlinear",
-                                         "zernike.pupil_incomplete"};
+  const std::set<std::string> covered = {"rays.lost",
+                                         "stop.clips_beam",
+                                         "report.paraxial_unavailable",
+                                         "pupil.mapping_nonlinear",
+                                         "zernike.pupil_incomplete",
+                                         "psf.aliasing",
+                                         "psf.pupil_undersampled"};
   for (const rtt::diagnostics::CodeInfo& info : rtt::diagnostics::kCodes) {
     if (info.producer != "analysis") continue;
     INFO("no case for " << info.code);

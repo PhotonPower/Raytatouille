@@ -68,22 +68,31 @@ struct PsfPeak {
 /// Diffraction PSF of one field.
 struct Psf {
   std::uint16_t field = 0;
-  int grid = 0;                            ///< N
-  int length = 0;                          ///< L of the reference lattice
+  int grid = 0;  ///< N
+  /// L of the reference lattice: Q N, larger (in steps of 2) only if a shorter wavelength needs
+  /// L_i >= 2 N - 1 (ADR 0033, point 7). The reference is the system reference wavelength if
+  /// chosen, otherwise the first chosen wavelength.
+  int length = 0;
   math::Vec3 centre = math::Vec3::Zero();  ///< C', global, mm
   math::Vec3 e_x = math::Vec3::UnitX();    ///< first axis of the PSF plane, global
   math::Vec3 e_y = math::Vec3::UnitY();    ///< second axis of the PSF plane, global
   /// Lattice matrix B = lambda / (L a) M^-T of the reference wavelength, row-major, mm in
   /// (e_x, e_y): x(k) = (B[0] k1 + B[1] k2, B[2] k1 + B[3] k2).
   std::array<double, 4> lattice{};
-  /// L x L intensities, row k2 + L/2, column k1 + L/2; fraction of the energy per cell.
+  /// L x L intensities, row k2 + L/2, column k1 + L/2 (k from -L/2, integer division); fraction
+  /// of the energy per cell. Polychromatic: wavelength i lies on its own lattice of length
+  /// L_i = round(L lambda_i / lambda_ref sqrt(|det M_ref| / |det M_i|)) (nearest integer), which
+  /// matches the reference within polychromatic_scale_error; a shorter wavelength with L_i < L
+  /// adds nothing outside its own field (|k| beyond L_i / 2).
   std::vector<double> intensity;
   /// |sum u|^2 / |sum f A|^2 at C' (Wyant & Creath (64) for the discrete pupil); polychromatic:
   /// weighted with w_i E_i like the intensity.
   double strehl = 0.0;
   PsfPeak peak;
-  double edge_energy_deficit = 0.0;        ///< 1 - sum f^2 A^2 / sum f A^2, weighted
-  double polychromatic_scale_error = 0.0;  ///< max ||B_i - B_ref|| / ||B_ref|| (ADR 0033, 7)
+  double edge_energy_deficit = 0.0;  ///< 1 - sum f^2 A^2 / sum f A^2, weighted
+  /// max ||B_i - B_ref||_F / ||B_ref||_F over the wavelengths (ADR 0033, point 7): at most
+  /// 1 / (2 L_i) from the rounding of L_i, plus the difference of the mappings M_i.
+  double polychromatic_scale_error = 0.0;
   std::vector<PsfWavelength> wavelengths;
   RayLosses losses;
   /// rays.lost, stop.clips_beam, pupil.mapping_nonlinear (from the pupil functions),
@@ -112,7 +121,9 @@ struct Psf {
 /// Intensity at points `x` of the PSF plane (mm in e_x, e_y of `pupil.mapping`), monochromatic,
 /// by the direct sum over the cells (O(N^2) per point), **in Strehl units**:
 /// |sum_j u_j exp(-2 pi i x . M p_j / lambda)|^2 / |sum_j f_j A_j|^2, so 1 is the peak of the
-/// same pupil without aberration and the value at x = 0 is the Strehl ratio. The lattice values
+/// same pupil without aberration and the value at x = 0 is the Strehl ratio. p_j is the centre of
+/// cell j, the lattice of the FFT (ADR 0033, point 3), also for a boundary cell whose W and A were
+/// sampled at its centroid (ADR 0032, point 1). The lattice values
 /// of psf() are these values times |sum f A|^2 / (L^2 E). lambda and lambda_ref are
 /// pupil.wavelength_um and pupil.reference_wavelength_um (vacuum, um), so no system is needed.
 /// @throws AnalysisError if the pupil function has no mapping (afocal) or no arrived cell
