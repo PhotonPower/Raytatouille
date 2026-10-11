@@ -1,0 +1,47 @@
+{
+  "schema_version": "0.5.0",
+  "name": "M6 acceptance: collimated 45 deg fold on a test metal (n = 1.2 + 7.26 i), VACUUM",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [
+    {"um": 0.55, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 6.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "root",
+    "children": [
+      {
+        "type": "mirror",
+        "name": "M",
+        "pose": {"position": [0.0, 0.0, 10.0], "rotation_deg": [45.0, 0.0, 0.0]},
+        "material": "CONST:1.2,7.26",
+        "surfaces": [
+          {"id": "M"}
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 20.0, 10.0], "rotation_deg": [-90.0, 0.0, 0.0]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {
+      "name": "fold",
+      "events": [
+        {"surface": "M", "kind": "reflect"},
+        {"surface": "IMG", "kind": "transmit"}
+      ]
+    }
+  ]
+}
