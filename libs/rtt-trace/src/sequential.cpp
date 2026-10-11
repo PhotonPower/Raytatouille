@@ -75,11 +75,11 @@ class Record {
     paths_.status[i] = state.status;
     if (paths_.polarization) {
       // Row-major 3x3 blocks (ray_paths.hpp; ADR 0034, point 3).
-      for (int r = 0; r < 3; ++r) {
-        for (int c = 0; c < 3; ++c) {
-          const std::size_t k = 9 * i + static_cast<std::size_t>(3 * r + c);
-          paths_.prt[k] = state.prt(r, c);
-          paths_.q[k] = state.q(r, c);
+      for (int row = 0; row < 3; ++row) {
+        for (int col = 0; col < 3; ++col) {
+          const std::size_t k = 9 * i + static_cast<std::size_t>(3 * row + col);
+          paths_.prt[k] = state.prt(row, col);
+          paths_.q[k] = state.q(row, col);
         }
       }
     }

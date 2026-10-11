@@ -17,7 +17,6 @@
 #include <cmath>
 #include <complex>
 #include <cstddef>
-#include <limits>
 #include <numbers>
 #include <optional>
 #include <string>
@@ -201,7 +200,8 @@ TEST_CASE("Q of one event equals Lam's geometric transformation (4.5)/(4.6)", "[
       }
     }
   }
-  CHECK(checked == 6 * 4 * 3 + 2 * 4);  // refract 1.5 -> 1 only for theta < 41.8 deg
+  // Three kinds at all 6 x 4 directions, refraction 1.5 -> 1 only below 41.8 deg (3 x 4).
+  CHECK(checked == 3 * 6 * 4 + 3 * 4);
 }
 
 TEST_CASE("Q at normal incidence without a special case", "[polarization][q]") {
@@ -468,8 +468,10 @@ TEST_CASE("a mirror with a material of the surrounding index is no ideal conduct
 
 TEST_CASE("Q at an ideal lens is its P: Q^T P = I", "[polarization][q]") {
   // ADR 0034, point 1, with ADR 0031, point 5: P_event = R(k_in -> k_out) and Q the same
-  // rotation, so after the transmits of r2/ideal_lens (stop, lens) Q is the real part of P bit
-  // for bit, Im P = 0, and the physical part Q^T P is I (the lens does not polarize): 1e-15.
+  // rotation (the same call), so after the transmits of r2/ideal_lens (stop, lens) Q is the real
+  // part of P, Im P = 0, and the physical part Q^T P is I (the lens does not polarize). Re P
+  // and Q are not bitwise equal: the complex 3x3 product rounds differently from the real one
+  // (measured: 1 ulp of 1), hence 1e-15.
   const MaterialLibrary lib;
   const CompiledSystem cs = compile(load("r2/ideal_lens.rtt.json"), lib);
   const PathId path = path_named(cs, "ideal lens");
@@ -481,7 +483,7 @@ TEST_CASE("Q at an ideal lens is its P: Q^T P = I", "[polarization][q]") {
     REQUIRE(rays.status()[0] == RayStatus::Alive);
     const CMat3 p = rays.prt_matrix(0);
     const Mat3 q = rays.q_matrix(0);
-    CHECK(p.real() == q);
+    CHECK(max_abs(p.real() - q) <= 1e-15);
     CHECK(p.imag().cwiseAbs().maxCoeff() == 0.0);
     CHECK((q.transpose().cast<Cx>() * p - CMat3::Identity()).cwiseAbs().maxCoeff() <= 1e-15);
     if (max_abs(q - Mat3::Identity()) > 1e-3) ++deflected;

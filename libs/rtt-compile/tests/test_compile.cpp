@@ -1023,6 +1023,10 @@ TEST_CASE("ideal_conductor: the surfaces of a mirror without material, nothing e
       "T", ElementKind::ThinElement, Pose::along_z(20.0), std::nullopt, {plane_surface("T.S")}}});
   s.root.children.push_back({Element{
       "D", ElementKind::Detector, Pose::along_z(5.0), std::nullopt, {plane_surface("D.S")}}});
+  s.paths = {
+      {"stop to detector",
+       false,
+       {{SurfaceId("STO"), EventKind::Transmit, 0}, {SurfaceId("D.S"), EventKind::Transmit, 0}}}};
   const MaterialLibrary lib;
   const CompiledSystem cs = compile(s, lib);
   REQUIRE(cs.surfaces().size() == 9);
