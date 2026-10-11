@@ -916,6 +916,25 @@ TEST_CASE("the two forms agree on a rotationally symmetric path up to the phase"
   CHECK(phase_differs > 1e-3);  // content guard: sphere and plane differ for a converging beam
 }
 
+TEST_CASE("the form for given start rays: a point that does not arrive", "[jones][fold]") {
+  // Ray 0 of the fold runs away from the mirror (along -z): it keeps the status of its ray, and as
+  // in opd_points() and the convenience form w = 0 (masked by the status) and J and the maps NaN;
+  // the losses count it (review of #236).
+  const CompiledSystem cs = compiled(fold45(std::string("CONST:1.2,7.26")));
+  auto start = parallel_rays();
+  start.dir_z()[0] = -1.0;
+  const JonesPupil jp = rtt::analysis::jones_pupil(cs, PathId{0}, start, kChief);
+  REQUIRE(jp.status.size() == 25);
+  CHECK(jp.status[0] != RayStatus::Alive);
+  CHECK(jp.w[0] == 0.0);
+  CHECK(std::isnan(jp.j[0].real()));
+  CHECK(std::isnan(jp.diattenuation[0]));
+  CHECK(std::isnan(jp.transmission[0]));
+  CHECK(jp.status[1] == RayStatus::Alive);  // the others arrive
+  CHECK(jp.losses.launched == 25);
+  CHECK(jp.losses.by_status[static_cast<std::size_t>(RayStatus::Alive)] == 24);
+}
+
 TEST_CASE("the form for given start rays: input errors", "[jones][fold][errors]") {
   const CompiledSystem fold = compiled(fold45(std::string("CONST:1.2,7.26")));
   const auto start = parallel_rays();
