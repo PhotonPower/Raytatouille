@@ -45,6 +45,7 @@ if(RTT_BUILD_TESTS)
       tests/test_m4_acceptance.cpp
       tests/test_mtf_ee.cpp
       tests/test_no_stop.cpp
+      tests/test_obscured.cpp
       tests/test_opd.cpp
       tests/test_opd_points.cpp
       tests/test_paths.cpp

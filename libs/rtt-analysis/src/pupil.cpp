@@ -267,7 +267,7 @@ void evaluate(const CompiledSystem& system, PupilFunction& pf, const detail::Ref
     const OpdPoint q = detail::point_against(end_pos(e, j), end_dir(e, j), e.opl[j], on_image,
                                              e.ray_status[j], opl_chief, ref, e.image_index);
     pf.status[j] = q.status;
-    losses.add_ray(q.status, e.last_surface[j]);
+    losses.add_ray(q.status, e.last_surface[j], end_pos(e, j));
     if (q.status != trace::RayStatus::Alive) continue;
     pf.w[j] = q.w;
     // ADR 0032, point 3 and 8: A = sqrt(weight) exp(-G rho^2), rho of the sample point (Ansys
@@ -336,8 +336,10 @@ std::optional<PupilMapping> make_mapping(const CompiledSystem& system,
   m.e_y = m.d_c.cross(m.e_x);
   const trace::PointListPupil parabasal{
       {{kMappingStep, 0.0}, {-kMappingStep, 0.0}, {0.0, kMappingStep}, {0.0, -kMappingStep}}};
+  // Virtual reference rays (ADR 0032, addendum #229): M is the derivative at p = 0, also in a
+  // centrally obscured pupil.
   const trace::RayBatch rays =
-      detail::trace_rays(system, path, field, wavelength, parabasal, aiming);
+      detail::trace_reference_rays(system, path, field, wavelength, parabasal, aiming);
   std::array<std::array<double, 2>, 4> s{};
   for (std::size_t i = 0; i < 4; ++i) {
     if (!detail::arrived(rays, i, image)) {

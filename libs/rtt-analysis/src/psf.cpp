@@ -429,7 +429,10 @@ Psf psf(const compile::CompiledSystem& system,
   for (const Part& part : parts) {
     const PupilFunction& p = part.pupil;
     for (std::size_t j = 0; j < p.fraction.size(); ++j) {
-      if (p.fraction[j] > 0.0) losses.add_ray(p.status[j], p.end.last_surface[j]);
+      if (p.fraction[j] > 0.0) {
+        losses.add_ray(p.status[j], p.end.last_surface[j],
+                       {p.end.pos_x[j], p.end.pos_y[j], p.end.pos_z[j]});
+      }
     }
     for (const model::Diagnostic& d : p.warnings) {
       if (d.code == "pupil.mapping_nonlinear" && mapping_of(p).delta_max > mapping_delta) {

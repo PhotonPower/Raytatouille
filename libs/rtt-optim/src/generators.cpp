@@ -94,9 +94,12 @@ trace::RayBatch traced(const compile::CompiledSystem& cs,
                        compile::PathId path,
                        std::uint16_t field,
                        std::uint16_t wavelength,
-                       const trace::PupilSampling& sampling) {
+                       const trace::PupilSampling& sampling,
+                       bool reference = false) {
   trace::RayBatch rays =
       trace::make_rays(cs, path, std::span<const std::uint16_t>(&field, 1), wavelength, sampling);
+  // Reference rays are virtual (ADR 0032, addendum #229), as in rtt-analysis.
+  rays.set_ignore_obscurations(reference);
   static_cast<void>(trace::SequentialTracer().trace(cs, path, rays));
   return rays;
 }
@@ -197,7 +200,7 @@ void spot_residuals(const model::SpotGenerator& g,
       }
     } else {
       const trace::RayBatch chief = traced(cs, e.path, e.fields[f], cs.reference_wavelength(),
-                                           trace::SinglePupilPoint{0.0, 0.0});
+                                           trace::SinglePupilPoint{0.0, 0.0}, true);
       reference = local_hit(cs, chief, 0, image);
       if (!reference.arrived) {
         why = "the chief ray of field " + std::to_string(e.fields[f]) +
