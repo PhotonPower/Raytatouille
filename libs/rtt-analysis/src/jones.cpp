@@ -248,19 +248,22 @@ JonesPupil jones_pupil(const CompiledSystem& system,
         double_pole_basis(jp.x_in, jp.y_in, jp.k_in, k0[i]);
     const std::optional<std::array<Vec3, 2>> out = output_basis(k);
     if (!in || !out) continue;  // at a pole: NaN (unreachable in this form, see jones.hpp)
+    // Dereferenced once, right after the check (bugprone-unchecked-optional-access).
+    const std::array<Vec3, 2>& b_in = *in;
+    const std::array<Vec3, 2>& b_out = *out;
     const math::CMat3 p = rays.prt_matrix(i);
-    const std::array<Complex, 4> j = jones_matrix(p, *in, *out);
+    const std::array<Complex, 4> j = jones_matrix(p, b_in, b_out);
     const Complex factor = std::polar(1.0, phase_scale * q.w);
     for (std::size_t e = 0; e < 4; ++e) jp.j[4 * i + e] = factor * j[e];
     jp.transmission[i] = rays.weight()[i];
     const polar::Diattenuation d = polar::diattenuation(p, k0[i], k);
     jp.diattenuation[i] = d.value;
-    const PolarizationEllipse de = ellipse_in(d.axis, *in);
+    const PolarizationEllipse de = ellipse_in(d.axis, b_in);
     jp.diattenuation_orientation[i] = de.orientation;
     jp.diattenuation_ellipticity[i] = de.ellipticity;
     const polar::Retardance r = polar::physical_retardance(p, rays.q_matrix(i), k0[i]);
     jp.retardance[i] = r.value;
-    const PolarizationEllipse re = ellipse_in(r.fast_axis, *in);
+    const PolarizationEllipse re = ellipse_in(r.fast_axis, b_in);
     jp.retardance_orientation[i] = re.orientation;
     jp.retardance_ellipticity[i] = re.ellipticity;
   }
