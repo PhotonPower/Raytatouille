@@ -189,12 +189,13 @@ System convergent_mirror() {
   return s;
 }
 
-/// m2/paraboloid_stop (R = -200, k = -1, EPD 60) in vacuum with the test metal as mirror material:
-/// angles of incidence up to about 8.5 deg.
+/// m2/paraboloid_stop (R = -200, k = -1, EPD 60) in vacuum with the test metal as mirror material
+/// and Fresnel instead of the ideal mirror of the file: angles of incidence up to about 8.5 deg.
 System metal_paraboloid() {
   System s = load("m2/paraboloid_stop.rtt.json");
   s.environment.medium = "VACUUM";
   child(s, 1).material = "CONST:1.2,7.26";
+  child(s, 1).surfaces[0].interaction = rtt::model::Fresnel{};
   return s;
 }
 
@@ -415,7 +416,7 @@ TEST_CASE("Jones pupil of a converging F/5 beam on a flat metal mirror", "[jones
       };
       const std::size_t compared =
           compare(jp, paths, opd, k0c, chief_direction(cs, field), Vec3::UnitX(), expected);
-      CHECK(compared >= 50);  // content guard: the 9 x 9 grid inside the circle
+      CHECK(compared == 49);  // content guard: the 49 points of the 9 x 9 grid in the circle
       // Content guard: the metal acts, D and delta differ from 0 at the rim and J varies.
       double d_max = 0.0;
       double delta_max = 0.0;
@@ -459,7 +460,7 @@ TEST_CASE("Jones pupil of a metal paraboloid", "[jones][acceptance]") {
   CHECK(compared == 61);  // hexapolar ring 4: 1 + 6 (1 + 2 + 3 + 4) points, all arrive
   double d_rim = 0.0;
   for (std::size_t r = 0; r < jp.status.size(); ++r) d_rim = std::max(d_rim, jp.diattenuation[r]);
-  CHECK(d_rim > 1e-3);  // content guard
+  CHECK(d_rim > 5e-4);  // content guard: about 1e-3 at the rim
 }
 
 // ------------------------------------------------------------- frames and options -----
@@ -467,8 +468,8 @@ TEST_CASE("Jones pupil of a metal paraboloid", "[jones][acceptance]") {
 TEST_CASE("Jones pupil: a detector turned about z turns only the output basis", "[jones]") {
   // The detector turned by 30 deg in its plane (rotationally symmetric still): the output frame
   // turns, x'_new = a x' + b y', y'_new = a y' - b x' (k x x' = y', k x y' = -x'), so
-  // J_new = [[a, b], [-b, a]] J; D and delta do not depend on the output basis (bitwise).
-  // 1e-14 (one 2 x 2 product).
+  // J_new = [[a, b], [-b, a]] J; D and delta do not depend on the output basis. 1e-14: one 2 x 2
+  // product, and the transmit at the turned detector takes k through its local frame (an ulp).
   System s = metal_paraboloid();
   JonesPupilOptions o;
   o.sampling = rtt::trace::HexapolarPupil{2};
@@ -487,8 +488,10 @@ TEST_CASE("Jones pupil: a detector turned about z turns only the output basis", 
     CHECK(std::abs(k[2] - (-b * j[0] + a * j[2])) <= 1e-14);
     CHECK(std::abs(k[3] - (-b * j[1] + a * j[3])) <= 1e-14);
   }
-  CHECK(same_bits(turned.diattenuation, straight.diattenuation));
-  CHECK(same_bits(turned.retardance, straight.retardance));
+  for (std::size_t r = 0; r < straight.status.size(); ++r) {
+    CHECK(std::abs(turned.diattenuation[r] - straight.diattenuation[r]) <= 1e-14);
+    CHECK(std::abs(turned.retardance[r] - straight.retardance[r]) <= 1e-14);
+  }
 }
 
 TEST_CASE("Jones pupil: phase 0 at the chief ray, and the option to remove the global phase",

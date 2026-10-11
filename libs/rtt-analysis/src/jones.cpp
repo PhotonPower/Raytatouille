@@ -1,5 +1,6 @@
 #include "rtt/analysis/jones.hpp"
 
+#include <Eigen/Geometry>
 #include <algorithm>
 #include <array>
 #include <cmath>

@@ -5,7 +5,7 @@ add_library(rtt::analysis ALIAS rtt_analysis)
 target_include_directories(rtt_analysis PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 target_link_libraries(rtt_analysis PUBLIC rtt::trace rtt::paraxial rtt::compile rtt::math
-  PRIVATE rtt::diagnostics rtt::pocketfft)
+  PRIVATE rtt::diagnostics rtt::pocketfft rtt::polar)
 rtt_target_defaults(rtt_analysis LIBRARY)
 
 if(RTT_BUILD_TESTS)

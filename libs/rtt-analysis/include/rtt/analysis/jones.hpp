@@ -123,7 +123,8 @@ struct JonesPupil {
 /// Jones pupil of `field` at `wavelength` on options.sampling (ADR 0034, points 5 and 6). The
 /// rays are those of opd_points() with the same sampling and aiming, traced with Q requested
 /// (RayBatch::enable_q), so W and status are bit for bit those of opd_points(); bit for bit at
-/// every thread count.
+/// every thread count. A point closer than 1e-6 rad to a pole of its input or output basis gets
+/// J = NaN and NaN maps (not reached in this form, see JonesPupil).
 /// @throws std::invalid_argument for an invalid path or wavelength, lost_warning_fraction outside
 ///         [0, 1], and as trace::make_rays (e.g. an invalid field or sampling)
 /// @throws AnalysisError with location /paths/i for a path with an ordinary or extraordinary
