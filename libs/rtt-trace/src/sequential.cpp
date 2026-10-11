@@ -147,7 +147,10 @@ TraceStats trace_rays(const compile::CompiledSystem& system,
       ray.status = rays.status()[i];
       ray.last_surface = rays.last_surface()[i];
       ray.prt = rays.prt_matrix(i);
-      if (with_q) ray.q = rays.q_matrix(i);
+      if (with_q) {
+        ray.q = rays.q_matrix(i);
+        ray.track_q = true;
+      }
       ray.weight = rays.weight()[i];
       // Reading rule (ADR 0026, point 3): wave counts only inside a crystal (mode_index > 0);
       // otherwise wave := dir, so that a batch which sets only dir starts correctly.

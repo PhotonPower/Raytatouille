@@ -357,7 +357,8 @@ RayState crystal_event(const RayState& ray,
   if (!p_event.allFinite()) return stop(RayStatus::EventImpossible);
   out.opl += order_opl(surface, hit, order, media.wavelength_um);
   apply_prt(out, ray, p_event, surface, order);
-  out.q = undefined_q();  // entry or exit: Q of a crystal event is not defined (ADR 0034)
+  // Entry or exit: Q of a crystal event is not defined (ADR 0034).
+  if (ray.track_q) out.q = undefined_q();
   return out;
 }
 
@@ -634,11 +635,14 @@ RayState apply_event(const RayState& incoming,
   // call as its P, so Q = Re P there), I for every other event without deflection (polarizer,
   // retarder, dummy passage). Not R(k, k) for those: k_zero went through the local frame and is
   // not bitwise k_in.
+  // Only on request (ray.track_q; ADR 0034, addendum #207): Q costs about 10 % of the trace.
   math::Mat3 q_event = math::Mat3::Identity();
-  if (kind == model::EventKind::Reflect) {
-    q_event = householder(normal);
-  } else if (kind == model::EventKind::Refract || surface.ideal_lens) {
-    q_event = rotation_between(ray.dir, k_zero);
+  if (ray.track_q) {
+    if (kind == model::EventKind::Reflect) {
+      q_event = householder(normal);
+    } else if (kind == model::EventKind::Refract || surface.ideal_lens) {
+      q_event = rotation_between(ray.dir, k_zero);
+    }
   }
   math::Vec3 k_out = k_zero;
   if (order != 0) {
@@ -647,11 +651,11 @@ RayState apply_event(const RayState& incoming,
     k_out = surface.to_global.apply_vector(local_order);
     const math::Mat3 r = rotation_between(k_zero, k_out);
     p_event = r.cast<math::Complex>() * p_event;
-    q_event = r * q_event;
+    if (ray.track_q) q_event = r * q_event;
   }
   out.dir = k_out;
   apply_prt(out, ray, p_event, surface, order);
-  out.q = q_event * ray.q;
+  if (ray.track_q) out.q = q_event * ray.q;
   // Isotropic on both sides: no mode, wave = dir (ADR 0026, point 3).
   out.wave = out.dir;
   out.mode_index = 0.0;
