@@ -1,14 +1,19 @@
 #include "rtt/analysis/paths.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <numbers>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "common.hpp"
+#include "reference.hpp"
+#include "rtt/math/types.hpp"
 
 namespace rtt::analysis {
 namespace {
@@ -156,6 +161,116 @@ RayBatch start_rays(const CompiledSystem& system,
              : trace::make_rays(system, path, fields, wavelength, options.sampling, options.aiming);
 }
 
+/// #210: the transfer of wave b needs the index along the ray direction, so the image medium
+/// of each path must be isotropic (a crystal mode has its own wave normal and index; H6, #35).
+void check_isotropic_image(const CompiledSystem& system, PathId path) {
+  const auto& last = system.path(path).events.back();
+  if (system.media()[last.medium_after].is_crystal()) {
+    throw std::invalid_argument(
+        "analysis: an interferogram needs an isotropic image medium, not a crystal (#35)");
+  }
+}
+
+/// Checks of the interferogram that come before any ray is traced or aimed.
+std::uint32_t interferogram_image(const CompiledSystem& system, PathId path_a, PathId path_b) {
+  const std::uint32_t image = common_image(system, path_a, path_b);
+  check_isotropic_image(system, path_a);
+  check_isotropic_image(system, path_b);
+  // Both waves must meet in one medium at the image surface (review of #241); isotropic media
+  // are interned per material reference by compile, so equal media have equal indices.
+  if (system.path(path_a).events.back().medium_after !=
+      system.path(path_b).events.back().medium_after) {
+    throw std::invalid_argument(
+        "analysis: an interferogram needs two paths that end in the same "
+        "image medium (/paths/" +
+        std::to_string(path_a.index) + " and /paths/" + std::to_string(path_b.index) + ")");
+  }
+  return image;
+}
+
+math::Vec3 position(const RayBatch& r, std::size_t i) {
+  return {r.pos_x()[i], r.pos_y()[i], r.pos_z()[i]};
+}
+
+Interferogram interfere(const CompiledSystem& system,
+                        PathId path_a,
+                        PathId path_b,
+                        const RayBatch& start,
+                        const PathOptions& options,
+                        const trace::RunControl* control) {
+  const std::uint32_t image = interferogram_image(system, path_a, path_b);
+  check_start(start);
+  check_options(options);
+  detail::LossCounter losses_a(system, path_a, options.lost_warning_fraction);
+  detail::LossCounter losses_b(system, path_b, options.lost_warning_fraction);
+  const RayBatch a = traced(system, path_a, start, control);
+  const RayBatch b = traced(system, path_b, start, control);
+  Interferogram out;
+  out.path_a = path_a;
+  out.path_b = path_b;
+  out.image_surface = image;
+  out.points.reserve(start.size());
+  // Serial in batch order: independent of the number of threads.
+  for (std::size_t i = 0; i < start.size(); ++i) {
+    InterferogramPoint p;
+    p.px = start.pupil_x()[i];
+    p.py = start.pupil_y()[i];
+    p.status_a = final_status(a, i, image);
+    p.status_b = final_status(b, i, image);
+    const bool on_a = p.status_a == RayStatus::Alive;
+    const bool on_b = p.status_b == RayStatus::Alive;
+    if (on_a && on_b) {
+      // Wave b carried from its hit x_b to x_a along d_b: OPL_b(x_a) = OPL_b(x_b) +
+      // n'_b d_b . (x_a - x_b), exact for a plane wave (BSc Optics, Sec. 1.5.1, Eqs.
+      // (1.37)-(1.39)), first order for a curved one (Sec. 2.1).
+      const math::Vec3 xa = position(a, i);
+      const math::Vec3 xb = position(b, i);
+      const math::Vec3 db(b.dir_x()[i], b.dir_y()[i], b.dir_z()[i]);
+      const std::uint16_t wl = a.wl()[i];
+      const double n_b = detail::image_index(system, path_b, wl);
+      p.delta = b.opl()[i] + n_b * db.dot(xa - xb) - a.opl()[i];
+      const double lambda_mm = system.wavelengths_um()[wl] * 1e-3;
+      p.waves = p.delta / lambda_mm;
+      p.phase = 2.0 * std::numbers::pi * p.waves;
+      // Two-beam interference, BSc Optics, Sec. 5.2, Eq. (5.12); equal amplitudes Eqs.
+      // (5.10), (5.11).
+      const double c = std::cos(p.phase);
+      p.fringe = 1.0 + c;
+      const double w_a = a.weight()[i];
+      const double w_b = b.weight()[i];
+      p.intensity = w_a + w_b + 2.0 * std::sqrt(w_a * w_b) * c;
+      p.shear = (xa - xb).norm();
+      out.max_shear = std::max(out.max_shear, p.shear);
+      p.arrival = InterferogramArrival::Both;
+      const Point2 local = detail::local_point(system, a, i, image);
+      p.x = local.x;
+      p.y = local.y;
+    } else if (on_a) {
+      p.arrival = InterferogramArrival::OnlyA;
+      p.intensity = a.weight()[i];
+      const Point2 local = detail::local_point(system, a, i, image);
+      p.x = local.x;
+      p.y = local.y;
+    } else if (on_b) {
+      p.arrival = InterferogramArrival::OnlyB;
+      p.intensity = b.weight()[i];
+      const Point2 local = detail::local_point(system, b, i, image);
+      p.x = local.x;
+      p.y = local.y;
+    } else {
+      p.arrival = InterferogramArrival::None;
+    }
+    out.points.push_back(p);
+  }
+  losses_a.add(a, image);
+  losses_b.add(b, image);
+  out.losses_a = losses_a.result();
+  out.losses_b = losses_b.result();
+  out.warnings = losses_a.warnings();
+  for (auto& w : losses_b.warnings()) out.warnings.push_back(std::move(w));
+  return out;
+}
+
 }  // namespace
 
 PathTransmission path_transmission(const compile::CompiledSystem& system,
@@ -232,6 +347,48 @@ PathOplDifference opl_difference(const compile::CompiledSystem& system,
   return difference(system, path_a, path_b,
                     start_rays(system, path_a, field, wavelength, options, &control), options,
                     &control);
+}
+
+Interferogram interferogram(const compile::CompiledSystem& system,
+                            compile::PathId path_a,
+                            compile::PathId path_b,
+                            const trace::RayBatch& start,
+                            const PathOptions& options) {
+  return interfere(system, path_a, path_b, start, options, nullptr);
+}
+
+Interferogram interferogram(const compile::CompiledSystem& system,
+                            compile::PathId path_a,
+                            compile::PathId path_b,
+                            std::uint16_t field,
+                            std::uint16_t wavelength,
+                            const PathOptions& options) {
+  [[maybe_unused]] const std::uint32_t image = interferogram_image(system, path_a, path_b);
+  return interfere(system, path_a, path_b,
+                   start_rays(system, path_a, field, wavelength, options, nullptr), options,
+                   nullptr);
+}
+
+Interferogram interferogram(const compile::CompiledSystem& system,
+                            compile::PathId path_a,
+                            compile::PathId path_b,
+                            const trace::RayBatch& start,
+                            const PathOptions& options,
+                            const trace::RunControl& control) {
+  return interfere(system, path_a, path_b, start, options, &control);
+}
+
+Interferogram interferogram(const compile::CompiledSystem& system,
+                            compile::PathId path_a,
+                            compile::PathId path_b,
+                            std::uint16_t field,
+                            std::uint16_t wavelength,
+                            const PathOptions& options,
+                            const trace::RunControl& control) {
+  [[maybe_unused]] const std::uint32_t image = interferogram_image(system, path_a, path_b);
+  return interfere(system, path_a, path_b,
+                   start_rays(system, path_a, field, wavelength, options, &control), options,
+                   &control);
 }
 
 }  // namespace rtt::analysis
