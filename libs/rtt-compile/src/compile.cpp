@@ -577,6 +577,8 @@ class Compiler {
       c.id = s.id;
       c.element_kind = element.kind;
       c.element_name = element.name;
+      // ADR 0034, point 7: only a mirror without material is an ideal conductor.
+      c.ideal_conductor = element.kind == model::ElementKind::Mirror && !element.material;
       c.element = element_index;
       c.location = surface_location;
       // Surface j > 0 may refer to surface j - 1, the last surface added and its preceding

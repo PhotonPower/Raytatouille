@@ -15,6 +15,7 @@ if(RTT_BUILD_TESTS)
   rtt_add_test(rtt_trace_tests
     SOURCES tests/test_ray_batch.cpp tests/test_apply_event.cpp tests/test_sequential.cpp
             tests/test_sources.cpp tests/test_interactions.cpp tests/test_ray_paths.cpp
+            tests/test_accumulated_q.cpp
             tests/test_run_control.cpp tests/test_parallel_aiming.cpp
             tests/test_diffraction.cpp tests/test_crystal_trace.cpp tests/test_relative_trace.cpp
             tests/test_gauss_pupil.cpp tests/test_ideal_lens_trace.cpp

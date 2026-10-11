@@ -73,7 +73,8 @@ class SequentialTracer final : public Tracer {
   /// trace() that also records the path of selected rays into `paths` (rtt/trace/ray_paths.hpp,
   /// #80). The rays are traced exactly as without recording: the batch ends bitwise the same.
   /// `paths` is replaced on success and unchanged if an exception is thrown; `rays` is unchanged
-  /// if an input check fails (all checks run before tracing).
+  /// if an input check fails (all checks run before tracing). `paths.polarization` is read as
+  /// the request to record P and Q per slot (ADR 0034, point 3) and kept.
   /// @param record_rays       RayBatch indices of the rays to record, in this order; nullopt:
   ///                          all rays (up to max_recorded_rays)
   /// @param max_recorded_rays limit on the number of rays recorded without a selection

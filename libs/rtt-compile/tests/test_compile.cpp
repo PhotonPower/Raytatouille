@@ -993,3 +993,45 @@ TEST_CASE("achromat reference system with the SCHOTT test catalogue", "[compile]
   REQUIRE_THAT(rear_focal_length, Catch::Matchers::WithinRel(101.013, 1e-4));
   REQUIRE_THAT(z + bfd, Catch::Matchers::WithinRel(110.614, 1e-4));
 }
+
+TEST_CASE("ideal_conductor: the surfaces of a mirror without material, nothing else",
+          "[compile][conductor]") {
+  // ADR 0034, point 7 (#207): the flag replaces the test media.beyond == media.before in the
+  // tracer. A mirror with material is no ideal conductor, also with the surrounding index
+  // (CONST:1.0 in vacuum) or as a Mangin mirror; neither is any surface of another element kind.
+  System s = bare_system();
+  s.environment.medium = "VACUUM";
+  s.root.children.push_back(
+      {Element{"STOP", ElementKind::Stop, {}, std::nullopt, {plane_surface("STO")}}});
+  s.root.children.push_back({Element{"P",
+                                     ElementKind::Plate,
+                                     Pose::along_z(10.0),
+                                     "CONST:1.5",
+                                     {plane_surface("P.S1"), plane_surface("P.S2", 5.0)}}});
+  s.root.children.push_back({Element{
+      "M", ElementKind::Mirror, Pose::along_z(30.0), std::nullopt, {plane_surface("M.S")}}});
+  s.root.children.push_back({Element{
+      "MM", ElementKind::Mirror, Pose::along_z(40.0), "CONST:1.0", {plane_surface("MM.S")}}});
+  Surface back = plane_surface("MB.S2", 3.0);
+  back.interaction = rtt::model::IdealMirror{};
+  s.root.children.push_back({Element{"MB",
+                                     ElementKind::Mirror,
+                                     Pose::along_z(50.0),
+                                     "CONST:1.6",
+                                     {plane_surface("MB.S1"), back}}});
+  s.root.children.push_back({Element{
+      "T", ElementKind::ThinElement, Pose::along_z(20.0), std::nullopt, {plane_surface("T.S")}}});
+  s.root.children.push_back({Element{
+      "D", ElementKind::Detector, Pose::along_z(5.0), std::nullopt, {plane_surface("D.S")}}});
+  s.paths = {
+      {"stop to detector",
+       false,
+       {{SurfaceId("STO"), EventKind::Transmit, 0}, {SurfaceId("D.S"), EventKind::Transmit, 0}}}};
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+  REQUIRE(cs.surfaces().size() == 9);
+  for (const auto& surface : cs.surfaces()) {
+    INFO(surface.id.str());
+    CHECK(surface.ideal_conductor == (surface.id.str() == "M.S"));
+  }
+}

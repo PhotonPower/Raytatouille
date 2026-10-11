@@ -111,6 +111,11 @@ struct CompiledSurface {
   /// poses, not the surface pose); not normalised. The tracer projects it perpendicular to the
   /// ray (rtt/polar/ideal.hpp; ADR 0021).
   std::optional<math::Vec3> ideal_axis;
+  /// True for every surface of a Mirror element without material (ADR 0034, point 7): a Fresnel
+  /// reflection there is that of an ideal conductor, r_s = -1, r_p = +1 (docs/architecture.md,
+  /// "Polarisation"). A mirror with material reflects with Fresnel against its material, also if
+  /// its index equals that of the medium in front.
+  bool ideal_conductor = false;
   /// Set for IdealLens and IdealCylinderLens: the resolved lens data (ADR 0031).
   std::optional<CompiledIdealLens> ideal_lens;
 };

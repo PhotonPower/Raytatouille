@@ -1,6 +1,7 @@
 #include "rtt/trace/apply_event.hpp"
 
 #include <cmath>
+#include <limits>
 #include <numbers>
 #include <type_traits>
 #include <variant>
@@ -96,10 +97,10 @@ std::optional<math::CMat3> interaction_prt(const compile::CompiledSurface& surfa
           if (refract)
             return polar::fresnel_prt(k_in, k_out, normal, media.before, media.after, false);
           // A mirror without material has no medium beyond the surface: ideal conductor
-          // (kappa -> infinity), r_s = -1, r_p = +1 (docs/architecture.md, Polarisation).
-          if (surface.element_kind == model::ElementKind::Mirror && media.beyond == media.before) {
-            return ideal_prt(k_in, k_out, normal, -1.0, 1.0);
-          }
+          // (kappa -> infinity), r_s = -1, r_p = +1 (docs/architecture.md, Polarisation). The
+          // flag comes from compile (ADR 0034, point 7); a mirror with material reflects with
+          // Fresnel against it, also if its index equals that of the medium in front.
+          if (surface.ideal_conductor) return ideal_prt(k_in, k_out, normal, -1.0, 1.0);
           return polar::fresnel_prt(k_in, k_out, normal, media.before, media.beyond, true);
         } else if constexpr (std::is_same_v<I, model::IdealMirror>) {
           if (!reflect) return std::nullopt;
@@ -218,6 +219,23 @@ double order_efficiency(const compile::CompiledSurface& surface, int order) noex
     if (e.order == order) return e.efficiency;
   }
   return 0.0;
+}
+
+/// Q of a reflection at the unit normal n (either orientation): the Householder reflection
+/// I - 2 n n^T (ADR 0034, point 1, derived there: it equals Lam's Q with -, Eqs. (4.5)/(4.6),
+/// without the special case of normal incidence). Element by element, like rotation_between,
+/// instead of an Eigen outer product that GCC flags with -Wnull-dereference at -O2.
+math::Mat3 householder(const math::Vec3& n) noexcept {
+  math::Mat3 h;
+  for (int r = 0; r < 3; ++r) {
+    for (int c = 0; c < 3; ++c) h(r, c) = (r == c ? 1.0 : 0.0) - 2.0 * n[r] * n[c];
+  }
+  return h;
+}
+
+/// Matrix of NaN: Q after an event in a crystal (ADR 0034, point 1: not defined in M6).
+math::Mat3 undefined_q() noexcept {
+  return math::Mat3::Constant(std::numeric_limits<double>::quiet_NaN());
 }
 
 /// Scales the weight of `out` after its P became p_event * P (ADR 0021): weight = s ||P_T||^2 / 2,
@@ -339,6 +357,8 @@ RayState crystal_event(const RayState& ray,
   if (!p_event.allFinite()) return stop(RayStatus::EventImpossible);
   out.opl += order_opl(surface, hit, order, media.wavelength_um);
   apply_prt(out, ray, p_event, surface, order);
+  // Entry or exit: Q of a crystal event is not defined (ADR 0034).
+  if (ray.track_q) out.q = undefined_q();
   return out;
 }
 
@@ -524,18 +544,20 @@ RayState apply_event(const RayState& incoming,
     ray.wave = ray.dir;
     ray.mode_index = 0.0;
   }
-  RayState out = ray;
+  // The unchanged ray only for a miss; a hit starts from move_to_hit, without a copy of `ray`
+  // that would be overwritten at once (#207: RayState grew by Q, every copy counts).
   switch (hit.status) {
     case geom::HitStatus::Hit:
       break;
     case geom::HitStatus::Missed:
-      out.status = RayStatus::Missed;
-      return out;
-    case geom::HitStatus::NoConvergence:
-      out.status = RayStatus::NoConvergence;
-      return out;
+    case geom::HitStatus::NoConvergence: {
+      RayState missed = ray;
+      missed.status =
+          hit.status == geom::HitStatus::Missed ? RayStatus::Missed : RayStatus::NoConvergence;
+      return missed;
+    }
   }
-  out = move_to_hit(ray, surface, hit, surface_index, media);
+  RayState out = move_to_hit(ray, surface, hit, surface_index, media);
   if (std::holds_alternative<model::Absorber>(surface.interaction)) {
     out.status = RayStatus::Absorbed;
     out.weight = 0.0;
@@ -610,15 +632,32 @@ RayState apply_event(const RayState& incoming,
     return out;
   }
   math::CMat3 p_event = *p;
+  // Q of the event (ADR 0034, point 1): the Householder reflection for Reflect, the smallest
+  // rotation R(k_in -> k_out) for Refract and for the passage through an ideal lens (the same
+  // call as its P, so Q = Re P there), I for every other event without deflection (polarizer,
+  // retarder, dummy passage). Not R(k, k) for those: k_zero went through the local frame and is
+  // not bitwise k_in.
+  // Only on request (ray.track_q; ADR 0034, addendum #207): Q costs about 10 % of the trace.
+  math::Mat3 q_event = math::Mat3::Identity();
+  if (ray.track_q) {
+    if (kind == model::EventKind::Reflect) {
+      q_event = householder(normal);
+    } else if (kind == model::EventKind::Refract || surface.ideal_lens) {
+      q_event = rotation_between(ray.dir, k_zero);
+    }
+  }
   math::Vec3 k_out = k_zero;
   if (order != 0) {
     // ADR 0025, point 6: interface as for order 0, then the thin layer turns k_0 into k_m
-    // without rotating the polarization about the direction.
+    // without rotating the polarization about the direction; Q likewise (ADR 0034, point 1).
     k_out = surface.to_global.apply_vector(local_order);
-    p_event = rotation_between(k_zero, k_out).cast<math::Complex>() * p_event;
+    const math::Mat3 r = rotation_between(k_zero, k_out);
+    p_event = r.cast<math::Complex>() * p_event;
+    if (ray.track_q) q_event = r * q_event;
   }
   out.dir = k_out;
   apply_prt(out, ray, p_event, surface, order);
+  if (ray.track_q) out.q = q_event * ray.q;
   // Isotropic on both sides: no mode, wave = dir (ADR 0026, point 3).
   out.wave = out.dir;
   out.mode_index = 0.0;

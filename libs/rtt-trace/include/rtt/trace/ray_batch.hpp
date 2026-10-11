@@ -46,7 +46,7 @@ inline constexpr std::uint32_t kNoSurface = std::numeric_limits<std::uint32_t>::
 /// A newly created or grown ray starts at the global origin travelling along +z with
 /// wavelength index 0, OPL 0, polarization ray-tracing matrix P = identity, weight 1, status
 /// Alive, field index 0, pupil coordinates (0, 0), last_surface = kNoSurface, wave normal +z and
-/// mode index 0.
+/// mode index 0; with enable_q() also the geometric transformation Q = identity.
 /// Callers set the fields they need; the batch never checks physical consistency
 /// (e.g. |dir| = 1), which is the job of whoever fills it.
 class RayBatch {
@@ -121,6 +121,33 @@ class RayBatch {
   /// Sets P of ray `i`.
   void set_prt_matrix(std::size_t i, const math::CMat3& p);
 
+  /// Requests the accumulated geometric transformation Q (ADR 0034, point 2, addendum #207: only
+  /// on request, since carrying it costs about 10 % of the trace). Adds the 9 columns with Q = I
+  /// for every ray; a batch that already has them keeps its values. The tracer then forms Q for
+  /// every event of these rays.
+  void enable_q();
+
+  /// True after enable_q(): the batch carries Q and the tracer forms it.
+  [[nodiscard]] bool has_q() const noexcept { return q_enabled_; }
+
+  /// Element (row, col) of the accumulated geometric transformation Q (ADR 0034, points 1 and
+  /// 2; Lam, Eqs. (4.5)/(4.6)), global coordinates, real, dimensionless: the product of the Q of
+  /// every event in the order of the events, starting with I. Q is orthogonal and Q k_0 = k;
+  /// Q^T P is the physical part of the path (rtt::polar::physical_retardance). NaN from the
+  /// entry into a crystal on (ordinary or extraordinary event; not defined in M6). Empty spans
+  /// without enable_q().
+  /// @pre 0 <= row < 3 and 0 <= col < 3 (not checked)
+  [[nodiscard]] std::span<double> q(int row, int col) noexcept;
+  [[nodiscard]] std::span<const double> q(int row, int col) const noexcept;
+
+  /// Q of ray `i` as a matrix (copy).
+  /// @pre has_q() and i < size() (not checked)
+  [[nodiscard]] math::Mat3 q_matrix(std::size_t i) const;
+
+  /// Sets Q of ray `i`.
+  /// @pre has_q() and i < size() (not checked)
+  void set_q_matrix(std::size_t i, const math::Mat3& q);
+
   /// Power for an unpolarized source, dimensionless (source normalised to 1): weight =
   /// s ||P_T||_F^2 / 2 with P_T = P - k k_0^T and s the polarization-independent factors (volume
   /// absorption, absorber). Power for a polarized state E: weight |P E|^2 / (||P_T||_F^2 / 2)
@@ -154,6 +181,8 @@ class RayBatch {
   std::vector<std::uint16_t> wl_;
   std::vector<double> opl_;
   std::array<std::vector<math::Complex>, 9> prt_;  // row-major: prt_[3 * row + col]
+  std::array<std::vector<double>, 9> q_;           // row-major like prt_; empty without enable_q()
+  bool q_enabled_ = false;
   std::vector<double> weight_;
   std::vector<RayStatus> status_;
   std::vector<std::uint16_t> field_;
