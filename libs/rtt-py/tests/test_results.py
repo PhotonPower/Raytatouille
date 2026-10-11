@@ -159,10 +159,10 @@ def test_round_trip_is_bit_identical(name: str, singlet: rt.CompiledSystem,
     envelope = json.loads(text, parse_constant=no_constants)  # standard JSON only
     assert list(envelope) == ["format", "schema_version", "type", "data"]
     assert envelope["format"] == "raytatouille-result"
-    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.8"
+    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.9"
     assert envelope["type"] == name
     loaded = rt.results.load_json(text)
-    assert (loaded.type, loaded.schema_version) == (name, "0.1.8")
+    assert (loaded.type, loaded.schema_version) == (name, "0.1.9")
     same(loaded.data, data)
 
 
@@ -380,7 +380,7 @@ def test_trace_stats_carry_the_evanescent_status(singlet: rt.CompiledSystem) -> 
     rays.status[1] = int(rt.trace.RayStatus.EVANESCENT)
     stats = rt.trace.trace(singlet, rays, path="main")
     loaded = rt.results.load_json(stats.to_json())
-    assert loaded.schema_version == rt.results.SCHEMA_VERSION == "0.1.8"
+    assert loaded.schema_version == rt.results.SCHEMA_VERSION == "0.1.9"
     counts = list(loaded.data["rays"])
     assert len(counts) == 8
     assert counts[int(rt.trace.RayStatus.EVANESCENT)] == 1
@@ -420,3 +420,73 @@ def test_ray_batch_carries_wave_and_mode_index(singlet: rt.CompiledSystem) -> No
     loaded = rt.results.load_json(rays.to_json())
     same(loaded.data, rays.to_dict())
     assert loaded.data["mode_index"][1] == 1.5653568260606650
+
+
+# ------------------------------------------------- Q and P per slot (#207, format 0.1.9) ---
+
+def traced_with_q(cs: rt.CompiledSystem) -> tuple[rt.trace.RayBatch, rt.trace.RayPaths]:
+    """As traced(), with Q requested and P/Q recorded per slot (ADR 0034, points 2, 3, 8)."""
+    rays = rt.trace.make_rays(cs, rt.trace.HexapolarPupil(rings=2), fields=[2])
+    rays.dir_x[0], rays.dir_y[0], rays.dir_z[0] = 0.0, 0.8, 0.6
+    rays.enable_q()
+    _, paths = rt.trace.trace(cs, rays, record_path=True, polarization=True)
+    return rays, paths
+
+
+def test_ray_batch_and_paths_carry_q_and_p(singlet: rt.CompiledSystem) -> None:
+    """RayBatch.q (N, 3, 3) and RayPaths.polarization, prt (N, S, 3, 3) and q go through the
+    round trip bit for bit; without the request q is null (None) and polarization false."""
+    rays, paths = traced_with_q(singlet)
+    data = rays.to_dict()
+    assert list(data).index("q") == list(data).index("prt") + 1
+    assert data["q"].shape == (len(rays), 3, 3)
+    same(rt.results.load_json(rays.to_json()).data, data)
+    pdata = paths.to_dict()
+    assert list(pdata)[-3:] == ["polarization", "prt", "q"]
+    assert pdata["polarization"] is True
+    assert pdata["prt"].shape == (paths.ray_count, paths.slots, 3, 3)
+    same(rt.results.load_json(paths.to_json()).data, pdata)
+    plain_rays, _, plain_paths = traced(singlet)
+    assert plain_rays.to_dict()["q"] is None
+    pd = plain_paths.to_dict()
+    assert pd["polarization"] is False and pd["prt"] is None and pd["q"] is None
+    same(rt.results.load_json(plain_paths.to_json()).data, pd)
+
+
+def test_older_files_read_without_q(singlet: rt.CompiledSystem) -> None:
+    """RayBatch gained q, RayPaths polarization, prt and q in 0.1.9 (#207). A file of an older
+    version without them loads as a trace without the request: q None, polarization False,
+    prt None (Q cannot be recomputed without the normals). A 0.1.9 file must have them."""
+    rays, paths = traced_with_q(singlet)
+    for obj, keys, defaults in ((rays, ["q"], [None]),
+                                (paths, ["polarization", "prt", "q"], [False, None, None])):
+        data = obj.to_dict()
+        envelope = json.loads(obj.to_json())
+        for key in keys:
+            del envelope["data"][key]
+        envelope["schema_version"] = "0.1.8"
+        loaded = rt.results.load_json(json.dumps(envelope))
+        assert list(loaded.data) == list(data)
+        for key, default in zip(keys, defaults):
+            assert loaded.data[key] is default or loaded.data[key] == default
+        envelope["schema_version"] = "0.1.9"
+        with pytest.raises(ValueError, match="misses " + ", ".join(keys)):
+            rt.results.load_json(json.dumps(envelope))
+
+
+def test_upgrade_over_two_versions(singlet: rt.CompiledSystem) -> None:
+    """A RayBatch file of 0.1.4 lacks both the keys of 0.1.5 (wave_x/y/z, mode_index) and that
+    of 0.1.9 (q): load_json adds all of them by the reading rules (wave = dir, mode_index 0,
+    q None, ADR 0023 addenda #134 and #207), in the key order of to_dict."""
+    rays, _ = traced_with_q(singlet)
+    data = rays.to_dict()
+    envelope = json.loads(rays.to_json())
+    for key in WAVE_KEYS + ["q"]:
+        del envelope["data"][key]
+    envelope["schema_version"] = "0.1.4"
+    loaded = rt.results.load_json(json.dumps(envelope))
+    assert list(loaded.data) == list(data)
+    for axis in "xyz":
+        same(loaded.data[f"wave_{axis}"], data[f"dir_{axis}"])
+    same(loaded.data["mode_index"], np.zeros(len(rays)))
+    assert loaded.data["q"] is None

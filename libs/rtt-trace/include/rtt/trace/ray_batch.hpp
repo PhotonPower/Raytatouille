@@ -122,7 +122,7 @@ class RayBatch {
   void set_prt_matrix(std::size_t i, const math::CMat3& p);
 
   /// Requests the accumulated geometric transformation Q (ADR 0034, point 2, addendum #207: only
-  /// on request, since carrying it costs about 10 % of the trace). Adds the 9 columns with Q = I
+  /// on request, since forming it costs about 7 % of the trace). Adds the 9 columns with Q = I
   /// for every ray; a batch that already has them keeps its values. The tracer then forms Q for
   /// every event of these rays.
   void enable_q();

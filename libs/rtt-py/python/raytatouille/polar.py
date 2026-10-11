@@ -201,7 +201,7 @@ def retardance(rays: RayBatch | npt.ArrayLike,
     physical retardance only if the transverse part of the path's Q is the identity (in-plane
     plates, ideal thin elements); skew rays or out-of-plane folds that return to k0 add a
     geometric rotation (a periscope with 90 deg image rotation gives pi). Use
-    physical_retardance() with Q where the geometry is known."""
+    physical_retardance() with Q: RayBatch.q_matrices() after enable_q() and the trace (#207)."""
     if isinstance(rays, RayBatch):
         if k is not None:
             raise TypeError("retardance(rays) takes no direction")

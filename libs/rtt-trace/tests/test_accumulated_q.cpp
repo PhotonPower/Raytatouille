@@ -470,7 +470,7 @@ TEST_CASE("RayPaths with polarization: P and Q per slot, the last valid slot is 
 
 TEST_CASE("without the request no Q is formed and the trace is bitwise the same",
           "[polarization][q]") {
-  // ADR 0034, addendum #207: Q costs about 10 % of the trace, so it is formed only for a batch
+  // ADR 0034, addendum #207: Q costs about 7 % of the trace, so it is formed only for a batch
   // with enable_q() (RayState::track_q). Without it the batch has no Q columns, apply_event
   // leaves q as it is, and every other column is bit for bit that of a trace with Q.
   const MaterialLibrary lib;

@@ -637,7 +637,7 @@ RayState apply_event(const RayState& incoming,
   // call as its P, so Q = Re P there), I for every other event without deflection (polarizer,
   // retarder, dummy passage). Not R(k, k) for those: k_zero went through the local frame and is
   // not bitwise k_in.
-  // Only on request (ray.track_q; ADR 0034, addendum #207): Q costs about 10 % of the trace.
+  // Only on request (ray.track_q; ADR 0034, addendum #207): Q costs about 7 % of the trace.
   math::Mat3 q_event = math::Mat3::Identity();
   if (ray.track_q) {
     if (kind == model::EventKind::Reflect) {

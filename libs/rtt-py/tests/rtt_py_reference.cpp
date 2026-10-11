@@ -36,6 +36,7 @@
 #include "paths_cases.hpp"
 #include "polar_batch.hpp"
 #include "pupil_cases.hpp"
+#include "q_cases.hpp"
 #include "reports_cases.hpp"
 #include "rtt/coating/catalog.hpp"
 #include "rtt/compile/compiled_system.hpp"
@@ -334,6 +335,7 @@ int main(int argc, char** argv) {
     rtt::py::reference::run_configuration_cases(args[0], args[1], args[2], threads);
     rtt::py::reference::run_reports_cases(args[0], args[1], args[2], threads);
     rtt::py::reference::run_ideal_lens_cases(args[0], args[2], threads);
+    rtt::py::reference::run_q_cases(args[0], args[2], threads);
     rtt::py::reference::run_pupil_cases(args[0], args[1], args[2], threads);
     return 0;
   } catch (const std::exception& e) {
