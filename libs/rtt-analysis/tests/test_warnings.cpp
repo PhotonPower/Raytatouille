@@ -15,10 +15,12 @@
 #include "rtt/analysis/pupil.hpp"
 #include "rtt/analysis/reports.hpp"
 #include "rtt/analysis/spot.hpp"
+#include "rtt/analysis/zernike.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/diagnostics/codes.hpp"
 #include "rtt/io/json_io.hpp"
 #include "rtt/material/material.hpp"
+#include "rtt/model/model.hpp"
 
 using rtt::compile::CompiledSystem;
 using rtt::compile::PathId;
@@ -178,9 +180,27 @@ TEST_CASE("pupil.mapping_nonlinear above the threshold, at the path", "[analysis
   CHECK(rtt::analysis::pupil_function(cs, PathId{0}, 0, 0, o).warnings.empty());
 }
 
+TEST_CASE("zernike.pupil_incomplete on a clipped pupil, at the path", "[analysis][warnings]") {
+  // The paraboloid with its stop shrunk to 10 mm (EPD 60): about 1/9 of the pupil arrives (#203).
+  rtt::model::System s =
+      rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m2/paraboloid_stop.rtt.json");
+  std::get<rtt::model::Element>(s.root.children[0].value).surfaces[0].aperture =
+      rtt::model::CircularAperture{10.0, 0.0};
+  const CompiledSystem cs = rtt::compile::compile(s, rtt::material::MaterialLibrary{});
+  rtt::analysis::PupilFunctionOptions o;
+  o.grid = 48;
+  o.mapping_warning = 1.0;
+  const auto fit =
+      rtt::analysis::zernike_fit(rtt::analysis::pupil_function(cs, PathId{0}, 0, 0, o));
+  REQUIRE(fit.warnings.size() == 1);
+  CHECK(fit.warnings[0].code == "zernike.pupil_incomplete");
+  CHECK(fit.warnings[0].location == "/paths/0");
+}
+
 TEST_CASE("every analysis code has a case in this file", "[analysis][warnings]") {
   const std::set<std::string> covered = {"rays.lost", "stop.clips_beam",
-                                         "report.paraxial_unavailable", "pupil.mapping_nonlinear"};
+                                         "report.paraxial_unavailable", "pupil.mapping_nonlinear",
+                                         "zernike.pupil_incomplete"};
   for (const rtt::diagnostics::CodeInfo& info : rtt::diagnostics::kCodes) {
     if (info.producer != "analysis") continue;
     INFO("no case for " << info.code);

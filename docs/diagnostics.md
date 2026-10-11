@@ -157,6 +157,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `wavelengths.too_many` | Fehler | mehr als 65535 Wellenlängen | compile | `/wavelengths` |
 | `wavelengths.value_invalid` | Fehler | Wellenlänge nicht endlich oder ≤ 0 µm | validate | `/wavelengths/i/um` |
 | `wavelengths.weight_invalid` | Fehler | Wellenlängengewicht nicht endlich oder < 0 | validate | `/wavelengths/i/weight` |
+| `zernike.pupil_incomplete` | Warnung | Zernike-Fit auf einer unvollständigen Pupille: mehr als `incomplete_warning_fraction` (Standard 1 %) der Pupillenfläche kam nicht an. Dort sind die Z_j nicht orthogonal, die Koeffizienten sind ein Fit, keine Zerlegung (ADR 0032, Punkt 6) | analysis | `/paths/i` |
 
 ## Ausnahmen mit Ortsangabe
 
