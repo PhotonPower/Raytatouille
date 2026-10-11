@@ -67,6 +67,10 @@ jobs:
           git clone -q https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
           git -C "$VCPKG_ROOT" checkout -q "$VCPKG_COMMIT"
           "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+      # FetchContent pin of pocketfft == vcpkg port at the baseline (ADR 0033, #204).
+      - name: Check dependency pins
+        if: matrix.preset == 'ci-linux-gcc'
+        run: python3 tools/check_pins.py "$VCPKG_ROOT"
       - name: Configure
         run: cmake --preset ${{ matrix.preset }}
       - name: Build

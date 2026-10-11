@@ -1,10 +1,10 @@
 add_library(rtt_analysis src/spot.cpp src/opd.cpp src/field.cpp src/chromatic.cpp
-  src/paths.cpp src/ghosts.cpp src/reports.cpp)
+  src/paths.cpp src/ghosts.cpp src/reports.cpp src/fft.cpp)
 add_library(rtt::analysis ALIAS rtt_analysis)
 target_include_directories(rtt_analysis PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 target_link_libraries(rtt_analysis PUBLIC rtt::trace rtt::paraxial rtt::compile rtt::math
-  PRIVATE rtt::diagnostics)
+  PRIVATE rtt::diagnostics rtt::pocketfft)
 rtt_target_defaults(rtt_analysis LIBRARY)
 
 if(RTT_BUILD_TESTS)
@@ -18,7 +18,7 @@ if(RTT_BUILD_TESTS)
             tests/test_warnings.cpp tests/test_loss_counter.cpp tests/test_run_control.cpp
             tests/test_paths.cpp tests/test_ghost_ranking.cpp tests/test_m4_acceptance.cpp
             tests/test_relative_ghosts.cpp tests/test_gauss_rejected.cpp tests/test_reports.cpp
-            tests/test_opd_points.cpp tests/test_point_list_pupil.cpp
+            tests/test_opd_points.cpp tests/test_point_list_pupil.cpp tests/test_fft.cpp
     LIBS rtt::analysis rtt::io rtt::polar rtt::coating rtt::model_test_support TBB::tbb)
   target_compile_definitions(rtt_analysis_tests PRIVATE
     RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs")

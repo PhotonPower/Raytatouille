@@ -38,6 +38,11 @@ einschließlich der Bitvergleiche (über `ctest -R rtt_py`). Das MSVC-Preset `ci
 braucht beim Übersetzen der Bindungen mehr Speicher, als ein Rechner mit 16 GB neben mehreren
 Sitzungen frei hat, und bricht dort ab; es läuft in der CI.
 
+pocketfft (FFT, ADR 0033) kommt aus vcpkg. Presets mit Systempaketen finden den Header mit
+`find_path` oder laden ihn einmal per FetchContent auf demselben Pin wie der vcpkg-Port
+(`cmake/RttPocketfft.cmake`, Schalter `RTT_FETCH_POCKETFFT`); ohne Netz `RTT_POCKETFFT_INCLUDE_DIR`
+setzen. Es gibt keine Kopie im Repository; die CI prüft die Pins mit `tools/check_pins.py`.
+
 Vor jedem PR müssen lokal grün sein: Build mit `-DRTT_WARNINGS_AS_ERRORS=ON`, alle Tests,
 `clang-format --dry-run -Werror`, die Schema-Tests. Clang-tidy läuft mit
 `-DRTT_ENABLE_CLANG_TIDY=ON`, Sanitizer mit `-DRTT_ENABLE_SANITIZERS=ON`.
