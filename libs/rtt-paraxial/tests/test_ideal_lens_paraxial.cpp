@@ -114,3 +114,73 @@ TEST_CASE("ideal lens: Seidel contributions exactly 0", "[ideal][paraxial]") {
   }
   CHECK(found);
 }
+
+TEST_CASE("ideal lens in -z: lens -> mirror -> lens is two lenses 2 d apart", "[ideal][paraxial]") {
+  // Review of #220 (f2): phi = |n| / f also for the signed index n < 0 after a mirror. A plane
+  // mirror at z = d behind IL in VACUUM, path STO, IL, M, IL: unfolded two equal lenses 2 d apart,
+  // Phi = 2 phi - 2 d phi^2 with phi = 1/f (the two-step formula of the test above). With n
+  // instead of |n| the second passage would have -phi: Phi = 2 d phi^2, efl 125 instead of 31.25.
+  const double f = 50.0;
+  const double d = 10.0;
+  System s = reference();
+  s.environment.medium = "VACUUM";
+  rtt::model::Node mirror_node = s.root.children[1];  // a copy of the thin element IL
+  Element& mirror = std::get<Element>(mirror_node.value);
+  mirror.kind = rtt::model::ElementKind::Mirror;
+  mirror.name = "mirror";
+  mirror.pose.position[2] = Param(d);
+  mirror.surfaces[0].id = rtt::model::SurfaceId{"M"};
+  mirror.surfaces[0].interaction = rtt::model::IdealMirror{};
+  s.root.children.push_back(mirror_node);
+  rtt::model::Node detector_node = s.root.children[3];  // a copy of the detector IMG
+  Element& detector = std::get<Element>(detector_node.value);
+  detector.name = "back image";
+  detector.pose.position[2] = Param(-50.0);
+  detector.surfaces[0].id = rtt::model::SurfaceId{"BIMG"};
+  s.root.children.push_back(detector_node);
+  using rtt::model::EventKind;
+  using rtt::model::SurfaceId;
+  s.paths.push_back({"double pass",
+                     false,
+                     {{SurfaceId{"STO"}, EventKind::Transmit, 0},
+                      {SurfaceId{"IL"}, EventKind::Transmit, 0},
+                      {SurfaceId{"M"}, EventKind::Reflect, 0},
+                      {SurfaceId{"IL"}, EventKind::Transmit, 0},
+                      {SurfaceId{"BIMG"}, EventKind::Transmit, 0}}});
+  const FirstOrder fo = first_order(compiled(s), "double pass");
+  const double phi = 1.0 / f;
+  CHECK(close(fo.efl.value(), 1.0 / (2.0 * phi - 2.0 * d * phi * phi)));
+  CHECK(fo.image_direction == -1);
+}
+
+TEST_CASE("ideal lenses: a telescope f1 + f2 = e is afocal, e = f1 + f2 - 1 is not",
+          "[ideal][paraxial]") {
+  // Review of #220 (f2): the afocal threshold 16 (N + 1) u S of #215 needs the lens power in the
+  // magnitude S (magnitude_trace). Without it S = 0 for a system of ideal lenses only (plane
+  // surfaces without an index step), and the computed Phi of f1 = 50, f2 = 80, e = 130 in VACUUM,
+  // -3.5e-18 / mm in double (not exactly 0; checked with the same operations), would give an efl
+  // of about -3e17 mm instead of an afocal system. e = 129: efl = f1 f2 / (f1 + f2 - e) = 4000.
+  const auto telescope = [](double e) {
+    System s = reference();
+    s.environment.medium = "VACUUM";
+    Element& second = child(s, 2);
+    second.surfaces[0].interaction = IdealLens{Param(80.0), std::nullopt};
+    second.pose.position[2] = Param(e);
+    child(s, 3).pose.position[2] = Param(e + 20.0);
+    using rtt::model::EventKind;
+    using rtt::model::SurfaceId;
+    s.paths.push_back({"telescope",
+                       false,
+                       {{SurfaceId{"STO"}, EventKind::Transmit, 0},
+                        {SurfaceId{"IL"}, EventKind::Transmit, 0},
+                        {SurfaceId{"CL"}, EventKind::Transmit, 0},
+                        {SurfaceId{"IMG"}, EventKind::Transmit, 0}}});
+    return s;
+  };
+  const FirstOrder afocal = first_order(compiled(telescope(130.0)), "telescope");
+  CHECK_FALSE(afocal.efl.has_value());
+  CHECK(std::abs(afocal.power) < 1e-15);
+  const FirstOrder focal = first_order(compiled(telescope(129.0)), "telescope");
+  REQUIRE(focal.efl.has_value());
+  CHECK(close(*focal.efl, 50.0 * 80.0 / (50.0 + 80.0 - 129.0), 1e-12));
+}
