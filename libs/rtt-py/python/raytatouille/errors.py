@@ -111,7 +111,10 @@ class AnalysisError(RaytatouilleError):
     VIGNETTED, ABSORBED, TIR, EVENT_IMPOSSIBLE and EVANESCENT the surface where it stopped;
     for MISSED and NO_CONVERGENCE the surface before the one it did not reach), ``location``
     that surface's JSON pointer, ``ray_status`` its RayStatus, ``field`` the field index (None
-    for a field given as value) and ``wavelength`` the wavelength index. All None otherwise.
+    for a field given as value) and ``wavelength`` the wavelength index. A cause without a lost
+    ray may carry a ``location`` of its own (ADR 0032 point 9, ADR 0034: /paths/i for a path with
+    crystal modes, the image surface for a grazing chief ray); the other fields are None then.
+    All None otherwise.
     """
 
     def __init__(self, message: str, surface: str | None = None, location: str | None = None,

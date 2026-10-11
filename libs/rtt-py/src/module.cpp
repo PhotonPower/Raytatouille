@@ -14,6 +14,7 @@ NB_MODULE(_core, m) {
   rtt::py::bind_paraxial(m);
   rtt::py::bind_trace(m);
   rtt::py::bind_analysis(m);
+  rtt::py::bind_pupil(m);
   rtt::py::bind_paths(m);
   rtt::py::bind_reports(m);
   rtt::py::bind_optim(m);

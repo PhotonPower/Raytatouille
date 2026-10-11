@@ -54,11 +54,12 @@ __all__ = [
 ]
 
 FORMAT = "raytatouille-result"
-SCHEMA_VERSION = "0.1.7"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
+SCHEMA_VERSION = "0.1.9"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
 # 0.1.3: status Evanescent, status arrays one entry longer (#127); 0.1.4: PathTransmission,
 # PathOplDifference, GhostRanking (#133); 0.1.5: RayBatch wave_x/y/z, mode_index (#134);
 # 0.1.6: RaytraceReport, SystemReport, DimensionReport (#177);
 # 0.1.7: OptimResult, MeritEvaluation (#169)
+# 0.1.9: OpdPupilPoints, PupilCells, PupilFunction, ZernikeFit (#209; 0.1.8 is #207)
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a
@@ -88,6 +89,18 @@ _FIELDS: dict[str, tuple[str, ...]] = {
     "OpdMap": ("field", "wavelength", "sphere", "points", "rms", "pv", "arrived", "vignetted",
                "losses", "warnings"),
     "OpdFan": ("field", "wavelength", "sphere", "tangential", "sagittal", "losses", "warnings"),
+    # pupil function and Zernike fit (ADR 0032; #202, #203, Python #209). PupilFunction without
+    # its end states (internal, for refocus).
+    "OpdPupilPoints": ("field", "wavelength", "sphere", "points", "losses", "warnings"),
+    "PupilCells": ("grid", "fraction", "px", "py"),
+    "PupilMapping": ("m", "s0", "centre", "e_x", "e_y", "d_c", "delta_max", "delta_rms"),
+    "PupilFunction": ("path", "field", "wavelength", "wavelength_um", "reference_wavelength_um",
+                      "grid", "focus_shift", "apodization", "lost_warning_fraction",
+                      "mapping_warning", "sphere", "fraction", "px", "py", "amplitude", "w",
+                      "status", "prt", "mapping", "arrived_fraction", "losses", "warnings"),
+    "ZernikeFit": ("path", "field", "wavelength", "wavelength_um", "reference_wavelength_um",
+                   "coefficients", "residual_rms", "sigma", "sigma_bf", "strehl", "cells",
+                   "arrived_fraction", "warnings"),
     "Foci": ("wavelength", "paraxial_z", "real_z"),
     "LongitudinalColour": ("pair", "foci", "paraxial", "real"),
     "LateralColour": ("field", "chief", "offset"),
@@ -165,7 +178,8 @@ _FIELDS: dict[str, tuple[str, ...]] = {
 
 #: Types that to_json writes and load_json accepts as "type".
 TYPES: tuple[str, ...] = (
-    "SpotDiagram", "RayFan", "OpdMap", "OpdFan", "LongitudinalColour", "LateralColour",
+    "SpotDiagram", "RayFan", "OpdMap", "OpdFan", "OpdPupilPoints", "PupilCells", "PupilFunction",
+    "ZernikeFit", "LongitudinalColour", "LateralColour",
     "DistortionSweep", "DistortionPoint", "FieldCurvatureSweep", "FieldCurvaturePoint",
     "PathTransmission", "PathOplDifference", "GhostRanking",
     "RaytraceReport", "SystemReport", "DimensionReport",

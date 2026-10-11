@@ -149,3 +149,11 @@ def test_optimize_singlet_example(capsys: pytest.CaptureFixture[str]) -> None:
     out = capsys.readouterr().out
     assert "Status CONVERGED_" in out and "EFL 100.0" in out
     assert "patch applied: True, undo restores the input: True" in out
+
+
+def test_wavefront_example(capsys: pytest.CaptureFixture[str]) -> None:
+    # main() returns 1 if a Zernike coefficient is not finite or a Strehl value is outside (0, 1].
+    namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "wavefront.py"))
+    assert namespace["main"]() == 0
+    out = capsys.readouterr().out
+    assert "sigma_bf  Strehl" in out and "focus shift (mm)" in out

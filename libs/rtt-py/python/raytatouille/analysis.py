@@ -2,7 +2,8 @@
 lateral colour, distortion, field curvature and Seidel sums; path transmission and OPL
 difference of two paths (#122) and the ghost ranking (#124); reports as data (#177): the
 raytrace report, the system data report and the dimension report (CSV with to_csv(), see
-raytatouille.reports).
+raytatouille.reports); the OPD at arbitrary pupil points, the pupil function with refocus and
+the Zernike fit with the Strehl approximation (ADR 0032; #202, #203, #209).
 
 Every function takes a System (compiled on each call with ``materials``) or a CompiledSystem;
 for several analyses compile once with rt.compile(). ``path`` is an index or a path name,
@@ -12,7 +13,8 @@ bitwise the same for every number of threads. The GIL is released during a compu
 change the columns of a RayBatch passed as ``start`` from another thread meanwhile (as for
 rt.trace.trace).
 
-The bundle and sweep analyses (spot, ray_fan, opd_map, opd_fan, longitudinal_colour,
+The bundle and sweep analyses (spot, ray_fan, opd_map, opd_fan, opd_points, pupil_function,
+longitudinal_colour,
 lateral_colour, distortion, field_curvature) take ``cancel`` (a CancelToken; cancel() from
 another thread raises raytatouille.errors.Cancelled after at most one block per worker: rays,
 or one field point or wavelength for the sweeps) and ``progress(done, total, stage)``
@@ -58,15 +60,20 @@ from ._core import (
     LateralColour,
     LongitudinalColour,
     MaterialLibrary,
+    NollIndex,
     OpdFan,
     OpdMap,
     OpdPoints,
+    OpdPupilPoints,
     OplDifferencePoints,
     PathOplDifference,
     PathRays,
     PathTransmission,
     Point2,
     Points2,
+    PupilCells,
+    PupilFunction,
+    PupilMapping,
     RayFan,
     RayLosses,
     RaytraceReport,
@@ -75,6 +82,7 @@ from ._core import (
     SpotDiagram,
     SpotStatistics,
     SystemReport,
+    ZernikeFit,
 )
 from ._util import SystemLike, chromatic_pair, compiled
 from .paraxial import ChromaticPair, seidel
@@ -106,15 +114,22 @@ __all__ = [
     "GhostRanking",
     "LateralColour",
     "LongitudinalColour",
+    "MAX_PUPIL_GRID",
+    "MAX_ZERNIKE_TERMS",
+    "NollIndex",
     "OpdFan",
     "OpdMap",
     "OpdPoints",
+    "OpdPupilPoints",
     "OplDifferencePoints",
     "PathOplDifference",
     "PathRays",
     "PathTransmission",
     "Point2",
     "Points2",
+    "PupilCells",
+    "PupilFunction",
+    "PupilMapping",
     "RayFan",
     "RayLosses",
     "RaytraceReport",
@@ -123,6 +138,7 @@ __all__ = [
     "SpotDiagram",
     "SpotStatistics",
     "SystemReport",
+    "ZernikeFit",
     "dimension_report",
     "distortion",
     "distortion_at",
@@ -131,17 +147,31 @@ __all__ = [
     "ghost_ranking",
     "lateral_colour",
     "longitudinal_colour",
+    "noll_from_nm",
+    "noll_to_nm",
     "opd_fan",
     "opd_map",
+    "opd_points",
     "opl_difference",
     "path_transmission",
+    "pupil_cells",
+    "pupil_function",
     "ray_fan",
     "raytrace_report",
+    "refocus",
     "sampling",
     "seidel",
     "spot",
     "system_report",
+    "zernike",
+    "zernike_fit",
+    "zernike_radial",
 ]
+
+#: Largest grid N of pupil_function and pupil_cells (memory bound, rtt/analysis/pupil.hpp).
+MAX_PUPIL_GRID: int = _core.MAX_PUPIL_GRID
+#: Largest number of Zernike terms (n <= 20 completely).
+MAX_ZERNIKE_TERMS: int = _core.MAX_ZERNIKE_TERMS
 
 _SHORTHAND = (
     "expected 'hexapolar:N', 'grid:N', 'fan_x:N', 'fan_y:N', 'random:N', 'random:N:SEED' or "
@@ -202,8 +232,8 @@ def sampling(rays: str | PupilSampling) -> PupilSampling:
     raise ValueError(f"invalid ray sampling {rays!r}: {_SHORTHAND}")
 
 
-_R = TypeVar("_R", SpotDiagram, RayFan, OpdMap, OpdFan, PathTransmission, PathOplDifference,
-              GhostRanking, SystemReport)
+_R = TypeVar("_R", SpotDiagram, RayFan, OpdMap, OpdFan, OpdPupilPoints, PupilFunction,
+              ZernikeFit, PathTransmission, PathOplDifference, GhostRanking, SystemReport)
 
 
 def _warn(result: _R) -> _R:
@@ -281,6 +311,7 @@ def opd_map(
     *,
     grid: int = 33,
     aiming: Aiming = Aiming.REAL,
+    focus_shift: float = 0.0,
     materials: MaterialLibrary | None = None,
     threads: int | None = None,
     lost_warning_fraction: float = 0.5,
@@ -291,6 +322,8 @@ def opd_map(
     waves at the reference wavelength, against the reference sphere centred on the chief ray.
 
     An exit pupil at infinity uses the limit of the reference sphere (radius inf).
+    ``focus_shift`` (mm, finite) moves the centre of the reference sphere along the chief ray of
+    the reference wavelength (through focus, ADR 0032 point 5; 0 gives the sphere of before).
 
     Raises AnalysisError e.g. for a path without stop.
 
@@ -299,7 +332,7 @@ def opd_map(
     Warnings stay in ``warnings`` and are also issued as RaytatouilleWarning.
     """
     return _warn(_core.opd_map(
-        compiled(system, materials), path, field, wavelength, grid, aiming,
+        compiled(system, materials), path, field, wavelength, grid, aiming, focus_shift,
         lost_warning_fraction, threads, cancel, progress
     ))
 
@@ -312,6 +345,7 @@ def opd_fan(
     *,
     points: int = 21,
     aiming: Aiming = Aiming.REAL,
+    focus_shift: float = 0.0,
     materials: MaterialLibrary | None = None,
     threads: int | None = None,
     lost_warning_fraction: float = 0.5,
@@ -325,9 +359,120 @@ def opd_fan(
     Warnings stay in ``warnings`` and are also issued as RaytatouilleWarning.
     """
     return _warn(_core.opd_fan(
-        compiled(system, materials), path, field, wavelength, points, aiming,
+        compiled(system, materials), path, field, wavelength, points, aiming, focus_shift,
         lost_warning_fraction, threads, cancel, progress
     ))
+
+
+def opd_points(
+    system: SystemLike,
+    rays: str | PupilSampling,
+    path: int | str = 0,
+    field: int = 0,
+    wavelength: int | None = None,
+    *,
+    aiming: Aiming = Aiming.REAL,
+    focus_shift: float = 0.0,
+    materials: MaterialLibrary | None = None,
+    threads: int | None = None,
+    lost_warning_fraction: float = 0.5,
+    cancel: CancelToken | None = None,
+    progress: ProgressCallback | None = None,
+) -> OpdPupilPoints:
+    """OPD of ``field`` at the points of the pupil sampling ``rays`` (any sampling, also
+    GaussPupil and PointListPupil, or a shorthand string), conventions as opd_map(); no
+    statistics. The points come in the order of the sampling; check status before using w."""
+    return _warn(_core.opd_points(
+        compiled(system, materials), path, field, wavelength, sampling(rays), aiming, focus_shift,
+        lost_warning_fraction, threads, cancel, progress
+    ))
+
+
+def pupil_cells(grid: int) -> PupilCells:
+    """The N x N cells of the pupil function (ADR 0032, point 1): area fraction inside the unit
+    circle and sample point (centre, or centroid of the part inside); rows from py = -1, px
+    fastest. ValueError for N outside [2, MAX_PUPIL_GRID]."""
+    return _core.pupil_cells(grid)
+
+
+def pupil_function(
+    system: SystemLike,
+    path: int | str = 0,
+    field: int = 0,
+    wavelength: int | None = None,
+    *,
+    grid: int = 64,
+    apodization: float = 0.0,
+    focus_shift: float = 0.0,
+    aiming: Aiming = Aiming.REAL,
+    with_prt: bool = False,
+    materials: MaterialLibrary | None = None,
+    threads: int | None = None,
+    lost_warning_fraction: float = 0.5,
+    mapping_warning: float = 0.01,
+    cancel: CancelToken | None = None,
+    progress: ProgressCallback | None = None,
+) -> PupilFunction:
+    """Pupil function of ``field`` at ``wavelength`` on grid x grid cells (ADR 0032, point 3):
+    per cell the area fraction, sample point, amplitude sqrt(weight) exp(-apodization rho^2), W
+    in waves at the reference wavelength and status; ``with_prt`` adds the accumulated PRT
+    matrix per cell. Check ``fraction > 0`` first, then ``status``. The phase of a cell at
+    wavelength lambda relative to the chief ray is -2 pi W lambda_ref / lambda.
+
+    ``mapping`` is the affine mapping of the pupil onto the direction sines (None for an afocal
+    image space); above ``mapping_warning`` its delta_max warns with pupil.mapping_nonlinear.
+
+    Raises AnalysisError (location /paths/i) for a path with crystal modes, ValueError for
+    options out of range. Warnings stay in ``warnings`` and are also issued as
+    RaytatouilleWarning.
+    """
+    return _warn(_core.pupil_function(
+        compiled(system, materials), path, field, wavelength, grid, apodization, focus_shift,
+        aiming, with_prt, lost_warning_fraction, mapping_warning, threads, cancel, progress
+    ))
+
+
+def refocus(system: SystemLike, pupil: PupilFunction, focus_shift: float, *,
+            materials: MaterialLibrary | None = None) -> PupilFunction:
+    """``pupil`` for another ``focus_shift`` (mm) from its end states, without tracing again;
+    bitwise the same as pupil_function() with that focus_shift. ``system`` must be the system
+    that produced ``pupil`` (ValueError if it obviously is not)."""
+    return _warn(_core.refocus(compiled(system, materials), pupil, focus_shift))
+
+
+def zernike_fit(pupil: PupilFunction, *, terms: int = 37,
+                incomplete_warning_fraction: float = 0.01) -> ZernikeFit:
+    """Zernike fit of ``pupil`` with ``terms`` Noll terms (ADR 0032, point 6): coefficients in
+    waves at the reference wavelength (index j - 1), residual RMS, sigma (piston removed),
+    sigma_bf (about the diffraction focus) and the Strehl approximation after Marechal
+    exp(-(2 pi sigma_bf lambda_ref / lambda)^2) (good down to about 0.1).
+
+    Raises AnalysisError (location /paths/i) for too few arrived cells or singular normal
+    equations, ValueError for options out of range. An incomplete pupil warns with
+    zernike.pupil_incomplete.
+    """
+    return _warn(_core.zernike_fit(pupil, terms, incomplete_warning_fraction))
+
+
+def zernike(j: int, rho: float, theta: float) -> float:
+    """Orthonormal Zernike polynomial Z_j(rho, theta) after Noll (Niu/Tian Eq. (3)); theta in
+    rad from +x counter-clockwise. ValueError for j outside [1, MAX_ZERNIKE_TERMS]."""
+    return _core.zernike(j, rho, theta)
+
+
+def zernike_radial(n: int, m: int, rho: float) -> float:
+    """Radial polynomial R_n^m(rho) (Niu/Tian Eq. (4)) for 0 <= m <= n <= 20, n - m even."""
+    return _core.zernike_radial(n, m, rho)
+
+
+def noll_to_nm(j: int) -> NollIndex:
+    """(n, m) of the Noll index j (m >= 0; sine for odd j)."""
+    return _core.noll_to_nm(j)
+
+
+def noll_from_nm(n: int, m: int, sine: bool = False) -> int:
+    """Noll index of (n, m) with the sine (odd j) or the cosine (even j) for m != 0."""
+    return _core.noll_from_nm(n, m, sine)
 
 
 def longitudinal_colour(
