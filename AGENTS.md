@@ -87,6 +87,14 @@ Zwei Fehlerquellen, die nur die CI sieht, vorab lokal prüfen:
   Würfel wie 2⁻³⁰. Stattdessen den Wert im Test zur Laufzeit mit derselben Funktion und derselben
   Eingabe wie der Code berechnen (Eingabe über `volatile`, damit nichts gefaltet wird) und die
   Voraussetzung vor dem Lauf mit `REQUIRE` prüfen (#218).
+- **Das clang-tidy der CI meldet mehr als ein neueres lokales.** Die CI (`ci-linux-clang`,
+  clang-tidy 18) meldet z. B. `bugprone-unchecked-optional-access` und `misc-unused-using-decls`,
+  die das lokale clang-tidy 22 nicht meldet (#227, #233, #235). Ein `std::optional` deshalb nach
+  der Prüfung einmal in eine Referenz binden und danach nur diese nutzen; nach einem Umbau
+  `using`-Deklarationen von Hand prüfen.
+- **MSVC wertet Verengungen in Bereichsschleifen als Fehler.** `for (const std::uint16_t x : {0, 1})`
+  wandelt `int`-Literale um (C4244, mit `/WX` ein Fehler); die Literale typisieren, z. B.
+  `{std::uint16_t{0}, std::uint16_t{1}}` (#220, #223).
 
 ## Aufbau
 
