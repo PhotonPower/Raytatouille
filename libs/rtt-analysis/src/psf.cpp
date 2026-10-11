@@ -610,15 +610,18 @@ Complex otf_at(const Autocorrelation& c, const PupilSums& s, int l1, int l2) {
 }
 
 /// The curve along column `col` of F (0: sagittal, l = (l, 0); 1: tangential, l = (0, l)),
-/// samples l = 0 ... N, with the complex OTF.
-MtfCurve curve_of(
-    const Autocorrelation& c, const PupilSums& s, const std::array<double, 4>& f, int n, int col) {
+/// samples l = 0 ... last (last >= N; from N on the OTF is 0), with the complex OTF.
+MtfCurve curve_of(const Autocorrelation& c,
+                  const PupilSums& s,
+                  const std::array<double, 4>& f,
+                  int last,
+                  int col) {
   MtfCurve curve;
   const double fx = col == 0 ? f[0] : f[1];
   const double fy = col == 0 ? f[2] : f[3];
   const double step = std::hypot(fx, fy);
   curve.direction = {fx / step, fy / step};
-  for (int l = 0; l <= n; ++l) {
+  for (int l = 0; l <= last; ++l) {
     const Complex otf = col == 0 ? otf_at(c, s, l, 0) : otf_at(c, s, 0, l);
     curve.frequency.push_back(static_cast<double>(l) * step);
     curve.otf.push_back(otf);
@@ -737,9 +740,24 @@ Mtf mtf_of(const std::vector<Spectral>& parts, std::size_t ref, const MtfOutputs
     result.tangential = curve_of(r.c, r.sums, result.frequency_matrix, n, 1);
   } else {
     // ADR 0033, point 7: the complex OTF of each wavelength on its own frequencies, interpolated
-    // linearly in |nu| onto those of the reference, summed with w_i E_i.
+    // linearly in |nu| onto those of the reference, summed with w_i E_i. The axis runs in the
+    // steps of the reference up to the first sample at or above the largest cut-off of all
+    // wavelengths (a shorter wavelength reaches beyond that of the reference; review of #239),
+    // so the last value is 0 for every wavelength. The direction of the reference is taken for
+    // all: exact where M_i e is parallel to M_ref e (centred systems with the field on +-y).
     for (int col = 0; col < 2; ++col) {
-      MtfCurve sum = curve_of(r.c, r.sums, result.frequency_matrix, n, col);
+      const auto step_of = [col](const std::array<double, 4>& f) {
+        return col == 0 ? std::hypot(f[0], f[2]) : std::hypot(f[1], f[3]);
+      };
+      const double step = step_of(result.frequency_matrix);
+      double cutoff = static_cast<double>(n) * step;
+      for (const Spectral& part : parts) {
+        cutoff =
+            std::max(cutoff, static_cast<double>(n) * step_of(frequency_matrix_of(part.pupil)));
+      }
+      int last = n;
+      while (static_cast<double>(last) * step < cutoff) ++last;
+      MtfCurve sum = curve_of(r.c, r.sums, result.frequency_matrix, last, col);
       std::vector<Complex> acc(sum.otf.size(), Complex(0.0, 0.0));
       for (const Spectral& part : parts) {
         const double we = part.weight * part.sums.fa2;
