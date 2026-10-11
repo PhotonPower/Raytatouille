@@ -268,13 +268,9 @@ void bind_jones(nb::module_& m) {
           "ellipticity", [](const analysis::StokesPupil& p) { return copy(p.ellipticity); },
           nb::rv_policy::reference, "Ellipticity chi in [-pi/4, pi/4], > 0 right-handed, rad.")
       .def_ro("warnings", &analysis::StokesPupil::warnings, "The warnings of the Jones pupil.");
-  // STUB for the red run of #211 B: replaced by the call in the next commit.
-  m.def(
-      "stokes_pupil",
-      [](const JonesPupil& /*jones*/, std::complex<double> /*e1*/, std::complex<double> /*e2*/) {
-        return analysis::StokesPupil{};
-      },
-      "jones"_a, "e1"_a, "e2"_a, "Stokes map of `jones` for the input state (e1, e2).");
+  m.def("stokes_pupil", &analysis::stokes_pupil, "jones"_a, "e1"_a, "e2"_a,
+        nb::call_guard<nb::gil_scoped_release>(),
+        "Stokes map of `jones` for the input state (e1, e2), normalised.");
 }
 
 }  // namespace rtt::py

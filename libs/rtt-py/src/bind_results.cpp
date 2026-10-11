@@ -28,6 +28,7 @@ void bind_result_methods(nb::module_& m) {
                            "ThroughFocus",
                            "Mtf",
                            "EncircledEnergy",
+                           "StokesPupil",
                            "LongitudinalColour",
                            "LateralColour",
                            "DistortionSweep",
