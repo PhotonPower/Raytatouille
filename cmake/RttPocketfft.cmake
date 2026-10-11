@@ -9,9 +9,10 @@
 # The include directory is SYSTEM on purpose: warnings of the third-party header must not break
 # -Werror (in the probe for ADR 0033, with SIMD paths enabled, GCC 16 reported
 # -Wmaybe-uninitialized at pocketfft_hdronly.h:3307), and clang-tidy skips SYSTEM headers through
-# its HeaderFilter. SYSTEM does not cover middle-end warnings after inlining such as
-# -Wnull-dereference; libs/rtt-analysis/src/fft.cpp, the only file that includes the header,
-# suppresses that one for GCC.
+# its HeaderFilter. SYSTEM does not cover middle-end warnings after inlining, which GCC attributes
+# to the including translation unit (GCC 16 -O2: -Wnull-dereference; GCC 13 -O3, also without
+# SIMD paths: -Wmaybe-uninitialized at pocketfft_hdronly.h:266); libs/rtt-analysis/src/fft.cpp,
+# the only file that includes the header, suppresses both for GCC.
 
 # Pins of the vcpkg port "pocketfft" 2024-11-30 (ports/pocketfft/portfile.cmake at the
 # builtin-baseline). Keep both lines in this form: tools/check_pins.py reads them.

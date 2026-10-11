@@ -2,14 +2,19 @@
 // pool, without SIMD paths that depend on -m flags, and without the plan cache, so the dependency
 // holds no mutable global state (rule 4) and the result depends only on the input.
 //
-// GCC 16 at -O2 reports -Wnull-dereference inside the header (pocketfft_hdronly.h:1495 and :266,
-// after inlining into fft2): arr<T> allocates with malloc, which may return null for a size of 0,
-// a path that cannot occur there (the radix ip >= 2). The SYSTEM include does not cover this
-// middle-end warning, so the suppression covers this translation unit, which holds only the
-// wrapper; limited to GCC, as in rtt-polar/src/prt_analysis.cpp.
+// GCC reports middle-end warnings inside the header after inlining into fft2, which the SYSTEM
+// include does not cover (GCC attributes them to this translation unit):
+// - GCC 16 at -O2: -Wnull-dereference (pocketfft_hdronly.h:1495 and :266): arr<T> allocates with
+//   malloc, which may return null for a size of 0, a path that cannot occur there (radix ip >= 2);
+// - GCC 13 at -O3 (CI ci-linux-gcc): -Wmaybe-uninitialized at pocketfft_hdronly.h:266 on a
+//   `__vector(2) double` that its own auto-vectoriser builds from cmplx<double>, also with
+//   POCKETFFT_NO_VECTORS; the values are written before use.
+// The suppression covers this translation unit, which holds only the wrapper (include and
+// instantiations); limited to GCC, as in rtt-polar/src/prt_analysis.cpp.
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wnull-dereference"
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
 #endif
 
 #define POCKETFFT_NO_MULTITHREADING
