@@ -316,10 +316,20 @@ TEST_CASE("annular PSF: first zero, profile, energy and Strehl ratio", "[annular
 TEST_CASE("annular MTF against the overlap of two annuli", "[annular]") {
   // N = 128 and 256, samples x = l / 128 in [0.1, 0.9] (l = 13 ... 115) and the same x at 256.
   const CompiledSystem cs = paraboloid(2.0);
-  const rtt::analysis::Mtf m128 = rtt::analysis::mtf(pupil(cs, 128));
+  const PupilFunction p128 = pupil(cs, 128);
+  const rtt::analysis::Mtf m128 = rtt::analysis::mtf(p128);
   const rtt::analysis::Mtf m256 = rtt::analysis::mtf(pupil(cs, 256));
   REQUIRE(m128.tangential.modulation.size() == 129);
   REQUIRE(m256.tangential.modulation.size() == 257);
+  // The frequency axis: sample l lies at x = l / N of the cut-off nu_c = 1 / (lambda F#_w), F#_w
+  // from the mapping M that the guard of #205 ties to the geometry (review of #246, f2): a wrong
+  // scale of the frequencies (n', a factor 2) would otherwise go unnoticed.
+  const double nu_c = 1.0 / (kLambdaMm * f_number(p128));
+  for (std::size_t l = 1; l <= 128; ++l) {
+    const double x = static_cast<double>(l) / 128.0;
+    CHECK(std::abs(m128.tangential.frequency[l] / nu_c - x) <= 1e-12);
+    CHECK(std::abs(m128.sagittal.frequency[l] / nu_c - x) <= 1e-12);
+  }
   double e_max = 0.0;
   for (std::size_t l = 13; l <= 115; ++l) {
     for (const auto* curve : {&m128.tangential, &m128.sagittal}) {
@@ -336,6 +346,8 @@ TEST_CASE("annular MTF against the overlap of two annuli", "[annular]") {
     CHECK(std::abs(m256.tangential.modulation[2 * l] - annular_mtf(x, kEpsilon)) <= e_max);
     CHECK(std::abs(m256.sagittal.modulation[2 * l] - annular_mtf(x, kEpsilon)) <= e_max);
   }
-  // Content guard: at x = 0.25 the annulus transfers clearly less than the full pupil.
+  // Content guard: at x = 0.25 the annulus transfers clearly less than the full pupil. It compares
+  // the expected values only, but it is effective: a computation without the annulus would lie
+  // more than 0.05 from the annular expected value, far beyond e_max.
   CHECK(annular_mtf(0.25, 0.0) - annular_mtf(0.25, kEpsilon) > 0.05);
 }
