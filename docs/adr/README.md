@@ -10,7 +10,7 @@ Neue Entscheidungen bekommen die nächste Nummer. Bestehende ADRs werden nicht u
 | [0004](0004.md) | Parallelität mit oneTBB | angenommen |
 | [0005](0005.md) | Strahlen als Structure-of-Arrays | angenommen |
 | [0006](0006.md) | Physik-Templates über den Skalartyp | angenommen, präzisiert durch [0014](0014.md), [0015](0015.md) |
-| [0007](0007.md) | Ableitungen per finiter Differenz in v1 | angenommen |
+| [0007](0007.md) | Ableitungen per finiter Differenz in v1 (mit Nachträgen zur Zielung und zur Pupillenkonvention, #96, #35 B) | angenommen |
 | [0008](0008.md) | JSON-Dateiformat mit strengem Parser | angenommen |
 | [0009](0009.md) | Fehlerbehandlung | angenommen |
 | [0010](0010.md) | Lizenz MIT | angenommen |

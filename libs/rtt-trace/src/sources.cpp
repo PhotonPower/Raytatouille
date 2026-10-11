@@ -79,10 +79,12 @@ struct Context {
   paraxial::FirstOrder first_order_ref;
   double z_ep_ref = 0.0;         ///< global z of the paraxial entrance pupil for the conversion, mm
   bool telecentric_ref = false;  ///< EP at infinity for the conversion (finite object, #96)
-  /// Orientation of the pupil labels at the reference wavelength (#96): -1 if the entrance
-  /// pupil of this wavelength lies on the other side of the object than that of the reference
-  /// wavelength (finite object), else +1. Pupil point (px, py) is then the EP point
-  /// label_sign * (px, py) * r_ep, so it means the same side of the stop for every wavelength.
+  /// Orientation of the pupil labels at the object-space slope (ADR 0007, addendum #35 B;
+  /// replaces the orientation at the reference wavelength of #96): -1 for a finite object whose
+  /// entrance pupil at this wavelength lies on the far side of the object (z_ep < z_obj), else
+  /// +1. Pupil point (px, py) is the EP point label_sign * (px, py) * r_ep with the stop target
+  /// label_sign * (px, py) * r_ep * stop_scale, so py > 0 is a ray rising in object space for
+  /// every wavelength and on both sides of an entrance pupil at infinity.
   double label_sign = 1.0;
 };
 
@@ -199,24 +201,17 @@ Context make_context(const CompiledSystem& system, PathId path, std::uint16_t wa
       c.z_ep_ref = *ep_ref->z;
     }
   }
-  // Pupil labels oriented at the reference wavelength (decided for #96, refining #93): the
-  // image of the pupil turns over when the EP passes through infinity, so a wavelength whose
-  // EP lies on the other side of the object (z_ep - z_obj of the other sign) would otherwise
-  // see (px, py) mirrored on the stop. sigma = side(ref) side(lambda), side = sign(z_ep - z_obj),
-  // and an EP at infinity (object-space telecentric) counts as the + side (py > 0 = slope up).
-  // An object at infinity has no such side: sigma = +1. Without a change of side over the
-  // wavelengths sigma = +1 and the rays are bit for bit the same as before.
-  if (!infinite && wavelength != system.reference_wavelength()) {
-    const double z_obj = -system.object().distance.value;
-    const auto side = [z_obj](const paraxial::FirstOrder& fo) {
-      const auto& e = fo.entrance_pupil;
-      if (!e || !e->z) return 1.0;
-      return *e->z < z_obj ? -1.0 : 1.0;
-    };
-    const paraxial::FirstOrder fo_ref =
-        needs_ref ? c.first_order_ref
-                  : paraxial::first_order(system, path, system.reference_wavelength());
-    c.label_sign = side(fo_ref) * side(c.first_order);
+  // Pupil labels oriented at the object-space slope (ADR 0007, addendum #35 B, decided by the
+  // maintainer): with a finite object sigma = side(lambda) = sign(z_ep - z_obj) at every
+  // wavelength, an EP at infinity (object-space telecentric) counting as the + side, so py > 0
+  // is always a ray rising in object space. The EP passes through infinity from the + to the -
+  // side and stop_scale changes its sign with it, so the rays change continuously there (the
+  // jump of ADR 0030, addendum #167). This replaces sigma = side(ref) side(lambda) of #96,
+  // which left the jump at the reference wavelength itself. An object at infinity keeps the EP
+  // convention of #8: sigma = +1. sigma = +1 gives 1 * p == p exactly, so the rays of every
+  // system without a virtual EP beyond the object are bit for bit those of before.
+  if (!infinite && !c.telecentric && c.z_ep < -system.object().distance.value) {
+    c.label_sign = -1.0;
   }
   return c;
 }
@@ -475,7 +470,8 @@ std::optional<std::pair<double, double>> stop_hit(const Context& c, RayState ray
 }
 
 AimedRay aim(const Context& c, const FieldStart& f, double px, double py, Aiming aiming) {
-  // Pupil labels oriented at the reference wavelength (label_sign, #96); 1 * p == p exactly.
+  // Pupil labels oriented at the object-space slope (label_sign, ADR 0007 addendum #35 B);
+  // 1 * p == p exactly.
   const double sx = c.label_sign * px;
   const double sy = c.label_sign * py;
   // Paraxial solution: straight through the EP point (sx, sy) * r_ep, or with the slopes

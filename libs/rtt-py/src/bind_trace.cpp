@@ -159,7 +159,8 @@ void bind_trace(nb::module_& m) {
              "straight line through the target point on the paraxial entrance pupil");
 
   // Pupil samplings; (px, py) are normalised pupil coordinates, the unit circle is the rim of
-  // the paraxial entrance pupil and +y the meridional direction.
+  // the paraxial entrance pupil and +y the meridional direction; with a finite object py > 0 is
+  // a ray rising in object space (ADR 0007 addendum #35 B).
   nb::class_<trace::SinglePupilPoint>(m, "SinglePupilPoint",
                                       "One ray at normalised pupil coordinates (px, py).")
       .def(
