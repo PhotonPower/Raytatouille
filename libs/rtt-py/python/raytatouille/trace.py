@@ -33,6 +33,7 @@ from ._core import (
     GaussPupil,
     GridPupil,
     HexapolarPupil,
+    PointListPupil,
     RandomPupil,
     RayBatch,
     RayPaths,
@@ -48,7 +49,14 @@ ProgressCallback = Callable[[int, int, str], None]
 
 #: Any of the pupil samplings accepted by make_rays.
 PupilSampling = Union[
-    SinglePupilPoint, HexapolarPupil, GridPupil, FanXPupil, FanYPupil, RandomPupil, GaussPupil
+    SinglePupilPoint,
+    HexapolarPupil,
+    GridPupil,
+    FanXPupil,
+    FanYPupil,
+    RandomPupil,
+    GaussPupil,
+    PointListPupil,
 ]
 
 __all__ = [
@@ -61,6 +69,7 @@ __all__ = [
     "GaussPupil",
     "GridPupil",
     "HexapolarPupil",
+    "PointListPupil",
     "ProgressCallback",
     "PupilSampling",
     "RandomPupil",

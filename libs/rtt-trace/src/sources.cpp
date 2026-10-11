@@ -30,6 +30,10 @@ using math::Vec3;
 
 constexpr double kTwoPi = 2.0 * std::numbers::pi;
 
+/// Dependent false for the static_assert over the PupilSampling alternatives in pupil_points().
+template <class>
+inline constexpr bool kUnhandledSampling = false;
+
 /// Maximum number of step halvings per Newton step of real aiming.
 constexpr int kMaxAimHalvings = 10;
 
@@ -688,7 +692,10 @@ std::vector<PupilPoint> pupil_points(const PupilSampling& sampling) {
               p.push_back({rho * std::sin(theta), rho * std::cos(theta)});
             }
           }
-        } else {
+        } else if constexpr (std::is_same_v<S, PointListPupil>) {
+          // STUB for the red run (tests first): no points, no checks.
+          static_cast<void>(s);
+        } else if constexpr (std::is_same_v<S, RandomPupil>) {
           std::mt19937_64 engine(s.seed);
           p.reserve(s.count);
           for (std::size_t i = 0; i < s.count; ++i) {
@@ -698,6 +705,9 @@ std::vector<PupilPoint> pupil_points(const PupilSampling& sampling) {
             const double phi = kTwoPi * u2;
             p.push_back({r * std::sin(phi), r * std::cos(phi)});
           }
+        } else {
+          // Every alternative has its own branch; a new one must not fall into another.
+          static_assert(kUnhandledSampling<S>, "pupil sampling not handled");
         }
         return p;
       },

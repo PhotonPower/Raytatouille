@@ -115,23 +115,34 @@ struct GaussPupil {
   int arms = 6;   ///< >= 1
 };
 
-/// Pupil sampling of one field.
-using PupilSampling = std::variant<SinglePupilPoint,
-                                   HexapolarPupil,
-                                   GridPupil,
-                                   FanXPupil,
-                                   FanYPupil,
-                                   RandomPupil,
-                                   GaussPupil>;
-
 /// Normalised pupil coordinates.
 struct PupilPoint {
   double px = 0.0;
   double py = 0.0;
 };
 
+/// An explicit list of pupil points, in this order (ADR 0032, point 2): for samplings computed
+/// elsewhere, e.g. the cells of the pupil function. Each point is aimed like a SinglePupilPoint;
+/// points outside the unit circle are allowed (they end vignetted at the stop if it has an
+/// aperture). The analyses that reject GaussPupil accept this list.
+struct PointListPupil {
+  std::vector<PupilPoint> points;  ///< non-empty, finite px and py
+};
+
+/// Pupil sampling of one field. New alternatives are appended (the indices of the others stay).
+using PupilSampling = std::variant<SinglePupilPoint,
+                                   HexapolarPupil,
+                                   GridPupil,
+                                   FanXPupil,
+                                   FanYPupil,
+                                   RandomPupil,
+                                   GaussPupil,
+                                   PointListPupil>;
+
 /// Points of a pupil sampling in the documented order.
-/// @throws std::invalid_argument for rings < 0 (hexapolar), n < 1, or rings or arms < 1 (gauss)
+/// @throws std::invalid_argument for rings < 0 (hexapolar), n < 1, rings or arms < 1 (gauss), or
+///         an empty point list or a point with a non-finite coordinate (PointListPupil; the
+///         message gives the index)
 [[nodiscard]] std::vector<PupilPoint> pupil_points(const PupilSampling& sampling);
 
 /// Quadrature weights of the points of `gauss` in the order of pupil_points(): q = w_k / (2 arms)
