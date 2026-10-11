@@ -159,10 +159,10 @@ def test_round_trip_is_bit_identical(name: str, singlet: rt.CompiledSystem,
     envelope = json.loads(text, parse_constant=no_constants)  # standard JSON only
     assert list(envelope) == ["format", "schema_version", "type", "data"]
     assert envelope["format"] == "raytatouille-result"
-    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.9"
+    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.8"
     assert envelope["type"] == name
     loaded = rt.results.load_json(text)
-    assert (loaded.type, loaded.schema_version) == (name, "0.1.9")
+    assert (loaded.type, loaded.schema_version) == (name, "0.1.8")
     same(loaded.data, data)
 
 
@@ -305,7 +305,7 @@ def test_encode_rejects_dtypes_outside_the_format() -> None:
 
 
 def test_load_json_accepts_patch_versions() -> None:
-    assert rt.results.load_json(envelope(schema_version="0.1.9")).type == "TraceStats"
+    assert rt.results.load_json(envelope(schema_version="0.1.8")).type == "TraceStats"
 
 
 @pytest.mark.parametrize("text, match", [
@@ -380,7 +380,7 @@ def test_trace_stats_carry_the_evanescent_status(singlet: rt.CompiledSystem) -> 
     rays.status[1] = int(rt.trace.RayStatus.EVANESCENT)
     stats = rt.trace.trace(singlet, rays, path="main")
     loaded = rt.results.load_json(stats.to_json())
-    assert loaded.schema_version == rt.results.SCHEMA_VERSION == "0.1.9"
+    assert loaded.schema_version == rt.results.SCHEMA_VERSION == "0.1.8"
     counts = list(loaded.data["rays"])
     assert len(counts) == 8
     assert counts[int(rt.trace.RayStatus.EVANESCENT)] == 1

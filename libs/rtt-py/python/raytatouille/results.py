@@ -54,12 +54,12 @@ __all__ = [
 ]
 
 FORMAT = "raytatouille-result"
-SCHEMA_VERSION = "0.1.9"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
+SCHEMA_VERSION = "0.1.8"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
 # 0.1.3: status Evanescent, status arrays one entry longer (#127); 0.1.4: PathTransmission,
 # PathOplDifference, GhostRanking (#133); 0.1.5: RayBatch wave_x/y/z, mode_index (#134);
 # 0.1.6: RaytraceReport, SystemReport, DimensionReport (#177);
 # 0.1.7: OptimResult, MeritEvaluation (#169)
-# 0.1.9: OpdPupilPoints, PupilCells, PupilFunction, ZernikeFit (#209; 0.1.8 is #207)
+# 0.1.8: OpdPupilPoints, PupilCells, PupilFunction, ZernikeFit (#209)
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a
