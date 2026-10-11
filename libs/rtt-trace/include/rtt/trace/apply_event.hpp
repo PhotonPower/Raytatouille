@@ -37,8 +37,11 @@ struct RayState {
   math::CMat3 prt = math::CMat3::Identity();
   /// Accumulated geometric transformation Q (ADR 0034, point 1; RayBatch::q): real orthogonal,
   /// Q k_0 = k, the product of the Q of every event starting with I; NaN from the entry into a
-  /// crystal on.
+  /// crystal on. Formed only with track_q; otherwise it stays as it is.
   math::Mat3 q = math::Mat3::Identity();
+  /// Request to form Q (ADR 0034, addendum #207): set by the tracer for a batch with
+  /// RayBatch::has_q(); false for every other ray, e.g. while aiming.
+  bool track_q = false;
   /// Power for an unpolarized source (source normalised to 1): weight = s ||P_T||^2 / 2 with
   /// P_T = P - k k_0^T and s the polarization-independent factors (ADR 0021).
   double weight = 1.0;

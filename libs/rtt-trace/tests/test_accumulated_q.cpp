@@ -84,11 +84,12 @@ EventMedia media(double before, double after, double beyond, double wavelength_u
   return m;
 }
 
-/// Ray with unit direction `d` towards the global origin from z = -10 mm.
+/// Ray with unit direction `d` towards the global origin from z = -10 mm, with Q requested.
 RayState ray_along(const Vec3& d) {
   RayState r;
   r.dir = d;
   r.pos = -10.0 / d.z() * d;
+  r.track_q = true;
   return r;
 }
 
@@ -109,9 +110,11 @@ PathId path_named(const CompiledSystem& cs, const std::string& name) {
   return *cs.find_path(name);
 }
 
-/// One ray from `start` along `dir` on `path`.
-RayBatch trace_one(const CompiledSystem& cs, PathId path, const Vec3& start, const Vec3& dir) {
+/// One ray from `start` along `dir` on `path`, with Q requested (`with_q`).
+RayBatch trace_one(
+    const CompiledSystem& cs, PathId path, const Vec3& start, const Vec3& dir, bool with_q = true) {
   RayBatch rays(1);
+  if (with_q) rays.enable_q();
   rays.pos_x()[0] = start.x();
   rays.pos_y()[0] = start.y();
   rays.pos_z()[0] = start.z();
@@ -312,6 +315,7 @@ TEST_CASE("events without deflection keep Q bitwise", "[polarization][q]") {
   const MaterialLibrary lib;
   const CompiledSystem cs = compile(s, lib);
   RayBatch rays(1);
+  rays.enable_q();
   rays.pos_z()[0] = 25.0;
   const Mat3 start = Eigen::AngleAxisd(0.3, Vec3::UnitZ()).toRotationMatrix();
   rays.set_q_matrix(0, start);
@@ -394,6 +398,7 @@ TEST_CASE("RayPaths with polarization: P and Q per slot, the last valid slot is 
   const CompiledSystem cs = compile(s, lib);
   const PathId path = path_named(cs, "periscope");
   RayBatch start(3);
+  start.enable_q();
   start.pos_x()[1] = 1.0;
   start.pos_x()[2] = 5.0;  // outside the aperture of M2: vignetted there
   // Ray 1 enters with P and Q != I: slot 0 must show them.
@@ -448,6 +453,51 @@ TEST_CASE("RayPaths with polarization: P and Q per slot, the last valid slot is 
     CHECK(without.prt_matrix(r) == with.prt_matrix(r));
     CHECK(without.q_matrix(r) == with.q_matrix(r));
   }
+
+  // polarization without Q in the batch: P per slot, no Q (addendum #207 to ADR 0034).
+  RayBatch no_q(3);
+  no_q.pos_x()[1] = 1.0;
+  no_q.pos_x()[2] = 5.0;
+  RayPaths p_only;
+  p_only.polarization = true;
+  [[maybe_unused]] const auto s3 = SequentialTracer().trace(cs, path, no_q, p_only);
+  CHECK(p_only.prt.size() == 3 * p_only.slots * 9);
+  CHECK(p_only.q.empty());
+  CHECK(p_only.prt_at(0, p_only.count[0] - 1) == no_q.prt_matrix(0));
+}
+
+// ------------------------------------------------- addendum #207: Q only on request -----
+
+TEST_CASE("without the request no Q is formed and the trace is bitwise the same",
+          "[polarization][q]") {
+  // ADR 0034, addendum #207: Q costs about 10 % of the trace, so it is formed only for a batch
+  // with enable_q() (RayState::track_q). Without it the batch has no Q columns, apply_event
+  // leaves q as it is, and every other column is bit for bit that of a trace with Q.
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(crossed_periscope(), lib);
+  const PathId path = path_named(cs, "periscope");
+  const RayBatch with = trace_one(cs, path, Vec3::Zero(), Vec3::UnitZ(), true);
+  const RayBatch without = trace_one(cs, path, Vec3::Zero(), Vec3::UnitZ(), false);
+  REQUIRE(with.status()[0] == RayStatus::Alive);
+  CHECK(with.has_q());
+  CHECK_FALSE(without.has_q());
+  CHECK(without.q(0, 0).empty());
+  CHECK(max_abs(with.q_matrix(0) - Mat3::Identity()) > 0.5);  // content guard: Q was formed
+  CHECK(without.pos_x()[0] == with.pos_x()[0]);
+  CHECK(without.pos_y()[0] == with.pos_y()[0]);
+  CHECK(without.pos_z()[0] == with.pos_z()[0]);
+  CHECK(direction(without, 0) == direction(with, 0));
+  CHECK(without.opl()[0] == with.opl()[0]);
+  CHECK(without.weight()[0] == with.weight()[0]);
+  CHECK(without.prt_matrix(0) == with.prt_matrix(0));
+  CHECK(without.status()[0] == with.status()[0]);
+  // One event without the request: q stays as it is (here I), also at a reflection.
+  RayState in = ray_along(Vec3(0.3, 0.0, 1.0).normalized());
+  in.track_q = false;
+  const RayState out = step(in, plane_surface(), EventKind::Reflect, 0, media(1.0, 1.5, 1.5));
+  REQUIRE(out.status == RayStatus::Alive);
+  CHECK(out.q == Mat3::Identity());
+  CHECK_FALSE(out.track_q);
 }
 
 // ------------------------------------------------------- point 7: the ideal conductor -----

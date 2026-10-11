@@ -21,10 +21,11 @@
 ///
 /// Polarization (ADR 0034, point 3): with `polarization` set before the trace, prt and q hold the
 /// accumulated P and Q of every slot, 9 values each at [(r * S + s) * 9 + 3 * row + col]
-/// (row-major), NaN in the unused slots like the other values. Slot 0 is the state of the input
-/// batch (I for rays from a source); slot s the product after event s - 1; P and Q of the last
-/// valid slot are bitwise those of the RayBatch. The P of one event follows from two slots. Without
-/// the request prt and q stay empty and everything else is bitwise the same.
+/// (row-major), NaN in the unused slots like the other values; q only if the batch carries Q
+/// (RayBatch::enable_q(), addendum #207), otherwise it stays empty. Slot 0 is the state of the
+/// input batch (I for rays from a source); slot s the product after event s - 1; P and Q of the
+/// last valid slot are bitwise those of the RayBatch. The P of one event follows from two slots.
+/// Without the request prt and q stay empty and everything else is bitwise the same.
 ///
 /// Units and frames as RayBatch: positions in mm and unit directions in global coordinates,
 /// OPL in mm, weight dimensionless (ADR 0021).
@@ -46,10 +47,13 @@ inline constexpr std::size_t kDefaultMaxRecordedRays = 10000;
 /// status (1 byte).
 inline constexpr std::size_t kRecordedBytesPerSlot = 8 * sizeof(double) + 1;
 
-/// Additional bytes per ray and slot with RayPaths::polarization: P (9 complex) and Q (9 real),
-/// 216 bytes (ADR 0034, point 3).
-inline constexpr std::size_t kRecordedPolarizationBytesPerSlot =
-    9 * sizeof(math::Complex) + 9 * sizeof(double);
+/// Additional bytes per ray and slot with RayPaths::polarization: P, 9 complex values (ADR 0034,
+/// point 3).
+inline constexpr std::size_t kRecordedPrtBytesPerSlot = 9 * sizeof(math::Complex);
+
+/// Additional bytes per ray and slot for Q, 9 real values, if the batch also carries Q
+/// (RayBatch::enable_q(); ADR 0034, addendum #207).
+inline constexpr std::size_t kRecordedQBytesPerSlot = 9 * sizeof(double);
 
 /// Recorded path states of selected rays of a RayBatch (see the file comment).
 struct RayPaths {
@@ -66,7 +70,8 @@ struct RayPaths {
   /// Request to record P and Q per slot, set by the caller before the trace; kept by it.
   bool polarization = false;
   std::vector<math::Complex> prt;  ///< P per slot (RayBatch::prt), only with `polarization`
-  std::vector<double> q;           ///< Q per slot (RayBatch::q), only with `polarization`
+  /// Q per slot (RayBatch::q), only with `polarization` and a batch with RayBatch::has_q()
+  std::vector<double> q;
 
   /// Number of recorded rays.
   [[nodiscard]] std::size_t ray_count() const noexcept { return ray_indices.size(); }
@@ -97,7 +102,7 @@ struct RayPaths {
   }
 
   /// Accumulated Q of recorded ray r in slot s (global; ADR 0034, point 1).
-  /// @pre polarization was set for the trace (q is not empty)
+  /// @pre polarization was set and the batch had Q (q is not empty)
   [[nodiscard]] math::Mat3 q_at(std::size_t r, std::size_t s) const {
     const std::size_t i = (r * slots + s) * 9;
     math::Mat3 m;

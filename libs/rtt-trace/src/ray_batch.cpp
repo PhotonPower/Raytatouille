@@ -21,7 +21,7 @@ void RayBatch::resize(std::size_t size) {
   for (std::size_t k = 0; k < prt_.size(); ++k) {
     const bool diagonal = k % 4 == 0;  // row-major indices 0, 4, 8
     prt_[k].resize(size, diagonal ? math::Complex(1.0) : math::Complex(0.0));
-    q_[k].resize(size, diagonal ? 1.0 : 0.0);
+    if (q_enabled_) q_[k].resize(size, diagonal ? 1.0 : 0.0);
   }
   weight_.resize(size, 1.0);
   status_.resize(size, RayStatus::Alive);
@@ -65,6 +65,14 @@ void RayBatch::set_prt_matrix(std::size_t i, const math::CMat3& p) {
   for (int r = 0; r < 3; ++r) {
     for (int c = 0; c < 3; ++c) prt(r, c)[i] = p(r, c);
   }
+}
+
+void RayBatch::enable_q() {
+  if (q_enabled_) return;
+  for (std::size_t k = 0; k < q_.size(); ++k) {
+    q_[k].assign(size(), k % 4 == 0 ? 1.0 : 0.0);  // identity: row-major indices 0, 4, 8
+  }
+  q_enabled_ = true;
 }
 
 std::span<double> RayBatch::q(int row, int col) noexcept {

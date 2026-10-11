@@ -74,12 +74,13 @@ class Record {
     paths_.weight[i] = state.weight;
     paths_.status[i] = state.status;
     if (paths_.polarization) {
-      // Row-major 3x3 blocks (ray_paths.hpp; ADR 0034, point 3).
+      // Row-major 3x3 blocks (ray_paths.hpp; ADR 0034, point 3); Q only if the batch has it.
+      const bool with_q = !paths_.q.empty();
       for (int row = 0; row < 3; ++row) {
         for (int col = 0; col < 3; ++col) {
           const std::size_t k = 9 * i + static_cast<std::size_t>(3 * row + col);
           paths_.prt[k] = state.prt(row, col);
-          paths_.q[k] = state.q(row, col);
+          if (with_q) paths_.q[k] = state.q(row, col);
         }
       }
     }
@@ -133,6 +134,8 @@ TraceStats trace_rays(const compile::CompiledSystem& system,
     return m;
   };
 
+  // Q only on request (ADR 0034, addendum #207): only a batch with enable_q() carries it.
+  const bool with_q = rays.has_q();
   // Rays are independent; every ray is written by exactly one task, so the result does not
   // depend on the partitioning (ADR 0004).
   const auto trace_range = [&](const oneapi::tbb::blocked_range<std::size_t>& range) {
@@ -144,7 +147,7 @@ TraceStats trace_rays(const compile::CompiledSystem& system,
       ray.status = rays.status()[i];
       ray.last_surface = rays.last_surface()[i];
       ray.prt = rays.prt_matrix(i);
-      ray.q = rays.q_matrix(i);
+      if (with_q) ray.q = rays.q_matrix(i);
       ray.weight = rays.weight()[i];
       // Reading rule (ADR 0026, point 3): wave counts only inside a crystal (mode_index > 0);
       // otherwise wave := dir, so that a batch which sets only dir starts correctly.
@@ -173,7 +176,7 @@ TraceStats trace_rays(const compile::CompiledSystem& system,
       rays.status()[i] = ray.status;
       rays.last_surface()[i] = ray.last_surface;
       rays.set_prt_matrix(i, ray.prt);
-      rays.set_q_matrix(i, ray.q);
+      if (with_q) rays.set_q_matrix(i, ray.q);
       rays.weight()[i] = ray.weight;
       rays.wave_x()[i] = ray.wave.x();
       rays.wave_y()[i] = ray.wave.y();
@@ -241,7 +244,8 @@ TraceStats SequentialTracer::trace(const compile::CompiledSystem& system,
         "rays");
   }
   const std::size_t bytes_per_slot =
-      kRecordedBytesPerSlot + (paths.polarization ? kRecordedPolarizationBytesPerSlot : 0);
+      kRecordedBytesPerSlot + (paths.polarization ? kRecordedPrtBytesPerSlot : 0) +
+      (paths.polarization && rays.has_q() ? kRecordedQBytesPerSlot : 0);
   if (!record_rays) {
     if (n > max_recorded_rays) {
       throw std::invalid_argument(
@@ -289,7 +293,7 @@ TraceStats SequentialTracer::trace(const compile::CompiledSystem& system,
   result.polarization = paths.polarization;
   if (result.polarization) {
     result.prt.assign(recorded * slots * 9, math::Complex(nan, nan));
-    result.q.assign(recorded * slots * 9, nan);
+    if (rays.has_q()) result.q.assign(recorded * slots * 9, nan);
   }
   const TraceStats stats = trace_rays(system, path, rays, Record(result, row));
   paths = std::move(result);
