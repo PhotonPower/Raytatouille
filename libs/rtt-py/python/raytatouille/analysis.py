@@ -99,6 +99,7 @@ from ._core import (
     SpotDiagram,
     SpotStatistics,
     SystemReport,
+    ThroughFocus,
     ZernikeFit,
 )
 from ._util import SystemLike, chromatic_pair, compiled
@@ -115,7 +116,6 @@ from .trace import (
     RandomPupil,
     RayBatch,
     SinglePupilPoint,
-    ThroughFocus,
 )
 
 __all__ = [

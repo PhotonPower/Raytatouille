@@ -108,24 +108,24 @@ using Wavelengths = std::optional<std::vector<std::uint16_t>>;
 }  // namespace
 
 void bind_psf(nb::module_& m) {
-  auto wavelengths = columns<PsfWavelengths>(
+  auto wavelength_columns = columns<PsfWavelengths>(
       m, "PsfWavelengths",
       "The wavelengths of a PSF, MTF or encircled energy, one entry each; read-only NumPy "
       "copies.");
   column<std::uint16_t>(
-      wavelengths, "wavelength", [](const PsfWavelength& w) { return w.wavelength; },
+      wavelength_columns, "wavelength", [](const PsfWavelength& w) { return w.wavelength; },
       "Index into the system wavelengths (copy).");
   column<double>(
-      wavelengths, "weight", [](const PsfWavelength& w) { return w.weight; },
+      wavelength_columns, "weight", [](const PsfWavelength& w) { return w.weight; },
       "Model weight, normalised to sum 1 over the chosen wavelengths (copy).");
   column<double>(
-      wavelengths, "energy", [](const PsfWavelength& w) { return w.energy; },
+      wavelength_columns, "energy", [](const PsfWavelength& w) { return w.energy; },
       "E = sum f A^2 of its pupil function (copy).");
   column<std::int32_t>(
-      wavelengths, "length", [](const PsfWavelength& w) { return w.length; },
+      wavelength_columns, "length", [](const PsfWavelength& w) { return w.length; },
       "FFT length L_i (PSF) or 2 N (MTF, encircled energy) (copy).");
   column<double>(
-      wavelengths, "outside_field", [](const PsfWavelength& w) { return w.outside_field; },
+      wavelength_columns, "outside_field", [](const PsfWavelength& w) { return w.outside_field; },
       "PSF: fraction of E outside the reference field (> 0 only for a longer wavelength); 0 "
       "otherwise (copy).");
 

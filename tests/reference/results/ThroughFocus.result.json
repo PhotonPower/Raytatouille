@@ -1,0 +1,55 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.12",
+ "type": "ThroughFocus",
+ "data": {
+  "field": 0,
+  "wavelength": 1,
+  "shifts": {
+   "dtype": "float64",
+   "shape": [
+    2
+   ],
+   "values": [
+    0.0,
+    0.1
+   ]
+  },
+  "strehl": {
+   "dtype": "float64",
+   "shape": [
+    2
+   ],
+   "values": [
+    0.18678764795126995,
+    0.44820147784257375
+   ]
+  },
+  "arrived_fraction": {
+   "dtype": "float64",
+   "shape": [
+    2
+   ],
+   "values": [
+    1.0,
+    1.0
+   ]
+  },
+  "losses": {
+   "launched": 36,
+   "by_status": [
+    36,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "worst_surface": null,
+   "worst_surface_count": 0
+  },
+  "warnings": []
+ }
+}
