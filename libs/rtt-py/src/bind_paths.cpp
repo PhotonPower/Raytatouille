@@ -1,6 +1,6 @@
-// Path evaluation (#122) and ghost ranking (#124) from Python (#133): the result classes and the
-// functions on a CompiledSystem or GhostSystem. raytatouille.analysis wraps the functions
-// (System or CompiledSystem, sampling shorthand, warnings).
+// Path evaluation (#122), interferogram (#210) and ghost ranking (#124) from Python (#133): the
+// result classes and the functions on a CompiledSystem or GhostSystem. raytatouille.analysis wraps
+// the functions (System or CompiledSystem, sampling shorthand, warnings).
 
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
@@ -38,6 +38,13 @@ struct OplDifferencePoints {
 struct GhostEntries {
   std::vector<analysis::GhostEntry> points;
 };
+struct InterferogramPoints {
+  std::vector<analysis::InterferogramPoint> points;
+};
+
+[[nodiscard]] std::uint8_t arrival_value(analysis::InterferogramArrival arrival) {
+  return static_cast<std::uint8_t>(arrival);
+}
 
 /// Path options of the convenience form (sampling, aiming) and of both forms (warning
 /// threshold).
@@ -141,6 +148,90 @@ void bind_paths(nb::module_& m) {
       .def_ro("losses_a", &PathOplDifference::losses_a, "Launched rays on path a by final status.")
       .def_ro("losses_b", &PathOplDifference::losses_b, "Launched rays on path b by final status.")
       .def_ro("warnings", &PathOplDifference::warnings,
+              "Warnings of both paths, path a first (ADR 0023); raytatouille.analysis also "
+              "issues them as RaytatouilleWarning.");
+
+  nb::enum_<InterferogramArrival>(
+      m, "InterferogramArrival", nb::is_arithmetic(),
+      "Which of the two paths of an interferogram a start ray arrived on (#210); "
+      "InterferogramPoints.arrival holds these values as uint8.")
+      .value("BOTH", InterferogramArrival::Both, "arrived on a and b: the point interferes")
+      .value("ONLY_A", InterferogramArrival::OnlyA, "arrived on a only: intensity w_a")
+      .value("ONLY_B", InterferogramArrival::OnlyB,
+             "arrived on b only: intensity w_b, x and y are the hit point of b")
+      .value("NONE", InterferogramArrival::None, "arrived on neither: intensity 0, x = y = 0");
+
+  auto interferogram_points = columns<InterferogramPoints>(
+      m, "InterferogramPoints",
+      "One entry per launched ray of an interferogram, in batch order; read-only NumPy copies. "
+      "delta, waves, phase, fringe and shear are 0 unless arrival is BOTH.");
+  column<double>(
+      interferogram_points, "px", [](const InterferogramPoint& p) { return p.px; },
+      "Normalised pupil x of the start ray (copy).");
+  column<double>(
+      interferogram_points, "py", [](const InterferogramPoint& p) { return p.py; },
+      "Normalised pupil y of the start ray (copy).");
+  column<double>(
+      interferogram_points, "x", [](const InterferogramPoint& p) { return p.x; },
+      "Hit point in the local coordinates of the image surface, mm: of path a, of path b for "
+      "ONLY_B, 0 for NONE (copy).");
+  column<double>(
+      interferogram_points, "y", [](const InterferogramPoint& p) { return p.y; },
+      "Hit point, local y of the image surface, mm; as x (copy).");
+  column<double>(
+      interferogram_points, "delta", [](const InterferogramPoint& p) { return p.delta; },
+      "OPL_b(x_a) - OPL_a(x_a), mm, with the wave of b carried to the hit of a (copy).");
+  column<double>(
+      interferogram_points, "waves", [](const InterferogramPoint& p) { return p.waves; },
+      "delta / lambda in waves at the vacuum wavelength of the ray (copy).");
+  column<double>(
+      interferogram_points, "phase", [](const InterferogramPoint& p) { return p.phase; },
+      "2 pi delta / lambda, rad, unwrapped; positive where path b is longer (copy).");
+  column<double>(
+      interferogram_points, "fringe", [](const InterferogramPoint& p) { return p.fringe; },
+      "1 + cos(phase), in [0, 2] (copy).");
+  column<double>(
+      interferogram_points, "intensity", [](const InterferogramPoint& p) { return p.intensity; },
+      "w_a + w_b + 2 sqrt(w_a w_b) cos(phase) for BOTH, w_a for ONLY_A, w_b for ONLY_B, 0 for "
+      "NONE; final weights, dimensionless (copy).");
+  column<double>(
+      interferogram_points, "shear", [](const InterferogramPoint& p) { return p.shear; },
+      "|x_a - x_b|, distance of the two hit points, mm (copy).");
+  column<std::uint8_t>(
+      interferogram_points, "arrival",
+      [](const InterferogramPoint& p) { return arrival_value(p.arrival); },
+      "InterferogramArrival values as uint8 (copy).");
+  column<std::uint8_t>(
+      interferogram_points, "status_a",
+      [](const InterferogramPoint& p) { return status_value(p.status_a); },
+      "RayStatus values as uint8: final status on path a, ALIVE if it arrived (copy).");
+  column<std::uint8_t>(
+      interferogram_points, "status_b",
+      [](const InterferogramPoint& p) { return status_value(p.status_b); },
+      "RayStatus values as uint8: final status on path b, ALIVE if it arrived (copy).");
+
+  nb::class_<Interferogram>(
+      m, "Interferogram",
+      "Interferogram of two paths with the same image surface and image medium (#210, "
+      "rtt/analysis/paths.hpp): evaluated at the hits of path a, the wave of b carried there "
+      "along its rays (exact for plane waves); scalar two-beam interference with equal "
+      "polarisation, phase from the optical path only.")
+      .def_prop_ro(
+          "path_a", [](const Interferogram& g) { return g.path_a.index; },
+          "Reference path: the points lie on its hits.")
+      .def_prop_ro(
+          "path_b", [](const Interferogram& g) { return g.path_b.index; },
+          "Path whose wave is carried to the hits of a.")
+      .def_ro("image_surface", &Interferogram::image_surface,
+              "Common surface of the last events, index into surface_ids.")
+      .def_prop_ro(
+          "points", [](const Interferogram& g) { return InterferogramPoints{g.points}; },
+          "One entry per launched ray, in batch order.")
+      .def_ro("max_shear", &Interferogram::max_shear,
+              "Largest shear of the points with arrival BOTH, mm.")
+      .def_ro("losses_a", &Interferogram::losses_a, "Launched rays on path a by final status.")
+      .def_ro("losses_b", &Interferogram::losses_b, "Launched rays on path b by final status.")
+      .def_ro("warnings", &Interferogram::warnings,
               "Warnings of both paths, path a first (ADR 0023); raytatouille.analysis also "
               "issues them as RaytatouilleWarning.");
 
@@ -285,6 +376,42 @@ void bind_paths(nb::module_& m) {
       "aiming"_a, "lost_warning_fraction"_a, "threads"_a.none(), "cancel"_a.none(),
       "progress"_a.none(),
       "OPL_b - OPL_a for the rays of make_rays on path a (convenience form); wavelength None "
+      "means the reference.");
+  m.def(
+      "interferogram_rays",
+      [](const compile::CompiledSystem& s, const PathArg& path_a, const PathArg& path_b,
+         const trace::RayBatch& rays, double lost_warning_fraction, std::optional<int> threads,
+         const std::optional<trace::CancelToken>& cancel,
+         const std::optional<nb::callable>& progress) {
+        const trace::RunControl control = run_control(cancel, progress);
+        PathOptions options;
+        options.lost_warning_fraction = lost_warning_fraction;
+        const compile::PathId a = path_id(s, path_a);
+        const compile::PathId b = path_id(s, path_b);
+        return released(threads, [&] { return interferogram(s, a, b, rays, options, control); });
+      },
+      "system"_a, "path_a"_a, "path_b"_a, "rays"_a, "lost_warning_fraction"_a, "threads"_a.none(),
+      "cancel"_a.none(), "progress"_a.none(),
+      "Interferogram of path_a and path_b for the start rays `rays` (copied; main form).");
+  m.def(
+      "interferogram",
+      [](const compile::CompiledSystem& s, const PathArg& path_a, const PathArg& path_b,
+         std::uint16_t field, std::optional<std::uint16_t> wavelength,
+         const trace::PupilSampling& sampling, trace::Aiming aiming, double lost_warning_fraction,
+         std::optional<int> threads, const std::optional<trace::CancelToken>& cancel,
+         const std::optional<nb::callable>& progress) {
+        const trace::RunControl control = run_control(cancel, progress);
+        const PathOptions options = path_options(sampling, aiming, lost_warning_fraction);
+        const compile::PathId a = path_id(s, path_a);
+        const compile::PathId b = path_id(s, path_b);
+        const std::uint16_t wl = wavelength_index(s, wavelength);
+        return released(threads,
+                        [&] { return interferogram(s, a, b, field, wl, options, control); });
+      },
+      "system"_a, "path_a"_a, "path_b"_a, "field"_a, "wavelength"_a.none(), "sampling"_a,
+      "aiming"_a, "lost_warning_fraction"_a, "threads"_a.none(), "cancel"_a.none(),
+      "progress"_a.none(),
+      "Interferogram for the rays of make_rays on path a (convenience form); wavelength None "
       "means the reference.");
   m.def(
       "ghost_ranking",

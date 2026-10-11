@@ -54,13 +54,14 @@ __all__ = [
 ]
 
 FORMAT = "raytatouille-result"
-SCHEMA_VERSION = "0.1.9"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
+SCHEMA_VERSION = "0.1.10"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
 # 0.1.3: status Evanescent, status arrays one entry longer (#127); 0.1.4: PathTransmission,
 # PathOplDifference, GhostRanking (#133); 0.1.5: RayBatch wave_x/y/z, mode_index (#134);
 # 0.1.6: RaytraceReport, SystemReport, DimensionReport (#177);
 # 0.1.7: OptimResult, MeritEvaluation (#169)
 # 0.1.8: OpdPupilPoints, PupilCells, PupilFunction, ZernikeFit (#209)
 # 0.1.9: RayBatch q, RayPaths polarization, prt, q (#207)
+# 0.1.10: Interferogram (#210)
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a
@@ -121,6 +122,11 @@ _FIELDS: dict[str, tuple[str, ...]] = {
     "OplDifferencePoints": ("px", "py", "delta", "status"),
     "PathOplDifference": ("path_a", "path_b", "image_surface", "points", "chief", "losses_a",
                           "losses_b", "warnings"),
+    # interferogram (#210)
+    "InterferogramPoints": ("px", "py", "x", "y", "delta", "waves", "phase", "fringe",
+                            "intensity", "shear", "arrival", "status_a", "status_b"),
+    "Interferogram": ("path_a", "path_b", "image_surface", "points", "max_shear", "losses_a",
+                      "losses_b", "warnings"),
     "GhostEntries": ("path", "surface_j", "surface_i", "power", "relative_power", "rms_radius",
                      "rays_arrived", "relative_irradiance", "focus_offset",
                      "paraxial_blur_radius", "losses"),
@@ -186,7 +192,7 @@ TYPES: tuple[str, ...] = (
     "SpotDiagram", "RayFan", "OpdMap", "OpdFan", "OpdPupilPoints", "PupilCells", "PupilFunction",
     "ZernikeFit", "LongitudinalColour", "LateralColour",
     "DistortionSweep", "DistortionPoint", "FieldCurvatureSweep", "FieldCurvaturePoint",
-    "PathTransmission", "PathOplDifference", "GhostRanking",
+    "PathTransmission", "PathOplDifference", "Interferogram", "GhostRanking",
     "RaytraceReport", "SystemReport", "DimensionReport",
     "OptimResult", "MeritEvaluation",
     "FirstOrder", "Seidel", "Prescription", "TraceStats", "RayBatch", "RayPaths",

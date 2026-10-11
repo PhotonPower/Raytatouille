@@ -1,5 +1,6 @@
-"""Path evaluation (#122), ghost generator (#123) and ghost ranking (#124) from Python (#133):
-the two forms of the path functions, ghost names and events, warnings, errors and run control.
+"""Path evaluation (#122), interferogram (#210), ghost generator (#123) and ghost ranking (#124)
+from Python (#133): the two forms of the path functions, ghost names and events, warnings, errors
+and run control.
 Bitwise equality with C++ is in test_bitwise_paths.py; the reference values here are analytic.
 """
 
@@ -100,6 +101,94 @@ def test_lost_rays_warn_and_count(reference_dir: Path) -> None:
     lost = t.rays.status != int(RayStatus.ALIVE)
     assert np.all(t.rays.weight[lost] == 0.0)
     assert t.min == pytest.approx(0.25, abs=1e-12) and t.max == pytest.approx(0.25, abs=1e-12)
+
+
+def test_interferogram_of_a_tilted_michelson(reference_dir: Path) -> None:
+    # #210: test mirror at -89.94 deg, tilted by alpha = 0.06 deg. Both waves are plane, so
+    # delta is affine in the camera's local y with |slope| = sin(2 alpha) (VACUUM) and constant
+    # in x; fringe and intensity follow from the phase (BSc Optics, Eqs. (5.10)-(5.12);
+    # docs/quellen.md). OPL sums of about 200 mm: 1e-10 mm.
+    data = json.loads(rt.load(reference_dir / "m4" / "michelson_offset.rtt.json").to_json())
+    data["root"]["children"][3]["pose"]["rotation_deg"][0] = -89.94
+    tilted = rt.compile(rt.System.from_json(json.dumps(data)))
+    g = an.interferogram(tilted, "reference arm", "test arm", start=collimated_bundle())
+    p = g.points
+    assert isinstance(g, an.Interferogram) and len(p.delta) == len(collimated_bundle())
+    assert (g.path_a, g.path_b) == (tilted.find_path("reference arm"),
+                                    tilted.find_path("test arm"))
+    assert np.all(p.arrival == int(an.InterferogramArrival.BOTH))
+    assert np.all(p.status_a == int(RayStatus.ALIVE)) and np.all(p.status_b == int(RayStatus.ALIVE))
+    slope = math.sin(2.0 * math.radians(0.06))
+    k = int(np.argmax(np.abs(p.y - p.y[0])))  # p[0] is the axis ray
+    sign = math.copysign(1.0, (p.delta[k] - p.delta[0]) / (p.y[k] - p.y[0]))
+    np.testing.assert_allclose(p.delta - p.delta[0], sign * slope * (p.y - p.y[0]), rtol=0.0,
+                               atol=1e-10)
+    lam = 0.6328e-3
+    np.testing.assert_allclose(p.waves, p.delta / lam, rtol=1e-15, atol=0.0)
+    np.testing.assert_allclose(p.phase, 2.0 * math.pi * p.waves, rtol=1e-15, atol=0.0)
+    np.testing.assert_allclose(p.fringe, 1.0 + np.cos(p.phase), rtol=0.0, atol=1e-12)
+    np.testing.assert_allclose(p.intensity, 0.5 * (1.0 + np.cos(p.phase)), rtol=0.0, atol=1e-12)
+    assert np.all(p.shear > 0.1) and g.max_shear == p.shear.max()
+    # Content guard: fringes. delta varies only with the row (9 rows of the bundle).
+    assert np.unique(np.round(p.fringe, 6)).size > 5
+
+
+@pytest.mark.filterwarnings(
+    r"ignore:warning \[rays\.lost\]:raytatouille.errors.RaytatouilleWarning")
+def test_interferogram_arrival_forms_and_errors(reference_dir: Path,
+                                                michelson: rt.CompiledSystem) -> None:
+    # Test mirror of radius 1 mm: b loses most rays, a keeps them (ONLY_A, intensity w_a).
+    data = json.loads(rt.load(reference_dir / "m4" / "michelson_offset.rtt.json").to_json())
+    data["root"]["children"][3]["surfaces"][0]["aperture"] = {"type": "circular", "radius": 1.0}
+    small = rt.compile(rt.System.from_json(json.dumps(data)))
+    g = an.interferogram(small, "reference arm", "test arm", start=collimated_bundle())
+    p = g.points
+    only_a = p.arrival == int(an.InterferogramArrival.ONLY_A)
+    both = p.arrival == int(an.InterferogramArrival.BOTH)
+    assert only_a.any() and both.any() and (only_a | both).all()
+    assert np.all(p.status_b[only_a] == int(RayStatus.VIGNETTED))
+    np.testing.assert_allclose(p.intensity[only_a], 0.25, rtol=0.0, atol=1e-12)
+    for column in (p.delta, p.waves, p.phase, p.fringe, p.shear):
+        assert np.all(column[only_a] == 0.0)
+    np.testing.assert_allclose(p.delta[both], 15.0, rtol=0.0, atol=1e-10)
+    assert g.losses_b.count(RayStatus.VIGNETTED) == int(only_a.sum())
+    assert [w.code for w in g.warnings] == ["rays.lost"]
+
+    # Convenience form: a path with itself, delta 0 and fringe 2; the same as the main form.
+    singlet = rt.compile(rt.load(reference_dir / "m1" / "singlet_const.rtt.json"))
+    convenient = an.interferogram(singlet, "main", "main", field=1, rays="hexapolar:3")
+    start = rt.trace.make_rays(singlet, rt.trace.HexapolarPupil(rings=3), fields=[1])
+    main = an.interferogram(singlet, "main", "main", start=start)
+    assert convenient.points.intensity.tobytes() == main.points.intensity.tobytes()
+    arrived = main.points.arrival == int(an.InterferogramArrival.BOTH)
+    assert arrived.sum() > 10
+    assert np.all(main.points.delta == 0.0) and np.all(main.points.fringe[arrived] == 2.0)
+    with pytest.raises(ValueError, match="only apply without start rays"):
+        an.interferogram(michelson, 0, 1, start=collimated_bundle(), field=0)
+    with pytest.raises(rt.ParaxialError):
+        an.interferogram(michelson, "reference arm", "test arm")
+
+    # Errors: different image surfaces; the same surface in different image media.
+    with pytest.raises(ValueError):
+        an.interferogram(michelson, "reference arm", "test arm, return", start=collimated_bundle())
+    lens = json.loads(rt.load(reference_dir / "m1" / "singlet_const.rtt.json").to_json())
+    lens["paths"] += [
+        {"name": "into the lens", "events": [{"surface": "STO", "kind": "transmit"},
+                                             {"surface": "L1.S1", "kind": "refract"}]},
+        {"name": "reflected", "events": [{"surface": "STO", "kind": "transmit"},
+                                         {"surface": "L1.S1", "kind": "reflect"}]},
+    ]
+    two_media = rt.compile(rt.System.from_json(json.dumps(lens)))
+    ahead = rt.trace.RayBatch(1)
+    ahead.pos_z[0] = -1.0
+    with pytest.raises(ValueError, match="image medium"):
+        an.interferogram(two_media, "into the lens", "reflected", start=ahead)
+
+    token = rt.CancelToken()
+    token.cancel()
+    with pytest.raises(rt.Cancelled):
+        an.interferogram(michelson, "reference arm", "test arm", start=collimated_bundle(),
+                         cancel=token)
 
 
 def test_ghost_paths_of_the_plate(plate: rt.System) -> None:
