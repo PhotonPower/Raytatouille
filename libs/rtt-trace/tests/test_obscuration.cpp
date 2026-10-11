@@ -113,6 +113,33 @@ std::uint32_t stop_surface(const CompiledSystem& cs) {
   return 0;
 }
 
+/// Real aiming puts pupil point p on the stop at |p| R_s, within the aim tolerance
+/// kAimTolerance = 1e-9 mm (the aim residual is the distance to the target, which bounds the
+/// radial deviation): checked on the recorded path at three points of field 0.
+void check_stop_hits(const CompiledSystem& cs, double r_s) {
+  REQUIRE(r_s > 0.0);
+  const std::vector<PupilPoint> points = {{0.4, 0.0}, {0.0, -1.0}, {0.3, 0.6}};
+  const std::array<std::uint16_t, 1> fields{0};
+  RayBatch rays = rtt::trace::make_rays(cs, PathId{0}, fields, 0, PointListPupil{points});
+  rtt::trace::RayPaths paths;
+  [[maybe_unused]] const auto stats =
+      rtt::trace::SequentialTracer().trace(cs, PathId{0}, rays, paths);
+  const std::uint32_t stop = stop_surface(cs);
+  std::size_t slot = 0;
+  for (std::size_t k = 0; k < paths.event_surfaces.size(); ++k) {
+    if (paths.event_surfaces[k] == stop) slot = k + 1;  // slot k + 1 is after event k
+  }
+  REQUIRE(slot > 0);
+  for (std::size_t r = 0; r < points.size(); ++r) {
+    const rtt::math::Vec3 local =
+        cs.surfaces()[stop].to_local.apply_point(paths.position_at(r, slot));
+    const double expected = std::hypot(points[r].px, points[r].py) * r_s;
+    INFO("point " << r << ": stop radius " << std::hypot(local.x(), local.y()) << ", expected "
+                  << expected);
+    CHECK(std::abs(std::hypot(local.x(), local.y()) - expected) <= 1e-9 + 1e-12 * r_s);
+  }
+}
+
 }  // namespace
 
 TEST_CASE("RayBatch: virtual reference rays only on request", "[obscuration]") {
@@ -185,31 +212,16 @@ TEST_CASE("stop_radius: the stop radius of pupil coordinates |p| = 1", "[obscura
   // stop_size: |p| = 1 is the stop rim (radius 4 mm), whatever the lens before the stop.
   const CompiledSystem two = compiled(load("m1/two_lenses_stop_between"));
   CHECK(std::abs(rtt::trace::stop_radius(two, PathId{0}, 0) - 4.0) <= 1e-12 * 4.0);
-  // Cooke triplet (EPD 12.5 mm, stop between the lenses): real aiming puts pupil point p on the
-  // stop at |p| R_s, within the aim tolerance kAimTolerance = 1e-9 mm.
+  // Cooke triplet (EPD 12.5 mm, stop between the lenses).
   const CompiledSystem cooke = compiled_m2(load("m2/cooke_triplet"));
   const double r_s = rtt::trace::stop_radius(cooke, PathId{0}, 0);
   CHECK(std::abs(r_s - 6.25) > 1e-3);  // content guard: the stop is not the entrance pupil
-  const std::vector<PupilPoint> points = {{0.4, 0.0}, {0.0, -1.0}, {0.3, 0.6}};
-  const std::array<std::uint16_t, 1> fields{0};
-  RayBatch rays = rtt::trace::make_rays(cooke, PathId{0}, fields, 0, PointListPupil{points});
-  rtt::trace::RayPaths paths;
-  [[maybe_unused]] const auto stats =
-      rtt::trace::SequentialTracer().trace(cooke, PathId{0}, rays, paths);
-  const std::uint32_t stop = stop_surface(cooke);
-  std::size_t slot = 0;
-  for (std::size_t k = 0; k < paths.event_surfaces.size(); ++k) {
-    if (paths.event_surfaces[k] == stop) slot = k + 1;  // slot k + 1 is after event k
-  }
-  REQUIRE(slot > 0);
-  for (std::size_t r = 0; r < points.size(); ++r) {
-    const rtt::math::Vec3 local =
-        cooke.surfaces()[stop].to_local.apply_point(paths.position_at(r, slot));
-    const double expected = std::hypot(points[r].px, points[r].py) * r_s;
-    INFO("point " << r << ": stop radius " << std::hypot(local.x(), local.y()) << ", expected "
-                  << expected);
-    CHECK(std::abs(std::hypot(local.x(), local.y()) - expected) <= 1e-9 + 1e-12 * r_s);
-  }
+  check_stop_hits(cooke, r_s);
+  // Object-space telecentric singlet (object_na 0.05, stop in the rear focal plane): pupil
+  // coordinates are object-space slopes, R_s = u_m |s| with the stop height s per unit slope
+  // (review of #238).
+  const CompiledSystem tele = compiled(load("m1/telecentric_singlet"));
+  check_stop_hits(tele, rtt::trace::stop_radius(tele, PathId{0}, 0));
   CHECK_THROWS_AS(rtt::trace::stop_radius(cooke, PathId{7}, 0), std::invalid_argument);
   CHECK_THROWS_AS(rtt::trace::stop_radius(cooke, PathId{0}, 9), std::invalid_argument);
 }
