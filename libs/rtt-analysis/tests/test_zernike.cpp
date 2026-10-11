@@ -282,7 +282,9 @@ TEST_CASE("R_n^m within its rounding bound for n <= 20 (ADR 0032, point 6)", "[z
   }
   INFO("largest error / bound " << worst);
   CHECK(checked == 121u * 1001u);
-  CHECK(worst > 0.0);  // content guard: the cancellation at large n is visible
+  // Content guard: the bound is not arbitrarily loose. Measured (review of #230, same operations
+  // with exact fractions in Python): 0.427 at n = m = 5, rho = 0.507.
+  CHECK(worst > 0.1);
 }
 
 TEST_CASE("zernike fit recovers synthetic coefficients (j <= 37)", "[zernike][fit]") {

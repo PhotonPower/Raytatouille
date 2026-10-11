@@ -10,7 +10,9 @@
 ///   for even j and m != 0, sqrt(2 (n + 1)) R_n^m(rho) sin(m theta) for odd j and m != 0,
 ///   sqrt(n + 1) R_n^0(rho) for m = 0 (Eq. (3)); R_n^m after Eq. (4); j <-> (n, m) after Eqs. (8)
 ///   and (9); the mean of Z_j Z_k over the unit disk is delta_jk (Eq. (7)). j starts at 1
-///   (piston), the order of model::ZernikeSag.
+///   (piston), the Noll order of model::ZernikeSag. ZernikeSag is not evaluated yet (M8); when it
+///   is, it takes theta and the normalisation of zernike(), so that surface and wavefront
+///   coefficients agree.
 /// - rho = |p| <= 1 with the normalised pupil coordinates p = (px, py) (rim of the paraxial
 ///   entrance pupil); theta = atan2(py, px), from +x counter-clockwise (Niu/Tian, Sec. 2.1). Note:
 ///   trace::GaussPupil counts its arm angle from +y towards +x.
