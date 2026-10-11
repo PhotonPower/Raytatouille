@@ -423,18 +423,31 @@ TEST_CASE("generators G5: lost rays", "[optim][generators]") {
     }
   }
   SECTION("the chief ray is lost") {
-    // An annulus with inner radius 1 mm stops the chief ray only.
-    const CompiledSystem cs = compiled(singlet(rtt::model::CircularAperture{12.7, 1.0}));
+    // The outer rim of L1.S1 (radius 9 mm) clips the chief ray of field 2 (5 deg): with the stop
+    // 100 mm in front of the lens it meets L1.S1 about 105 tan(5 deg) = 9.2 mm off axis, while
+    // the rays below it pass. (A central obscuration no longer stops the chief ray: reference
+    // rays are virtual, ADR 0032, addendum #229.)
+    System s = singlet(rtt::model::CircularAperture{9.0, 0.0});
+    element(s, 0).pose.position[2] = -100.0;
+    const CompiledSystem cs = compiled(s);
+    const std::vector<std::uint16_t> field2{2};
+    SpotGenerator chief_spot = spot_generator(SpotReference::Chief);
+    chief_spot.fields = field2;
     GeneratorStats st;
-    const std::vector<double> chief = residuals(spot_generator(SpotReference::Chief), cs, st);
+    const std::vector<double> chief = residuals(chief_spot, cs, st);
     CHECK(std::isnan(chief[0]));
     CHECK(!st.undefined.empty());
-    const std::vector<double> centroid = residuals(spot_generator(SpotReference::Centroid), cs, st);
+    SpotGenerator centroid_spot = spot_generator(SpotReference::Centroid);
+    centroid_spot.fields = field2;
+    const std::vector<double> centroid = residuals(centroid_spot, cs, st);
     CHECK(st.undefined.empty());
-    CHECK(st.rays_lost == 0);
+    CHECK(st.rays_lost > 0);                 // the rim clips the upper part of the beam
+    CHECK(st.rays_lost < st.rays_launched);  // and the centroid stays defined
     for (const double v : centroid) CHECK(std::isfinite(v));
     // The wavefront needs the chief ray as reference: the analysis error of opd_points.
-    CHECK_THROWS_AS(residuals(wavefront_generator(), cs, st), rtt::analysis::AnalysisError);
+    WavefrontGenerator wave = wavefront_generator();
+    wave.fields = field2;
+    CHECK_THROWS_AS(residuals(wave, cs, st), rtt::analysis::AnalysisError);
   }
 }
 

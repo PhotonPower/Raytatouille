@@ -19,15 +19,18 @@ using detail::check_wavelength;
 using detail::image_surface;
 using detail::local_point;
 using detail::trace_rays;
+using detail::trace_reference_rays;
 
-/// Chief ray (pupil centre, reference wavelength) on the image surface.
+/// Chief ray (pupil centre, reference wavelength) on the image surface, a virtual reference ray
+/// (ADR 0032, addendum #229).
 Point2 chief_point(const CompiledSystem& system,
                    PathId path,
                    std::uint16_t field,
                    trace::Aiming aiming) {
   const std::uint32_t image = image_surface(system, path);
-  const trace::RayBatch rays = trace_rays(system, path, field, system.reference_wavelength(),
-                                          trace::SinglePupilPoint{0.0, 0.0}, aiming);
+  const trace::RayBatch rays =
+      trace_reference_rays(system, path, field, system.reference_wavelength(),
+                           trace::SinglePupilPoint{0.0, 0.0}, aiming);
   if (!arrived(rays, 0, image)) {
     detail::throw_lost(system, rays, 0, field,
                        "analysis: the chief ray of field " + std::to_string(field) +

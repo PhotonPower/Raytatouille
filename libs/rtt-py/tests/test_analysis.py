@@ -141,10 +141,11 @@ def test_physics_sanity(reference_dir: Path) -> None:
 
 
 def test_analysis_error(reference_dir: Path) -> None:
-    # An annular mirror blocks the pupil centre: the chief ray never reaches the image.
+    # The chief ray of a 35 deg field meets the mirror about 50 tan(35 deg) = 35 mm off axis,
+    # beyond its outer rim at 31 mm: it never reaches the image. (A central obscuration no longer
+    # stops it: reference rays are virtual, ADR 0032, addendum #229.)
     data = json.loads(rt.load(reference_dir / "m2" / "paraboloid_stop.rtt.json").to_json())
-    data["root"]["children"][1]["surfaces"][0]["aperture"] = {
-        "type": "circular", "radius": 31.0, "inner_radius": 5.0}
+    data["fields"]["points"] = [{"y": 35.0}]
     with pytest.raises(rt.AnalysisError) as info:
         an.spot(rt.System.from_json(json.dumps(data)))
     assert isinstance(info.value, rt.RaytatouilleError)

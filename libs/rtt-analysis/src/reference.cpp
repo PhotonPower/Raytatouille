@@ -63,8 +63,9 @@ Reference make_reference(const CompiledSystem& system,
   compile::require_stop(system, path);  // before any ray is traced (ADR 0022)
   const std::uint16_t ref = system.reference_wavelength();
   const std::uint32_t image = image_surface(system, path);
+  // A virtual reference ray (ADR 0032, addendum #229): a central obscuration does not stop it.
   const trace::RayBatch chief =
-      trace_rays(system, path, field, ref, trace::SinglePupilPoint{0.0, 0.0}, aiming);
+      trace_reference_rays(system, path, field, ref, trace::SinglePupilPoint{0.0, 0.0}, aiming);
   if (!arrived(chief, 0, image)) {
     throw_lost(system, chief, 0, field,
                "analysis: the chief ray of field " + std::to_string(field) +
@@ -122,8 +123,8 @@ trace::RayBatch chief_ray(const CompiledSystem& system,
                           std::uint16_t wavelength,
                           trace::Aiming aiming) {
   // Reference ray: chief ray of the same wavelength (W(0, 0) = 0, decided for #29).
-  trace::RayBatch chief =
-      trace_rays(system, path, field, wavelength, trace::SinglePupilPoint{0.0, 0.0}, aiming);
+  trace::RayBatch chief = trace_reference_rays(system, path, field, wavelength,
+                                               trace::SinglePupilPoint{0.0, 0.0}, aiming);
   if (!arrived(chief, 0, image_surface(system, path))) {
     throw_lost(system, chief, 0, field,
                "analysis: the chief ray of field " + std::to_string(field) +
@@ -185,7 +186,7 @@ std::vector<OpdPoint> points_against(const CompiledSystem& system,
     q.py = rays.pupil_y()[i];
     // Counted with the status of the point, so that losses agree with arrived and vignetted
     // (a ray on the image surface that misses the reference sphere is Vignetted there).
-    losses.add_ray(q.status, rays.last_surface()[i]);
+    losses.add_ray(q.status, rays.last_surface()[i], global_pos(rays, i));
     points.push_back(q);
   }
   return points;

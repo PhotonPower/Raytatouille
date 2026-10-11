@@ -19,6 +19,7 @@
 #include "rtt/analysis/spot.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/diagnostics/codes.hpp"
+#include "rtt/math/types.hpp"
 #include "rtt/trace/ray_batch.hpp"
 #include "rtt/trace/sequential.hpp"
 #include "rtt/trace/sources.hpp"
@@ -87,7 +88,26 @@ inline trace::RayBatch trace_rays(const CompiledSystem& system,
   return rays;
 }
 
-/// Traces one aimed ray through the whole path (batch of size 1).
+/// Traces reference rays (chief, parabasal and zone rays) of one field and wavelength as
+/// virtual rays (ADR 0032, addendum #229): the inner radii of circular apertures (central
+/// obscurations) are not tested, every outer rim is. Bitwise trace_rays() for every ray that
+/// meets no inner rim; in an obscured pupil the ray of the same system without the obscuration.
+inline trace::RayBatch trace_reference_rays(const CompiledSystem& system,
+                                            PathId path,
+                                            std::uint16_t field,
+                                            std::uint16_t wavelength,
+                                            const trace::PupilSampling& sampling,
+                                            trace::Aiming aiming) {
+  const std::uint16_t fields[] = {field};
+  trace::RayBatch rays = trace::make_rays(system, path, fields, wavelength, sampling, aiming);
+  rays.set_ignore_obscurations(true);
+  [[maybe_unused]] const auto stats = trace::SequentialTracer().trace(system, path, rays);
+  return rays;
+}
+
+/// Traces one aimed reference ray through the whole path (batch of size 1), as a virtual ray
+/// like trace_reference_rays(): the chief and zone rays of distortion, field curvature and the
+/// colour aberrations.
 inline trace::RayBatch trace_aimed(const CompiledSystem& system,
                                    PathId path,
                                    const trace::AimedRay& aimed,
@@ -101,6 +121,7 @@ inline trace::RayBatch trace_aimed(const CompiledSystem& system,
   rays.dir_z()[0] = aimed.ray.dir.z();
   rays.wl()[0] = wavelength;
   rays.status()[0] = aimed.ray.status;
+  rays.set_ignore_obscurations(true);  // a reference ray (ADR 0032, addendum #229)
   [[maybe_unused]] const auto stats = trace::SequentialTracer().trace(system, path, rays);
   return rays;
 }
@@ -120,8 +141,12 @@ class LossCounter {
       throw std::invalid_argument("analysis: lost_warning_fraction must lie in [0, 1]");
     }
     for (const auto& event : system.path(path).events) {
-      if (system.surfaces()[event.surface].element_kind == model::ElementKind::Stop) {
+      const compile::CompiledSurface& surface = system.surfaces()[event.surface];
+      if (surface.element_kind == model::ElementKind::Stop) {
         stop_ = event.surface;
+        const auto* circle =
+            surface.aperture ? std::get_if<model::CircularAperture>(&*surface.aperture) : nullptr;
+        if (circle != nullptr) stop_inner_radius_ = circle->inner_radius;
         break;
       }
     }
@@ -135,21 +160,23 @@ class LossCounter {
       if (s == trace::RayStatus::Alive && rays.last_surface()[i] != image) {
         s = trace::RayStatus::Vignetted;
       }
-      add_ray(s, rays.last_surface()[i]);
+      add_ray(s, rays.last_surface()[i], {rays.pos_x()[i], rays.pos_y()[i], rays.pos_z()[i]});
     }
   }
 
   /// Counts one ray with its final status as the analysis sees it (e.g. Vignetted for an OPD
-  /// ray that misses the reference sphere) and its RayBatch::last_surface.
-  void add_ray(trace::RayStatus s, std::uint32_t last_surface) {
-    ++launched_;
-    ++by_status_[static_cast<std::size_t>(s)];
-    if (s != trace::RayStatus::Alive && last_surface != trace::kNoSurface) {
-      ++lost_at_[last_surface];
-    }
-    if (s == trace::RayStatus::Vignetted && stop_ && last_surface == *stop_) {
-      ++vignetted_at_stop_;
-    }
+  /// ray that misses the reference sphere) and its RayBatch::last_surface. Without its position
+  /// a ray vignetted at the stop always counts for stop.clips_beam.
+  void add_ray(trace::RayStatus s, std::uint32_t last_surface) { count(s, last_surface, false); }
+
+  /// add_ray() with the ray's final global position, mm (a vignetted ray stands at its hit point
+  /// on the vignetting surface): a ray in the central obscuration of the stop (inside its inner
+  /// radius) does not count for stop.clips_beam, which reports clipping by the outer rim only
+  /// (ADR 0032, addendum #229).
+  void add_ray(trace::RayStatus s, std::uint32_t last_surface, const math::Vec3& position) {
+    const bool obscured = s == trace::RayStatus::Vignetted && stop_ && last_surface == *stop_ &&
+                          in_stop_obscuration(*stop_, position);
+    count(s, last_surface, obscured);
   }
 
   [[nodiscard]] RayLosses result() const {
@@ -170,7 +197,8 @@ class LossCounter {
   }
 
   /// "rays.lost" if the lost fraction exceeds the threshold, at the worst loss surface;
-  /// "stop.clips_beam" if rays ended Vignetted at the stop, at the stop surface (ADR 0023).
+  /// "stop.clips_beam" if rays ended Vignetted at the stop outside its inner radius, at the stop
+  /// surface (ADR 0023; ADR 0032, addendum #229).
   [[nodiscard]] std::vector<model::Diagnostic> warnings() const {
     std::vector<model::Diagnostic> out;
     const RayLosses l = result();
@@ -197,6 +225,24 @@ class LossCounter {
   }
 
  private:
+  void count(trace::RayStatus s, std::uint32_t last_surface, bool obscured) {
+    ++launched_;
+    ++by_status_[static_cast<std::size_t>(s)];
+    if (s != trace::RayStatus::Alive && last_surface != trace::kNoSurface) {
+      ++lost_at_[last_surface];
+    }
+    if (s == trace::RayStatus::Vignetted && stop_ && last_surface == *stop_ && !obscured) {
+      ++vignetted_at_stop_;
+    }
+  }
+
+  /// True if the global point lies inside the inner radius of the stop's circular aperture.
+  [[nodiscard]] bool in_stop_obscuration(std::uint32_t stop, const math::Vec3& position) const {
+    if (!(stop_inner_radius_ > 0.0)) return false;
+    const math::Vec3 local = system_->surfaces()[stop].to_local.apply_point(position);
+    return local.x() * local.x() + local.y() * local.y() < stop_inner_radius_ * stop_inner_radius_;
+  }
+
   static void add(std::vector<model::Diagnostic>& out,
                   diagnostics::DiagnosticCode code,
                   std::string location,
@@ -214,6 +260,7 @@ class LossCounter {
   const CompiledSystem* system_;
   double threshold_;
   std::optional<std::uint32_t> stop_;
+  double stop_inner_radius_ = 0.0;  ///< inner radius of the stop aperture, mm (0: none)
   std::size_t vignetted_at_stop_ = 0;
   std::size_t launched_ = 0;
   std::array<std::size_t, trace::kRayStatusCount> by_status_{};

@@ -11,6 +11,7 @@ end vignetted and the statuses and losses are compared too.
 from __future__ import annotations
 
 import json
+import warnings
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -201,12 +202,10 @@ CASES: dict[str, Case] = {
 }
 
 
-# The annular stop of the feature tour clips the collimated bundle on purpose (#135): only that
-# case filters stop.clips_beam, the other cases keep the warning as a guard.
-CLIPS_BEAM = pytest.mark.filterwarnings(
-    r"ignore:warning \[stop\.clips_beam\]:raytatouille.errors.RaytatouilleWarning")
-CASE_PARAMS = [pytest.param(name, marks=CLIPS_BEAM) if name.startswith("tour_") else name
-               for name in CASES]
+# The obscuration of the feature tour's annular stop loses rays on purpose (#135); since #229
+# that is no stop.clips_beam (the warning reports the outer rim only, ADR 0032, addendum #229),
+# so no case filters it and every case keeps the warning as a guard.
+CASE_PARAMS = list(CASES)
 
 
 @pytest.fixture(scope="module")
@@ -247,13 +246,16 @@ def test_the_cases_separate_status_and_values(compiled_systems: Systems) -> None
     assert cooke["path"].size == 15
     assert np.unique(cooke["relative_irradiance"]).size > 1
     # M4 (#135): six plate ghosts with different rho, a singlet ghost with a paraxial focus, and
-    # the feature tour with lost rays (annular stop) next to arrived ones.
+    # the feature tour with lost rays (in the obscuration of its annular stop) next to arrived
+    # ones, without stop.clips_beam: the obscuration does not clip the beam (#229).
     plates = CASES["ghost_plates_ranking"](compiled_systems, 1)
     assert plates["path"].size == 6 and np.unique(plates["relative_irradiance"]).size == 6
     singlet = CASES["ghost_singlet_ranking"](compiled_systems, 1)
     assert np.isfinite(singlet["focus_offset"]).all()
-    with pytest.warns(rt.errors.RaytatouilleWarning, match=r"stop\.clips_beam"):
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
         tour = CASES["tour_first_order"](compiled_systems, 1)
+    assert not [w for w in caught if "stop.clips_beam" in str(w.message)]
     assert {int(RayStatus.ALIVE), int(RayStatus.VIGNETTED)} <= set(np.unique(tour["status"]).tolist())
     assert np.unique(tour["weight"][tour["status"] == int(RayStatus.ALIVE)]).size > 1
 

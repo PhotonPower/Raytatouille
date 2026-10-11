@@ -437,10 +437,14 @@ JonesPupil jones_pupil(const CompiledSystem& system,
     bool chief_has_j = true;
     if (options.field_amplitude) {
       trace::RayBatch again = chief_start;
+      // The same virtual reference ray as `chief` (ADR 0032, addendum #229): a central
+      // obscuration does not take its J away.
+      again.set_ignore_obscurations(true);
       const std::optional<trace::RayPaths> chief_path =
           trace_points(system, path, again, true, trace::RunControl{});
-      chief_has_j =
-          chief_path && !std::isnan(field_factor(system, path, wavelength, *chief_path, 0));
+      // field_factor() reads the slots of an arrived ray only: after a loss they are NaN.
+      chief_has_j = chief_path && detail::arrived(again, 0, image) &&
+                    !std::isnan(field_factor(system, path, wavelength, *chief_path, 0));
     }
     const Vec3 k0_c = direction(chief_start, 0);
     const Vec3 k_c = direction(chief, 0);
