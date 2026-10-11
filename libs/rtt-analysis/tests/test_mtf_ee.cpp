@@ -177,7 +177,7 @@ bool has_code(const std::vector<rtt::model::Diagnostic>& warnings, const char* c
 
 }  // namespace
 
-TEST_CASE("mtf: diffraction-limited MTF of the paraboloid at N = 128 and 256", "[mtf]") {
+TEST_CASE("mtf: diffraction-limited MTF of the paraboloid at N = 256 and 512", "[mtf]") {
   // Samples l of N and 2 l of 2 N have the same x = l / N; x is taken from the result's
   // frequency, so a wrong frequency scale fails too.
   // Bound per curve (ADR 0033, point 10, addendum with #229): the acceptance is relative, so
@@ -187,24 +187,27 @@ TEST_CASE("mtf: diffraction-limited MTF of the paraboloid at N = 128 and 256", "
   // sup |X_N - X_2N| >= (2^p - 1) sup |X_2N - X| holds as long as the largest error falls like
   // N^-p (triangle inequality).
   const CompiledSystem cs = paraboloid(10.0);
-  const Mtf a = mtf_n(cs, 128);
-  const Mtf b = mtf_n(cs, 256);
+  // Grids 256 and 512 (coordinator, F3 plan; erratum to ADR 0033, points 9 and 10): on
+  // x in [0.1, 0.9] the per-curve bound is 1.07e-3 at 128 / 256 (maximum at x = 0.898, where the
+  // MTF is 0.037) and 2.5e-4 at 256 / 512 (prototype, 13 and f2).
+  const Mtf a = mtf_n(cs, 256);
+  const Mtf b = mtf_n(cs, 512);
   const double nu_c = 1.0 / airy_unit(pupil(cs, 16));
   int checked = 0;
   for (const MtfCurve* ca : {&a.tangential, &a.sagittal}) {
     const MtfCurve& cb = ca == &a.tangential ? b.tangential : b.sagittal;
-    REQUIRE(ca->frequency.size() == 129);
-    REQUIRE(ca->modulation.size() == 129);
-    REQUIRE(cb.frequency.size() == 257);
-    REQUIRE(cb.modulation.size() == 257);
+    REQUIRE(ca->frequency.size() == 257);
+    REQUIRE(ca->modulation.size() == 257);
+    REQUIRE(cb.frequency.size() == 513);
+    REQUIRE(cb.modulation.size() == 513);
     CHECK(same_bits(ca->modulation.front(), 1.0));  // C(0) := E
     CHECK(ca->modulation.back() == 0.0);            // no overlap at l = N
     CHECK(std::abs(ca->frequency.back() / nu_c - 1.0) <= 1e-12);
     CHECK(std::is_sorted(ca->frequency.begin(), ca->frequency.end()));
     double e_max = 0.0;
-    for (std::size_t l = 0; l <= 128; ++l) {
+    for (std::size_t l = 0; l <= 256; ++l) {
       const double x = ca->frequency[l] / nu_c;
-      CHECK(std::abs(x - static_cast<double>(l) / 128.0) <= 1e-12);
+      CHECK(std::abs(x - static_cast<double>(l) / 256.0) <= 1e-12);
       CHECK(std::abs(cb.frequency[2 * l] - ca->frequency[l]) <= 1e-12 * ca->frequency.back());
       if (x < 0.1 || x > 0.9) continue;
       e_max =
@@ -212,20 +215,20 @@ TEST_CASE("mtf: diffraction-limited MTF of the paraboloid at N = 128 and 256", "
     }
     INFO("e_max (relative) " << e_max);
     CHECK(e_max <= 1e-3);
-    for (std::size_t l = 0; l <= 128; ++l) {
+    for (std::size_t l = 0; l <= 256; ++l) {
       const double x = ca->frequency[l] / nu_c;
       if (x < 0.1 || x > 0.9) continue;
       const double expected = mtf_circle(x);
       const double xb = cb.modulation[2 * l];
-      INFO("x = " << x << ": N=256 " << xb << ", expected " << expected);
+      INFO("x = " << x << ": N=512 " << xb << ", expected " << expected);
       CHECK(std::abs(xb - expected) / expected <= e_max + 1e-12);
       ++checked;
     }
     // Content guard: the curve falls from near 1 to near 0 over the checked range.
-    CHECK(ca->modulation[13] > 0.8);    // x = 0.10
-    CHECK(ca->modulation[115] < 0.05);  // x = 0.90
+    CHECK(ca->modulation[26] > 0.8);    // x = 0.10
+    CHECK(ca->modulation[230] < 0.05);  // x = 0.90
   }
-  CHECK(checked > 200);
+  CHECK(checked > 400);
 }
 
 TEST_CASE("mtf: tangential equals sagittal on the axis, along e_y and e_x", "[mtf]") {
