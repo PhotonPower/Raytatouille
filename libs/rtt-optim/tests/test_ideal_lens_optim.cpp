@@ -35,20 +35,21 @@ bool has(const OptimResult& r, const std::string& code, const std::string& locat
 TEST_CASE("ideal lens: an evaluation at f = 0 is invalid, the run ends without exception",
           "[optim][ideal]") {
   // Start f = h mm, unbounded (theta = p): the Jacobian steps by h = cbrt(eps_f) max(|theta|, 1)
-  // (levenberg_marquardt.cpp); for theta = h < 1 that is h itself, so theta - h = 0 exactly. eps_f
-  // is the run option 2^-30, an exact cube: cbrt(2^-30) = 2^-10 exactly, independent of how a C
-  // library rounds cbrt. (With eps_f = kMeritPrecision = 1e-9 the test relied on the cbrt of the
-  // test and of the solver agreeing to the last bit; GCC 13 -O3 folds the constant in the test,
-  // correctly rounded, while glibc rounds at run time, and in CI the run never reached f = 0.)
+  // (levenberg_marquardt.cpp); for theta = h < 1 that is h itself, so theta - h = 0 exactly,
+  // provided the test has the same h as the solver to the last bit. Both therefore call cbrt at
+  // run time on the same value (volatile: no folding by the compiler, which rounds correctly while
+  // a C library need not; GCC 13 -O3 folded cbrt(kMeritPrecision) in CI). No exactness of cbrt is
+  // assumed: glibc's cbrt is not correctly rounded, even for an exact cube such as 2^-30.
   // The operand is a ray of a path that bypasses the lenses (STO -> IMG): every evaluation
   // compiles the whole system, the lens included, so only f = 0 fails.
   System s = rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/r2/ideal_lens.rtt.json");
   rtt::optim::OptimizeOptions options;
-  options.function_precision = std::ldexp(1.0, -30);
-  const double h = std::ldexp(1.0, -10);
-  // Precondition, checked loudly: the run-time cbrt of the solver gives h exactly.
-  volatile double eps_f = options.function_precision;  // not a constant for the compiler
-  REQUIRE(std::cbrt(static_cast<double>(eps_f)) * std::max(std::abs(h), 1.0) == h);
+  volatile double eps_f = rtt::optim::kMeritPrecision;  // not a constant for the compiler
+  options.function_precision = eps_f;
+  const double h = std::cbrt(static_cast<double>(eps_f));
+  // Precondition, checked loudly: theta - h_solver = 0 with the solver's formula.
+  REQUIRE(h < 1.0);
+  REQUIRE(h - h * std::max(std::abs(h), 1.0) == 0.0);
   Param f(h);
   f.variable = true;
   std::get<IdealLens>(std::get<Element>(s.root.children[1].value).surfaces[0].interaction)
