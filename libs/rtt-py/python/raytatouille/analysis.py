@@ -98,6 +98,7 @@ from ._core import (
     ReferenceSphere,
     SpotDiagram,
     SpotStatistics,
+    StokesPupil,
     SystemReport,
     ThroughFocus,
     ZernikeFit,
@@ -167,6 +168,7 @@ __all__ = [
     "ReferenceSphere",
     "SpotDiagram",
     "SpotStatistics",
+    "StokesPupil",
     "SystemReport",
     "ThroughFocus",
     "ZernikeFit",
@@ -200,6 +202,7 @@ __all__ = [
     "sampling",
     "seidel",
     "spot",
+    "stokes_pupil",
     "system_report",
     "zernike",
     "zernike_fit",
@@ -924,6 +927,22 @@ def jones_pupil(
         lost_warning_fraction, threads, cancel, progress,
     ))
 
+
+
+def stokes_pupil(jones: JonesPupil, e1: complex, e2: complex) -> StokesPupil:
+    """Stokes map of a Jones pupil (ADR 0034, point 6, addendum #211) for the input state
+    E_in = e1 x_in + e2 y_in, normalised to |E_in| = 1: per point s0 ... s3 of E_out = J E_in in
+    the output basis and the ellipse (orientation, ellipticity). Scale: the power of the polarized
+    input with every factor of the ray, S = weight / (||J||_F^2 / 2) Stokes(J E_in); s3 > 0 is
+    right circular ((i x_in + y_in) / sqrt(2) gives s3 = s0 in free space). NaN where the
+    Jones pupil has no J. The output is fully polarized; the unpolarized case is
+    ``jones.transmission``.
+
+    Raises ValueError for a zero or non-finite input state and for a Jones pupil with
+    ``field_amplitude`` (the power scale needs the power-normalised J). The warnings of the
+    Jones pupil are copied to ``warnings`` but not issued again.
+    """
+    return _core.stokes_pupil(jones, complex(e1), complex(e2))
 
 # ----------------------------------------------- path evaluation and ghosts (#122 to #124) ---
 

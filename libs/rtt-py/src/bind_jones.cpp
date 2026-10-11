@@ -18,6 +18,7 @@
 
 #include "bindings.hpp"
 #include "rtt/analysis/jones.hpp"
+#include "rtt/analysis/stokes.hpp"
 #include "rtt/math/types.hpp"
 #include "rtt/trace/run_control.hpp"
 
@@ -211,6 +212,69 @@ void bind_jones(nb::module_& m) {
       "system"_a, "path"_a, "start"_a, "chief"_a, "basis"_a, "remove_global_phase"_a,
       "field_amplitude"_a, "lost_warning_fraction"_a, "threads"_a.none(), "cancel"_a.none(),
       "progress"_a.none(), "Jones pupil of the start rays `start` with chief ray `chief`.");
+
+  nb::class_<analysis::StokesPupil>(
+      m, "StokesPupil",
+      "Stokes parameters of E_out = J E_in per point of a Jones pupil (ADR 0034, point 6, "
+      "addendum #211): power of the polarized input, s3 > 0 right circular; NaN without J.")
+      .def_prop_ro(
+          "path", [](const analysis::StokesPupil& p) { return p.path.index; }, "Path index.")
+      .def_ro("field", &analysis::StokesPupil::field)
+      .def_ro("wavelength", &analysis::StokesPupil::wavelength)
+      .def_ro("wavelength_um", &analysis::StokesPupil::wavelength_um)
+      .def_ro("e1", &analysis::StokesPupil::e1, "Input component along x_in, normalised.")
+      .def_ro("e2", &analysis::StokesPupil::e2, "Input component along y_in, normalised.")
+      .def_prop_ro(
+          "x_in", [](const analysis::StokesPupil& p) { return copy(p.x_in); },
+          nb::rv_policy::reference, "Input chief frame, x (global; copy).")
+      .def_prop_ro(
+          "y_in", [](const analysis::StokesPupil& p) { return copy(p.y_in); },
+          nb::rv_policy::reference, "Input chief frame, y (global; copy).")
+      .def_prop_ro(
+          "x_out", [](const analysis::StokesPupil& p) { return copy(p.x_out); },
+          nb::rv_policy::reference, "Output chief frame, x (global; copy).")
+      .def_prop_ro(
+          "y_out", [](const analysis::StokesPupil& p) { return copy(p.y_out); },
+          nb::rv_policy::reference, "Output chief frame, y (global; copy).")
+      .def_prop_ro(
+          "px", [](const analysis::StokesPupil& p) { return copy(p.px); }, nb::rv_policy::reference,
+          "Pupil coordinate x per point (copy).")
+      .def_prop_ro(
+          "py", [](const analysis::StokesPupil& p) { return copy(p.py); }, nb::rv_policy::reference,
+          "Pupil coordinate y per point (copy).")
+      .def_prop_ro(
+          "status",
+          [](const analysis::StokesPupil& p) {
+            return read_only_array<std::uint8_t>(
+                p.status, [](trace::RayStatus s) { return status_value(s); });
+          },
+          nb::rv_policy::reference, "RayStatus values as uint8 (copy).")
+      .def_prop_ro(
+          "s0", [](const analysis::StokesPupil& p) { return copy(p.s0); }, nb::rv_policy::reference,
+          "Power of the polarized input (copy).")
+      .def_prop_ro(
+          "s1", [](const analysis::StokesPupil& p) { return copy(p.s1); }, nb::rv_policy::reference,
+          "|a|^2 - |b|^2, scaled as s0 (copy).")
+      .def_prop_ro(
+          "s2", [](const analysis::StokesPupil& p) { return copy(p.s2); }, nb::rv_policy::reference,
+          "2 Re(a* b), scaled as s0 (copy).")
+      .def_prop_ro(
+          "s3", [](const analysis::StokesPupil& p) { return copy(p.s3); }, nb::rv_policy::reference,
+          "2 Im(a b*), > 0 right circular, scaled as s0 (copy).")
+      .def_prop_ro(
+          "orientation", [](const analysis::StokesPupil& p) { return copy(p.orientation); },
+          nb::rv_policy::reference, "Orientation psi in [0, pi) of the output ellipse, rad.")
+      .def_prop_ro(
+          "ellipticity", [](const analysis::StokesPupil& p) { return copy(p.ellipticity); },
+          nb::rv_policy::reference, "Ellipticity chi in [-pi/4, pi/4], > 0 right-handed, rad.")
+      .def_ro("warnings", &analysis::StokesPupil::warnings, "The warnings of the Jones pupil.");
+  // STUB for the red run of #211 B: replaced by the call in the next commit.
+  m.def(
+      "stokes_pupil",
+      [](const JonesPupil& /*jones*/, std::complex<double> /*e1*/, std::complex<double> /*e2*/) {
+        return analysis::StokesPupil{};
+      },
+      "jones"_a, "e1"_a, "e2"_a, "Stokes map of `jones` for the input state (e1, e2).");
 }
 
 }  // namespace rtt::py

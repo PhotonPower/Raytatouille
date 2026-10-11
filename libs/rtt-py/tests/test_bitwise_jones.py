@@ -65,6 +65,15 @@ def flatten_jones(p: an.JonesPupil) -> Arrays:
     }
 
 
+def flatten_stokes(p: an.StokesPupil) -> Arrays:
+    return {
+        "e_in": np.array([p.e1, p.e2], dtype=np.complex128),
+        "s0": np.array(p.s0), "s1": np.array(p.s1), "s2": np.array(p.s2), "s3": np.array(p.s3),
+        "orientation": np.array(p.orientation), "ellipticity": np.array(p.ellipticity),
+        "ints": u8([p.path, p.field, p.wavelength, len(p.warnings)]),
+    }
+
+
 def parallel_rays() -> rt.trace.RayBatch:
     """As parallel_rays() in jones_cases.cpp: 5 x 5 rays along +z from z = 0, chief index 12."""
     rays = rt.trace.RayBatch(25)
@@ -96,6 +105,8 @@ CASES: dict[str, Callable[[Systems, int], Arrays]] = {
     "periscope_jones": lambda s, t: flatten_jones(an.jones_pupil(
         s["periscope"], "periscope", start=parallel_rays(), chief=12, remove_global_phase=True,
         threads=t)),
+    "periscope_stokes": lambda s, t: flatten_stokes(an.stokes_pupil(an.jones_pupil(
+        s["periscope"], "periscope", start=parallel_rays(), chief=12, threads=t), 1.0, 1j)),
 }
 
 
@@ -122,7 +133,7 @@ def test_the_cases_have_content(compiled_systems: Systems) -> None:
     """The compared arrays carry content (AGENTS.md): arrived points, J that is not trivial and
     differs between the cases, diattenuation from the refractions and the metal mirrors."""
     alive = int(rt.trace.RayStatus.ALIVE)
-    cases = {name: CASES[name](compiled_systems, 1) for name in CASES}
+    cases = {name: CASES[name](compiled_systems, 1) for name in CASES if "stokes" not in name}
     for name, a in cases.items():
         assert np.count_nonzero(a["status"] == alive) > 20, name
         assert np.any(np.isfinite(a["j"])) and np.any(a["j"] != 0.0), name
@@ -133,3 +144,6 @@ def test_the_cases_have_content(compiled_systems: Systems) -> None:
     for other in ("singlet_jones_dipole", "singlet_jones_field"):
         assert cases[other]["j"].tobytes() != cases["singlet_jones"]["j"].tobytes(), other
     assert cases["singlet_jones_dipole"]["scalars"][0] != cases["singlet_jones"]["scalars"][0]
+    stokes = CASES["periscope_stokes"](compiled_systems, 1)
+    assert np.all(np.isfinite(stokes["s0"])) and np.min(stokes["s0"]) > 0.5
+    assert np.max(np.abs(np.abs(stokes["s3"]) - stokes["s0"])) > 1e-3  # elliptical, not circular

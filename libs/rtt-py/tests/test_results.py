@@ -115,6 +115,8 @@ PRODUCERS: dict[str, Callable[[rt.CompiledSystem, rt.MaterialLibrary], Any]] = {
         mapping_warning=1.0),
     "EncircledEnergy": lambda cs, lib: rt.analysis.encircled_energy(
         cs, [0.001, 0.002], wavelengths=[1], grid=6, undersampled_waves=1e6, mapping_warning=1.0),
+    "StokesPupil": lambda cs, lib: rt.analysis.stokes_pupil(
+        rt.analysis.jones_pupil(cs, field=1, rays="grid:5"), 1.0, 1j),
     "LongitudinalColour": lambda cs, lib: rt.analysis.longitudinal_colour(cs, pair=(0, 2)),
     "LateralColour": lambda cs, lib: rt.analysis.lateral_colour(cs, field=2),
     "DistortionSweep": lambda cs, lib: rt.analysis.distortion(cs, samples=3),
