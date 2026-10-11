@@ -234,7 +234,7 @@ Für `Refract`, `Ordinary` und `Extraordinary` hängt die Regel nur von der Art 
 | `wl` | `uint16_t` | Index der Systemwellenlänge |
 | `opl` | `double` | akkumulierter optischer Weg in mm |
 | `prt` | 9 × `std::complex<double>` | akkumulierte 3×3-Polarisations-Raytracing-Matrix P, leistungsnormiert |
-| `q` | 9 × `double` | akkumulierte geometrische Transformation Q (ADR 0034, Punkt 1, #207): Start I, Q k₀ = k, ab einem Kristall-Ereignis NaN |
+| `q` | 9 × `double` | akkumulierte geometrische Transformation Q (ADR 0034, Punkt 1, #207), **nur nach `enable_q()`** (Nachtrag #207: kostet etwa 10 % des Trace): Start I, Q k₀ = k, ab einem Kristall-Ereignis NaN |
 | `weight` | `double` | Leistung für eine unpolarisierte Quelle (Start 1) |
 | `status` | `uint8_t` (enum) | `Alive`, `Missed`, `Vignetted`, `Tir`, `NoConvergence`, `Absorbed`, `EventImpossible`, `Evanescent` (ADR 0025, angehängt; `kRayStatusCount` = 8) |
 | `field`, `pupil` | `uint16_t`, 2 × `double` | Herkunft für Analysen |
@@ -285,7 +285,7 @@ Prescription-Daten (#84, `rtt/paraxial/prescription.hpp`, Python `rt.paraxial.pr
 - **Recorder-Policy:** Die Strahlschleife ist ein Template über einen Recorder. Das normale `trace()` nutzt `NoRecord`, dessen Aufrufe leere Inline-Funktionen sind. Ohne Aufzeichnung ist der Hot Path damit derselbe, und die Ergebnisse sind bitgleich. Mit Aufzeichnung endet der Batch ebenfalls bitgleich.
 - **Layout:** Structure of Arrays in C-Reihenfolge, damit Python Views ohne Kopie bekommt. Es gibt S = Ereignisse + 1 Slots: Slot 0 ist der Startzustand, Slot k der Zustand nach Ereignis k − 1.
   - Je Strahl und Slot: Position, Richtung (global), OPL, `weight` und Status.
-  - **Polarisation auf Anforderung** (ADR 0034, Punkt 3, #207): Mit `RayPaths::polarization` = true vor dem Trace kommen je Slot das akkumulierte P und Q hinzu (`prt`, `q`, je 9 Werte zeilenweise, 216 Byte je Slot). Slot 0 ist der Stand des Eingangs-Batch (I bei Strahlen aus Quellen), P und Q im letzten gültigen Slot sind bitgleich mit dem `RayBatch`. P eines einzelnen Ereignisses folgt aus zwei Slots. Ohne Anforderung bleiben beide leer.
+  - **Polarisation auf Anforderung** (ADR 0034, Punkt 3, #207): Mit `RayPaths::polarization` = true vor dem Trace kommen je Slot das akkumulierte P hinzu (`prt`, 9 Werte zeilenweise, 144 Byte je Slot) und, wenn der Batch Q führt (`enable_q()`), auch Q (`q`, 72 Byte). Slot 0 ist der Stand des Eingangs-Batch (I bei Strahlen aus Quellen), P und Q im letzten gültigen Slot sind bitgleich mit dem `RayBatch`. P eines einzelnen Ereignisses folgt aus zwei Slots. Ohne Anforderung bleiben beide leer.
   - Je Strahl: `count` (gültige Slots) und `lost_at`. Je Pfad: `event_surfaces`.
   - Ein bei Ereignis j verlorener Strahl hat `count` = j + 2 und `lost_at` = j. Slot j + 1 ist der Zustand beim Verlust mit dessen Status, die späteren Slots sind NaN mit dem Verluststatus.
   - Ein durchgekommener Strahl hat `count` = S und `lost_at` = −1. Ein Strahl, der schon beim Start nicht Alive war, hat `count` = 1 und `lost_at` = −1; seine späteren Slots sind NaN mit dem Startstatus.
