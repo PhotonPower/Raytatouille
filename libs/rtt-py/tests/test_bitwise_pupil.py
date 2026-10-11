@@ -104,7 +104,7 @@ CASES: dict[str, Callable[[Systems, int], Arrays]] = {
     "cooke_refocus": lambda s, t: flatten_pupil(an.refocus(s["cooke"], cooke_pupil(s, t), -0.2)),
     "cooke_zernike": lambda s, t: flatten_zernike(an.zernike_fit(cooke_pupil(s, t))),
     "singlet_points": lambda s, t: flatten_points(an.opd_points(
-        s["singlet"], rt.trace.HexapolarPupil(4), 0, 1, 0, focus_shift=0.2, threads=t)),
+        s["singlet"], 0, 1, 0, rays=rt.trace.HexapolarPupil(4), focus_shift=0.2, threads=t)),
 }
 
 

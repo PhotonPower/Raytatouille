@@ -95,7 +95,7 @@ PRODUCERS: dict[str, Callable[[rt.CompiledSystem, rt.MaterialLibrary], Any]] = {
     "OpdMap": lambda cs, lib: rt.analysis.opd_map(cs, field=1, grid=5),
     "OpdFan": lambda cs, lib: rt.analysis.opd_fan(cs, field=1, points=5),
     # pupil function and Zernike fit (#209)
-    "OpdPupilPoints": lambda cs, lib: rt.analysis.opd_points(cs, "hexapolar:2", field=1),
+    "OpdPupilPoints": lambda cs, lib: rt.analysis.opd_points(cs, field=1, rays="hexapolar:2"),
     "PupilCells": lambda cs, lib: rt.analysis.pupil_cells(4),
     "PupilFunction": lambda cs, lib: rt.analysis.pupil_function(
         cs, field=1, grid=6, with_prt=True, mapping_warning=1.0),

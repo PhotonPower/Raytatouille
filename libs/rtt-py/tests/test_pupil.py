@@ -42,12 +42,12 @@ def test_pupil_cells_columns(reference_dir: Path) -> None:
 def test_opd_points_equals_opd_map_on_the_grid(reference_dir: Path) -> None:
     cs = singlet(reference_dir)
     m = an.opd_map(cs, field=1, grid=9)
-    p = an.opd_points(cs, rt.trace.GridPupil(9), field=1)
+    p = an.opd_points(cs, field=1, rays=rt.trace.GridPupil(9))
     assert p.points.w.tobytes() == m.points.w.tobytes()
     assert p.points.status.tobytes() == m.points.status.tobytes()
     assert np.any(p.points.w != 0.0)  # content guard
     # The shorthand string works too, and focus_shift moves the sphere along the chief ray.
-    q = an.opd_points(cs, "grid:9", field=1, focus_shift=0.5)
+    q = an.opd_points(cs, field=1, rays="grid:9", focus_shift=0.5)
     assert q.points.w.tobytes() != p.points.w.tobytes()
     assert abs(float(q.sphere.centre[2] - p.sphere.centre[2]) - 0.5) < 1e-3
     with pytest.raises(ValueError):

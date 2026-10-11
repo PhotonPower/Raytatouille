@@ -366,11 +366,11 @@ def opd_fan(
 
 def opd_points(
     system: SystemLike,
-    rays: str | PupilSampling,
     path: int | str = 0,
     field: int = 0,
     wavelength: int | None = None,
     *,
+    rays: str | PupilSampling = "hexapolar:6",
     aiming: Aiming = Aiming.REAL,
     focus_shift: float = 0.0,
     materials: MaterialLibrary | None = None,
