@@ -15,9 +15,11 @@
 //   about 2 e / (f a^2); for f >= 1e-2 and e <= 1e-6 f a^2-scale this is below 1e-4, so the
 //   centroid tolerance is 1e-4 for cells with f >= 1e-2.
 
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <numbers>
 #include <stdexcept>
 #include <vector>
@@ -124,9 +126,10 @@ TEST_CASE("pupil cells: order, full cells, empty cells and sample points", "[pup
 }
 
 TEST_CASE("pupil cells: symmetric under x -> -x, y -> -y and x <-> y", "[pupil][cells]") {
-  // The code computes mirrored cells with mirrored inputs and integrates along the coordinate
-  // nearer to the axis, so the mirror and swap images agree bit for bit; 1e-15 leaves room for
-  // the diagonal cells, which are their own swap images (px against py of the same cell).
+  // Exact: the code computes mirrored cells with mirrored inputs, integrates along the coordinate
+  // nearer to the axis (the swap image takes the same path with the roles exchanged) and gives a
+  // diagonal cell the mean of its two equal moments. "==" is the bit pattern up to the sign of
+  // zero (a centre on an axis is +0.0, its negation -0.0).
   for (const int n : {2, 3, 7, 64, 65}) {
     INFO("N = " << n);
     const PupilCells c = pupil_cells(n);
@@ -137,17 +140,46 @@ TEST_CASE("pupil cells: symmetric under x -> -x, y -> -y and x <-> y", "[pupil][
         const std::size_t mx = cell(n, n - 1 - i, k);
         const std::size_t my = cell(n, i, n - 1 - k);
         const std::size_t sw = cell(n, k, i);  // x <-> y
-        CHECK(std::abs(c.fraction[j] - c.fraction[mx]) <= 1e-15);
-        CHECK(std::abs(c.fraction[j] - c.fraction[my]) <= 1e-15);
-        CHECK(std::abs(c.fraction[j] - c.fraction[sw]) <= 1e-15);
-        CHECK(std::abs(c.px[j] + c.px[mx]) <= 1e-15);
-        CHECK(std::abs(c.py[j] - c.py[mx]) <= 1e-15);
-        CHECK(std::abs(c.py[j] + c.py[my]) <= 1e-15);
-        CHECK(std::abs(c.px[j] - c.px[my]) <= 1e-15);
-        CHECK(std::abs(c.px[j] - c.py[sw]) <= 1e-15);
-        CHECK(std::abs(c.py[j] - c.px[sw]) <= 1e-15);
+        CHECK(c.fraction[j] == c.fraction[mx]);
+        CHECK(c.fraction[j] == c.fraction[my]);
+        CHECK(c.fraction[j] == c.fraction[sw]);
+        CHECK(c.px[j] == -c.px[mx]);
+        CHECK(c.py[j] == c.py[mx]);
+        CHECK(c.py[j] == -c.py[my]);
+        CHECK(c.px[j] == c.px[my]);
+        CHECK(c.px[j] == c.py[sw]);
+        CHECK(c.py[j] == c.px[sw]);
       }
     }
+  }
+}
+
+TEST_CASE("pupil cells: the area sum for N = 256 and N = kMaxPupilGrid", "[pupil][cells]") {
+  // Review of #223 (f2). The sum is taken with Neumaier's compensated summation, so that its own
+  // rounding stays below u pi; what remains is the rounding of the fractions themselves: f = 1
+  // and f = 0 are exact, a boundary cell has an area error of a few u |P| <= u (antiderivative
+  // values below 1) before the division by a^2, so sum f a^2 is off by at most a few u per
+  // boundary cell. Bound: 8 u per boundary cell plus 4 u pi.
+  for (const int n : {256, kMaxPupilGrid}) {
+    INFO("N = " << n);
+    const PupilCells c = pupil_cells(n);
+    const double a = 2.0 / n;
+    double sum = 0.0;
+    double compensation = 0.0;
+    std::size_t boundary = 0;
+    for (const double f : c.fraction) {
+      const double term = f * a * a;
+      const double t = sum + term;
+      compensation += std::abs(sum) >= std::abs(term) ? (sum - t) + term : (term - t) + sum;
+      sum = t;
+      if (f > 0.0 && f < 1.0) ++boundary;
+    }
+    sum += compensation;
+    const double u = std::numeric_limits<double>::epsilon() / 2.0;
+    INFO("boundary cells " << boundary << ", error " << sum - std::numbers::pi);
+    CHECK(boundary > static_cast<std::size_t>(2 * n));  // content guard: about 4 N (4N - 4 here)
+    CHECK(std::abs(sum - std::numbers::pi) <=
+          8.0 * u * static_cast<double>(boundary) + 4.0 * u * std::numbers::pi);
   }
 }
 
