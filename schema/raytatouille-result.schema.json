@@ -37,6 +37,7 @@
         "FieldCurvaturePoint",
         "PathTransmission",
         "PathOplDifference",
+        "Interferogram",
         "GhostRanking",
         "RaytraceReport",
         "SystemReport",
@@ -262,6 +263,31 @@
               "image_surface",
               "points",
               "chief",
+              "losses_a",
+              "losses_b",
+              "warnings"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "Interferogram"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "path_a",
+              "path_b",
+              "image_surface",
+              "points",
+              "max_shear",
               "losses_a",
               "losses_b",
               "warnings"

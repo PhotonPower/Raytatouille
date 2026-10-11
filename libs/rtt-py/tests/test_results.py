@@ -111,6 +111,7 @@ PRODUCERS: dict[str, Callable[[rt.CompiledSystem, rt.MaterialLibrary], Any]] = {
                                                                       rays="hexapolar:2"),
     "PathOplDifference": lambda cs, lib: rt.analysis.opl_difference(cs, 0, 0, field=1,
                                                                     rays="fan_y:3"),
+    "Interferogram": lambda cs, lib: rt.analysis.interferogram(cs, 0, 0, field=1, rays="fan_y:3"),
     "GhostRanking": lambda cs, lib: rt.analysis.ghost_ranking(singlet_ghosts(), rays="hexapolar:2"),
     # reports (#177): a y fan of three rays at field 2
     "RaytraceReport": lambda cs, lib: rt.analysis.raytrace_report(
@@ -159,10 +160,10 @@ def test_round_trip_is_bit_identical(name: str, singlet: rt.CompiledSystem,
     envelope = json.loads(text, parse_constant=no_constants)  # standard JSON only
     assert list(envelope) == ["format", "schema_version", "type", "data"]
     assert envelope["format"] == "raytatouille-result"
-    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.9"
+    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.10"
     assert envelope["type"] == name
     loaded = rt.results.load_json(text)
-    assert (loaded.type, loaded.schema_version) == (name, "0.1.9")
+    assert (loaded.type, loaded.schema_version) == (name, "0.1.10")
     same(loaded.data, data)
 
 
@@ -380,7 +381,7 @@ def test_trace_stats_carry_the_evanescent_status(singlet: rt.CompiledSystem) -> 
     rays.status[1] = int(rt.trace.RayStatus.EVANESCENT)
     stats = rt.trace.trace(singlet, rays, path="main")
     loaded = rt.results.load_json(stats.to_json())
-    assert loaded.schema_version == rt.results.SCHEMA_VERSION == "0.1.9"
+    assert loaded.schema_version == rt.results.SCHEMA_VERSION == "0.1.10"
     counts = list(loaded.data["rays"])
     assert len(counts) == 8
     assert counts[int(rt.trace.RayStatus.EVANESCENT)] == 1
@@ -472,6 +473,24 @@ def test_older_files_read_without_q(singlet: rt.CompiledSystem) -> None:
         envelope["schema_version"] = "0.1.9"
         with pytest.raises(ValueError, match="misses " + ", ".join(keys)):
             rt.results.load_json(json.dumps(envelope))
+
+
+def test_two_digit_version_is_a_number(singlet: rt.CompiledSystem) -> None:
+    """0.1.10 (#210) is the first version with two digits in its last part: it is newer than
+    0.1.9 as a number, older as a string. A RayBatch file without q (added in 0.1.9) must fail at
+    0.1.10 as at 0.1.9, and only an older file (0.1.8, also 0.1.1) reads with the rule."""
+    g = rt.analysis.interferogram(singlet, 0, 0, field=1, rays="fan_y:3")
+    assert rt.results.load_json(g.to_json()).schema_version == "0.1.10"
+    rays, _ = traced_with_q(singlet)
+    envelope = json.loads(rays.to_json())
+    del envelope["data"]["q"]
+    for version in ("0.1.9", "0.1.10"):
+        envelope["schema_version"] = version
+        with pytest.raises(ValueError, match="misses q"):
+            rt.results.load_json(json.dumps(envelope))
+    for version in ("0.1.1", "0.1.8"):
+        envelope["schema_version"] = version
+        assert rt.results.load_json(json.dumps(envelope)).data["q"] is None
 
 
 def test_upgrade_over_two_versions(singlet: rt.CompiledSystem) -> None:

@@ -1,11 +1,12 @@
-"""Path evaluation (#122), ghost generator (#123) and ghost ranking (#124) from Python are
-bitwise equal to C++ (#133).
+"""Path evaluation (#122), interferogram (#210), ghost generator (#123) and ghost ranking (#124)
+from Python are bitwise equal to C++ (#133).
 
 rtt_py_reference (paths_cases.cpp) runs the same calls and writes every result as named .npy
 arrays; the flatten_* functions below build the same arrays from the Python results. Both sides
 run with 1 and with 4 threads. The Michelson cases use the start rays of the main form (a folded
 path, which make_rays cannot aim); "michelson_small" has a test mirror of radius 1 mm, so rays
-end vignetted and the statuses and losses are compared too.
+end vignetted and the statuses and losses are compared too; "michelson_tilt" has a test mirror
+tilted to -89.94 deg, so its interferogram has fringes and shear (#210).
 """
 
 from __future__ import annotations
@@ -74,6 +75,29 @@ def flatten_difference(d: an.PathOplDifference) -> Arrays:
     }
 
 
+def flatten_interferogram(g: an.Interferogram) -> Arrays:
+    p = g.points
+    return {
+        "px": f8(p.px),
+        "py": f8(p.py),
+        "x": f8(p.x),
+        "y": f8(p.y),
+        "delta": f8(p.delta),
+        "waves": f8(p.waves),
+        "phase": f8(p.phase),
+        "fringe": f8(p.fringe),
+        "intensity": f8(p.intensity),
+        "shear": f8(p.shear),
+        "arrival": u8(p.arrival),
+        "status_a": u8(p.status_a),
+        "status_b": u8(p.status_b),
+        "scalars": f8([g.max_shear]),
+        "ints": u8([g.path_a, g.path_b, g.image_surface, len(g.warnings)]),
+        "losses_a": u8(losses_values(g.losses_a)),
+        "losses_b": u8(losses_values(g.losses_b)),
+    }
+
+
 def flatten_ghosts(g: rt.GhostSystem) -> Arrays:
     return {
         "path": u8(g.ghosts.path),
@@ -130,6 +154,8 @@ def systems() -> Systems:
     """The systems of load_systems() in paths_cases.cpp."""
     data = json.loads(rt.load(REFERENCE_DIR / "m4" / "michelson_offset.rtt.json").to_json())
     data["root"]["children"][3]["surfaces"][0]["aperture"] = {"type": "circular", "radius": 1.0}
+    tilt = json.loads(rt.load(REFERENCE_DIR / "m4" / "michelson_offset.rtt.json").to_json())
+    tilt["root"]["children"][3]["pose"]["rotation_deg"][0] = -89.94  # test mirror (#210)
     schott = rt.MaterialLibrary()
     schott.add_catalog(CATALOG_DIR / "m2" / "schott.agf")
     schott_bk7 = rt.MaterialLibrary()  # N-BK7 of the feature tour
@@ -144,6 +170,7 @@ def systems() -> Systems:
     return {
         "michelson": rt.compile(rt.load(REFERENCE_DIR / "m4" / "michelson_offset.rtt.json")),
         "michelson_small": rt.compile(rt.System.from_json(json.dumps(data))),
+        "michelson_tilt": rt.compile(rt.System.from_json(json.dumps(tilt))),
         "singlet": rt.compile(rt.load(REFERENCE_DIR / "m1" / "singlet_const.rtt.json")),
         "plate": rt.compile_with_ghosts(rt.load(REFERENCE_DIR / "m3" / "fresnel_bk7.rtt.json"),
                                         "main"),
@@ -178,9 +205,18 @@ CASES: dict[str, Case] = {
     "michelson_small_opl": lambda s, t: flatten_difference(an.opl_difference(
         s["michelson_small"], "test arm", "reference arm", start=collimated_bundle(),
         threads=t)),
+    # Interferogram (#210)
+    "michelson_tilt_ifg": lambda s, t: flatten_interferogram(an.interferogram(
+        s["michelson_tilt"], "reference arm", "test arm", start=collimated_bundle(), threads=t)),
+    "michelson_small_ifg": lambda s, t: flatten_interferogram(an.interferogram(
+        s["michelson_small"], "reference arm", "test arm", start=collimated_bundle(),
+        threads=t)),
     "singlet_t": lambda s, t: flatten_transmission(an.path_transmission(
         s["singlet"], 0, field=1, wavelength=0, rays="hexapolar:6", threads=t)),
     "singlet_opl": lambda s, t: flatten_difference(an.opl_difference(
+        s["singlet"], 0, 0, field=2, wavelength=0, rays="grid:9", aiming=Aiming.PARAXIAL,
+        threads=t)),
+    "singlet_ifg": lambda s, t: flatten_interferogram(an.interferogram(
         s["singlet"], 0, 0, field=2, wavelength=0, rays="grid:9", aiming=Aiming.PARAXIAL,
         threads=t)),
     "plate_ghosts": lambda s, t: flatten_ghosts(s["plate"]),
@@ -243,6 +279,18 @@ def test_the_cases_separate_status_and_values(compiled_systems: Systems) -> None
     assert set(np.unique(opl["status"]).tolist()) == statuses
     # -15 mm (to rounding) where the ray arrived on both paths, 0 where it was lost.
     assert np.unique(np.round(opl["delta"], 9)).tolist() == [-15.0, 0.0]
+    # Interferogram (#210): fringes with shear on the tilted Michelson; on the small one rays
+    # on path a only, with the intensity w_a = 0.25, next to interfering ones.
+    tilt = CASES["michelson_tilt_ifg"](compiled_systems, 1)
+    assert (tilt["arrival"] == int(an.InterferogramArrival.BOTH)).all()
+    assert (tilt["shear"] > 0.1).all() and tilt["scalars"][0] == tilt["shear"].max()
+    assert np.unique(np.round(tilt["fringe"], 6)).size > 5  # varies by row only (9 rows)
+    ifg = CASES["michelson_small_ifg"](compiled_systems, 1)
+    only_a = ifg["arrival"] == int(an.InterferogramArrival.ONLY_A)
+    assert set(np.unique(ifg["arrival"]).tolist()) == {int(an.InterferogramArrival.BOTH),
+                                                        int(an.InterferogramArrival.ONLY_A)}
+    assert np.allclose(ifg["intensity"][only_a], 0.25, rtol=0.0, atol=1e-12)
+    assert (ifg["delta"][only_a] == 0.0).all()
     cooke = CASES["cooke_ranking"](compiled_systems, 1)
     assert cooke["path"].size == 15
     assert np.unique(cooke["relative_irradiance"]).size > 1

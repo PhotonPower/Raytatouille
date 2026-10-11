@@ -31,6 +31,7 @@ void bind_result_methods(nb::module_& m) {
                            "FieldCurvaturePoint",
                            "PathTransmission",
                            "PathOplDifference",
+                           "Interferogram",
                            "GhostRanking",
                            "RaytraceReport",
                            "SystemReport",

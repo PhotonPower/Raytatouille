@@ -1,6 +1,6 @@
-// Path evaluation (#122), ghost generator (#123) and ghost ranking (#124) cases of
-// rtt_py_reference (#133): the same calls as CASES in test_bitwise_paths.py, every result
-// written as named .npy arrays (the Python side flattens its results with the same names).
+// Path evaluation (#122), interferogram (#210), ghost generator (#123) and ghost ranking (#124)
+// cases of rtt_py_reference (#133): the same calls as CASES in test_bitwise_paths.py, every
+// result written as named .npy arrays (the Python side flattens its results with the same names).
 
 #include "paths_cases.hpp"
 
@@ -104,6 +104,27 @@ void write_difference(const Writer& w, const PathOplDifference& d) {
   w.u8("losses_b", losses_values(d.losses_b));
 }
 
+void write_interferogram(const Writer& w, const Interferogram& g) {
+  using P = InterferogramPoint;
+  w.f8_of("px", g.points, [](const P& p) { return p.px; });
+  w.f8_of("py", g.points, [](const P& p) { return p.py; });
+  w.f8_of("x", g.points, [](const P& p) { return p.x; });
+  w.f8_of("y", g.points, [](const P& p) { return p.y; });
+  w.f8_of("delta", g.points, [](const P& p) { return p.delta; });
+  w.f8_of("waves", g.points, [](const P& p) { return p.waves; });
+  w.f8_of("phase", g.points, [](const P& p) { return p.phase; });
+  w.f8_of("fringe", g.points, [](const P& p) { return p.fringe; });
+  w.f8_of("intensity", g.points, [](const P& p) { return p.intensity; });
+  w.f8_of("shear", g.points, [](const P& p) { return p.shear; });
+  w.u8_of("arrival", g.points, [](const P& p) { return p.arrival; });
+  w.u8_of("status_a", g.points, [](const P& p) { return p.status_a; });
+  w.u8_of("status_b", g.points, [](const P& p) { return p.status_b; });
+  w.f8("scalars", {g.max_shear});
+  w.u8("ints", {g.path_a.index, g.path_b.index, g.image_surface, g.warnings.size()});
+  w.u8("losses_a", losses_values(g.losses_a));
+  w.u8("losses_b", losses_values(g.losses_b));
+}
+
 void write_ghosts(const Writer& w, const compile::GhostSystem& g) {
   using compile::GhostPath;
   w.u8_of("path", g.ghosts, [](const GhostPath& p) { return p.path.index; });
@@ -164,6 +185,7 @@ RayBatch collimated_bundle() {
 struct Systems {
   CompiledSystem michelson;
   CompiledSystem michelson_small;  // test mirror radius 1 mm: most rays end vignetted at M2
+  CompiledSystem michelson_tilt;   // test mirror tilted to -89.94 deg about x: fringes (#210)
   CompiledSystem singlet;
   compile::GhostSystem plate;
   compile::GhostSystem cooke;
@@ -192,8 +214,11 @@ Systems load_systems(const fs::path& reference_dir, const fs::path& catalog_dir)
   const model::System michelson = io::load_system(reference_dir / "m4/michelson_offset.rtt.json");
   model::System small = michelson;
   element(small, 3).surfaces[0].aperture = model::CircularAperture{1.0, 0.0};  // test mirror
+  model::System tilt = michelson;
+  element(tilt, 3).pose.rotation_deg[0].value = -89.94;  // test mirror, 1.05 mrad tilt (#210)
   return {compile::compile(michelson, plain),
           compile::compile(small, plain),
+          compile::compile(tilt, plain),
           compile::compile(io::load_system(reference_dir / "m1/singlet_const.rtt.json"), plain),
           compile::compile_with_ghosts(io::load_system(reference_dir / "m3/fresnel_bk7.rtt.json"),
                                        "main", plain, no_coatings),
@@ -237,6 +262,13 @@ void run_paths_cases(const fs::path& reference_dir,
     write_difference(w("michelson_small_opl"),
                      opl_difference(s.michelson_small, path(s.michelson_small, "test arm"),
                                     path(s.michelson_small, "reference arm"), start));
+    // Interferogram (#210): fringes with shear, rays on path a only, and the convenience form.
+    write_interferogram(w("michelson_tilt_ifg"),
+                        interferogram(s.michelson_tilt, path(s.michelson_tilt, "reference arm"),
+                                      path(s.michelson_tilt, "test arm"), start));
+    write_interferogram(w("michelson_small_ifg"),
+                        interferogram(s.michelson_small, path(s.michelson_small, "reference arm"),
+                                      path(s.michelson_small, "test arm"), start));
     PathOptions hex6;
     hex6.sampling = trace::HexapolarPupil{6};
     write_transmission(w("singlet_t"), path_transmission(s.singlet, PathId{0}, 1, 0, hex6));
@@ -245,6 +277,8 @@ void run_paths_cases(const fs::path& reference_dir,
     grid9.aiming = trace::Aiming::Paraxial;
     write_difference(w("singlet_opl"),
                      opl_difference(s.singlet, PathId{0}, PathId{0}, 2, 0, grid9));
+    write_interferogram(w("singlet_ifg"),
+                        interferogram(s.singlet, PathId{0}, PathId{0}, 2, 0, grid9));
     write_ghosts(w("plate_ghosts"), s.plate);
     GhostRankingOptions plate_options;
     plate_options.sampling = trace::HexapolarPupil{4};

@@ -57,6 +57,9 @@ from ._core import (
     GhostEntries,
     GhostRanking,
     GhostSystem,
+    Interferogram,
+    InterferogramArrival,
+    InterferogramPoints,
     LateralColour,
     LongitudinalColour,
     MaterialLibrary,
@@ -112,6 +115,9 @@ __all__ = [
     "Foci",
     "GhostEntries",
     "GhostRanking",
+    "Interferogram",
+    "InterferogramArrival",
+    "InterferogramPoints",
     "LateralColour",
     "LongitudinalColour",
     "MAX_PUPIL_GRID",
@@ -145,6 +151,7 @@ __all__ = [
     "field_curvature",
     "field_curvature_at",
     "ghost_ranking",
+    "interferogram",
     "lateral_colour",
     "longitudinal_colour",
     "noll_from_nm",
@@ -233,7 +240,8 @@ def sampling(rays: str | PupilSampling) -> PupilSampling:
 
 
 _R = TypeVar("_R", SpotDiagram, RayFan, OpdMap, OpdFan, OpdPupilPoints, PupilFunction,
-              ZernikeFit, PathTransmission, PathOplDifference, GhostRanking, SystemReport)
+              ZernikeFit, PathTransmission, PathOplDifference, Interferogram, GhostRanking,
+              SystemReport)
 
 
 def _warn(result: _R) -> _R:
@@ -694,7 +702,7 @@ def opl_difference(
     progress: ProgressCallback | None = None,
 ) -> PathOplDifference:
     """Optical path difference OPL_b - OPL_a of two paths (#122) per start ray, in mm: a path
-    length on the image surface, not a wavefront (waves belong to an interferogram). Both
+    length on the image surface, not a wavefront (waves: interferogram(), #210). Both
     paths must end on the same surface (ValueError otherwise); the two rays of one start ray
     may land at different points. ``points.delta`` is 0 and ``points.status`` not ALIVE for a
     ray lost on either path; ``chief`` is the delta of the first start ray at pupil (0, 0)
@@ -720,6 +728,60 @@ def opl_difference(
             cs, path_a, path_b, start, lost_warning_fraction, threads, cancel, progress
         ))
     return _warn(_core.opl_difference(
+        cs, path_a, path_b, 0 if field is None else field, wavelength,
+        sampling("hexapolar:6" if rays is None else rays),
+        Aiming.REAL if aiming is None else aiming, lost_warning_fraction, threads, cancel,
+        progress,
+    ))
+
+
+def interferogram(
+    system: SystemLike,
+    path_a: int | str,
+    path_b: int | str,
+    *,
+    start: RayBatch | None = None,
+    field: int | None = None,
+    wavelength: int | None = None,
+    rays: str | PupilSampling | None = None,
+    aiming: Aiming | None = None,
+    materials: MaterialLibrary | None = None,
+    threads: int | None = None,
+    lost_warning_fraction: float = 0.5,
+    cancel: CancelToken | None = None,
+    progress: ProgressCallback | None = None,
+) -> Interferogram:
+    """Interferogram of two paths with the same image surface and image medium (#210).
+
+    Evaluated at the hit point x_a of each start ray on ``path_a``; the wave of ``path_b`` is
+    carried from its own hit x_b along its ray, OPL_b(x_a) = OPL_b(x_b) + n' d_b . (x_a - x_b):
+    exact for plane waves, the first order otherwise (error about n' s^2 / (2 R_b) for the
+    shear s across the ray, reported per point as ``points.shear`` and as ``max_shear``). Per
+    start ray: ``delta`` = OPL_b(x_a) - OPL_a(x_a) in mm, ``waves``, the unwrapped ``phase``
+    2 pi delta / lambda in rad, ``fringe`` = 1 + cos(phase) and ``intensity`` = w_a + w_b +
+    2 sqrt(w_a w_b) cos(phase) with the final weights: scalar two-beam interference with equal
+    polarisation; the phase is that of the optical path only (no phases of metal reflections
+    or coatings). ``points.arrival`` (InterferogramArrival) says which paths a ray arrived on;
+    for ONLY_A, ONLY_B and NONE the intensity is w_a, w_b or 0 and the other values are 0.
+
+    The two forms of path_transmission(): start rays (main form), e.g. for a Michelson::
+
+        g = rt.analysis.interferogram(compiled, "reference arm", "test arm", start=start)
+
+    or ``field``, ``wavelength``, ``rays`` and ``aiming`` for make_rays on ``path_a``
+    (convenience form; the same rays are traced on ``path_b``).
+
+    Raises as opl_difference(), and ValueError if the image medium of either path is a crystal
+    or the two image media differ. The warnings of both paths (path a first) are issued as
+    RaytatouilleWarning and stay in ``warnings``.
+    """
+    _start_form(start, field, rays, aiming, wavelength)
+    cs = compiled(system, materials)
+    if start is not None:
+        return _warn(_core.interferogram_rays(
+            cs, path_a, path_b, start, lost_warning_fraction, threads, cancel, progress
+        ))
+    return _warn(_core.interferogram(
         cs, path_a, path_b, 0 if field is None else field, wavelength,
         sampling("hexapolar:6" if rays is None else rays),
         Aiming.REAL if aiming is None else aiming, lost_warning_fraction, threads, cancel,
