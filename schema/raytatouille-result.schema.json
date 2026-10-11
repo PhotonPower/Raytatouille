@@ -25,6 +25,10 @@
         "RayFan",
         "OpdMap",
         "OpdFan",
+        "OpdPupilPoints",
+        "PupilCells",
+        "PupilFunction",
+        "ZernikeFit",
         "LongitudinalColour",
         "LateralColour",
         "DistortionSweep",
@@ -917,6 +921,119 @@
           "data": {
             "required": [
               "rays"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "OpdPupilPoints"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "field",
+              "wavelength",
+              "sphere",
+              "points",
+              "losses",
+              "warnings"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "PupilCells"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "grid",
+              "fraction",
+              "px",
+              "py"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "PupilFunction"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "path",
+              "field",
+              "wavelength",
+              "wavelength_um",
+              "reference_wavelength_um",
+              "grid",
+              "focus_shift",
+              "apodization",
+              "lost_warning_fraction",
+              "mapping_warning",
+              "sphere",
+              "fraction",
+              "px",
+              "py",
+              "amplitude",
+              "w",
+              "status",
+              "prt",
+              "mapping",
+              "arrived_fraction",
+              "losses",
+              "warnings"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ZernikeFit"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "path",
+              "field",
+              "wavelength",
+              "wavelength_um",
+              "reference_wavelength_um",
+              "coefficients",
+              "residual_rms",
+              "sigma",
+              "sigma_bf",
+              "strehl",
+              "cells",
+              "arrived_fraction",
+              "warnings"
             ]
           }
         }

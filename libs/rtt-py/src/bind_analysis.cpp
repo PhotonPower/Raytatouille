@@ -227,6 +227,21 @@ void bind_analysis(nb::module_& m) {
               "Warnings with codes: rays.lost above lost_warning_fraction, stop.clips_beam "
               "(ADR 0023); raytatouille.analysis also issues them as RaytatouilleWarning.");
 
+  nb::class_<OpdPupilPoints>(
+      m, "OpdPupilPoints",
+      "OPD at the points of an arbitrary pupil sampling (opd_points), in the order of the "
+      "sampling's points; no statistics.")
+      .def_ro("field", &OpdPupilPoints::field)
+      .def_ro("wavelength", &OpdPupilPoints::wavelength)
+      .def_ro("sphere", &OpdPupilPoints::sphere)
+      .def_prop_ro(
+          "points", [](const OpdPupilPoints& o) { return OpdPoints{o.points}; },
+          "One point per point of the sampling; check status before using w.")
+      .def_ro("losses", &OpdPupilPoints::losses, "Rays by final status, worst loss surface.")
+      .def_ro("warnings", &OpdPupilPoints::warnings,
+              "Warnings with codes: rays.lost above lost_warning_fraction, stop.clips_beam "
+              "(ADR 0023); raytatouille.analysis also issues them as RaytatouilleWarning.");
+
   nb::class_<OpdFan>(m, "OpdFan", "Tangential (px = 0) and sagittal (py = 0) OPD fans.")
       .def_ro("field", &OpdFan::field)
       .def_ro("wavelength", &OpdFan::wavelength)
@@ -538,33 +553,35 @@ void bind_analysis(nb::module_& m) {
       "opd_map",
       [](const compile::CompiledSystem& s, const PathArg& path, std::uint16_t field,
          std::optional<std::uint16_t> wavelength, int grid, trace::Aiming aiming,
-         double lost_warning_fraction, std::optional<int> threads,
+         double focus_shift, double lost_warning_fraction, std::optional<int> threads,
          const std::optional<trace::CancelToken>& cancel,
          const std::optional<nb::callable>& progress) {
         const trace::RunControl control = run_control(cancel, progress);
         OpdOptions options;
         options.grid = grid;
         options.aiming = aiming;
+        options.focus_shift = focus_shift;
         options.lost_warning_fraction = lost_warning_fraction;
         return released(threads, [&] {
           return analysis::opd_map(s, path_id(s, path), field, wavelength_index(s, wavelength),
                                    options, control);
         });
       },
-      "system"_a, "path"_a, "field"_a, "wavelength"_a.none(), "grid"_a, "aiming"_a,
+      "system"_a, "path"_a, "field"_a, "wavelength"_a.none(), "grid"_a, "aiming"_a, "focus_shift"_a,
       "lost_warning_fraction"_a, "threads"_a.none(), "cancel"_a.none(), "progress"_a.none(),
       "OPD map of `field`; wavelength None means the reference.");
   m.def(
       "opd_fan",
       [](const compile::CompiledSystem& s, const PathArg& path, std::uint16_t field,
          std::optional<std::uint16_t> wavelength, int points, trace::Aiming aiming,
-         double lost_warning_fraction, std::optional<int> threads,
+         double focus_shift, double lost_warning_fraction, std::optional<int> threads,
          const std::optional<trace::CancelToken>& cancel,
          const std::optional<nb::callable>& progress) {
         const trace::RunControl control = run_control(cancel, progress);
         OpdOptions options;
         options.fan_points = points;
         options.aiming = aiming;
+        options.focus_shift = focus_shift;
         options.lost_warning_fraction = lost_warning_fraction;
         return released(threads, [&] {
           return analysis::opd_fan(s, path_id(s, path), field, wavelength_index(s, wavelength),
@@ -572,8 +589,29 @@ void bind_analysis(nb::module_& m) {
         });
       },
       "system"_a, "path"_a, "field"_a, "wavelength"_a.none(), "points"_a, "aiming"_a,
-      "lost_warning_fraction"_a, "threads"_a.none(), "cancel"_a.none(), "progress"_a.none(),
-      "OPD fans of `field`; wavelength None means the reference.");
+      "focus_shift"_a, "lost_warning_fraction"_a, "threads"_a.none(), "cancel"_a.none(),
+      "progress"_a.none(), "OPD fans of `field`; wavelength None means the reference.");
+  m.def(
+      "opd_points",
+      [](const compile::CompiledSystem& s, const PathArg& path, std::uint16_t field,
+         std::optional<std::uint16_t> wavelength, const trace::PupilSampling& sampling,
+         trace::Aiming aiming, double focus_shift, double lost_warning_fraction,
+         std::optional<int> threads, const std::optional<trace::CancelToken>& cancel,
+         const std::optional<nb::callable>& progress) {
+        const trace::RunControl control = run_control(cancel, progress);
+        OpdOptions options;
+        options.aiming = aiming;
+        options.focus_shift = focus_shift;
+        options.lost_warning_fraction = lost_warning_fraction;
+        return released(threads, [&] {
+          return analysis::opd_points(s, path_id(s, path), field, wavelength_index(s, wavelength),
+                                      sampling, options, control);
+        });
+      },
+      "system"_a, "path"_a, "field"_a, "wavelength"_a.none(), "sampling"_a, "aiming"_a,
+      "focus_shift"_a, "lost_warning_fraction"_a, "threads"_a.none(), "cancel"_a.none(),
+      "progress"_a.none(),
+      "OPD of `field` at the points of `sampling`; wavelength None means the reference.");
   m.def(
       "longitudinal_colour",
       [](const compile::CompiledSystem& s, const PathArg& path,
