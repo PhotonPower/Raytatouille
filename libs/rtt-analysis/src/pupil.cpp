@@ -1,5 +1,6 @@
 #include "rtt/analysis/pupil.hpp"
 
+#include <Eigen/Geometry>
 #include <algorithm>
 #include <cmath>
 #include <complex>
