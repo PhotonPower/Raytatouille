@@ -75,7 +75,8 @@ analysis::JonesPupilOptions jones_options(JonesBasis basis,
 }  // namespace
 
 void bind_jones(nb::module_& m) {
-  nb::enum_<JonesBasis>(m, "JonesBasis", "Output basis of the Jones pupil (ADR 0034, point 5).")
+  nb::enum_<JonesBasis>(m, "JonesBasis", nb::is_arithmetic(),
+                        "Output basis of the Jones pupil (ADR 0034, point 5).")
       .value("DOUBLE_POLE", JonesBasis::DoublePole,
              "R(k_c -> k) (x'_c, y'_c), singular only at -k_c (default).")
       .value("DIPOLE", JonesBasis::Dipole, "Lam's dipole basis with the poles at +-y'_c.");
