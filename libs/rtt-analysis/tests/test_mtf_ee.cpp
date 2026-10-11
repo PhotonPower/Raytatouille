@@ -180,6 +180,12 @@ bool has_code(const std::vector<rtt::model::Diagnostic>& warnings, const char* c
 TEST_CASE("mtf: diffraction-limited MTF of the paraboloid at N = 128 and 256", "[mtf]") {
   // Samples l of N and 2 l of 2 N have the same x = l / N; x is taken from the result's
   // frequency, so a wrong frequency scale fails too.
+  // Bound per curve (ADR 0033, point 10, addendum with #229): the acceptance is relative, so
+  // e_max = max over x in [0.1, 0.9] of 2 |X_N - X_2N| / X(x) must stay below 1e-3, and every
+  // point satisfies |X_2N - X| / X <= e_max. Pointwise bounds fail where the discretisation error
+  // changes sign (the boundary cells change with N not smoothly); over the curve,
+  // sup |X_N - X_2N| >= (2^p - 1) sup |X_2N - X| holds as long as the largest error falls like
+  // N^-p (triangle inequality).
   const CompiledSystem cs = paraboloid(10.0);
   const Mtf a = mtf_n(cs, 128);
   const Mtf b = mtf_n(cs, 256);
@@ -195,18 +201,24 @@ TEST_CASE("mtf: diffraction-limited MTF of the paraboloid at N = 128 and 256", "
     CHECK(ca->modulation.back() == 0.0);            // no overlap at l = N
     CHECK(std::abs(ca->frequency.back() / nu_c - 1.0) <= 1e-12);
     CHECK(std::is_sorted(ca->frequency.begin(), ca->frequency.end()));
+    double e_max = 0.0;
     for (std::size_t l = 0; l <= 128; ++l) {
       const double x = ca->frequency[l] / nu_c;
       CHECK(std::abs(x - static_cast<double>(l) / 128.0) <= 1e-12);
       CHECK(std::abs(cb.frequency[2 * l] - ca->frequency[l]) <= 1e-12 * ca->frequency.back());
       if (x < 0.1 || x > 0.9) continue;
+      e_max =
+          std::max(e_max, 2.0 * std::abs(ca->modulation[l] - cb.modulation[2 * l]) / mtf_circle(x));
+    }
+    INFO("e_max (relative) " << e_max);
+    CHECK(e_max <= 1e-3);
+    for (std::size_t l = 0; l <= 128; ++l) {
+      const double x = ca->frequency[l] / nu_c;
+      if (x < 0.1 || x > 0.9) continue;
       const double expected = mtf_circle(x);
-      const double xa = ca->modulation[l];
       const double xb = cb.modulation[2 * l];
-      const double e = 2.0 * std::abs(xa - xb) + 1e-12;
-      INFO("x = " << x << ": N=128 " << xa << ", N=256 " << xb << ", expected " << expected);
-      CHECK(e <= 1e-3 * expected);
-      CHECK(std::abs(xb - expected) <= e);
+      INFO("x = " << x << ": N=256 " << xb << ", expected " << expected);
+      CHECK(std::abs(xb - expected) / expected <= e_max + 1e-12);
       ++checked;
     }
     // Content guard: the curve falls from near 1 to near 0 over the checked range.
@@ -315,13 +327,20 @@ TEST_CASE("encircled energy: 1 - J0^2 - J1^2 of the circular pupil at N = 64 and
   REQUIRE(a.energy.size() == radii.size());
   REQUIRE(b.energy.size() == radii.size());
   CHECK(a.radii == radii);
+  // Bound per curve, relative like the acceptance of #206 (ADR 0033, point 10, addendum with
+  // #229; see the MTF case): e_max = max over the radii of 2 |X_N - X_2N| / X <= 1e-3.
+  double e_max = 0.0;
   for (std::size_t i = 0; i < radii.size(); ++i) {
     const double expected = ee_airy(std::numbers::pi * units[i]);
-    const double e = 2.0 * std::abs(a.energy[i] - b.energy[i]) + 1e-12;
+    e_max = std::max(e_max, 2.0 * std::abs(a.energy[i] - b.energy[i]) / expected);
+  }
+  INFO("e_max (relative) " << e_max);
+  CHECK(e_max <= 1e-3);
+  for (std::size_t i = 0; i < radii.size(); ++i) {
+    const double expected = ee_airy(std::numbers::pi * units[i]);
     INFO("r = " << units[i] << " lambda F#: N=64 " << a.energy[i] << ", N=128 " << b.energy[i]
                 << ", expected " << expected);
-    CHECK(e <= 1e-3 * expected);
-    CHECK(std::abs(b.energy[i] - expected) <= e);
+    CHECK(std::abs(b.energy[i] - expected) / expected <= e_max + 1e-12);
   }
   // Content guard: 83.8 % at the first zero.
   CHECK(b.energy[2] > 0.83);
