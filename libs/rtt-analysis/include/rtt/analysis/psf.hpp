@@ -1,8 +1,9 @@
 #pragma once
 
 /// @file psf.hpp
-/// Diffraction point spread function by FFT (ADR 0033; #205): scalar, incoherent Fraunhofer
-/// diffraction in the direction sines of the image space, from the pupil function of ADR 0032.
+/// Diffraction point spread function by FFT (ADR 0033; #205), MTF and encircled energy (#206):
+/// scalar, incoherent Fraunhofer diffraction in the direction sines of the image space, from the
+/// pupil function of ADR 0032.
 ///
 /// Conventions:
 /// - PSF plane: perpendicular to the chief ray of the reference wavelength through C' (the
@@ -19,6 +20,7 @@
 ///   mapping p -> s (ADR 0032, point 4); no vector PSF.
 
 #include <array>
+#include <complex>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -177,5 +179,181 @@ struct ThroughFocus {
                                          std::span<const double> shifts,
                                          const PupilFunctionOptions& options,
                                          const trace::RunControl& control);
+
+// ---------------------------------------------------------------------------------------------
+// MTF and encircled energy (ADR 0033, points 5-7, with the erratum on the signs; #206).
+//
+// Both use the autocorrelation of the cell values C(l) = sum_j u_(j+l) conj(u_j) for shifts l in
+// cells, computed as the inverse FFT of |FFT(u)|^2 with L = 2 N >= 2 N - 1, so exact for the
+// discrete model and independent of PsfOptions::padding. With the kernel of point 2 the
+// intensity is I(x) ~ sum_l C(l) exp(-2 pi i nu(l) . x), nu(l) = M a l / lambda (cycles per mm in
+// the PSF plane, components in e_x, e_y).
+// ---------------------------------------------------------------------------------------------
+
+/// Optional outputs of mtf().
+struct MtfOutputs {
+  /// 2D MTF over all shifts l in [-(N-1), N-1]^2 (H8); only for a single wavelength.
+  bool map = false;
+  /// Complex OTF next to the modulation (phase transfer).
+  bool complex_otf = false;
+};
+
+/// Options of mtf().
+struct MtfOptions {
+  /// Pupil function (ADR 0032): grid N, apodization, focus_shift, aiming, warning thresholds.
+  PupilFunctionOptions pupil;
+  /// Wavelength indices; none: all system wavelengths with their model weights.
+  std::optional<std::vector<std::uint16_t>> wavelengths;
+  MtfOutputs outputs;
+  /// Warning psf.pupil_undersampled above this phase step between neighbouring arrived cells,
+  /// waves at the evaluated wavelength; > 0.
+  double undersampled_waves = 0.5;
+};
+
+/// One MTF curve along a pupil direction, samples l = 0 ... N.
+struct MtfCurve {
+  /// Unit direction of nu(l) for l > 0 in (e_x, e_y) of the PSF plane (reference wavelength).
+  std::array<double, 2> direction{};
+  /// |nu(l)|, cycles per mm, increasing; the last sample (l = N) is the cut-off, where the
+  /// shifted pupil no longer overlaps and the value is exactly 0.
+  std::vector<double> frequency;
+  /// MTF = |OTF|, 1 at l = 0 (C(0) is replaced by the exact energy E, ADR 0033, point 5).
+  std::vector<double> modulation;
+  /// If MtfOutputs::complex_otf: OTF(nu) = integral I exp(-2 pi i nu . x) / integral I, which is
+  /// conj(C(l)) / E (erratum to point 5); a PSF moved by t multiplies it by exp(-2 pi i nu . t).
+  /// Empty otherwise.
+  std::vector<std::complex<double>> otf;
+};
+
+/// Diffraction MTF of one field.
+struct Mtf {
+  std::uint16_t field = 0;
+  int grid = 0;                            ///< N
+  math::Vec3 centre = math::Vec3::Zero();  ///< C', global, mm
+  math::Vec3 e_x = math::Vec3::UnitX();    ///< first axis of the PSF plane, global
+  math::Vec3 e_y = math::Vec3::UnitY();    ///< second axis of the PSF plane, global
+  /// Shifts l = (0, l) in the pupil (py; meridional for a field along +-y, the convention of the
+  /// project).
+  MtfCurve tangential;
+  /// Shifts l = (l, 0) in the pupil (px).
+  MtfCurve sagittal;
+  /// F = M a / lambda of the reference wavelength, row-major, cycles per mm per cell:
+  /// nu(l) = (F[0] l1 + F[1] l2, F[2] l1 + F[3] l2) in (e_x, e_y).
+  std::array<double, 4> frequency_matrix{};
+  /// If MtfOutputs::map: (2N - 1)^2 values of |OTF|, row l2 + N - 1, column l1 + N - 1.
+  std::vector<double> map;
+  /// If MtfOutputs::map and complex_otf: the OTF in the same order.
+  std::vector<std::complex<double>> otf_map;
+  double edge_energy_deficit = 0.0;  ///< 1 - sum f^2 A^2 / sum f A^2, weighted
+  /// Per wavelength: index, weight, energy E, length 2 N. Polychromatic: the OTF of each
+  /// wavelength is interpolated linearly (real and imaginary part) in |nu| onto the frequencies of
+  /// the reference wavelength (0 above its own cut-off) and summed with w_i E_i (ADR 0033, 7).
+  std::vector<PsfWavelength> wavelengths;
+  RayLosses losses;
+  /// rays.lost, stop.clips_beam, pupil.mapping_nonlinear (from the pupil functions),
+  /// psf.pupil_undersampled.
+  std::vector<model::Diagnostic> warnings;
+};
+
+/// Diffraction MTF of `field` on `path` (ADR 0033, point 5).
+/// @throws std::invalid_argument for an unknown wavelength, an empty wavelength list,
+///         undersampled_waves <= 0, outputs.map with more than one wavelength (and as
+///         pupil_function())
+/// @throws AnalysisError (location /paths/i) for an afocal image space (no mapping), a path with
+///         crystal modes or no arrived cell (and as pupil_function())
+[[nodiscard]] Mtf mtf(const compile::CompiledSystem& system,
+                      compile::PathId path,
+                      std::uint16_t field,
+                      const MtfOptions& options = {});
+
+/// mtf() with cancellation and progress (run_control.hpp).
+[[nodiscard]] Mtf mtf(const compile::CompiledSystem& system,
+                      compile::PathId path,
+                      std::uint16_t field,
+                      const MtfOptions& options,
+                      const trace::RunControl& control);
+
+/// MTF of one pupil function (monochromatic), e.g. after refocus(). Losses and warnings are
+/// copied from the pupil function; psf.pupil_undersampled is not checked.
+/// @throws AnalysisError if the pupil function has no mapping (afocal) or no arrived cell
+[[nodiscard]] Mtf mtf(const PupilFunction& pupil, const MtfOutputs& outputs = {});
+
+/// Centre of the encircled-energy circle.
+enum class EeCentre : std::uint8_t {
+  /// C', the centre of the reference sphere (H11).
+  Reference,
+  /// The point x0 in the PSF plane given by the phase of the first harmonic of the periodic PSF:
+  /// (a / lambda) M^T x0 = (arg C(e1), arg C(e2)) / (2 pi). Exact for a tilted wavefront (a moved
+  /// PSF). It is **not** the first moment (centroid) of the PSF: for an asymmetric PSF such as
+  /// coma it differs from it by about (2 pi / P)^2 <x^3> / 6, P = N lambda F#_w the period, i.e.
+  /// about 1e-2 lambda F#_w at N = 64.
+  LinearPhase,
+};
+
+/// Options of encircled_energy().
+struct EncircledEnergyOptions {
+  /// Pupil function (ADR 0032): grid N, apodization, focus_shift, aiming, warning thresholds.
+  PupilFunctionOptions pupil;
+  /// Wavelength indices; none: all system wavelengths with their model weights.
+  std::optional<std::vector<std::uint16_t>> wavelengths;
+  EeCentre centre = EeCentre::Reference;
+  /// Warning psf.pupil_undersampled, as in MtfOptions; > 0.
+  double undersampled_waves = 0.5;
+};
+
+/// Encircled energy of one field.
+struct EncircledEnergy {
+  std::uint16_t field = 0;
+  int grid = 0;  ///< N
+  /// Centre of the circles, global, mm: C' + offset.x e_x + offset.y e_y.
+  math::Vec3 centre = math::Vec3::Zero();
+  math::Vec3 e_x = math::Vec3::UnitX();  ///< first axis of the PSF plane, global
+  math::Vec3 e_y = math::Vec3::UnitY();  ///< second axis of the PSF plane, global
+  /// Centre relative to C' in the PSF plane, mm; 0 for EeCentre::Reference. Polychromatic:
+  /// sum w_i E_i x0_i / sum w_i E_i.
+  Point2 offset;
+  std::vector<double> radii;  ///< mm, as given
+  /// EE(r) = (|det M| a^2 / lambda^2) sum_l Re[C(l) exp(-2 pi i nu(l) . x0)] K_r(nu(l)) / E with
+  /// K_r(nu) = r J1(2 pi r |nu|) / |nu|, K_r(0) = pi r^2 and C(0) = sum |u|^2 (ADR 0033, point 6
+  /// with the erratum): fraction of the pupil energy E; polychromatic sum w_i E_i EE_i / sum w_i
+  /// E_i at the same radius.
+  std::vector<double> energy;
+  /// Largest allowed radius, mm: a quarter of the shortest period lambda / a |M^-T e_i| of the
+  /// periodic PSF (N lambda F#_w / 4 on the axis), the minimum over the wavelengths.
+  double radius_max = 0.0;
+  double edge_energy_deficit = 0.0;        ///< 1 - sum f^2 A^2 / sum f A^2, weighted
+  std::vector<PsfWavelength> wavelengths;  ///< index, weight, energy E, length 2 N
+  RayLosses losses;
+  /// rays.lost, stop.clips_beam, pupil.mapping_nonlinear (from the pupil functions),
+  /// psf.pupil_undersampled.
+  std::vector<model::Diagnostic> warnings;
+};
+
+/// Encircled energy of `field` on `path` at `radii` (mm in the PSF plane; ADR 0033, point 6).
+/// @throws std::invalid_argument for a radius < 0, not finite or > radius_max, an unknown
+///         wavelength, an empty wavelength list, undersampled_waves <= 0 (and as
+///         pupil_function()); an empty `radii` is allowed and gives empty vectors
+/// @throws AnalysisError as mtf()
+[[nodiscard]] EncircledEnergy encircled_energy(const compile::CompiledSystem& system,
+                                               compile::PathId path,
+                                               std::uint16_t field,
+                                               std::span<const double> radii,
+                                               const EncircledEnergyOptions& options = {});
+
+/// encircled_energy() with cancellation and progress (run_control.hpp).
+[[nodiscard]] EncircledEnergy encircled_energy(const compile::CompiledSystem& system,
+                                               compile::PathId path,
+                                               std::uint16_t field,
+                                               std::span<const double> radii,
+                                               const EncircledEnergyOptions& options,
+                                               const trace::RunControl& control);
+
+/// Encircled energy of one pupil function (monochromatic), e.g. after refocus(). Losses and
+/// warnings are copied from the pupil function; psf.pupil_undersampled is not checked.
+/// @throws std::invalid_argument for a radius < 0, not finite or > radius_max
+/// @throws AnalysisError if the pupil function has no mapping (afocal) or no arrived cell
+[[nodiscard]] EncircledEnergy encircled_energy(const PupilFunction& pupil,
+                                               std::span<const double> radii,
+                                               EeCentre centre = EeCentre::Reference);
 
 }  // namespace rtt::analysis
