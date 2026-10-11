@@ -669,7 +669,7 @@ TEST_CASE("mtf: F, d and C against the weighted analytic MTFs", "[mtf]") {
   CHECK(coarse.tangential.modulation.back() == 0.0);
   const MtfCurve& a = coarse.tangential;
   const MtfCurve& b = fine.tangential;
-  // Shared points l of 128 and 2 l of 256 (each axis ends at its own first sample at or above
+  // Shared points l of 256 and 2 l of 512 (each axis ends at its own first sample at or above
   // the cut-off of F, so the finer one may end a step earlier; beyond it both are 0).
   const std::size_t shared = std::min(a.frequency.size(), (b.frequency.size() + 1) / 2);
   REQUIRE(shared > a.frequency.size() - 3);
