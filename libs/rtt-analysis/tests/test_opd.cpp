@@ -389,8 +389,9 @@ TEST_CASE("finite, distant exit pupil converges to the reference at infinity (#1
           "[opd][telecentric]") {
   // The 4f relay with the stop at 129 + delta: the exit pupil is finite but far away (about
   // 128^2 / delta), the entrance pupil too. W(delta) - W_inf is O(delta): the bundle changes
-  // smoothly with the stop (labels mirrored, (px, py) -> (-px, -py), when the EP lies on the
-  // far side of the object, #96) and the reference term n' (b^2 - |p - C|^2) / (2 R) is
+  // smoothly with the stop (labels follow the object-space slope, ADR 0007 addendum #35 B: the
+  // same (px, py) on both sides; mirrored for an EP beyond the object before #35 B, #96) and
+  // the reference term n' (b^2 - |p - C|^2) / (2 R) is
   // O(1 / R) = O(delta). Checked off axis (field 1, aberrated) as linear convergence:
   // max |dW(1e-4)| <= 2e-2 max |dW(1e-2)| (ratio 1e-2, quadratic remainder <= 1e-2 relative)
   // and, for delta = 1e-10 (R about 1.6e14 mm), max |dW| <= 2e-8 max |dW(1e-2)| + 1e-7 waves:
@@ -413,10 +414,9 @@ TEST_CASE("finite, distant exit pupil converges to the reference at infinity (#1
       REQUIRE(fo.exit_pupil->z);
       REQUIRE(fo.entrance_pupil);
       REQUIRE(fo.entrance_pupil->z);
-      const double label = *fo.entrance_pupil->z < -128.0 ? -1.0 : 1.0;
       const auto map_n = rtt::analysis::opd_map(near, PathId{0}, 1, 0);
       REQUIRE(std::isfinite(map_n.sphere.radius));
-      const double dw = max_abs_dw(map_n, map_t, label);
+      const double dw = max_abs_dw(map_n, map_t, 1.0);
       INFO("max |dW| = " << dw << " waves");
       if (magnitude == 1e-2) {
         dw_coarse = dw;

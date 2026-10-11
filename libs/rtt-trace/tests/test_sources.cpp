@@ -983,10 +983,12 @@ TEST_CASE(
     "system (#93)",
     "[sources][aiming]") {
   // The ray of pupil point (px, py) is the line through the object point P and the EP point
-  // Q = (px r_ep, py r_ep, z_ep) (docs/architecture.md, "Feldwinkel und Pupille"), travelling
-  // in +z, the direction of light in object space (rtt/paraxial/paraxial.hpp). With the EP on
-  // the far side of the object (z_ep < z_obj) that is d = (P - Q) / |P - Q|. Tolerance 1e-15:
-  // the expected value is the same vector expression.
+  // Q, travelling in +z, the direction of light in object space (rtt/paraxial/paraxial.hpp).
+  // With the EP on the far side of the object (z_ep < z_obj) that is d = (P - Q) / |P - Q|, and
+  // the label follows the object-space slope (ADR 0007, addendum #35 B, decided by the
+  // maintainer): py > 0 is a rising ray, so Q = -(px r_ep, py r_ep) at z_ep
+  // (docs/architecture.md, "Feldwinkel und Pupille"). Tolerance 1e-15: the expected value is the
+  // same vector expression.
   const MaterialLibrary lib;
   const CompiledSystem cs = compile(stop_behind_focus(150.0), lib);
   const auto fo = rtt::paraxial::first_order(cs, PathId{0}, 0);
@@ -1002,15 +1004,15 @@ TEST_CASE(
       INFO("p = (" << px << ", " << py << ")");
       const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, 1, 0, px, py, Aiming::Paraxial);
       const Vec3 p(0.0, 2.0, -200.0);
-      const Vec3 q(px * r_ep, py * r_ep, z_ep);
+      const Vec3 q(-px * r_ep, -py * r_ep, z_ep);
       REQUIRE(aimed.ray.pos == p);
       REQUIRE(aimed.ray.dir.z() > 0.0);
       REQUIRE((aimed.ray.dir - (p - q).normalized()).cwiseAbs().maxCoeff() <= 1e-15);
     }
   }
-  SECTION("real aiming reaches the stop target (px R_s, py R_s)") {
+  SECTION("real aiming reaches the stop target -(px R_s, py R_s)") {
     // As in "pupil rays hit their target on the stop": < 1e-9 mm; R_s is negative here (the
-    // stop sees the virtual EP inverted).
+    // stop sees the virtual EP inverted), and the label of the EP beyond the object is mirrored.
     const double r_s = paraxial_stop_radius(cs);
     for (std::uint16_t f = 0; f < 2; ++f) {
       for (const auto& [px, py] : {std::pair{0.0, 0.0}, std::pair{0.0, 1.0}, std::pair{1.0, 0.0},
@@ -1020,7 +1022,7 @@ TEST_CASE(
         REQUIRE(aimed.ray.status == RayStatus::Alive);
         REQUIRE(aimed.ray.dir.z() > 0.0);
         const Vec3 hit = hit_on_stop(cs, aimed.ray);
-        REQUIRE(std::hypot(hit.x() - px * r_s, hit.y() - py * r_s) < 1e-9);
+        REQUIRE(std::hypot(hit.x() + px * r_s, hit.y() + py * r_s) < 1e-9);
       }
     }
   }
@@ -1173,10 +1175,11 @@ TEST_CASE("object-space telecentric: the finite-EP path converges to it, also fo
   // Stop at 129 + delta: a = -delta / 128, z_ep = b n1 / a = (128 + delta)(-128 / delta). For
   // delta > 0 the EP is virtual on the far side of the object (z_ep -> -infinity, #93), for
   // delta < 0 far behind the system (z_ep -> +infinity). The bundle is continuous from both
-  // sides, and so is the label of the pupil point: labels are oriented at the stop (ADR 0007,
-  // addendum #35 B), so the turn-over of the pupil image through infinity (stop_scale < 0 for
-  // delta > 0) does not mirror (px, py) any more (docs/architecture.md "Feldwinkel und
-  // Pupille"; before #35 B this test expected the mirrored label from z_ep -> -infinity).
+  // sides, and so is the label of the pupil point: labels follow the object-space slope (ADR
+  // 0007, addendum #35 B), the EP beyond the object (delta > 0) mirrors the label and the
+  // turn-over of the pupil image (stop_scale < 0) mirrors it back, so (px, py) reaches the same
+  // half of the stop on both sides (docs/architecture.md "Feldwinkel und Pupille"; before #35 B
+  // this test expected the mirrored label from z_ep -> -infinity).
   // Paraxial aiming: slope (py r_ep - h) / (z_ep - z_obj) differs from py u_m by
   // h / |z_ep - z_obj| ~ h |delta| / 128^2 (z_ep - z_obj ~ 128^2 / delta): bound
   // 2 h |delta| / 128^2 + 1e-15 (rounding of the normalised direction).
@@ -1366,16 +1369,17 @@ TEST_CASE("pupil labels are oriented at the reference wavelength (#96)",
   }
 }
 
-TEST_CASE("pupil labels are oriented at the stop, also with stop_scale < 0 at the reference "
-          "wavelength (#35 B)",
-          "[sources][aiming][telecentric]") {
-  // The stop between the rear focal points of d and C: F and d (reference) see their EP beyond
-  // infinity (stop_scale < 0, the pupil image turned over), C sees it in front (stop_scale > 0).
-  // Labels oriented at the stop (ADR 0007, addendum #35 B): pupil point (px, py) reaches the
-  // target (px, py) |R_s(lambda)| at every wavelength, the upper half of the stop for py > 0.
-  // Before #35 B the reference wavelength itself used the mirrored target -(px, py) |R_s| (the
-  // rule of #96 compensated only between wavelengths). Tolerance as in "pupil rays hit their
-  // target on the stop": 1e-9 mm.
+TEST_CASE(
+    "pupil labels follow the object-space slope, also with the EP beyond the object at "
+    "the reference wavelength (#35 B)",
+    "[sources][aiming][telecentric]") {
+  // The stop between the rear focal points of d and C: F and d (reference) have their EP on the
+  // far side of the object (z_ep < z_obj, the pupil image turned over, stop_scale < 0), C has
+  // it behind the object (stop_scale > 0). Labels follow the object-space slope (ADR 0007,
+  // addendum #35 B): sigma = side(lambda) at every wavelength, target sigma (px, py) R_s(lambda),
+  // and py > 0 is a ray rising in object space against the chief ray. Before #35 B the reference
+  // wavelength itself used sigma = +1 (the rule of #96 compensated only between wavelengths).
+  // Tolerance as in "pupil rays hit their target on the stop": 1e-9 mm.
   MaterialLibrary lib;
   lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/schott.agf");
   const CompiledSystem probe = compile(dispersive_lens(129.0), lib);
@@ -1383,19 +1387,28 @@ TEST_CASE("pupil labels are oriented at the stop, also with stop_scale < 0 at th
   const double z_c = *rtt::paraxial::first_order(probe, PathId{0}, 2).rear_focal_z;
   REQUIRE(z_d < z_c);
   const CompiledSystem cs = compile(dispersive_lens(0.5 * (z_d + z_c)), lib);
-  // Content guards: the reference wavelength has stop_scale < 0, C has stop_scale > 0.
-  REQUIRE(stop_radius_at(cs, 1) < 0.0);
-  REQUIRE(stop_radius_at(cs, 2) > 0.0);
+  // Content guards: the reference wavelength has its EP beyond the object, C behind it.
+  REQUIRE(ep_side(cs, 1) < 0.0);
+  REQUIRE(ep_side(cs, 2) > 0.0);
   for (std::uint16_t wl = 0; wl < 3; ++wl) {
-    const double r_s = std::abs(stop_radius_at(cs, wl));
+    const double sigma = ep_side(cs, wl);
+    const double r_s = stop_radius_at(cs, wl);
     for (std::uint16_t f = 0; f < 3; ++f) {
+      const auto chief = rtt::trace::aim_ray(cs, PathId{0}, f, wl, 0.0, 0.0);
       for (const auto& [px, py] :
            {std::pair{0.0, 1.0}, std::pair{1.0, 0.0}, std::pair{0.6, -0.8}}) {
         INFO("wavelength " << wl << ", field " << f << ", p = (" << px << ", " << py << ")");
         const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, f, wl, px, py);
         REQUIRE(aimed.ray.status == RayStatus::Alive);
         const Vec3 hit = hit_on_stop_at(cs, aimed.ray, wl);
-        REQUIRE(std::hypot(hit.x() - px * r_s, hit.y() - py * r_s) < 1e-9);
+        REQUIRE(std::hypot(hit.x() - sigma * px * r_s, hit.y() - sigma * py * r_s) < 1e-9);
+        // The meaning of the label: the slope against the chief ray has the sign of py (px).
+        const double rise =
+            aimed.ray.dir.y() / aimed.ray.dir.z() - chief.ray.dir.y() / chief.ray.dir.z();
+        const double side =
+            aimed.ray.dir.x() / aimed.ray.dir.z() - chief.ray.dir.x() / chief.ray.dir.z();
+        if (py != 0.0) REQUIRE((rise > 0.0) == (py > 0.0));
+        if (px != 0.0) REQUIRE((side > 0.0) == (px > 0.0));
       }
     }
   }
@@ -1449,9 +1462,9 @@ TEST_CASE("pupil labels are continuous through an entrance pupil at infinity (#3
   // focal plane, object 128 mm before L1): for delta < 0 the entrance pupil lies far out on the
   // +z side of the object, for delta > 0 far out on its -z side, and at delta = 0 (and within
   // the rounding threshold of first_order, about 1.4e-12 mm, #35 A) it is at infinity and the
-  // slopes of the telecentric branch apply. Pupil labels are oriented at the stop (ADR 0007,
-  // addendum #35 B): py > 0 is the upper half of the stop on every side, so the rays and their
-  // image points change continuously with delta. Before, stop_scale < 0 on the delta > 0 side
+  // slopes of the telecentric branch apply. Pupil labels follow the object-space slope (ADR
+  // 0007, addendum #35 B): py > 0 is a rising ray on every side, so the rays and their image
+  // points change continuously with delta. Before, stop_scale < 0 on the delta > 0 side
   // mirrored (px, py) on the stop: the marginal ray of field 2 jumped by 1.14 mm on the image
   // of telecentric_singlet and by 0.02 mm in the 4f relay (ADR 0030, addendum #167). The singlet
   // has the fields 0, 1 and 2 mm, the relay 0 and 1 mm.
@@ -1467,8 +1480,8 @@ TEST_CASE("pupil labels are continuous through an entrance pupil at infinity (#3
   // and 1e5 times below the jumps.
   constexpr double kTolerance = 1e-7;
   const MaterialLibrary lib;
-  const System four_f = rtt::io::load_system(std::string(RTT_REFERENCE_DIR) +
-                                             "/m2/telecentric_4f.rtt.json");
+  const System four_f =
+      rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m2/telecentric_4f.rtt.json");
   const auto make = [&four_f](bool relay, double z_stop) {
     if (!relay) return telecentric_lens(z_stop);
     System s = four_f;
