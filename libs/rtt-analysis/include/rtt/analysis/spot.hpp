@@ -39,7 +39,10 @@ namespace rtt::analysis {
 
 /// Thrown when an analysis has no defined result, e.g. the chief ray does not reach the image
 /// surface or no ray arrives. For a single lost ray (chief or zone ray) the accessors give the
-/// place and the cause (ADR 0022); otherwise they are empty.
+/// place and the cause (ADR 0022). A cause without a lost ray can carry a place of its own, e.g.
+/// /paths/i or the image surface (ADR 0032, point 9; ADR 0034): then location() gives it and the
+/// other accessors are empty. The two constructors exclude each other; otherwise everything is
+/// empty.
 class AnalysisError : public std::runtime_error {
  public:
   /// The lost ray of an AnalysisError.
@@ -56,14 +59,20 @@ class AnalysisError : public std::runtime_error {
 
   using std::runtime_error::runtime_error;
 
+  /// Error caused by the lost ray `ray`: all accessors describe it.
   AnalysisError(const std::string& message, LostRay ray)
       : std::runtime_error(message), ray_(std::move(ray)) {}
+
+  /// Error at a place without a lost ray: location() gives `location` (a JSON pointer such as
+  /// /paths/i or the pointer of a surface), the other accessors are empty.
+  AnalysisError(const std::string& message, std::string location)
+      : std::runtime_error(message), location_(std::move(location)) {}
 
   [[nodiscard]] std::optional<model::SurfaceId> surface() const {
     return ray_ ? ray_->surface : std::nullopt;
   }
   [[nodiscard]] std::optional<std::string> location() const {
-    return ray_ ? ray_->location : std::nullopt;
+    return ray_ ? ray_->location : location_;
   }
   /// Status of the lost ray; Alive if it ended alive on another surface than the image.
   [[nodiscard]] std::optional<trace::RayStatus> ray_status() const {
@@ -78,6 +87,7 @@ class AnalysisError : public std::runtime_error {
 
  private:
   std::optional<LostRay> ray_;
+  std::optional<std::string> location_;  ///< place without a lost ray
 };
 
 /// Where the rays of an analysis went (ADR 0023): the rays of its pupil sampling (not the

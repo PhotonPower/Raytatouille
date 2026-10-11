@@ -2,10 +2,19 @@
 
 #include <algorithm>
 #include <cmath>
+#include <complex>
 #include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
+
+#include "common.hpp"
+#include "reference.hpp"
+#include "rtt/diagnostics/codes.hpp"
 
 namespace rtt::analysis {
 
@@ -175,6 +184,302 @@ PupilCells pupil_cells(int grid) {
     }
   }
   return cells;
+}
+
+namespace {
+
+using compile::CompiledSystem;
+using compile::PathId;
+
+/// Step of the parabasal rays of the mapping in pupil units (ADR 0032, point 4: the delta of the
+/// field curvature, error O(delta^2)).
+constexpr double kMappingStep = 1e-3;
+/// |x_B x d_c| at or below this: the chief ray grazes the image surface, no frame (point 4).
+constexpr double kGrazingLimit = 1e-6;
+/// |det M| at or below this times n'^2: afocal image space, no mapping (point 4).
+constexpr double kAfocalDeterminant = 1e-12;
+
+std::string path_pointer(PathId path) {
+  return "/paths/" + std::to_string(path.index);
+}
+
+void check_options(const PupilFunctionOptions& o) {
+  // grid is checked by pupil_cells; lost_warning_fraction by the LossCounter.
+  if (!std::isfinite(o.apodization) || !(o.apodization >= 0.0)) {
+    throw std::invalid_argument("analysis: apodization must be finite and >= 0");
+  }
+  if (!std::isfinite(o.focus_shift)) {
+    throw std::invalid_argument("analysis: focus_shift must be finite");
+  }
+  if (!(o.mapping_warning >= 0.0 && o.mapping_warning <= 1.0)) {
+    throw std::invalid_argument("analysis: mapping_warning must lie in [0, 1]");
+  }
+  if (!(o.lost_warning_fraction >= 0.0 && o.lost_warning_fraction <= 1.0)) {
+    throw std::invalid_argument("analysis: lost_warning_fraction must lie in [0, 1]");
+  }
+}
+
+/// ADR 0032, point 9 (H6): the OPD of a crystal mode needs the index of the mode (#35).
+void reject_crystal_modes(const CompiledSystem& system, PathId path) {
+  for (const auto& event : system.path(path).events) {
+    if (event.kind == model::EventKind::Ordinary || event.kind == model::EventKind::Extraordinary) {
+      throw AnalysisError("analysis: paths with crystal modes are not supported (#35)",
+                          path_pointer(path));
+    }
+  }
+}
+
+math::Vec3 end_pos(const PupilEndStates& e, std::size_t j) {
+  return {e.pos_x[j], e.pos_y[j], e.pos_z[j]};
+}
+
+math::Vec3 end_dir(const PupilEndStates& e, std::size_t j) {
+  return {e.dir_x[j], e.dir_y[j], e.dir_z[j]};
+}
+
+/// Direction sines s = n' (d . e_x, d . e_y) (ADR 0032, point 4).
+std::array<double, 2> direction_sines(const math::Vec3& d, const PupilMapping& m, double n_image) {
+  return {n_image * d.dot(m.e_x), n_image * d.dot(m.e_y)};
+}
+
+/// W, status and amplitude of every cell, the sphere, the losses and arrived_fraction from the
+/// end states against `ref`; the same code for pupil_function() and refocus(), so both agree bit
+/// for bit. The warnings of the losses come first, then the mapping (finish_mapping()).
+void evaluate(const CompiledSystem& system, PupilFunction& pf, const detail::Reference& ref) {
+  const PupilEndStates& e = pf.end;
+  pf.sphere = ref.sphere;
+  const double opl_chief =
+      detail::chief_opl(e.chief_pos, e.chief_dir, e.chief_opl, ref, e.image_index);
+  detail::LossCounter losses(system, pf.path, pf.lost_warning_fraction);
+  double sum_all = 0.0;
+  double sum_arrived = 0.0;
+  for (std::size_t j = 0; j < pf.fraction.size(); ++j) {
+    sum_all += pf.fraction[j];
+    pf.w[j] = 0.0;
+    pf.amplitude[j] = 0.0;
+    if (pf.fraction[j] == 0.0) {
+      pf.status[j] = trace::RayStatus::Vignetted;  // not traced, not counted
+      continue;
+    }
+    const bool on_image =
+        e.ray_status[j] == trace::RayStatus::Alive && e.last_surface[j] == e.image_surface;
+    const OpdPoint q = detail::point_against(end_pos(e, j), end_dir(e, j), e.opl[j], on_image,
+                                             e.ray_status[j], opl_chief, ref, e.image_index);
+    pf.status[j] = q.status;
+    losses.add_ray(q.status, e.last_surface[j]);
+    if (q.status != trace::RayStatus::Alive) continue;
+    pf.w[j] = q.w;
+    // ADR 0032, point 3 and 8: A = sqrt(weight) exp(-G rho^2), rho of the sample point (Ansys
+    // Zemax OpticStudio User Guide, Release 2025 R1, "Apodization Type").
+    const double rho2 = pf.px[j] * pf.px[j] + pf.py[j] * pf.py[j];
+    pf.amplitude[j] = std::sqrt(e.weight[j]) * std::exp(-pf.apodization * rho2);
+    sum_arrived += pf.fraction[j];
+  }
+  pf.arrived_fraction = sum_all > 0.0 ? sum_arrived / sum_all : 0.0;
+  pf.losses = losses.result();
+  pf.warnings = losses.warnings();
+}
+
+/// delta_max and delta_rms of the mapping over the arrived cells (ADR 0032, point 4; delta_rms
+/// weighted with f like the other pupil statistics), centre = C', and the warning.
+void finish_mapping(PupilFunction& pf) {
+  if (!pf.mapping) return;
+  PupilMapping& m = *pf.mapping;
+  m.centre = pf.sphere.centre;
+  // ||M||_2: the largest singular value of the 2 x 2 matrix, sqrt((T + sqrt(T^2 - 4 D^2)) / 2)
+  // with T the squared Frobenius norm and D the determinant (eigenvalues of M^T M).
+  const double tr = m.m[0] * m.m[0] + m.m[1] * m.m[1] + m.m[2] * m.m[2] + m.m[3] * m.m[3];
+  const double det = m.m[0] * m.m[3] - m.m[1] * m.m[2];
+  const double norm = std::sqrt(0.5 * (tr + std::sqrt(std::max(0.0, tr * tr - 4.0 * det * det))));
+  double max = 0.0;
+  double sum_f = 0.0;
+  double sum_fd2 = 0.0;
+  for (std::size_t j = 0; j < pf.fraction.size(); ++j) {
+    if (pf.fraction[j] == 0.0 || pf.status[j] != trace::RayStatus::Alive) continue;
+    const std::array<double, 2> s = direction_sines(end_dir(pf.end, j), m, pf.end.image_index);
+    const double rx = s[0] - m.s0[0] - (m.m[0] * pf.px[j] + m.m[1] * pf.py[j]);
+    const double ry = s[1] - m.s0[1] - (m.m[2] * pf.px[j] + m.m[3] * pf.py[j]);
+    const double d = std::hypot(rx, ry) / norm;
+    max = std::max(max, d);
+    sum_f += pf.fraction[j];
+    sum_fd2 += pf.fraction[j] * d * d;
+  }
+  m.delta_max = max;
+  m.delta_rms = sum_f > 0.0 ? std::sqrt(sum_fd2 / sum_f) : 0.0;
+  if (m.delta_max > pf.mapping_warning) {
+    constexpr diagnostics::DiagnosticCode kCode = "pupil.mapping_nonlinear";
+    pf.warnings.push_back(
+        {kCode.severity(), path_pointer(pf.path),
+         "pupil coordinates map nonlinearly onto the direction sines: delta_max = " +
+             std::to_string(m.delta_max) + " pupil units above " +
+             std::to_string(pf.mapping_warning) + " (ADR 0032, point 4)",
+         std::string(kCode.str())});
+  }
+}
+
+/// The affine mapping s ~ s0 + M p (ADR 0032, point 4), without the deltas; none for an afocal
+/// image space.
+std::optional<PupilMapping> make_mapping(const CompiledSystem& system,
+                                         PathId path,
+                                         std::uint16_t field,
+                                         std::uint16_t wavelength,
+                                         trace::Aiming aiming,
+                                         const detail::Reference& ref,
+                                         const math::Vec3& chief_dir) {
+  const std::uint32_t image = detail::image_surface(system, path);
+  const double n_image = detail::image_index(system, path, wavelength);
+  PupilMapping m;
+  m.d_c = ref.chief_dir;
+  const math::Vec3 x_b = system.surfaces()[image].to_global.apply_vector(math::Vec3::UnitX());
+  m.e_x = (x_b - x_b.dot(m.d_c) * m.d_c).normalized();
+  m.e_y = m.d_c.cross(m.e_x);
+  const trace::PointListPupil parabasal{
+      {{kMappingStep, 0.0}, {-kMappingStep, 0.0}, {0.0, kMappingStep}, {0.0, -kMappingStep}}};
+  const trace::RayBatch rays =
+      detail::trace_rays(system, path, field, wavelength, parabasal, aiming);
+  std::array<std::array<double, 2>, 4> s{};
+  for (std::size_t i = 0; i < 4; ++i) {
+    if (!detail::arrived(rays, i, image)) {
+      detail::throw_lost(system, rays, i, field,
+                         "analysis: a parabasal ray of the pupil mapping does not reach the image "
+                         "surface");
+    }
+    s[i] = direction_sines({rays.dir_x()[i], rays.dir_y()[i], rays.dir_z()[i]}, m, n_image);
+  }
+  // Central differences, columns px and py: error O(kMappingStep^2).
+  const double h2 = 2.0 * kMappingStep;
+  m.m = {(s[0][0] - s[1][0]) / h2, (s[2][0] - s[3][0]) / h2, (s[0][1] - s[1][1]) / h2,
+         (s[2][1] - s[3][1]) / h2};
+  const double det = m.m[0] * m.m[3] - m.m[1] * m.m[2];
+  if (!(std::abs(det) > kAfocalDeterminant * n_image * n_image)) return std::nullopt;
+  // s0: 0 at the reference wavelength by construction (the chief ray of d_c itself).
+  if (wavelength != system.reference_wavelength()) m.s0 = direction_sines(chief_dir, m, n_image);
+  return m;
+}
+
+}  // namespace
+
+PupilFunction pupil_function(const compile::CompiledSystem& system,
+                             compile::PathId path,
+                             std::uint16_t field,
+                             std::uint16_t wavelength,
+                             const PupilFunctionOptions& options) {
+  return pupil_function(system, path, field, wavelength, options, trace::RunControl{});
+}
+
+PupilFunction pupil_function(const compile::CompiledSystem& system,
+                             compile::PathId path,
+                             std::uint16_t field,
+                             std::uint16_t wavelength,
+                             const PupilFunctionOptions& options,
+                             const trace::RunControl& control) {
+  detail::check_path(system, path);
+  detail::check_wavelength(system, wavelength);
+  check_options(options);
+  PupilCells cells = pupil_cells(options.grid);  // checks the grid
+  reject_crystal_modes(system, path);            // before any ray is traced
+
+  const detail::Reference ref =
+      detail::make_reference(system, path, field, options.aiming, options.focus_shift);
+  const std::uint32_t image = detail::image_surface(system, path);
+  // ADR 0032, point 4: the frame of the PSF plane needs x_B not parallel to d_c.
+  const math::Vec3 x_b = system.surfaces()[image].to_global.apply_vector(math::Vec3::UnitX());
+  if (x_b.cross(ref.chief_dir).norm() <= kGrazingLimit) {
+    throw AnalysisError(
+        "analysis: the chief ray grazes the image surface (its x axis is parallel to the chief "
+        "ray); the plane of the pupil mapping has no frame",
+        system.surfaces()[image].location);
+  }
+
+  PupilFunction pf;
+  pf.path = path;
+  pf.field = field;
+  pf.wavelength = wavelength;
+  pf.wavelength_um = system.wavelengths_um()[wavelength];
+  pf.reference_wavelength_um = system.wavelengths_um()[system.reference_wavelength()];
+  pf.grid = options.grid;
+  pf.focus_shift = options.focus_shift;
+  pf.apodization = options.apodization;
+  pf.lost_warning_fraction = options.lost_warning_fraction;
+  pf.mapping_warning = options.mapping_warning;
+  const std::size_t size = cells.fraction.size();
+  pf.fraction = std::move(cells.fraction);
+  pf.px = std::move(cells.px);
+  pf.py = std::move(cells.py);
+  pf.amplitude.assign(size, 0.0);
+  pf.w.assign(size, 0.0);
+  pf.status.assign(size, trace::RayStatus::Vignetted);
+
+  // End states: the chief ray of this wavelength and the cells with f > 0 as a point list
+  // (ADR 0032, point 2), traced like opd_points().
+  PupilEndStates& e = pf.end;
+  e.image_surface = image;
+  e.image_index = detail::image_index(system, path, wavelength);
+  e.reference_pos = ref.chief_pos;
+  e.reference_dir = ref.chief_dir;
+  e.exit_pupil = ref.exit_pupil;
+  const trace::RayBatch chief = detail::chief_ray(system, path, field, wavelength, options.aiming);
+  e.chief_pos = {chief.pos_x()[0], chief.pos_y()[0], chief.pos_z()[0]};
+  e.chief_dir = {chief.dir_x()[0], chief.dir_y()[0], chief.dir_z()[0]};
+  e.chief_opl = chief.opl()[0];
+  trace::PointListPupil list;
+  for (std::size_t j = 0; j < size; ++j) {
+    if (pf.fraction[j] > 0.0) list.points.push_back({pf.px[j], pf.py[j]});
+  }
+  const trace::RayBatch rays =
+      detail::trace_rays(system, path, field, wavelength, list, options.aiming, control);
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  for (auto* column :
+       {&e.pos_x, &e.pos_y, &e.pos_z, &e.dir_x, &e.dir_y, &e.dir_z, &e.opl, &e.weight}) {
+    column->assign(size, nan);
+  }
+  e.ray_status.assign(size, trace::RayStatus::Vignetted);
+  e.last_surface.assign(size, trace::kNoSurface);
+  if (options.with_prt) pf.prt.assign(9 * size, std::complex<double>(0.0, 0.0));
+  std::size_t i = 0;
+  for (std::size_t j = 0; j < size; ++j) {
+    if (pf.fraction[j] == 0.0) continue;
+    e.pos_x[j] = rays.pos_x()[i];
+    e.pos_y[j] = rays.pos_y()[i];
+    e.pos_z[j] = rays.pos_z()[i];
+    e.dir_x[j] = rays.dir_x()[i];
+    e.dir_y[j] = rays.dir_y()[i];
+    e.dir_z[j] = rays.dir_z()[i];
+    e.opl[j] = rays.opl()[i];
+    e.weight[j] = rays.weight()[i];
+    e.ray_status[j] = rays.status()[i];
+    e.last_surface[j] = rays.last_surface()[i];
+    if (options.with_prt) {
+      for (int row = 0; row < 3; ++row) {
+        for (int col = 0; col < 3; ++col) {
+          pf.prt[9 * j + static_cast<std::size_t>(3 * row + col)] = rays.prt(row, col)[i];
+        }
+      }
+    }
+    ++i;
+  }
+
+  evaluate(system, pf, ref);
+  pf.mapping = make_mapping(system, path, field, wavelength, options.aiming, ref, e.chief_dir);
+  finish_mapping(pf);
+  return pf;
+}
+
+PupilFunction refocus(const compile::CompiledSystem& system,
+                      const PupilFunction& pupil,
+                      double focus_shift) {
+  if (!std::isfinite(focus_shift)) {
+    throw std::invalid_argument("analysis: focus_shift must be finite");
+  }
+  detail::check_path(system, pupil.path);
+  PupilFunction pf = pupil;
+  pf.focus_shift = focus_shift;
+  const detail::Reference ref =
+      detail::reference_at(pf.end.reference_pos, pf.end.reference_dir, pf.end.exit_pupil,
+                           focus_shift, pf.reference_wavelength_um * 1e-3);
+  evaluate(system, pf, ref);
+  finish_mapping(pf);
+  return pf;
 }
 
 }  // namespace rtt::analysis
