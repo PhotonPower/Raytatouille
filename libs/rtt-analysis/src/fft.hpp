@@ -2,7 +2,9 @@
 
 /// @file fft.hpp
 /// Internal discrete Fourier transform of rtt-analysis (ADR 0033, point 1): a thin wrapper
-/// around pocketfft, which only fft.cpp includes. Not part of the public API.
+/// around pocketfft, which only fft.cpp includes. Not part of the public API. ADR 0033 names
+/// src/detail/fft.cpp; the files follow the existing layout of internal headers in src/ (as
+/// src/common.hpp) instead (coordinator's decision in #204).
 
 #include <complex>
 #include <cstddef>

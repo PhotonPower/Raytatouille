@@ -1,14 +1,16 @@
 // Internal DFT of rtt-analysis (#204; ADR 0033, point 1): pocketfft behind detail::fft1/fft2.
 //
-// Error bound (derived for #204, docs/quellen.md): a DFT of length L computed in at most
-// ceil(log2 L') butterfly stages with coefficients of modulus <= 1 and a bounded number of
+// Error bound (estimated for #204, coarse, docs/quellen.md): a DFT of length L computed in at
+// most ceil(log2 L') butterfly stages with coefficients of modulus <= 1 and a bounded number of
 // roundings per output, times 3 for Bluestein (two transforms of length L' >= 2L - 1 and the chirp
 // products), stays within c_fft(L) u sum_j |x_j| per element, with c_fft(L) = 30 ceil(log2(2L))
-// and u = 2^-53. The reference (naive DFT in double, Neumaier summation, twiddles from
-// std::cos/std::sin of 2 pi ((j k) mod L)/L) adds at most 12 u sum_j |x_j|: twiddle (2 pi + 1) u,
-// product and summation 4 u. The bound is coarse on purpose: it separates the errors that matter
-// here (sign convention, index, normalisation, wrong axis), which are O(1). The measured error is
-// reported with INFO (the probe for ADR 0033 measured <= 2.3e-16 max|X|).
+// and u = 2^-53. The number of roundings per output and the factor 3 are set, not derived from
+// pocketfft's algorithm; the reserve against the measured error is more than 1000. The reference
+// (naive DFT in double, Neumaier summation, twiddles from std::cos/std::sin of 2 pi ((j k) mod
+// L)/L) adds at most 12 u sum_j |x_j|: twiddle (2 pi + 1) u, product and summation 4 u. The bound
+// is coarse on purpose: it separates the errors that matter here (sign convention, index,
+// normalisation, wrong axis), which are O(1). The measured error is reported with INFO (the probe
+// for ADR 0033 measured <= 2.3e-16 max|X|).
 
 #include <algorithm>
 #include <array>

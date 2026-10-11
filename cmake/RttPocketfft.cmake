@@ -21,29 +21,34 @@ set(RTT_POCKETFFT_SHA512 "b606512d452ba87aa0024a464c34df52be2e808f8cca5abbcd63a3
 option(RTT_FETCH_POCKETFFT
        "Download pocketfft at the vcpkg pin if find_path does not find pocketfft_hdronly.h" ON)
 
+# The download is not written to the cache (second review of #219): RTT_POCKETFFT_INCLUDE_DIR stays
+# NOTFOUND unless find_path or the user finds a header, so every configure searches again, and
+# FetchContent loads anew when REF or SHA512 change (a later port update). A cached download path
+# would keep an old header in existing build directories without any message.
 find_path(RTT_POCKETFFT_INCLUDE_DIR pocketfft_hdronly.h)
-if(NOT RTT_POCKETFFT_INCLUDE_DIR)
-  if(RTT_FETCH_POCKETFFT)
-    include(FetchContent)
-    # The archive has no CMakeLists.txt: MakeAvailable only downloads and extracts it.
-    FetchContent_Declare(pocketfft
-      URL "https://github.com/mreineck/pocketfft/archive/${RTT_POCKETFFT_REF}.tar.gz"
-      URL_HASH "SHA512=${RTT_POCKETFFT_SHA512}"
-      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
-    FetchContent_MakeAvailable(pocketfft)
-    set(RTT_POCKETFFT_INCLUDE_DIR "${pocketfft_SOURCE_DIR}" CACHE PATH
-        "Directory of pocketfft_hdronly.h" FORCE)
-  else()
-    message(FATAL_ERROR
-      "pocketfft_hdronly.h not found. Use vcpkg (vcpkg.json), set RTT_POCKETFFT_INCLUDE_DIR, or "
-      "enable RTT_FETCH_POCKETFFT to download the pinned version.")
-  endif()
+if(RTT_POCKETFFT_INCLUDE_DIR)
+  set(_rtt_pocketfft_dir "${RTT_POCKETFFT_INCLUDE_DIR}")
+  set(_rtt_pocketfft_origin "find_path or RTT_POCKETFFT_INCLUDE_DIR; version not checked")
+elseif(RTT_FETCH_POCKETFFT)
+  include(FetchContent)
+  # The archive has no CMakeLists.txt: MakeAvailable only downloads and extracts it.
+  FetchContent_Declare(pocketfft
+    URL "https://github.com/mreineck/pocketfft/archive/${RTT_POCKETFFT_REF}.tar.gz"
+    URL_HASH "SHA512=${RTT_POCKETFFT_SHA512}"
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+  FetchContent_MakeAvailable(pocketfft)
+  set(_rtt_pocketfft_dir "${pocketfft_SOURCE_DIR}")
+  set(_rtt_pocketfft_origin "FetchContent at the vcpkg pin ${RTT_POCKETFFT_REF}")
+else()
+  message(FATAL_ERROR
+    "pocketfft_hdronly.h not found. Use vcpkg (vcpkg.json), set RTT_POCKETFFT_INCLUDE_DIR, or "
+    "enable RTT_FETCH_POCKETFFT to download the pinned version.")
 endif()
-if(NOT EXISTS "${RTT_POCKETFFT_INCLUDE_DIR}/pocketfft_hdronly.h")
-  message(FATAL_ERROR "pocketfft_hdronly.h is not in RTT_POCKETFFT_INCLUDE_DIR "
-                      "('${RTT_POCKETFFT_INCLUDE_DIR}')")
+if(NOT EXISTS "${_rtt_pocketfft_dir}/pocketfft_hdronly.h")
+  message(FATAL_ERROR "pocketfft_hdronly.h is not in '${_rtt_pocketfft_dir}'")
 endif()
+message(STATUS "pocketfft: ${_rtt_pocketfft_dir} (${_rtt_pocketfft_origin})")
 
 add_library(rtt_pocketfft INTERFACE)
 add_library(rtt::pocketfft ALIAS rtt_pocketfft)
-target_include_directories(rtt_pocketfft SYSTEM INTERFACE "${RTT_POCKETFFT_INCLUDE_DIR}")
+target_include_directories(rtt_pocketfft SYSTEM INTERFACE "${_rtt_pocketfft_dir}")
