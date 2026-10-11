@@ -36,6 +36,7 @@ if(RTT_BUILD_TESTS)
       tests/test_gauss_rejected.cpp
       tests/test_ghost_ranking.cpp
       tests/test_ideal_lens_analysis.cpp
+      tests/test_interferogram.cpp
       tests/test_jones_pupil.cpp
       tests/test_loss_counter.cpp
       tests/test_losses.cpp
