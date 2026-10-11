@@ -42,10 +42,18 @@ struct Reference {
   double lambda_mm = 0.0;  ///< reference wavelength, mm
 };
 
+/// Through-focus shift of the options (ADR 0032, point 9: not finite is an input error).
+void check_focus_shift(const OpdOptions& options) {
+  if (!std::isfinite(options.focus_shift)) {
+    throw std::invalid_argument("analysis: focus_shift must be finite");
+  }
+}
+
 Reference make_reference(const CompiledSystem& system,
                          PathId path,
                          std::uint16_t field,
-                         trace::Aiming aiming) {
+                         trace::Aiming aiming,
+                         double focus_shift) {
   compile::require_stop(system, path);  // before any ray is traced (ADR 0022)
   const std::uint16_t ref = system.reference_wavelength();
   const std::uint32_t image = image_surface(system, path);
@@ -62,6 +70,9 @@ Reference make_reference(const CompiledSystem& system,
   const paraxial::Pupil& xp = *fo.exit_pupil;
   Reference r;
   r.sphere.centre = global_pos(chief, 0);
+  // Through focus (ADR 0032, point 5): C' = C + Delta d_c on the chief ray, so W(0, 0) = 0 stays.
+  // Only for Delta != 0, so that Delta = 0 keeps C bit for bit (C + 0 d could turn -0.0 into +0.0).
+  if (focus_shift != 0.0) r.sphere.centre += focus_shift * global_dir(chief, 0);
   if (!xp.z) {
     // Image-space telecentric (#102): the limit R -> infinity of the reference sphere.
     r.sphere.radius = std::numeric_limits<double>::infinity();
@@ -69,7 +80,10 @@ Reference make_reference(const CompiledSystem& system,
     const math::Vec3 exit_pupil(0.0, 0.0, *xp.z);
     r.sphere.radius = (r.sphere.centre - exit_pupil).norm();
     if (!(r.sphere.radius > 0.0)) {
-      throw AnalysisError("analysis: the exit pupil lies on the image surface");
+      throw AnalysisError(focus_shift != 0.0
+                              ? "analysis: the shifted reference point (focus_shift) lies on the "
+                                "exit pupil"
+                              : "analysis: the exit pupil lies on the image surface");
     }
     // The exit pupil lies at C - s d of the chief ray, s = +R upstream, s = -R downstream.
     r.branch = global_dir(chief, 0).dot(r.sphere.centre - exit_pupil) >= 0.0 ? 1.0 : -1.0;
@@ -188,7 +202,8 @@ OpdPupilPoints opd_points(const compile::CompiledSystem& system,
   OpdPupilPoints result;
   result.field = field;
   result.wavelength = wavelength;
-  const Reference ref = make_reference(system, path, field, options.aiming);
+  check_focus_shift(options);
+  const Reference ref = make_reference(system, path, field, options.aiming, options.focus_shift);
   result.sphere = ref.sphere;
   detail::LossCounter losses(system, path, options.lost_warning_fraction);
   result.points = points_against(system, path, field, wavelength, sampling, options.aiming, ref,
@@ -218,7 +233,8 @@ OpdMap opd_map(const compile::CompiledSystem& system,
   OpdMap map;
   map.field = field;
   map.wavelength = wavelength;
-  const Reference ref = make_reference(system, path, field, options.aiming);
+  check_focus_shift(options);
+  const Reference ref = make_reference(system, path, field, options.aiming, options.focus_shift);
   map.sphere = ref.sphere;
   detail::LossCounter losses(system, path, options.lost_warning_fraction);
   map.points = points_against(system, path, field, wavelength, trace::GridPupil{options.grid},
@@ -272,7 +288,8 @@ OpdFan opd_fan(const compile::CompiledSystem& system,
   OpdFan fan;
   fan.field = field;
   fan.wavelength = wavelength;
-  const Reference ref = make_reference(system, path, field, options.aiming);
+  check_focus_shift(options);
+  const Reference ref = make_reference(system, path, field, options.aiming, options.focus_shift);
   fan.sphere = ref.sphere;
   detail::LossCounter losses(system, path, options.lost_warning_fraction);
   fan.tangential =
