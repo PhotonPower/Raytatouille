@@ -15,6 +15,7 @@
 #include <span>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "npy_writer.hpp"
@@ -137,11 +138,18 @@ void write_ee(const Writer& w, const EncircledEnergy& e) {
 /// m2/paraboloid_stop (f = 100 mm, AIR) with the entrance pupil diameter `epd` and the fields
 /// 0 and +2 deg, as systems() in test_bitwise_psf.py; `two_wavelengths` replaces the wavelengths
 /// by 0.5876 um (reference, weight 1) and 0.7345 um (weight 3).
-CompiledSystem paraboloid(const fs::path& reference_dir, double epd, bool two_wavelengths) {
+CompiledSystem paraboloid(const fs::path& reference_dir,
+                          double epd,
+                          bool two_wavelengths,
+                          bool obscured = false) {
   model::System s = io::load_system(reference_dir / "m2/paraboloid_stop.rtt.json");
   s.aperture.value = model::Param(epd);
   s.fields.points.push_back({0.0, 2.0, 1.0});
   if (two_wavelengths) s.wavelengths = {{0.5876, 1.0, true}, {0.7345, 3.0, false}};
+  if (obscured) {  // stop aperture 5 mm with inner radius 2 mm: epsilon = 0.4 (#229 C)
+    std::get<model::Element>(s.root.children[0].value).surfaces[0].aperture =
+        model::CircularAperture{5.0, 2.0};
+  }
   return compile::compile(s, material::MaterialLibrary{});
 }
 
@@ -152,6 +160,7 @@ void run_psf_cases(const fs::path& reference_dir, const fs::path& out, int threa
   const CompiledSystem f10 = paraboloid(reference_dir, 10.0, false);
   const CompiledSystem f50 = paraboloid(reference_dir, 2.0, false);
   const CompiledSystem poly = paraboloid(reference_dir, 10.0, true);
+  const CompiledSystem ring = paraboloid(reference_dir, 10.0, false, true);
   oneapi::tbb::task_arena arena(threads);
   arena.execute([&] {
     PsfOptions po;
@@ -186,6 +195,9 @@ void run_psf_cases(const fs::path& reference_dir, const fs::path& out, int threa
     write_ee(w("refocus_ee"), encircled_energy(moved, radii, EeCentre::LinearPhase));
     const std::vector<Point2> points{{0.0, 0.0}, {0.001, 0.0}, {0.0, 0.002}, {-0.003, 0.001}};
     w("psf_at").f8("values", psf_at(pupil, points));
+    MtfOptions mr;
+    mr.pupil.grid = 32;
+    write_mtf(w("annular_mtf"), mtf(ring, PathId{0}, 0, mr));
   });
 }
 

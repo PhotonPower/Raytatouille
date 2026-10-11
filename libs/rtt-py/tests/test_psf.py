@@ -175,3 +175,59 @@ def test_result_types_round_trip(f10: rt.CompiledSystem) -> None:
     assert plain.data["map"].shape == (0, 0) and plain.data["otf_map"].shape == (0, 0)
     assert plain.data["tangential"]["otf"].shape == (0,)
     assert plain.data["tangential"]["modulation"].shape == (9,)
+
+
+def annular(epd: float = 10.0) -> rt.CompiledSystem:
+    """The paraboloid with a stop aperture of radius 5 mm and inner radius 2 mm at D = 10 mm:
+    epsilon = 2 / 5 = 0.4 (as test_annular.cpp, #229 C)."""
+    data = json.loads(rt.load(REFERENCE_DIR / "m2" / "paraboloid_stop.rtt.json").to_json())
+    data["aperture"]["value"] = epd
+    data["root"]["children"][0]["surfaces"][0]["aperture"] = {
+        "type": "circular", "radius": 5.0, "inner_radius": 2.0}
+    return rt.compile(rt.System.from_json(json.dumps(data)))
+
+
+def test_annular_cells_and_pupil_function(f10: rt.CompiledSystem) -> None:
+    # pupil_cells(N, eps): the exact area of the annulus, pi (1 - eps^2) in units of the cell
+    # area a^2 = (2 / N)^2 (ADR 0032, addendum #229); eps = 0 is bitwise pupil_cells(N).
+    n, eps = 32, 0.4
+    ring = an.pupil_cells(n, eps)
+    assert ring.obscuration == eps
+    assert ring.fraction.sum() * (2.0 / n) ** 2 == pytest.approx(math.pi * (1 - eps**2),
+                                                                rel=1e-12)
+    assert 0 < int(ring.inner_rim.sum()) < n * n and ring.inner_rim.dtype == np.uint8
+    full = an.pupil_cells(n)
+    assert full.obscuration == 0.0 and not full.inner_rim.any()
+    assert full.fraction.tobytes() == an.pupil_cells(n, 0.0).fraction.tobytes()
+    with pytest.raises(ValueError):
+        an.pupil_cells(n, 1.0)
+    # The pupil function of the obscured paraboloid carries eps from the stop, and its MTF lies
+    # clearly below that of the full pupil at x = 0.25 (the annulus transfers less there).
+    pupil = an.pupil_function(annular(), grid=32)
+    assert pupil.obscuration == pytest.approx(eps, abs=1e-12)
+    assert an.pupil_function(f10, grid=32).obscuration == 0.0
+    ring_mtf = an.mtf(pupil).tangential.modulation
+    open_mtf = an.mtf(f10, grid=32).tangential.modulation
+    assert ring_mtf[8] < open_mtf[8] - 0.05
+
+
+def test_older_pupil_files_read_without_obscuration(f10: rt.CompiledSystem) -> None:
+    # PupilCells and PupilFunction gained their obscuration keys in 0.1.13 (ADR 0023): an older
+    # file reads as a pupil without obscuration, a newer one must have them.
+    cases = ((an.pupil_cells(8, 0.4), ("obscuration", "inner_rim")),
+             (an.pupil_function(f10, grid=8), ("obscuration",)))
+    for obj, keys in cases:
+        envelope = json.loads(obj.to_json())
+        for key in keys:
+            del envelope["data"][key]
+        envelope["schema_version"] = "0.1.12"
+        loaded = rt.results.load_json(json.dumps(envelope))
+        assert loaded.data["obscuration"] == 0.0
+        if "inner_rim" in keys:
+            assert loaded.data["inner_rim"].dtype == np.uint8
+            assert not loaded.data["inner_rim"].any()
+            assert loaded.data["inner_rim"].shape == loaded.data["fraction"].shape
+        assert list(loaded.data) == list(obj.to_dict())
+        envelope["schema_version"] = "0.1.13"
+        with pytest.raises(ValueError, match="misses"):
+            rt.results.load_json(json.dumps(envelope))

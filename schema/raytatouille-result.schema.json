@@ -1281,6 +1281,53 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "PupilCells"
+          },
+          "schema_version": {
+            "not": {
+              "pattern": "^0\\.1\\.([0-9]|1[0-2])$"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "obscuration",
+              "inner_rim"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "PupilFunction"
+          },
+          "schema_version": {
+            "not": {
+              "pattern": "^0\\.1\\.([0-9]|1[0-2])$"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "obscuration"
+            ]
+          }
+        }
+      }
     }
   ],
   "$defs": {

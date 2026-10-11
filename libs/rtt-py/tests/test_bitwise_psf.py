@@ -108,18 +108,23 @@ def flatten_ee(e: an.EncircledEnergy) -> Arrays:
     }
 
 
-def paraboloid(epd: float, two_wavelengths: bool = False) -> rt.CompiledSystem:
+def paraboloid(epd: float, two_wavelengths: bool = False,
+               obscured: bool = False) -> rt.CompiledSystem:
     """As paraboloid() in psf_cases.cpp."""
     data = json.loads(rt.load(REFERENCE_DIR / "m2" / "paraboloid_stop.rtt.json").to_json())
     data["aperture"]["value"] = epd
     data["fields"]["points"].append({"y": 2.0})
     if two_wavelengths:
         data["wavelengths"] = [{"um": 0.5876, "reference": True}, {"um": 0.7345, "weight": 3.0}]
+    if obscured:  # stop aperture 5 mm with inner radius 2 mm: epsilon = 0.4 (#229 C)
+        data["root"]["children"][0]["surfaces"][0]["aperture"] = {
+            "type": "circular", "radius": 5.0, "inner_radius": 2.0}
     return rt.compile(rt.System.from_json(json.dumps(data)))
 
 
 def systems() -> Systems:
-    return {"f10": paraboloid(10.0), "f50": paraboloid(2.0), "poly": paraboloid(10.0, True)}
+    return {"f10": paraboloid(10.0), "f50": paraboloid(2.0), "poly": paraboloid(10.0, True),
+            "ring": paraboloid(10.0, obscured=True)}
 
 
 def pupil(s: Systems, t: int) -> an.PupilFunction:
@@ -143,6 +148,7 @@ CASES: dict[str, Callable[[Systems, int], Arrays]] = {
     "refocus_ee": lambda s, t: flatten_ee(an.encircled_energy(
         an.refocus(s["f10"], pupil(s, t), 0.05), RADII, centre=an.EeCentre.LINEAR_PHASE)),
     "psf_at": lambda s, t: {"values": f8(an.psf_at(pupil(s, t), POINTS))},
+    "annular_mtf": lambda s, t: flatten_mtf(an.mtf(s["ring"], grid=32, threads=t)),
 }
 
 
@@ -189,3 +195,7 @@ def test_the_cases_have_content(compiled_systems: Systems) -> None:
     assert np.max(np.abs(moved["t_modulation"] - unmoved)) > 1e-4
     values = CASES["psf_at"](compiled_systems, 1)["values"]
     assert 0.0 < values[1] < values[0] < 1.0
+    # The annular pupil (#229 C) transfers clearly less than the full one at x = 0.25 (l = 8).
+    ring = CASES["annular_mtf"](compiled_systems, 1)["t_modulation"]
+    full = an.mtf(compiled_systems["f10"], grid=32).tangential.modulation
+    assert ring[8] < full[8] - 0.05

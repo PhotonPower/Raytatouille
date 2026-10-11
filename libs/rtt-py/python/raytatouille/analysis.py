@@ -428,11 +428,11 @@ def opd_points(
     ))
 
 
-def pupil_cells(grid: int) -> PupilCells:
+def pupil_cells(grid: int, obscuration: float = 0.0) -> PupilCells:
     """The N x N cells of the pupil function (ADR 0032, point 1): area fraction inside the unit
     circle and sample point (centre, or centroid of the part inside); rows from py = -1, px
     fastest. ValueError for N outside [2, MAX_PUPIL_GRID]."""
-    return _core.pupil_cells(grid)
+    return _core.pupil_cells(grid, obscuration)
 
 
 def pupil_function(

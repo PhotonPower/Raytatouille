@@ -78,6 +78,8 @@ _ADDED: dict[str, tuple[tuple[int, tuple[str, ...]], ...]] = {
     "RayBatch": ((5, ("wave_x", "wave_y", "wave_z", "mode_index")),  # 0.1.5 (#134)
                  (9, ("q",))),  # 0.1.9 (#207)
     "RayPaths": ((9, ("polarization", "prt", "q")),),  # 0.1.9 (#207)
+    "PupilCells": ((13, ("obscuration", "inner_rim")),),  # 0.1.13 (#229 C, Python #209 P1b)
+    "PupilFunction": ((13, ("obscuration",)),),  # 0.1.13 (#229 C, Python #209 P1b)
 }
 _FIELDS: dict[str, tuple[str, ...]] = {
     # analysis
@@ -99,12 +101,13 @@ _FIELDS: dict[str, tuple[str, ...]] = {
     # pupil function and Zernike fit (ADR 0032; #202, #203, Python #209). PupilFunction without
     # its end states (internal, for refocus).
     "OpdPupilPoints": ("field", "wavelength", "sphere", "points", "losses", "warnings"),
-    "PupilCells": ("grid", "fraction", "px", "py"),
+    "PupilCells": ("grid", "fraction", "px", "py", "obscuration", "inner_rim"),
     "PupilMapping": ("m", "s0", "centre", "e_x", "e_y", "d_c", "delta_max", "delta_rms"),
     "PupilFunction": ("path", "field", "wavelength", "wavelength_um", "reference_wavelength_um",
                       "grid", "focus_shift", "apodization", "lost_warning_fraction",
                       "mapping_warning", "sphere", "fraction", "px", "py", "amplitude", "w",
-                      "status", "prt", "mapping", "arrived_fraction", "losses", "warnings"),
+                      "status", "prt", "mapping", "arrived_fraction", "losses", "warnings",
+                      "obscuration"),
     "ZernikeFit": ("path", "field", "wavelength", "wavelength_um", "reference_wavelength_um",
                    "coefficients", "residual_rms", "sigma", "sigma_bf", "strehl", "cells",
                    "arrived_fraction", "warnings"),
@@ -492,5 +495,11 @@ def _upgrade(type_name: str, data: dict[str, Any], absent: list[str]) -> dict[st
                  "q": None}  # no Q requested (ADR 0034, addendum #207)
     elif type_name == "RayPaths":
         added = {"polarization": False, "prt": None, "q": None}  # nothing per slot (ADR 0034)
+    elif type_name == "PupilCells":
+        # Without an obscuration the cells cover the unit circle (ADR 0032, addendum #229).
+        added = {"obscuration": 0.0,
+                 "inner_rim": np.zeros(np.shape(data["fraction"]), dtype=np.uint8)}
+    elif type_name == "PupilFunction":
+        added = {"obscuration": 0.0}
     data = {**data, **{k: v for k, v in added.items() if k in absent and k not in data}}
     return {k: data[k] for k in _required(type_name)}
