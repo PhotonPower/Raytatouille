@@ -153,7 +153,11 @@ Seidel seidel(const compile::CompiledSystem& system,
     s.y_bar = in.y_bar;
     s.a = n * (u + in.y * in.c);
     s.a_bar = n * (u_bar + in.y_bar * in.c);
-    s.terms = surface_seidel(in);
+    // An ideal lens has no aberration of any order and f does not depend on the wavelength
+    // (ADR 0031, point 6: a collinear map): its contributions are exactly 0. surface_seidel()
+    // would give 0 here as well, since it forms u' from c = 0 and n' = n, not from the lens
+    // power; the branch states the zero independently of that (checked in #178 by mutation).
+    s.terms = system.surfaces()[events[i].surface].ideal_lens ? SeidelTerms{} : surface_seidel(in);
     s.lagrange = marginal[i].n * (chief[i].u * marginal[i].y - marginal[i].u * chief[i].y);
     if (i == 0) out.lagrange = n * (u_bar * in.y - u * in.y_bar);  // object space
 
