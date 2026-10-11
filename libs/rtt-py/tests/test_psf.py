@@ -169,3 +169,9 @@ def test_result_types_round_trip(f10: rt.CompiledSystem) -> None:
         loaded = rt.results.load_json(obj.to_json())
         assert loaded.type == type(obj).__name__
         assert loaded.schema_version == rt.results.SCHEMA_VERSION
+    # Without the map and the complex OTF (review of #247): the empty arrays keep their shapes,
+    # (0, 0) and (0,), through to_json and load_json.
+    plain = rt.results.load_json(an.mtf(f10, grid=8).to_json())
+    assert plain.data["map"].shape == (0, 0) and plain.data["otf_map"].shape == (0, 0)
+    assert plain.data["tangential"]["otf"].shape == (0,)
+    assert plain.data["tangential"]["modulation"].shape == (9,)

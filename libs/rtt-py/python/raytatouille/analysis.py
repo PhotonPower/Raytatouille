@@ -707,7 +707,9 @@ def encircled_energy(
     periodic PSF); larger, negative or non-finite radii raise ValueError.
 
     ``system`` as in mtf(): a System or CompiledSystem, or a PupilFunction (then only
-    ``centre`` applies besides ``radii``)."""
+    ``centre`` applies besides ``radii``). Unlike psf() and mtf(), ``radii`` is the second
+    positional argument in both forms: encircled_energy(system, radii, path, field) and
+    encircled_energy(pupil, radii)."""
     values = [float(r) for r in radii]
     if isinstance(system, PupilFunction):
         _pupil_form("encircled_energy", {
