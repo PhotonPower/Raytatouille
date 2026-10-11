@@ -20,6 +20,7 @@ if(RTT_BUILD_TESTS)
             tests/test_diffraction.cpp tests/test_crystal_trace.cpp tests/test_relative_trace.cpp
             tests/test_gauss_pupil.cpp tests/test_ideal_lens_trace.cpp
             tests/test_point_list_pupil.cpp tests/test_ideal_lens_aiming.cpp
+            tests/test_obscuration.cpp
     LIBS rtt::trace rtt::io rtt::polar rtt::coating rtt::model_test_support TBB::tbb)
   target_compile_definitions(rtt_trace_tests PRIVATE
     RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs")

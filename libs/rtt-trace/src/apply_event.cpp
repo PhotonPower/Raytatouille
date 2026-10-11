@@ -19,18 +19,20 @@ namespace {
 template <class>
 inline constexpr bool kUnhandledAperture = false;
 
-/// True if the local point (x, y) lies inside the aperture; the boundary belongs to it.
-bool inside(const model::Aperture& aperture, double x, double y) noexcept {
+/// True if the local point (x, y) lies inside the aperture; the boundary belongs to it. With
+/// `ignore_inner` the inner radius of a circular aperture is not tested (virtual reference
+/// rays, ADR 0032, addendum #229).
+bool inside(const model::Aperture& aperture, double x, double y, bool ignore_inner) noexcept {
   // Rims are inclusive with kApertureTolerance (decided for #50).
   constexpr double tol = kApertureTolerance;
   return std::visit(
-      [x, y](const auto& a) {
+      [x, y, ignore_inner](const auto& a) {
         using A = std::decay_t<decltype(a)>;
         if constexpr (std::is_same_v<A, model::CircularAperture>) {
           const double r2 = x * x + y * y;
           const double outer = a.radius + tol;
           const double inner = a.inner_radius - tol;
-          return r2 <= outer * outer && (inner <= 0.0 || r2 >= inner * inner);
+          return r2 <= outer * outer && (ignore_inner || inner <= 0.0 || r2 >= inner * inner);
         } else if constexpr (std::is_same_v<A, model::RectangularAperture>) {
           return std::abs(x) <= a.half_width_x + tol && std::abs(y) <= a.half_width_y + tol;
         } else if constexpr (std::is_same_v<A, model::EllipticalAperture>) {
@@ -405,7 +407,13 @@ SurfaceHit intersect_surface(const RayState& ray,
 }
 
 bool inside_aperture(const compile::CompiledSurface& surface, const SurfaceHit& hit) noexcept {
-  return !surface.aperture || inside(*surface.aperture, hit.point.x(), hit.point.y());
+  return inside_aperture(surface, hit, false);
+}
+
+bool inside_aperture(const compile::CompiledSurface& surface,
+                     const SurfaceHit& hit,
+                     bool ignore_inner) noexcept {
+  return !surface.aperture || inside(*surface.aperture, hit.point.x(), hit.point.y(), ignore_inner);
 }
 
 RayState move_to_hit(const RayState& ray,
@@ -688,7 +696,8 @@ RayState sequential_step(const RayState& ray,
     return ray;
   }
   const SurfaceHit hit = intersect_surface(ray, surface);
-  if (hit.status == geom::HitStatus::Hit && !inside_aperture(surface, hit)) {
+  if (hit.status == geom::HitStatus::Hit &&
+      !inside_aperture(surface, hit, ray.ignore_obscurations)) {
     RayState out = move_to_hit(ray, surface, hit, surface_index, media);
     out.status = RayStatus::Vignetted;
     return out;

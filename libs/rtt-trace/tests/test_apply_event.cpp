@@ -238,6 +238,39 @@ TEST_CASE("apertures vignette in local coordinates", "[apply_event]") {
   REQUIRE(status_at(ellipse, 3.0, 1.5) == RayStatus::Vignetted);  // (3/4)^2 + (1.5/2)^2 > 1
 }
 
+TEST_CASE("a virtual reference ray skips only the inner rim (#229)", "[apply_event]") {
+  // ADR 0032, addendum #229: RayState::ignore_obscurations skips the inner radius of a circular
+  // aperture (a central obscuration) in sequential_step() and inside_aperture(); every outer rim
+  // and the other aperture types vignette as before.
+  const auto status_at = [](const rtt::model::Aperture& aperture, double x, double y) {
+    CompiledSurface s = plane_surface();
+    s.aperture = aperture;
+    RayState in;
+    in.pos = Vec3(x, y, -1.0);
+    in.ignore_obscurations = true;
+    const RayState out = rtt::trace::sequential_step(in, s, 5, EventKind::Transmit, 1.0, 1.0);
+    CHECK(out.ignore_obscurations);  // the request stays with the ray
+    return out.status;
+  };
+  const rtt::model::CircularAperture ring{10.0, 2.0};
+  CHECK(status_at(ring, 1.0, 1.0) == RayStatus::Alive);  // inside the obscuration
+  CHECK(status_at(ring, 0.0, 0.0) == RayStatus::Alive);
+  CHECK(status_at(ring, 0.0, 5.0) == RayStatus::Alive);
+  CHECK(status_at(ring, 0.0, 10.5) == RayStatus::Vignetted);  // the outer rim still counts
+  CHECK(status_at(rtt::model::RectangularAperture{4.0, 2.0}, 0.0, 2.5) == RayStatus::Vignetted);
+  CHECK(status_at(rtt::model::EllipticalAperture{4.0, 2.0}, 3.0, 1.5) == RayStatus::Vignetted);
+  // inside_aperture() with and without ignore_inner on the same hit in the obscuration.
+  CompiledSurface s = plane_surface();
+  s.aperture = rtt::model::Aperture{ring};
+  RayState in;
+  in.pos = Vec3(1.0, 1.0, -1.0);
+  const rtt::trace::SurfaceHit hit = rtt::trace::intersect_surface(in, s);
+  REQUIRE(hit.status == rtt::geom::HitStatus::Hit);
+  CHECK_FALSE(rtt::trace::inside_aperture(s, hit));
+  CHECK_FALSE(rtt::trace::inside_aperture(s, hit, false));
+  CHECK(rtt::trace::inside_aperture(s, hit, true));
+}
+
 TEST_CASE("aperture rims include the aiming tolerance", "[apply_event]") {
   // Decided for #50: a ray passes if it lies at most kApertureTolerance (= kAimTolerance,
   // 1e-9 mm) outside a rim, so rays aimed exactly at a stop rim are not vignetted by rounding.
