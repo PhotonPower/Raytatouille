@@ -149,7 +149,11 @@ struct JonesPupil {
                                      const trace::RunControl& control);
 
 /// Chief frame at the input: (x_c, y_c) = R(z -> k0_c) (x, y), global unit vectors; for
-/// k0_c = -z the rotation by pi about x, R = diag(1, -1, -1) (ADR 0034, point 5).
+/// k0_c = -z the rotation by pi about x, R = diag(1, -1, -1) (ADR 0034, point 5). Near -z the
+/// frame is not continuous: R(z -> k0_c) turns by almost pi about an axis that follows k0_c, so a
+/// chief ray tilted towards y ends near (x, -y), one tilted towards x near (-x, y), which turns J
+/// into -J. D, delta and psi (modulo pi) do not change; only systems whose rays start along -z
+/// are affected (review of #208).
 /// @param k0_c unit start direction of the chief ray, global
 [[nodiscard]] std::array<math::Vec3, 2> input_chief_frame(const math::Vec3& k0_c) noexcept;
 

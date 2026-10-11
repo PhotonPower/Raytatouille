@@ -259,6 +259,22 @@ std::size_t compare(const JonesPupil& jp,
     CHECK(std::abs(jp.diattenuation[r] - d.value) <= 1e-10);
     const auto ret = rtt::polar::physical_retardance(e.p, e.q, e.k0);
     CHECK(std::abs(jp.retardance[r] - ret.value) <= 1e-10);
+    // Orientation and ellipticity of the state of largest transmission and of the fast state in
+    // the input basis from Lam's formulas (the phase of the eigenvector drops out). Only where
+    // the state is defined well: D and delta above 1e-6, so that the rounding of a few 1e-16
+    // moves the eigenvector by at most about 1e-10 (rounding over the gap); 1e-8, psi modulo pi.
+    const auto check_ellipse = [&](const Eigen::Vector3cd& axis, double psi, double chi) {
+      const auto ref = rtt::analysis::polarization_ellipse(in[0].cast<Cx>().dot(axis),
+                                                           in[1].cast<Cx>().dot(axis));
+      CHECK(std::abs(std::remainder(psi - ref.orientation, kPi)) <= 1e-8);
+      CHECK(std::abs(chi - ref.ellipticity) <= 1e-8);
+    };
+    if (d.value > 1e-6) {
+      check_ellipse(d.axis, jp.diattenuation_orientation[r], jp.diattenuation_ellipticity[r]);
+    }
+    if (ret.value > 1e-6) {
+      check_ellipse(ret.fast_axis, jp.retardance_orientation[r], jp.retardance_ellipticity[r]);
+    }
     ++compared;
   }
   return compared;
@@ -427,6 +443,19 @@ TEST_CASE("Jones pupil of a converging F/5 beam on a flat metal mirror", "[jones
       }
       CHECK(d_max > 1e-4);
       CHECK(delta_max > 1e-4);
+      if (field == 0) {
+        // Content guard of the orientation map: the metal reflects s more than p
+        // (|r_s| > |r_p|), so the brightest input state is s = k x N. On the line px = 0 the
+        // plane of incidence is y-z and s is about x (psi about 0), on py = 0 it is x-z and s is
+        // about y (psi about pi/2); 0.05 rad covers the tilt of the double-pole basis.
+        for (std::size_t r = 0; r < jp.status.size(); ++r) {
+          if (jp.status[r] != RayStatus::Alive || jp.diattenuation[r] <= 1e-6) continue;
+          INFO("point " << r << " at (" << jp.px[r] << ", " << jp.py[r] << ")");
+          const double psi = jp.diattenuation_orientation[r];
+          if (jp.px[r] == 0.0) CHECK(std::abs(std::remainder(psi, kPi)) < 0.05);
+          if (jp.py[r] == 0.0) CHECK(std::abs(psi - kPi / 2.0) < 0.05);
+        }
+      }
     }
   }
 }
