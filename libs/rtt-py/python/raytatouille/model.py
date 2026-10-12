@@ -7,7 +7,8 @@ mm, angles in degree where the name ends in ``_deg``; a Param has the unit of th
 that holds it. Variants (shape, aperture, phase, interaction) appear as the object of the active
 alternative, e.g. ``Conic`` or ``Plane``. ``System.optimization`` holds the merit function
 (ADR 0030): operands such as ``FirstOrderOperand`` or ``SpotRmsOperand`` and the generators
-``SpotGenerator`` and ``WavefrontGenerator``.
+``SpotGenerator`` and ``WavefrontGenerator``. ``System.tolerances`` holds the tolerance set
+(ADR 0035): ``ToleranceSet`` with items, overrides, compensators and criteria.
 
 Example::
 
@@ -23,9 +24,11 @@ from ._core import (
     Absorber,
     Assembly,
     CircularAperture,
+    Compensator,
     Configuration,
     CoatingRef,
     Conic,
+    Criterion,
     CrystalMaterial,
     DiffractionEfficiency,
     Element,
@@ -47,6 +50,7 @@ from ._core import (
     IdealPolarizer,
     IdealRetarder,
     LinearGrating,
+    MonteCarloDefaults,
     ObjectSpace,
     OpdRmsOperand,
     Optimization,
@@ -69,6 +73,14 @@ from ._core import (
     Surface,
     SystemAperture,
     SystemApertureType,
+    ToleranceClass,
+    ToleranceClassOverride,
+    ToleranceDistribution,
+    ToleranceItem,
+    ToleranceKind,
+    TolerancePivotOverride,
+    ToleranceSet,
+    ToleranceValueOverride,
     WavefrontGenerator,
     ZernikeSag,
 )
@@ -77,9 +89,11 @@ __all__ = [
     "Absorber",
     "Assembly",
     "CircularAperture",
+    "Compensator",
     "Configuration",
     "CoatingRef",
     "Conic",
+    "Criterion",
     "CrystalMaterial",
     "DiffractionEfficiency",
     "Element",
@@ -101,6 +115,7 @@ __all__ = [
     "IdealPolarizer",
     "IdealRetarder",
     "LinearGrating",
+    "MonteCarloDefaults",
     "ObjectSpace",
     "OpdRmsOperand",
     "Optimization",
@@ -123,6 +138,14 @@ __all__ = [
     "Surface",
     "SystemAperture",
     "SystemApertureType",
+    "ToleranceClass",
+    "ToleranceClassOverride",
+    "ToleranceDistribution",
+    "ToleranceItem",
+    "ToleranceKind",
+    "TolerancePivotOverride",
+    "ToleranceSet",
+    "ToleranceValueOverride",
     "WavefrontGenerator",
     "ZernikeSag",
 ]
