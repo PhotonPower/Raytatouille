@@ -1,8 +1,8 @@
 # Systemdateien `.rtt.json` erzeugen
 
 Kurzanleitung für das Dateiformat, das die Engine, die CLI (`rtt`) und der Raytatouille Explorer
-laden. Alle Beispiele hier wurden gegen Schema `0.5.x` geprüft (Bibliothek 0.8.0). Dateien mit
-Schema 0.1 bis 0.4 liest `rtt` weiter und schreibt sie mit `rtt format` als 0.5; ein `pickup` aus
+laden. Alle Beispiele hier wurden gegen Schema `0.6.x` geprüft (M7, nach Bibliothek 0.8.0). Dateien mit
+Schema 0.1 bis 0.5 liest `rtt` weiter und schreibt sie mit `rtt format` als 0.6; ein `pickup` aus
 einer Datei vor 0.4 fällt dabei weg, mit der Warnung `io.pickup_dropped` (siehe
 „Parametertabelle“).
 Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/architecture.md`.
@@ -32,7 +32,7 @@ Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/a
 
 | Feld | Pflicht | Inhalt |
 | --- | --- | --- |
-| `schema_version` | ja | `"0.5.0"` (Muster `0.5.x`) |
+| `schema_version` | ja | `"0.6.0"` (Muster `0.6.x`) |
 | `name` | nein | Anzeigename |
 | `units` | ja | genau `{"length": "mm", "wavelength": "um"}` |
 | `environment` | nein | `temperature_c`, `pressure_atm`, `medium` (Standard: Luft nach Ciddor, 20 °C, 1 atm) |
@@ -45,6 +45,7 @@ Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/a
 | `root` | ja | die oberste Baugruppe |
 | `paths` | ja | mindestens ein Pfad, meist `{"name": "main", "events": "auto"}` |
 | `optimization` | nein | Merit-Funktion (ADR 0030), siehe unten; fehlt ohne Merit-Funktion |
+| `tolerances` | nein | Toleranzsatz (ADR 0035), siehe unten; fehlt ohne Toleranzen |
 
 ## Elemente (`type`)
 
@@ -239,6 +240,101 @@ Die Namen, Indexbereiche, Gewichte und Abtastungen prüft `rtt validate` (Codes 
 }
 ```
 
+## Toleranzsatz `tolerances` (ab Schema 0.6, ADR 0035)
+
+Der Abschnitt steht nach `optimization`; alle Schlüssel sind optional, leere Listen und ein Satz
+ohne Einträge fallen weg. Er beschreibt, was toleriert wird. Die Analyse (Sensitivität, Monte
+Carlo) und ihre Laufparameter (Threads, Perzentile, LM-Optionen) stehen nicht in der Datei
+(ADR 0036).
+
+| Schlüssel | Inhalt |
+| --- | --- |
+| `class` | Toleranzklasse des Systems: `coarse`, `normal`, `precise` oder `none` (wie fehlend) |
+| `overrides` | Überschreibungen je Knoten oder Fläche: Klasse, Einzelwert oder Pivot |
+| `items` | explizite Toleranzen |
+| `compensators` | Kompensatoren mit Verstellweg |
+| `compensator_merit` | Merit-Funktion der Kompensatoren, aufgebaut wie `optimization`; fehlt sie, gilt `optimization` |
+| `criteria` | Kriterien: Operanden mit Grenzen |
+| `monte_carlo` | Vorgaben `seed` und `trials` |
+
+**Ziele** werden über Anker adressiert, nie über Indizes: genau einer von `surface` (Flächen-`id`),
+`node` (Name eines Elements oder einer Baugruppe, nicht der Wurzel) und `parameter` (Name einer
+Zeile der Parametertabelle). Ein Param wird als Anker plus angehängter Pointer `param` adressiert,
+relativ zum Objekt des Ankers in der Bearbeitungsform, z. B. `{"surface": "L1.S2", "param":
+"/shape/base/coefficients/0"}` oder `{"node": "image", "param": "/pose/position/2"}`. So bleiben
+Ziele gültig, wenn Knoten eingefügt oder verschoben werden.
+
+**Items** haben `id`, ein Ziel, `kind`, `limit` (Grenze T > 0; die Störung liegt in [−T, T]) und
+`distribution`: `normal` (Standard, σ = T/2, abgeschnitten bei ±T), `uniform` oder `endpoint`
+(±T). Die `id` bestimmt die Zufallsfolge eines Items; sie darf nicht mit `class:` beginnen (das
+ist der Namensraum der erzeugten Items).
+
+| `kind` | Ziel | Einheit | Wirkung |
+| --- | --- | --- | --- |
+| `radius` | Fläche mit Konik oder gerader Asphäre | mm | R′ = R + ΔR |
+| `curvature_relative` | wie `radius` | dimensionslos | C′ = C (1 + δ) |
+| `conic` | wie `radius` | dimensionslos | κ′ = κ + Δκ |
+| `thickness` | Fläche oder Knoten | mm | Offset auf `pose.position[2]`; relativ platzierte Folgeknoten wandern mit |
+| `param` | Anker + `param` | Einheit des Params | Offset auf den Wert des Params (z. B. Asphärenkoeffizient) |
+| `parameter` | Zeile | Einheit der Zeile | Offset auf die Zeile, in allen Konfigurationen derselbe |
+| `decenter_x`, `decenter_y`, `shift_z` | Fläche oder Knoten | mm | starre Verschiebung im Nennrahmen des Ziels und seines Teilbaums |
+| `tilt_x_deg`, `tilt_y_deg`, `tilt_z_deg` | Fläche oder Knoten | Grad | starre Drehung um die Achse des Nennrahmens durch den Pivot |
+| `index`, `abbe` | Element (Lens, Plate) | dimensionslos | Δn_d bzw. Δν_d; `segment` (0-basiert) bei mehreren Materialien |
+
+`thickness` ist ein Maß (Offset auf ein Param), `shift_z` eine Lage (starr): Eine Dickentoleranz
+schiebt relativ platzierte Folgeknoten mit, eine starre Verschiebung nicht. Params auf
+Systemebene (Objektabstand, Systemapertur) sind keine Toleranz- und keine Kompensatorziele.
+
+**Klassen und Überschreibungen.** Die Klasse erzeugt Items aus einer festen Tabelle der
+Bibliothek (Flächen: `curvature_relative`, `conic` an Asphären, `thickness` ab der zweiten
+Fläche; Elemente: `thickness`, `decenter_x/y`, `tilt_x/y_deg`, bei Lens und Plate `index` und
+`abbe`; Baugruppen: `decenter_x/y`, `shift_z`, `tilt_x/y_deg`). Ein Eintrag in `overrides` hat
+genau eine von drei Formen:
+
+- `{"node": …, "class": …}`: andere Klasse für den Knoten und seinen Teilbaum; `none` schaltet die
+  Erzeugung dort ab. Der nächste Vorfahr gewinnt.
+- `{"node" | "surface": …, "kind": …, "limit": …}` (optional `distribution`, `segment`): ein
+  Einzelwert für eine erzeugte Art an genau diesem Ziel.
+- `{"node" | "surface": …, "pivot": [x, y, z]}`: der Pivot der Kippungen dieses Ziels (mm, in
+  seinen Koordinaten), nicht vererbt; ohne Eintrag gilt der Pivot seiner Pose.
+
+Vorrang: explizites Item > Einzelwert > Klasse des nächsten Vorfahren > `class` des Systems,
+verglichen wird die gestörte Größe (ein `radius`-Item ersetzt das erzeugte `curvature_relative`
+derselben Fläche).
+
+**Kompensatoren** sind ein ungebundenes Param (Anker plus `param`) oder eine Zeile der Form
+`value` (`parameter`), mit `travel_min` < 0 < `travel_max` relativ zum Wert des Prüflings vor der
+Kompensation. **Kriterien** haben `id`, `operand` (ein Operand wie in `optimization`, aber ohne
+`target` und `weight`) und mindestens eine Grenze: `min`, `max` (absolut) oder `max_change`
+(|Wert − Nennwert|). **`monte_carlo`**: `seed` ganzzahlig in [0, 2⁵³ − 1], `trials` in [1, 2³²].
+
+Was zusammenpasst (Art und Ziel, Segment, Grenzen, ids, Kompensatoren, Bereiche), prüft
+`rtt validate` (Codes `tolerances.*`); der Leser prüft nur Schlüssel und Typen. Eine Datei vor
+Schema 0.6 mit `tolerances` ist ein Lesefehler.
+
+```json
+"tolerances": {
+  "class": "normal",
+  "overrides": [
+    {"node": "objective", "class": "precise"},
+    {"surface": "L1.S2", "kind": "curvature_relative", "limit": 0.005},
+    {"node": "objective", "pivot": [0.0, 0.0, 9.5]}
+  ],
+  "items": [
+    {"id": "S3-wedge", "surface": "L1.S3", "kind": "tilt_x_deg", "limit": 0.02},
+    {"id": "bfd", "parameter": "BFD", "kind": "parameter", "limit": 0.1, "distribution": "endpoint"}
+  ],
+  "compensators": [{"parameter": "BFD", "travel_min": -1.0, "travel_max": 1.0}],
+  "criteria": [
+    {"id": "spot-edge", "operand": {"type": "spot_rms", "path": "main", "field": 2}, "max": 0.03},
+    {"id": "efl", "operand": {"type": "efl", "path": "main"}, "max_change": 0.5}
+  ],
+  "monte_carlo": {"seed": 20261012, "trials": 200}
+}
+```
+
+Vollständiges Beispiel: `tests/reference/m7/achromat_tolerances.rtt.json`.
+
 ## Pfade
 
 `"events": "auto"` besucht alle Flächen in Baumreihenfolge: Linsen und Platten brechen, Spiegel
@@ -265,7 +361,7 @@ dahinter, der Detektor im paraxialen Fokus bei z = 106,442 mm.
 
 ```json
 {
-  "schema_version": "0.5.0",
+  "schema_version": "0.6.0",
   "name": "Plankonvex-Singlet",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": true}, {"um": 0.6563}],
@@ -346,7 +442,7 @@ def singlet(r1, r2, dicke, glas="CONST:1.5168", epd=20.0, bild_abstand=95.0, hal
 
     z_linse = 5.0
     return {
-        "schema_version": "0.5.0", "name": f"Singlet R1={r1} R2={r2}",
+        "schema_version": "0.6.0", "name": f"Singlet R1={r1} R2={r2}",
         "units": {"length": "mm", "wavelength": "um"},
         "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": True}, {"um": 0.6563}],
         "aperture": {"type": "epd", "value": epd},
