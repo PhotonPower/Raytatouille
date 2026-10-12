@@ -361,3 +361,106 @@ def test_0_5_ideal_lens_forms_are_accepted(mutate):
 )
 def test_0_5_ideal_lens_errors_are_rejected(mutate):
     assert not VALIDATOR.is_valid(_ideal(mutate))
+
+
+# ---- schema 0.6 (#253, ADR 0035): the tolerance set ----
+
+def _tol(mutate):
+    doc = copy.deepcopy(load(ROOT / "tests" / "reference" / "m7" / "achromat_tolerances.rtt.json"))
+    mutate(doc)
+    return doc
+
+
+def _t(d):
+    return d["tolerances"]
+
+
+def test_tolerance_reference_has_every_form():
+    t = _t(_tol(lambda d: None))
+    assert set(t) == {"class", "overrides", "items", "compensators", "compensator_merit",
+                      "criteria", "monte_carlo"}
+    forms = [("class" in o, "kind" in o, "pivot" in o) for o in t["overrides"]]
+    assert (True, False, False) in forms
+    assert (False, True, False) in forms
+    assert (False, False, True) in forms
+    assert {a for i in t["items"] for a in ("surface", "node", "parameter") if a in i} == {
+        "surface", "parameter"}
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda d: d.pop("tolerances"),
+        lambda d: d.update(tolerances={}),
+        lambda d: _t(d).update({"class": "none"}),
+        lambda d: _t(d)["items"].append({"id": "x", "node": "L1", "kind": "index", "segment": 0,
+                                         "limit": 0.001}),
+        lambda d: _t(d)["items"].append({"id": "x", "node": "L1", "kind": "shift_z",
+                                         "limit": 0.01, "distribution": "normal"}),
+        lambda d: _t(d)["overrides"].append({"surface": "L1.S1", "pivot": [0.0, 0.0, 0.0]}),
+        lambda d: _t(d)["compensators"].append({"node": "image", "param": "/pose/position/2",
+                                                "travel_min": -0.5, "travel_max": 0.5}),
+        lambda d: _t(d).pop("compensator_merit"),
+        lambda d: _t(d)["compensator_merit"].update(generators=[{"type": "rms_spot",
+                                                                 "path": "main"}]),
+        lambda d: _t(d)["criteria"].append({"id": "y", "operand": {
+            "type": "ray_y", "path": "main", "surface": "IMG", "configuration": "c"},
+            "min": -0.1, "max": 0.1}),
+        lambda d: _t(d).update(monte_carlo={}),
+        lambda d: _t(d).update(monte_carlo={"seed": 18446744073709551615, "trials": 0}),
+    ],
+    ids=["no-section", "empty-section", "class-none", "segment", "default-distribution",
+         "surface-pivot", "node-param-compensator", "no-compensator-merit", "merit-generator",
+         "ray-criterion", "empty-monte-carlo", "uint64-range"],
+)
+def test_0_6_tolerance_forms_are_accepted(mutate):
+    VALIDATOR.validate(_tol(mutate))
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda d: _t(d).update(extra=1),
+        lambda d: _t(d).update({"class": "fine"}),
+        lambda d: _t(d).update(items={}),
+        lambda d: _t(d)["items"][0].pop("surface"),
+        lambda d: _t(d)["items"][0].update(node="L1"),
+        lambda d: _t(d)["items"][0].pop("id"),
+        lambda d: _t(d)["items"][0].pop("limit"),
+        lambda d: _t(d)["items"][0].update(kind="wedge"),
+        lambda d: _t(d)["items"][0].update(distribution="gauss"),
+        lambda d: _t(d)["items"][0].update(segment=-1),
+        lambda d: _t(d)["items"][0].update(pivot=[0.0, 0.0, 1.0]),
+        lambda d: _t(d)["overrides"][0].update(kind="index"),
+        lambda d: _t(d)["overrides"][3].update(kind="tilt_x_deg", limit=0.1),
+        lambda d: _t(d)["overrides"].append({"node": "L1"}),
+        lambda d: _t(d)["overrides"].append({"surface": "L1.S1", "class": "coarse"}),
+        lambda d: _t(d)["overrides"][1].update(parameter="BFD"),
+        lambda d: _t(d)["overrides"][1].update(node="L1"),
+        lambda d: _t(d)["overrides"][3].update(pivot=[0.0, 0.0]),
+        lambda d: _t(d)["compensators"][0].pop("travel_min"),
+        lambda d: _t(d)["compensators"][0].update(segment=0),
+        lambda d: _t(d)["compensator_merit"]["operands"][0].pop("target"),
+        lambda d: _t(d)["criteria"][0]["operand"].update(target=0.0),
+        lambda d: _t(d)["criteria"][0]["operand"].update(weight=1.0),
+        lambda d: _t(d)["criteria"][0]["operand"].update(type="rms_spot"),
+        lambda d: _t(d)["criteria"][0].pop("operand"),
+        lambda d: _t(d)["criteria"][0].update(target=0.0),
+        lambda d: _t(d)["monte_carlo"].update(seed=-1),
+        lambda d: _t(d)["monte_carlo"].update(seed=18446744073709551616),
+        lambda d: _t(d)["monte_carlo"].update(trials=1.5),
+        lambda d: _t(d)["monte_carlo"].update(threads=4),
+        lambda d: d.update(schema_version="0.5.0"),
+    ],
+    ids=["section-unknown-key", "class-name", "items-not-array", "item-without-anchor",
+         "item-two-anchors", "item-without-id", "item-without-limit", "kind-name",
+         "distribution-name", "negative-segment", "item-pivot", "class-and-kind",
+         "pivot-and-kind", "override-without-form", "class-at-surface", "override-parameter",
+         "override-two-anchors", "pivot-length", "compensator-without-travel",
+         "compensator-segment", "merit-operand-without-target", "criterion-target",
+         "criterion-weight", "criterion-generator", "criterion-without-operand",
+         "criterion-unknown-key", "negative-seed", "seed-too-large", "trials-not-integer",
+         "monte-carlo-unknown-key", "old-version"],
+)
+def test_0_6_tolerance_errors_are_rejected(mutate):
+    assert not VALIDATOR.is_valid(_tol(mutate))
