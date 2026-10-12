@@ -14,6 +14,7 @@
 #include "rtt/model/optimization.hpp"
 #include "rtt/model/param.hpp"
 #include "rtt/model/path.hpp"
+#include "rtt/model/tolerance.hpp"
 
 namespace rtt::model {
 
@@ -128,6 +129,8 @@ struct System {
   std::vector<ParameterRow> parameters;
   /// Merit function (ADR 0030, section "optimization"); empty: none.
   Optimization optimization;
+  /// Tolerance set (ADR 0035, section "tolerances"); empty: none.
+  ToleranceSet tolerances;
   bool operator==(const System&) const = default;
 };
 
