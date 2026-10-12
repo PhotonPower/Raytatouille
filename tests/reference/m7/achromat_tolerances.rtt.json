@@ -16,7 +16,7 @@
     ]
   },
   "parameters": [
-    {"name": "BFD", "value": 110.614}
+    {"name": "R1", "value": 61.5}
   ],
   "root": {
     "type": "assembly",
@@ -45,7 +45,10 @@
               {
                 "id": "L1.S1",
                 "shape": {
-                  "base": {"type": "conic", "radius": 61.5}
+                  "base": {
+                    "type": "conic",
+                    "radius": {"param": "R1"}
+                  }
                 },
                 "aperture": {"type": "circular", "radius": 12.7}
               },
@@ -72,13 +75,7 @@
       {
         "type": "detector",
         "name": "image",
-        "pose": {
-          "position": [
-            0.0,
-            0.0,
-            {"param": "BFD"}
-          ]
-        },
+        "pose": {"position": [0.0, 0.0, 110.614]},
         "surfaces": [
           {"id": "IMG"}
         ]
@@ -119,15 +116,20 @@
         "distribution": "uniform"
       },
       {
-        "id": "bfd",
-        "parameter": "BFD",
+        "id": "R1",
+        "parameter": "R1",
         "kind": "parameter",
         "limit": 0.1,
         "distribution": "endpoint"
       }
     ],
     "compensators": [
-      {"parameter": "BFD", "travel_min": -1.0, "travel_max": 1.0}
+      {
+        "node": "image",
+        "param": "/pose/position/2",
+        "travel_min": -1.0,
+        "travel_max": 1.0
+      }
     ],
     "compensator_merit": {
       "operands": [
