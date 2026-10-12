@@ -86,6 +86,13 @@ Fehlerquellen, die nur die CI sieht, vorab lokal prüfen:
   nicht, und umgekehrt. Ist GCC 13 lokal nicht verfügbar, die CI-Läufe von `ci-linux-gcc` nach dem
   Push gezielt ansehen. Dazu gehört `-Wrange-loop-construct`: Eine Bereichsschleife per Wert über
   `const Vec3` meldet nur GCC 13, also über Klassentypen immer `const T&` (#218).
+- **`-Wdangling-reference` bei Aufrufen mit temporärem Argument.** Bindet man das
+  Referenz-Ergebnis eines Aufrufs an eine Referenz und bekommt der Aufruf ein Temporäres, hält GCC
+  (13 wie 16) das Ergebnis für eine Referenz auf das Temporäre und bricht mit `-Werror` ab, auch
+  wenn sie auf ein langlebiges Objekt zeigt. Beispiele: ein `std::string` aus einem Literal
+  (`const auto& f = frame(c, "/root/…")`, #266), ein Lambda in
+  `const T& x = std::visit([](const auto& op) -> const T& { return op.member; }, v)` (#268).
+  Abhilfe: per Wert binden oder einen Zeiger zurückgeben.
 - **Keine exakten Vergleiche über libm-Ergebnisse auf Konstanten.** GCC faltet z. B.
   `std::cbrt(kKonstante)` bei Optimierung zur Übersetzungszeit korrekt gerundet; die Laufzeit-libm
   (glibc, MinGW) darf um 1 ulp abweichen. Ein Test, der sich darauf verlässt, dass er denselben Wert
