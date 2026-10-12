@@ -54,7 +54,7 @@ __all__ = [
 ]
 
 FORMAT = "raytatouille-result"
-SCHEMA_VERSION = "0.1.12"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
+SCHEMA_VERSION = "0.1.13"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
 # 0.1.3: status Evanescent, status arrays one entry longer (#127); 0.1.4: PathTransmission,
 # PathOplDifference, GhostRanking (#133); 0.1.5: RayBatch wave_x/y/z, mode_index (#134);
 # 0.1.6: RaytraceReport, SystemReport, DimensionReport (#177);
@@ -65,6 +65,7 @@ SCHEMA_VERSION = "0.1.12"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84)
 # 0.1.11: JonesPupil (#208)
 # 0.1.12: Psf, ThroughFocus, Mtf, EncircledEnergy; PupilCells obscuration, inner_rim,
 # PupilFunction obscuration (#209 P1b, #229 C)
+# 0.1.13: StokesPupil (#211)
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a
@@ -132,6 +133,9 @@ _FIELDS: dict[str, tuple[str, ...]] = {
             "map", "otf_map", "edge_energy_deficit", "wavelengths", "losses", "warnings"),
     "EncircledEnergy": ("field", "grid", "centre", "e_x", "e_y", "offset", "radii", "energy",
                         "radius_max", "edge_energy_deficit", "wavelengths", "losses", "warnings"),
+    "StokesPupil": ("path", "field", "wavelength", "wavelength_um", "e1", "e2", "x_in", "y_in",
+                    "x_out", "y_out", "px", "py", "status", "s0", "s1", "s2", "s3",
+                    "orientation", "ellipticity", "warnings"),
     "Foci": ("wavelength", "paraxial_z", "real_z"),
     "LongitudinalColour": ("pair", "foci", "paraxial", "real"),
     "LateralColour": ("field", "chief", "offset"),
@@ -216,7 +220,7 @@ _FIELDS: dict[str, tuple[str, ...]] = {
 #: Types that to_json writes and load_json accepts as "type".
 TYPES: tuple[str, ...] = (
     "SpotDiagram", "RayFan", "OpdMap", "OpdFan", "OpdPupilPoints", "PupilCells", "PupilFunction",
-    "ZernikeFit", "JonesPupil", "Psf", "ThroughFocus", "Mtf", "EncircledEnergy",
+    "ZernikeFit", "JonesPupil", "StokesPupil", "Psf", "ThroughFocus", "Mtf", "EncircledEnergy",
     "LongitudinalColour", "LateralColour",
     "DistortionSweep", "DistortionPoint", "FieldCurvatureSweep", "FieldCurvaturePoint",
     "PathTransmission", "PathOplDifference", "Interferogram", "GhostRanking",

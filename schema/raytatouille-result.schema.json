@@ -30,6 +30,7 @@
         "PupilFunction",
         "ZernikeFit",
         "JonesPupil",
+        "StokesPupil",
         "Psf",
         "ThroughFocus",
         "Mtf",
@@ -1324,6 +1325,43 @@
           "data": {
             "required": [
               "obscuration"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "StokesPupil"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "path",
+              "field",
+              "wavelength",
+              "wavelength_um",
+              "e1",
+              "e2",
+              "x_in",
+              "y_in",
+              "x_out",
+              "y_out",
+              "px",
+              "py",
+              "status",
+              "s0",
+              "s1",
+              "s2",
+              "s3",
+              "orientation",
+              "ellipticity",
+              "warnings"
             ]
           }
         }

@@ -18,6 +18,7 @@
 
 #include "npy_writer.hpp"
 #include "rtt/analysis/jones.hpp"
+#include "rtt/analysis/stokes.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/io/json_io.hpp"
 #include "rtt/material/material.hpp"
@@ -96,6 +97,18 @@ void write_jones(const Writer& w, const JonesPupil& p) {
   w.u8("losses", losses(p.losses, p.warnings.size()));
 }
 
+// Names and order as flatten_stokes() in test_bitwise_jones.py.
+void write_stokes(const Writer& w, const StokesPupil& p) {
+  w.c16("e_in", {p.e1, p.e2});
+  for (const auto& [name, column] :
+       {std::pair{"s0", &p.s0}, std::pair{"s1", &p.s1}, std::pair{"s2", &p.s2},
+        std::pair{"s3", &p.s3}, std::pair{"orientation", &p.orientation},
+        std::pair{"ellipticity", &p.ellipticity}}) {
+    w.f8(name, *column);
+  }
+  w.u8("ints", {p.path.index, p.field, p.wavelength, p.warnings.size()});
+}
+
 /// 5 x 5 rays along +z from z = 0 at x, y in {-3, -1.5, 0, 1.5, 3}, labelled (x, y) / 3; the
 /// chief ray (0, 0) has index 12 (as parallel_rays() in test_bitwise_jones.py).
 trace::RayBatch parallel_rays() {
@@ -137,6 +150,9 @@ void run_jones_cases(const fs::path& reference_dir, const fs::path& out, int thr
     given.remove_global_phase = true;
     write_jones(w("periscope_jones"),
                 jones_pupil(periscope, PathId{1}, parallel_rays(), 12, given));
+    write_stokes(w("periscope_stokes"),
+                 stokes_pupil(jones_pupil(periscope, PathId{1}, parallel_rays(), 12, {}),
+                              std::complex<double>(1.0, 0.0), std::complex<double>(0.0, 1.0)));
   });
 }
 

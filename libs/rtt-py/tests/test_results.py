@@ -115,6 +115,8 @@ PRODUCERS: dict[str, Callable[[rt.CompiledSystem, rt.MaterialLibrary], Any]] = {
         mapping_warning=1.0),
     "EncircledEnergy": lambda cs, lib: rt.analysis.encircled_energy(
         cs, [0.001, 0.002], wavelengths=[1], grid=6, undersampled_waves=1e6, mapping_warning=1.0),
+    "StokesPupil": lambda cs, lib: rt.analysis.stokes_pupil(
+        rt.analysis.jones_pupil(cs, field=1, rays="grid:5"), 1.0, 1j),
     "LongitudinalColour": lambda cs, lib: rt.analysis.longitudinal_colour(cs, pair=(0, 2)),
     "LateralColour": lambda cs, lib: rt.analysis.lateral_colour(cs, field=2),
     "DistortionSweep": lambda cs, lib: rt.analysis.distortion(cs, samples=3),
@@ -174,10 +176,10 @@ def test_round_trip_is_bit_identical(name: str, singlet: rt.CompiledSystem,
     envelope = json.loads(text, parse_constant=no_constants)  # standard JSON only
     assert list(envelope) == ["format", "schema_version", "type", "data"]
     assert envelope["format"] == "raytatouille-result"
-    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.12"
+    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.13"
     assert envelope["type"] == name
     loaded = rt.results.load_json(text)
-    assert (loaded.type, loaded.schema_version) == (name, "0.1.12")
+    assert (loaded.type, loaded.schema_version) == (name, "0.1.13")
     same(loaded.data, data)
 
 
@@ -395,7 +397,7 @@ def test_trace_stats_carry_the_evanescent_status(singlet: rt.CompiledSystem) -> 
     rays.status[1] = int(rt.trace.RayStatus.EVANESCENT)
     stats = rt.trace.trace(singlet, rays, path="main")
     loaded = rt.results.load_json(stats.to_json())
-    assert loaded.schema_version == rt.results.SCHEMA_VERSION == "0.1.12"
+    assert loaded.schema_version == rt.results.SCHEMA_VERSION == "0.1.13"
     counts = list(loaded.data["rays"])
     assert len(counts) == 8
     assert counts[int(rt.trace.RayStatus.EVANESCENT)] == 1
@@ -494,7 +496,7 @@ def test_two_digit_version_is_a_number(singlet: rt.CompiledSystem) -> None:
     0.1.9 as a number, older as a string. A RayBatch file without q (added in 0.1.9) must fail at
     0.1.10 as at 0.1.9, and only an older file (0.1.8, also 0.1.1) reads with the rule."""
     g = rt.analysis.interferogram(singlet, 0, 0, field=1, rays="fan_y:3")
-    assert rt.results.load_json(g.to_json()).schema_version == "0.1.12"
+    assert rt.results.load_json(g.to_json()).schema_version == "0.1.13"
     rays, _ = traced_with_q(singlet)
     envelope = json.loads(rays.to_json())
     del envelope["data"]["q"]
