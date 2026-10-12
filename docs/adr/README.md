@@ -43,8 +43,8 @@ Präzisierungen und Ergänzungen einer angenommenen Entscheidung kommen als dati
 | [0032](0032.md) | Pupillenfunktion und Wellenfront-Auswertung (Zernike-Fit, Strehl, Through-Focus) | angenommen |
 | [0033](0033.md) | FFT-Beugung: PSF, MTF, Encircled Energy | angenommen |
 | [0034](0034.md) | Polarisation in der Pupille (P je Ereignis, akkumuliertes Q, Jones-Pupille) | angenommen |
-| [0035](0035.md) | Toleranzsatz im Systemfile (Abschnitt `tolerances`, Klassen, Kompensatoren, Kriterien) | vorgeschlagen |
-| [0036](0036.md) | Toleranzanalyse (Störungsmodell, nominaler Bezug, Kompensatoren, Zufall, Statistik) | vorgeschlagen |
+| [0035](0035.md) | Toleranzsatz im Systemfile (Abschnitt `tolerances`, Klassen, Kompensatoren, Kriterien) | angenommen |
+| [0036](0036.md) | Toleranzanalyse (Störungsmodell, nominaler Bezug, Kompensatoren, Zufall, Statistik) | angenommen |
 
 ## Vorlage
 
