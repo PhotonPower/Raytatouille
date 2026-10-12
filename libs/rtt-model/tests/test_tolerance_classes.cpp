@@ -163,6 +163,33 @@ TEST_CASE("class: targets, kinds, ids, order and skips", "[model][tolerances]") 
   CHECK(r.value_overrides.empty());
 }
 
+TEST_CASE("class: a uniform segment list is one material (ADR 0035, addendum #254)",
+          "[model][tolerances]") {
+  // A list whose entries are all the same string is one body (ADR 0017): the class generates
+  // index and abbe only for segment 0, with the id suffix :0.
+  System s = toleranced();
+  Element prism{"prism",
+                ElementKind::Plate,
+                Pose::along_z(30.0),
+                std::nullopt,
+                {surface("P.S1", Plane{}, 0.0), surface("P.S2", Plane{}, 5.0),
+                 surface("P.S3", Plane{}, 10.0), surface("P.S4", Plane{}, 15.0)}};
+  prism.segment_materials = {"SCHOTT:N-BK7", "SCHOTT:N-BK7", "SCHOTT:N-BK7"};
+  s.root.children.insert(s.root.children.begin() + 2, Node{prism});
+  const ClassTolerances r = class_tolerances(s);
+  std::vector<std::string> material;
+  for (const ClassTolerance& c : r.items) {
+    if (c.id.starts_with("class:node:prism:index") || c.id.starts_with("class:node:prism:abbe")) {
+      material.push_back(c.id);
+    }
+  }
+  CHECK(material ==
+        std::vector<std::string>{"class:node:prism:index:0", "class:node:prism:abbe:0"});
+  CHECK(find(r, "class:node:prism:index:0").target.segment == 0U);
+  // L1 with two glasses stays segmented.
+  CHECK(find(r, "class:node:L1:index:1").skip == ClassSkip::None);
+}
+
 TEST_CASE("class: crystals, elements without material and a bound element position",
           "[model][tolerances]") {
   System s = toleranced();

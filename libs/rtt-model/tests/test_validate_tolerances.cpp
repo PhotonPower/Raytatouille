@@ -167,6 +167,14 @@ TEST_CASE("tolerances: every code at its pointer", "[model][tolerances][validate
        "tolerances.target_invalid", items + "4/segment"},
       {"segment at another kind", [](System& s) { s.tolerances.items[7].target.segment = 0; },
        "tolerances.target_invalid", items + "7/segment"},
+      {"segment >= 1 at a uniform list (addendum #254)",
+       [](System& s) {
+         auto& objective = std::get<Assembly>(s.root.children[1].value);
+         std::get<Element>(objective.children[0].value).segment_materials = {"SCHOTT:N-BK7",
+                                                                             "SCHOTT:N-BK7"};
+         s.tolerances.items[3].target.segment = 1;  // abbe of L1
+       },
+       "tolerances.target_invalid", items + "3/segment"},
       {"two pivots",
        [](System& s) {
          s.tolerances.overrides.push_back(
