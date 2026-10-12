@@ -13,6 +13,7 @@
 #include <variant>
 #include <vector>
 
+#include "expression.hpp"
 #include "rtt/model/parameters.hpp"
 #include "rtt/model/tolerance_classes.hpp"
 #include "tolerance_targets.hpp"
@@ -822,6 +823,7 @@ class Validator {
     const ToleranceSet& t = system_.tolerances;
     if (t.empty()) return;
     const detail::TargetIndex index(system_);
+    system_rows_ = system_level_rows();
     check_tolerance_class(t.tolerance_class, "/tolerances/class");
     check_overrides(index);
     check_items(index);
@@ -840,6 +842,35 @@ class Validator {
                "trials outside 1 ... 2^32");
       }
     }
+  }
+
+  /// The rows that the object distance or the system aperture depend on: bound directly, or
+  /// read by an expression row they depend on (ADR 0029, point 2), for every configuration.
+  /// Such a row is no tolerance or compensator target (ADR 0035, addendum #253; #255).
+  std::unordered_set<std::string> system_level_rows() const {
+    std::unordered_set<std::string> rows;
+    for (const Param* p : {&system_.object.distance, &system_.aperture.value}) {
+      if (p->param) rows.insert(*p->param);
+    }
+    const std::vector<ParameterRow>& table = system_.parameters;
+    // A row reads only earlier rows, so one pass from the end collects the closure.
+    for (std::size_t r = table.size(); r-- > 0;) {
+      const auto* e = std::get_if<ParameterExpression>(&table[r].form);
+      if (e == nullptr || !rows.contains(table[r].name)) continue;
+      const auto resolve = [&](std::string_view name) {
+        for (std::size_t k = 0; k < r; ++k) {
+          if (table[k].name == name) return detail::NameLookup{detail::NameStatus::Found, k};
+        }
+        return detail::NameLookup{detail::NameStatus::Unknown, 0};
+      };
+      const auto parsed = detail::parse_expression(e->text, resolve);
+      if (const auto* x = std::get_if<detail::Expression>(&parsed)) {
+        for (const detail::Instruction& i : x->code) {
+          if (i.op == detail::OpCode::Row) rows.insert(table[i.row].name);
+        }
+      }  // a syntax error is reported by the parameter checks
+    }
+    return rows;
   }
 
   void check_tolerance_class(ToleranceClass c, const std::string& loc) {
@@ -1045,6 +1076,9 @@ class Validator {
         if (std::holds_alternative<ParameterExpression>(index.row(t.name)->form)) {
           report("tolerances.bound_param", loc + "/parameter",
                  "row '" + t.name + "' is an expression");
+        } else if (system_rows_.contains(t.name)) {
+          report("tolerances.target_invalid", loc + "/parameter",
+                 "the object distance or the system aperture depend on row '" + t.name + "'");
         }
         return;
       }
@@ -1215,6 +1249,12 @@ class Validator {
                  "a row with values per configuration is not a compensator");
           continue;
         }
+        if (system_rows_.contains(k.target.name)) {
+          report(
+              "tolerances.compensator_target", loc + "/parameter",
+              "the object distance or the system aperture depend on row '" + k.target.name + "'");
+          continue;
+        }
         key = "row:" + k.target.name;
       } else {
         if (!k.target.param) {
@@ -1311,8 +1351,9 @@ class Validator {
   std::unordered_set<std::string> phase_surfaces_;  // ids of surfaces with a phase layer
   std::unordered_map<std::string, std::string> node_names_;
   std::vector<std::string> stops_;
-  std::unordered_set<std::string> row_names_;  // names of the parameter rows (ADR 0029)
-  std::size_t surfaces_seen_ = 0;              // surfaces before the node in tree order
+  std::unordered_set<std::string> row_names_;    // names of the parameter rows (ADR 0029)
+  std::unordered_set<std::string> system_rows_;  // rows of object distance and aperture (#255)
+  std::size_t surfaces_seen_ = 0;                // surfaces before the node in tree order
 };
 
 }  // namespace
