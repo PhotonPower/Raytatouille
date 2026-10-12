@@ -63,6 +63,13 @@ Fehlerquellen, die nur die CI sieht, vorab lokal prüfen:
   ctest setzt sie (`ctest -R rtt_py`). Ohne sie werden die Bitvergleiche still übersprungen, und
   pytest ist trotzdem grün. Wer pytest direkt startet, setzt die drei Variablen wie
   `libs/rtt-py/CMakeLists.txt` und prüft, dass kein Bitvergleich übersprungen wurde.
+- **Veralteter `__pycache__` der Python-Tests.** Sind lokal nur die Tests rot, die den Dateinamen
+  einer Warnung prüfen (`w.filename == __file__`), und steht in `w.filename` ein fremder oder anders
+  geschriebener Pfad (z. B. Backslashes statt Vorwärts-Slashes), liegt es am Cache: pytest
+  verwendet das umgeschriebene Testmodul aus `libs/rtt-py/tests/__pycache__` wieder und prüft dabei
+  nur Änderungszeit und Größe der Quelle, nicht den Pfad. `co_filename` bleibt so der Pfad der
+  ersten Übersetzung, aus ihm nimmt `warnings.warn` den Dateinamen; `__file__` kommt aus dem
+  aktuellen Import. Abhilfe: `libs/rtt-py/tests/__pycache__` löschen; die Tests nicht ändern.
 - **Bitvergleiche brauchen einen Inhaltswächter.** Liefern C++ und Python beide dasselbe Falsche
   (z. B. alle Strahlen verfehlt), ist der Vergleich trotzdem grün. Jeder neue Fall bekommt deshalb
   eine Prüfung auf den erwarteten Status und auf Werte, die sich unterscheiden.
