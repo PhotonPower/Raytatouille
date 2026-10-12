@@ -255,6 +255,16 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "circular aperture radius not finite or <= 0 mm"},
     {"surface_aperture.semi_axis_invalid", Severity::Error, "validate",
      "elliptical aperture semi axis not finite or <= 0 mm"},
+    {"tolerances.abbe_on_const", Severity::Error, "validate",
+     "Abbe number tolerance at a CONST material (n_F - n_C = 0); compile also reports it for "
+     "any material with n_F = n_C when applying the perturbation (#254)"},
+    {"tolerances.limit_invalid", Severity::Error, "validate",
+     "tolerance limit <= 0 or not finite, >= 1 for curvature_relative, >= |R| for radius, or a "
+     "pivot not finite; compile reports n_d + dn_d <= 1 or nu_d + dnu_d <= 0 when applying the "
+     "perturbation (#254)"},
+    {"tolerances.material_unsupported", Severity::Error, "validate",
+     "material tolerance at a crystal, a metal (complex index) or an element without material; "
+     "for catalog materials compile reports it when applying the perturbation (#254)"},
     {"value.not_finite", Severity::Error, "validate", "number of the model not finite"},
     {"wavelengths.empty", Severity::Error, "validate", "no wavelength"},
     {"wavelengths.reference_count", Severity::Error, "validate",

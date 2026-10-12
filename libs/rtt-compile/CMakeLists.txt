@@ -1,4 +1,4 @@
-add_library(rtt_compile src/compile.cpp src/layout.cpp src/ghosts.cpp)
+add_library(rtt_compile src/compile.cpp src/layout.cpp src/ghosts.cpp src/perturbation.cpp)
 add_library(rtt::compile ALIAS rtt_compile)
 target_include_directories(rtt_compile PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
@@ -13,7 +13,7 @@ if(RTT_BUILD_TESTS)
             tests/test_diagnostic_codes.cpp tests/test_errors.cpp tests/test_ghosts.cpp
             tests/test_migration.cpp tests/test_crystal.cpp
             tests/test_relative_placement.cpp tests/test_configurations.cpp
-            tests/test_node_frames.cpp tests/test_ideal_lens.cpp
+            tests/test_node_frames.cpp tests/test_ideal_lens.cpp tests/test_perturbation.cpp
     LIBS rtt::compile rtt::io rtt::model_test_support)
   target_compile_definitions(rtt_compile_tests PRIVATE
     RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs")
