@@ -1,0 +1,58 @@
+{
+  "schema_version": "0.5.0",
+  "name": "M6 acceptance: ideal lens f = 50 mm and a 45 deg fold on a test metal, detector 2 mm behind the focus, VACUUM",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [
+    {"um": 0.55, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 10.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "root",
+    "children": [
+      {
+        "type": "thin_element",
+        "name": "IL",
+        "surfaces": [
+          {
+            "id": "IL",
+            "interaction": {"type": "ideal_lens", "focal_length": 50.0}
+          }
+        ]
+      },
+      {
+        "type": "mirror",
+        "name": "M",
+        "pose": {"position": [0.0, 0.0, 20.0], "rotation_deg": [45.0, 0.0, 0.0]},
+        "material": "CONST:1.2,7.26",
+        "surfaces": [
+          {"id": "M"}
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 32.0, 20.0], "rotation_deg": [-90.0, 0.0, 0.0]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {
+      "name": "fold",
+      "events": [
+        {"surface": "IL", "kind": "transmit"},
+        {"surface": "M", "kind": "reflect"},
+        {"surface": "IMG", "kind": "transmit"}
+      ]
+    }
+  ]
+}

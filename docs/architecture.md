@@ -515,6 +515,28 @@ Ein Feature ist erst fertig, wenn es mindestens einen Referenztest gegen eine un
 - **Reproduzierbar:** bitgleich bei 1, 4 und allen Threads und mit `RunControl`. Python = C++ prüft `test_bitwise_optim.py` (#169).
 - **Bekannte Grenze:** Die Strafgewicht-Formulierung `m5/singlet_optim` erreicht das Optimum nicht (ADR 0030, Nachtrag #170); ihr Test mit dem echten Ziel ist versteckt und wird mit #196 freigeschaltet.
 
+**Abnahme M6 (#212):** `libs/rtt-analysis/tests/test_m6_acceptance.cpp` (Tag `[m6]`) prüft Beugung und Polarisation in der Pupille durch den Tracer, mit Referenzsystemen unter `tests/reference/m6/` und `r2/ideal_lens`, unabhängigen Sollwerten und vorab festgelegten Toleranzen.
+- **Toleranzregel** (ADR 0033, Punkt 10, mit dem Erratum #206 und dem Nachtrag #229): X auf den Rastern N und 2N, verglichen wird X_2N. Einzelgrößen haben die Schranke e = 2|X_N − X_2N|, Kurven e_max = max 2|X_N − X_2N| je Kurve, relativ, wo die Abnahme relativ ist. e bzw. e_max ≤ 10⁻³ ist Pflicht. Vor jedem Sollwert, der F#_w nutzt, bindet eine Wache die Zuordnung M an n′|u′| aus der Geometrie.
+- **Fälle:**
+  1. Erste Nullstelle der PSF bei j₁₁ λF#_w/π: `m6/paraboloid_f10`, Raster 64/128.
+  2. Encircled Energy 1 − J₀² − J₁² bei r = 0,5 … 5 λF#_w und r₀: dasselbe System, 128/256, relativ je Kurve.
+  3. MTF (2/π)[arccos x − x√(1 − x²)] auf x ∈ [0,1; 0,9], tangential und sagittal: dasselbe System, 256/512, relativ je Kurve.
+  4. Defokus-Strehl sinc²(w), w aus der exakten Sphärenformel mit n′ und R′: `m6/paraboloid_f50`, `through_focus` 128/256, absolut je Kurve.
+  5. Zernike c₁₁ und c₄ aus W₀₄₀ = S_I/8: `m6/planoconvex_f10`, Bild im paraxialen Fokus (gegen `first_order` geprüft).
+  6. Jones-Pupille der kollimierten 45°-Faltung, diag(r_s, r_p), D und δ für Testmetall und idealen Leiter: `m6/fold45_metal`.
+  7. Konvergente 45°-Faltung hinter einer idealen Linse: je Punkt D und δ aus Fresnel am lokalen Einfallswinkel, W aus der OPL: `m6/fold45_focus`.
+  8. Ideale Linse: Airy-Nullstelle und Strehl-Zahl 1 auf 10⁻¹²: `r2/ideal_lens`.
+  9. Ringpupille ε = 0,4: Nullstelle, Profil und MTF gegen Hakobyan (1) und die Überlappung zweier Ringe nach MathWorld (11), (12). Der Fall steht in `test_annular.cpp` (#229, Teil C), mit derselben Toleranzregel.
+- **Reproduzierbar:** PSF, Through-Focus und Jones-Pupille sind bei 1, 4 und allen Threads bitgleich; für MTF und Encircled Energy prüft das `test_mtf_ee.cpp` (#206). Python ist für die Abnahmesysteme bitgleich zu C++: `test_bitwise_m6.py`, mit Inhaltswachen. Dazu kommen die Bitvergleiche der Bausteine (`test_bitwise_pupil.py`, `test_bitwise_psf.py`, `test_bitwise_jones.py`).
+- **Bekannte Grenzen:**
+  - Fraunhofer-Näherung in Richtungssinus mit linearer Zuordnung der Eintrittspupille (Kennzahl und Warnung `pupil.mapping_nonlinear`); keine Vektor-PSF (H7).
+  - Zernike-Polynome auf dem Ring sind nicht orthogonal (Warnung `zernike.pupil_incomplete`).
+  - Pfade mit Kristall-Modi geben in der Pupillenfunktion und der Jones-Pupille einen Fehler (H6, #35).
+  - Eine Abschattung, die nicht am Stopp sitzt, wird nicht als Ring berücksichtigt: Ihre Zellen enden real verloren, als Treppe am Innenrand (ADR 0032, Nachtrag #229).
+  - Ein afokaler Bildraum hat keine Zuordnung M: PSF, MTF, Encircled Energy und Through-Focus geben dort einen `AnalysisError` an `/paths/i`.
+  - Die Jones-Pupille braucht einen ankommenden Hauptstrahl. Geht er verloren oder streift er die Bildfläche, ist das ein `AnalysisError`; hat er kein J, bleibt mit `remove_global_phase` die Phase stehen (Warnung `pupil.chief_phase_unavailable`).
+- **Umfang:** Die übrigen M6-Bausteine sind über ihre eigenen Tests und Bitvergleiche abgenommen: Q und P je Ereignis (#207), das Interferogramm zweier Pfade (#210) und die Stokes-Karte (#211).
+
 **Teststufen:** Unit-Tests mit Catch2 v3 in jeder Bibliothek; Property-Tests (RapidCheck, ab M1) für Energieerhaltung, |dir| = 1, P·k_ein = k_aus, Umkehrbarkeit, Invarianz bei starrer Bewegung; Golden-Tests mit Standardsystemen aus der Literatur; NSC-Tests (M9) gegen analytische Fälle (Lambert-Strahler, Etendue, Integrationskugel, Leistungsbilanz); Benchmarks mit Google Benchmark (Ziel ≥ 5 Mio. Strahl-Flächen-Schnitte pro Sekunde und Kern bei Sphären inkl. Polarisation, Regression > 10 % blockiert); Schema-Tests mit pytest.
 
 **CI (`.github/workflows/ci.yml`):** clang-format, JSON-Schema, Linux GCC (Release), Linux Clang mit clang-tidy (Release), Linux Clang mit ASan/UBSan (Debug), Windows MSVC (Release); Warnungen sind Fehler. Job Python (ADR 0018): Paket `raytatouille` in der CMake-Baumstruktur (Presets `ci-linux-python` mit Python 3.10 und 3.13, `ci-windows-python` mit 3.13), pytest einschließlich Bitvergleich mit C++ und mypy --strict über ctest; je OS ein Smoke-Test mit `pip install .`.
