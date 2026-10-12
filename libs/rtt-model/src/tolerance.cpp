@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <array>
 #include <optional>
 #include <string>
@@ -85,6 +86,12 @@ ClassSkip material_skip(const std::string& reference, ToleranceKind kind) {
   return ClassSkip::None;
 }
 
+/// True if every entry of a segment material list is the same string (ADR 0035, addendum #254).
+bool uniform(const std::vector<std::string>& materials) {
+  return std::all_of(materials.begin(), materials.end(),
+                     [&](const std::string& m) { return m == materials.front(); });
+}
+
 ClassSkip bound_skip(const Param& p) {
   return p.is_bound() ? ClassSkip::Bound : ClassSkip::None;
 }
@@ -145,7 +152,9 @@ class ClassGenerator {
       } else if (e.crystal) {
         add(node_target(e.name), k, ToleranceLevel::Element, c, ClassSkip::Crystal);
       } else if (!e.segment_materials.empty()) {
-        for (std::size_t i = 0; i < e.segment_materials.size(); ++i) {
+        // A uniform list is one material and one body (ADR 0035, addendum #254): segment 0.
+        const std::size_t n = uniform(e.segment_materials) ? 1 : e.segment_materials.size();
+        for (std::size_t i = 0; i < n; ++i) {
           ToleranceTarget t = node_target(e.name);
           t.segment = static_cast<std::uint32_t>(i);
           add(t, k, ToleranceLevel::Element, c, material_skip(e.segment_materials[i], k));

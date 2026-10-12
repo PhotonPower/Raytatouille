@@ -917,6 +917,14 @@ class Validator {
                    " segments");
         return;
       }
+      // A uniform list is one material and one body (ADR 0035, addendum #254): only segment 0.
+      const auto& list = e.segment_materials;
+      if (*t.segment >= 1 && std::all_of(list.begin(), list.end(),
+                                         [&](const std::string& x) { return x == list.front(); })) {
+        report("tolerances.target_invalid", loc + "/segment",
+               "element '" + e.name + "' has one material in every segment: segment 0");
+        return;
+      }
       material = e.segment_materials[*t.segment];
     } else {
       if (t.segment) {
