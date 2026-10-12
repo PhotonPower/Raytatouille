@@ -16,6 +16,7 @@
 
 #include "rtt/coating/catalog.hpp"
 #include "rtt/compile/compiled_system.hpp"
+#include "rtt/compile/perturbation.hpp"
 #include "rtt/diagnostics/codes.hpp"
 #include "rtt/material/material.hpp"
 #include "test_support.hpp"
@@ -144,13 +145,23 @@ void make_doublet(System& s) {
   lens.segment_materials = {"CONST:1.5", "CONST:1.7"};
 }
 
+/// Overlay with a material change of L1 (#254).
+rtt::compile::Perturbation material_change(double delta_nd, double delta_vd) {
+  rtt::compile::Perturbation p;
+  p.materials[{"L1", std::nullopt}] = {delta_nd, delta_vd};
+  return p;
+}
+
 /// All diagnostics of `s`: validate() and, if it found no error, the errors of compile() or,
 /// if it succeeds, its warnings (CompiledSystem::diagnostics(), validate's warnings included).
-std::vector<Diagnostic> diagnose(const System& s, std::size_t configuration = 0) {
+std::vector<Diagnostic> diagnose(const System& s,
+                                 std::size_t configuration = 0,
+                                 const rtt::compile::Perturbation& perturbation = {}) {
   std::vector<Diagnostic> d = rtt::model::validate(s);
   if (rtt::model::has_errors(d)) return d;
   try {
-    return rtt::compile::compile(s, materials(), coatings(), configuration).diagnostics();
+    return rtt::compile::compile(s, materials(), coatings(), configuration, perturbation)
+        .diagnostics();
   } catch (const CompileError& e) {
     d.insert(d.end(), e.diagnostics().begin(), e.diagnostics().end());
   }
@@ -161,7 +172,8 @@ struct Case {
   const char* code;
   const char* location;
   std::function<void(System&)> mutate;
-  std::size_t configuration = 0;  ///< compiled configuration (#165)
+  std::size_t configuration = 0;              ///< compiled configuration (#165)
+  rtt::compile::Perturbation perturbation{};  ///< overlay of compile() (#254)
 };
 
 std::vector<Case> cases() {
@@ -595,6 +607,14 @@ std::vector<Case> cases() {
        }},
       // compile: a configuration index beyond the configurations (#165)
       {"config.unknown", "/configurations", [](System& s) { s.configurations = {{"a"}}; }, 1},
+      // compile: material changes of the overlay (ADR 0036, point 1c; #254). L1 is CONST:1.5168;
+      // TEST:WIDE ends at 0.5 um, below it lies the line F.
+      {"tolerances.abbe_on_const", "/root/children/1/material", [](System&) {}, 0,
+       material_change(1e-3, 1.0)},
+      {"tolerances.limit_invalid", "/root/children/1/material", [](System&) {}, 0,
+       material_change(-0.6, 0.0)},
+      {"tolerances.material_unsupported", "/root/children/1/material",
+       [](System& s) { element(s, 1).material = "TEST:WIDE"; }, 0, material_change(1e-3, 0.0)},
   };
 }
 
@@ -612,7 +632,7 @@ TEST_CASE("every registered code has a case that produces it at its location", "
     REQUIRE(info != nullptr);
     System s = singlet();
     c.mutate(s);
-    const std::vector<Diagnostic> d = diagnose(s, c.configuration);
+    const std::vector<Diagnostic> d = diagnose(s, c.configuration, c.perturbation);
     bool found = false;
     for (const Diagnostic& x : d) {
       INFO(rtt::model::to_string(x));

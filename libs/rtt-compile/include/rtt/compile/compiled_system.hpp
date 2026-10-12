@@ -19,6 +19,7 @@
 
 #include "rtt/coating/transfer_matrix.hpp"
 #include "rtt/compile/compiled_element.hpp"
+#include "rtt/compile/perturbation.hpp"
 #include "rtt/geom/asphere.hpp"
 #include "rtt/geom/conic.hpp"
 #include "rtt/geom/phase.hpp"
@@ -122,7 +123,9 @@ struct CompiledSurface {
 
 /// A homogeneous medium evaluated at all system wavelengths: isotropic, or a uniaxial crystal
 /// (ADR 0026, point 3). Isotropic media with equal references are shared; every crystal element
-/// has a medium of its own, because the optic axis belongs to it.
+/// has a medium of its own, because the optic axis belongs to it, and so has every element
+/// segment with a material change of a Perturbation (ADR 0036, point 1c), under the reference of
+/// its nominal material.
 struct CompiledMedium {
   /// Material reference as in the model, e.g. "AIR", "CONST:1.5168"; for a crystal the
   /// reference of the ordinary index n_O.
@@ -282,6 +285,38 @@ class CompiledSystem;
                                      const coating::CoatingLibrary& coatings,
                                      std::size_t configuration = 0);
 
+/// compile() with the overlay `perturbation` (ADR 0036, point 1; #254), applied after the
+/// parameter table. Without entries, or with identity motions and zero material changes only,
+/// the result is bitwise that of compile() without overlay.
+///
+/// - Motions: every placement reference (ADR 0028, point 2) uses the nominal frames G; a node or
+///   surface X gets G'_X = O * G_X * T_X, with O the product of G_Y T_Y G_Y^-1 over its perturbed
+///   ancestors Y, outer to inner (see Perturbation). CompiledSurface::to_global, the optic axes
+///   of crystals and the axes of ideal polarizers and retarders follow the perturbed frames of
+///   their element (the surface motion does not turn the axes, as the surface pose does not).
+/// - Node frames: NodeFrame::reference is O * (nominal reference) and NodeFrame::to_global is
+///   G'_X, so to_global = reference * to_isometry(pose) * T_X; the to_global of a surface stays
+///   bitwise CompiledSurface::to_global.
+/// - Materials: the perturbed segment gets a medium of its own (MaterialChange). The structure
+///   comes from the nominal media: whether a Plate is segmented, and whether an inner surface
+///   reached from outside is ambiguous, so the path rules do not change.
+/// @throws std::invalid_argument for an entry the model has no target for (unknown node name,
+///         the root, unknown SurfaceId or element name), a `segment` that is missing for an
+///         element with segment materials, given for one with a single material or out of
+///         range, and non-finite values (only reachable through the API; rtt-tolerance builds
+///         the overlay from a validated tolerance set)
+/// @throws CompileError as compile(), and for a material change (at .../material or
+///         .../material/<i> of the element) with tolerances.material_unsupported (crystal,
+///         element without material, kappa != 0 at d, F or C, a line outside the range of the
+///         material), tolerances.abbe_on_const (Delta nu_d != 0 with n_F = n_C) and
+///         tolerances.limit_invalid (n_d + Delta n_d <= 1, or nu_d + Delta nu_d <= 0 with
+///         n_F != n_C)
+[[nodiscard]] CompiledSystem compile(const model::System& system,
+                                     const material::MaterialLibrary& materials,
+                                     const coating::CoatingLibrary& coatings,
+                                     std::size_t configuration,
+                                     const Perturbation& perturbation);
+
 /// compile() with an empty CoatingLibrary: a system with a CoatingRef gives a CompileError.
 [[nodiscard]] CompiledSystem compile(const model::System& system,
                                      const material::MaterialLibrary& materials,
@@ -311,7 +346,8 @@ class CompiledSystem;
 /// (the parent for an absolute pose, the last surface before it in tree order for
 /// relative_to_preceding, the preceding sibling for relative_to_sibling, the identity for the
 /// root) and its own global transform, to_global = reference * to_isometry(pose). A GUI needs
-/// both to move a node in 3D and to turn an absolute pose into a relative one.
+/// both to move a node in 3D and to turn an absolute pose into a relative one. With a
+/// Perturbation both are the perturbed frames (compile() with overlay, #254).
 struct NodeFrame {
   std::string location;       ///< JSON pointer of the node, e.g. "/root/children/1/surfaces/0"
   math::Isometry3 reference;  ///< frame of the pose -> global
@@ -385,7 +421,8 @@ class CompiledSystem {
   friend CompiledSystem compile(const model::System&,
                                 const material::MaterialLibrary&,
                                 const coating::CoatingLibrary&,
-                                std::size_t);
+                                std::size_t,
+                                const Perturbation&);
   CompiledSystem() = default;
 
   std::vector<double> wavelengths_um_;

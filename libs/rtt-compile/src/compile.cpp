@@ -23,8 +23,10 @@
 #include "rtt/coating/thickness.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/compile/errors.hpp"
+#include "rtt/compile/perturbation.hpp"
 #include "rtt/diagnostics/codes.hpp"
 #include "rtt/material/uniaxial.hpp"
+#include "rtt/math/isometry.hpp"
 #include "rtt/math/units.hpp"
 #include "rtt/model/parameters.hpp"
 
@@ -79,8 +81,13 @@ std::string join_errors(const std::vector<model::Diagnostic>& diagnostics) {
 struct ElementInfo {
   model::ElementKind kind = model::ElementKind::Lens;
   /// Lens and Plate: one medium per segment (segment i between surfaces i and i + 1, ADR 0017).
-  /// Mirror: the substrate, if any, as one body. Empty if the element has no material.
+  /// Mirror: the substrate, if any, as one body. Empty if the element has no material. With a
+  /// material change of a Perturbation the perturbed media (ADR 0036, point 1c).
   std::vector<std::uint32_t> media;
+  /// The nominal media (equal to `media` without material changes): the structure of the
+  /// element (segmented, ambiguous inner surfaces) comes from them, so that a Perturbation never
+  /// changes the path rules.
+  std::vector<std::uint32_t> structure_media;
   /// JSON pointer of the material of each entry of `media`: .../material for the shorthand,
   /// .../material/<i> for a list entry.
   std::vector<std::string> media_locations;
@@ -90,6 +97,8 @@ struct ElementInfo {
   /// A crystal whose parts could not be resolved (errors reported): no media, and its events
   /// are not checked against the crystal path rules, to avoid follow-up errors.
   bool unresolved_crystal = false;
+  /// A material of the element could not be resolved (reported): material changes are skipped.
+  bool unresolved_material = false;
   std::string location;             ///< JSON pointer of the element
   std::uint32_t first_surface = 0;  ///< surfaces [first_surface, first_surface + count)
   std::uint32_t surface_count = 0;
@@ -100,8 +109,9 @@ class Compiler {
  public:
   Compiler(const model::System& system,
            const material::MaterialLibrary& materials,
-           const coating::CoatingLibrary& coatings)
-      : system_(system), materials_(materials), coatings_(coatings) {
+           const coating::CoatingLibrary& coatings,
+           const Perturbation& perturbation)
+      : system_(system), materials_(materials), coatings_(coatings), perturbation_(perturbation) {
     for (const auto& w : system.wavelengths) wavelengths_um_.push_back(w.um);
   }
 
@@ -115,9 +125,11 @@ class Compiler {
         medium(system_.environment.medium, "/environment/medium");
     environment_ = environment.value_or(0);
     environment_resolved_ = environment.has_value();
+    check_perturbation_values();
     const math::Isometry3 root = model::to_isometry(system_.root.pose);
     node_frames_.push_back({"/root", math::Isometry3::identity(), root});
-    add_assembly(system_.root, root, "/root");
+    add_assembly(system_.root, root, std::nullopt, "/root");
+    check_perturbation_targets();
     for (std::size_t p = 0; p < system_.paths.size(); ++p) {
       paths_.push_back(build_path(system_.paths[p], idx("/paths", p)));
     }
@@ -251,6 +263,132 @@ class Compiler {
     const auto index = static_cast<std::uint32_t>(media_.size());
     media_.push_back(std::move(m));
     media_checks_.push_back({uniaxial.wavelength_range_um(), where, true});
+    return index;
+  }
+
+  /// Material changes of the overlay for `element` (ADR 0036, point 1c): replaces the perturbed
+  /// entries of info.media by media of their own. Shorthand: one perturbed medium for all
+  /// segments; segment list: the entry of the segment. Errors at the material of the element
+  /// (at the element itself if it has none): tolerances.material_unsupported for a crystal or an
+  /// element without material.
+  /// @throws std::invalid_argument for a `segment` that does not fit the element (see compile())
+  void apply_material_changes(const model::Element& element, ElementInfo& info) {
+    const auto first = perturbation_.materials.lower_bound(MaterialTarget{element.name, {}});
+    for (auto it = first; it != perturbation_.materials.end() && it->first.element == element.name;
+         ++it) {
+      used_material_elements_.insert(element.name);
+      const auto& [target, change] = *it;
+      if (element.crystal) {
+        report(
+            "tolerances.material_unsupported", info.location + "/material",
+            "material tolerance at the crystal element '" + element.name + "' (ADR 0035, point 2)");
+        continue;
+      }
+      if (info.media.empty()) {
+        report("tolerances.material_unsupported", info.location,
+               "material tolerance at the element '" + element.name +
+                   "' without material (ADR 0035, point 2)");
+        continue;
+      }
+      const bool list = !element.segment_materials.empty();
+      if (list != target.segment.has_value() ||
+          (list && *target.segment >= element.segment_materials.size())) {
+        throw std::invalid_argument(
+            "compile: the material change of element '" + element.name +
+            (list ? "' needs a segment below " + std::to_string(element.segment_materials.size())
+                  : "' has one material and takes no segment"));
+      }
+      if (change.is_zero() || info.unresolved_material) continue;  // its error stops compile()
+      if (list) {
+        const std::size_t k = *target.segment;
+        if (const auto m = perturbed_medium(info.media[k], change, info.media_locations[k])) {
+          info.media[k] = *m;
+        }
+      } else if (const auto m = perturbed_medium(info.media[0], change, info.media_locations[0])) {
+        info.media.assign(info.media.size(), *m);  // the shorthand holds for all segments
+      }
+    }
+  }
+
+  /// Medium of `nominal` with the material change `change` (ADR 0036, point 1c; MaterialChange):
+  /// n_d, n_F and n_C of the nominal material at the vacuum wavelengths of the lines (absolute,
+  /// at the environment temperature and pressure, as the medium), D = n_F - n_C,
+  /// nu_d = (n_d - 1) / D, D' = (n_d + dn - 1) / (nu_d + dnu) and per system wavelength
+  /// n' = n + dn + (D'/D - 1)(n - n_d) on the real part, kappa unchanged; D = 0: n' = n + dn.
+  /// At lambda_d the bracket is exactly 0, so n'_d = n_d + dn up to one rounding. Errors at
+  /// `location`: tolerances.material_unsupported (line outside the range, kappa != 0 at a line),
+  /// tolerances.abbe_on_const (dnu != 0 with D = 0), tolerances.limit_invalid (n_d + dn <= 1,
+  /// nu_d + dnu <= 0). None after an error, also if the material did not resolve (reported by
+  /// medium()).
+  std::optional<std::uint32_t> perturbed_medium(std::uint32_t nominal,
+                                                const MaterialChange& change,
+                                                const std::string& location) {
+    const std::string reference = media_[nominal].reference;
+    std::shared_ptr<const material::Material> material;
+    try {
+      material = materials_.resolve(reference);
+    } catch (const material::UnknownMaterial&) {
+      return std::nullopt;  // reported by medium()
+    }
+    const double t = system_.environment.temperature_c;
+    const double p = system_.environment.pressure_atm;
+    const auto range = material->wavelength_range_um();
+    constexpr std::array<double, 3> kLines{kLineDAirUm, kLineFAirUm, kLineCAirUm};
+    constexpr std::array<const char*, 3> kNames{"d", "F", "C"};
+    std::array<double, 3> n{};
+    for (std::size_t k = 0; k < kLines.size(); ++k) {
+      const double wl = line_vacuum_wavelength_um(kLines[k]);
+      if (range && !range->contains(wl)) {
+        report("tolerances.material_unsupported", location,
+               std::string("the line ") + kNames[k] + " (" + number(wl) +
+                   " um in vacuum) is outside the valid range of material '" + reference +
+                   "': no material tolerance (ADR 0036, point 1c)");
+        return std::nullopt;
+      }
+      const math::Complex value = material->index(wl, t, p);
+      if (value.imag() != 0.0) {
+        report("tolerances.material_unsupported", location,
+               std::string("material '") + reference + "' has a complex index at the line " +
+                   kNames[k] + ": no material tolerance (ADR 0035, point 2)");
+        return std::nullopt;
+      }
+      n[k] = value.real();
+    }
+    const double nd = n[0];
+    const double dispersion = n[1] - n[2];  // D = n_F - n_C
+    if (dispersion == 0.0 && change.delta_vd != 0.0) {
+      report("tolerances.abbe_on_const", location,
+             "Abbe number tolerance at material '" + reference +
+                 "' with n_F = n_C: nu_d is not defined (ADR 0035, point 2)");
+      return std::nullopt;
+    }
+    if (!(nd + change.delta_nd > 1.0)) {
+      report("tolerances.limit_invalid", location,
+             "n_d + delta n_d = " + number(nd + change.delta_nd) + " <= 1 for material '" +
+                 reference + "' (ADR 0036, point 1c)");
+      return std::nullopt;
+    }
+    double scale = 1.0;  // D'/D
+    if (dispersion != 0.0) {
+      const double vd = (nd - 1.0) / dispersion;
+      if (!(vd + change.delta_vd > 0.0)) {
+        report("tolerances.limit_invalid", location,
+               "nu_d + delta nu_d = " + number(vd + change.delta_vd) + " <= 0 for material '" +
+                   reference + "' (ADR 0036, point 1c)");
+        return std::nullopt;
+      }
+      scale = (nd + change.delta_nd - 1.0) / (vd + change.delta_vd) / dispersion;
+    }
+    CompiledMedium m{reference, {}};
+    m.index.reserve(media_[nominal].index.size());
+    for (const math::Complex& value : media_[nominal].index) {
+      m.index.emplace_back(value.real() + change.delta_nd + (scale - 1.0) * (value.real() - nd),
+                           value.imag());
+    }
+    const auto index = static_cast<std::uint32_t>(media_.size());
+    MediumCheck check = media_checks_[nominal];
+    media_.push_back(std::move(m));
+    media_checks_.push_back(std::move(check));
     return index;
   }
 
@@ -464,22 +602,127 @@ class Compiler {
     return ec == std::errc{} ? std::string(buffer.data(), end) : std::string("?");
   }
 
+  /// Finite values in every entry of the overlay (ADR 0036, point 1); the root is no target.
+  /// @throws std::invalid_argument otherwise (API misuse, see compile())
+  void check_perturbation_values() const {
+    const auto finite = [](const math::Vec3& v) { return v.allFinite(); };
+    const auto check_motion = [&](const RigidMotion& m, const std::string& what) {
+      if (!finite(m.translation_mm) || !finite(m.rotation_rad) ||
+          (m.pivot_mm && !finite(*m.pivot_mm))) {
+        throw std::invalid_argument("compile: the perturbation of " + what +
+                                    " has a non-finite value");
+      }
+    };
+    for (const auto& [name, motion] : perturbation_.nodes)
+      check_motion(motion, "node '" + name + "'");
+    for (const auto& [id, motion] : perturbation_.surfaces) {
+      check_motion(motion, "surface '" + id.str() + "'");
+    }
+    for (const auto& [target, change] : perturbation_.materials) {
+      if (!std::isfinite(change.delta_nd) || !std::isfinite(change.delta_vd)) {
+        throw std::invalid_argument("compile: the material change of element '" + target.element +
+                                    "' has a non-finite value");
+      }
+    }
+    if (perturbation_.nodes.contains(system_.root.name)) {
+      throw std::invalid_argument("compile: the root assembly '" + system_.root.name +
+                                  "' cannot be perturbed (ADR 0035)");
+    }
+  }
+
+  /// Every entry of the overlay must have met its target in the tree.
+  /// @throws std::invalid_argument for the first entry without target
+  void check_perturbation_targets() const {
+    for (const auto& [name, motion] : perturbation_.nodes) {
+      if (!used_nodes_.contains(name)) {
+        throw std::invalid_argument("compile: no node '" + name + "' for the perturbation");
+      }
+    }
+    for (const auto& [id, motion] : perturbation_.surfaces) {
+      if (!used_surfaces_.contains(id)) {
+        throw std::invalid_argument("compile: no surface '" + id.str() + "' for the perturbation");
+      }
+    }
+    for (const auto& [target, change] : perturbation_.materials) {
+      if (!used_material_elements_.contains(target.element)) {
+        throw std::invalid_argument("compile: no element '" + target.element +
+                                    "' for the material change");
+      }
+    }
+  }
+
+  /// The motion of the node `name`, or nullptr if it has none or the identity.
+  const RigidMotion* node_motion(const std::string& name) {
+    const auto it = perturbation_.nodes.find(name);
+    if (it == perturbation_.nodes.end()) return nullptr;
+    used_nodes_.insert(name);
+    return it->second.is_identity() ? nullptr : &it->second;
+  }
+
+  /// The motion of the surface `id`, or nullptr if it has none or the identity.
+  const RigidMotion* surface_motion(const model::SurfaceId& id) {
+    const auto it = perturbation_.surfaces.find(id);
+    if (it == perturbation_.surfaces.end()) return nullptr;
+    used_surfaces_.insert(id);
+    return it->second.is_identity() ? nullptr : &it->second;
+  }
+
+  /// T = Tr(t) Tr(P) R Tr(-P) in the coordinates of the node with pose `pose` (ADR 0036, point
+  /// 1b): p -> t + P + R (p - P), R = Rx Ry Rz as rotation_deg (ADR 0028, point 3). Without an
+  /// explicit pivot P is the pivot of the pose in node coordinates (ADR 0035, point 2): the
+  /// pivot itself for translate_first, Q - t for rotate_first, the node point that the pose
+  /// p_ref = Q + R_pose (t + p - Q) maps onto Q.
+  static math::Isometry3 motion_transform(const RigidMotion& motion, const model::Pose& pose) {
+    math::Vec3 pivot(pose.pivot[0], pose.pivot[1], pose.pivot[2]);
+    if (motion.pivot_mm) {
+      pivot = *motion.pivot_mm;
+    } else if (pose.order == model::PoseOrder::RotateFirst) {
+      pivot -= math::Vec3(pose.position[0].value, pose.position[1].value, pose.position[2].value);
+    }
+    const math::Mat3 r = math::rotation_xyz_intrinsic(motion.rotation_rad);
+    return {r, motion.translation_mm + pivot - r * pivot};
+  }
+
+  /// Frames of a placed node or surface (see place()).
+  struct Placed {
+    math::Isometry3 nominal;  ///< G: the reference of later placements (ADR 0036, point 1b)
+    math::Isometry3 global;   ///< G' = O G T, the frame the tracer sees; G without overlay
+    /// Overlay O of the subtree: the one of the parent, times G T G^-1 with a motion; none if
+    /// no ancestor and not the node itself moves.
+    std::optional<math::Isometry3> overlay;
+  };
+
   /// Global transform of a node: global(reference) * to_isometry(pose) (ADR 0028, point 2). The
   /// reference is `parent` for absolute poses, the last surface compiled so far, i.e. the last
   /// one before the node in tree order (pre-order), for relative_to_preceding, and `sibling`,
   /// the global transform of the preceding sibling, for relative_to_sibling. For absolute poses
   /// this is the expression before schema 0.4, parent * to_isometry(pose), so such systems stay
   /// bitwise. validate() guarantees that the reference exists (pose.no_preceding,
-  /// pose.no_sibling, pose.relative_first_surface); compile() runs it first.
-  /// Records the node's frames at `location` (NodeFrame, #169).
-  [[nodiscard]] math::Isometry3 place(const model::Pose& pose,
-                                      const math::Isometry3& parent,
-                                      const math::Isometry3* sibling,
-                                      const std::string& location) {
+  /// pose.no_sibling, pose.relative_first_surface); compile() runs it first. `parent` and
+  /// `sibling` are nominal frames.
+  /// Overlay (ADR 0036, point 1b; #254): with the overlay O of the parent and the motion T of the
+  /// node, the node is at G' = O G T, and its subtree gets the overlay O G T G^-1. Without both,
+  /// G' is G without any arithmetic, so systems without overlay stay bitwise.
+  /// Records the node's frames at `location` (NodeFrame, #169): O * reference and G'.
+  [[nodiscard]] Placed place(const model::Pose& pose,
+                             const math::Isometry3& parent,
+                             const math::Isometry3* sibling,
+                             const std::string& location,
+                             const std::optional<math::Isometry3>& overlay,
+                             const RigidMotion* motion) {
     const math::Isometry3 reference = reference_of(pose, parent, sibling);
     const math::Isometry3 global = reference * model::to_isometry(pose);
-    node_frames_.push_back({location, reference, global});
-    return global;
+    Placed placed{global, global, overlay};
+    if (motion != nullptr) {
+      const math::Isometry3 moved = global * motion_transform(*motion, pose);
+      const math::Isometry3 own = moved * global.inverse();  // G T G^-1
+      placed.global = overlay ? *overlay * moved : moved;
+      placed.overlay = overlay ? *overlay * own : own;
+    } else if (overlay) {
+      placed.global = *overlay * global;
+    }
+    node_frames_.push_back({location, overlay ? *overlay * reference : reference, placed.global});
+    return placed;
   }
 
   /// The global frame a pose is given in (ADR 0028, point 2), see place().
@@ -490,10 +733,10 @@ class Compiler {
       case model::PoseReference::Absolute:
         return parent;
       case model::PoseReference::RelativeToPreceding:
-        if (surfaces_.empty()) {
+        if (nominal_surfaces_.empty()) {
           throw std::logic_error("compile: relative_to_preceding without a preceding surface");
         }
-        return surfaces_.back().to_global;
+        return nominal_surfaces_.back();  // nominal frame (ADR 0036, point 1b)
       case model::PoseReference::RelativeToSibling:
         if (sibling == nullptr) {
           throw std::logic_error("compile: relative_to_sibling without a preceding sibling");
@@ -503,32 +746,38 @@ class Compiler {
     throw std::logic_error("compile: unknown pose reference");
   }
 
-  /// Adds the children of an assembly whose global transform is `to_global`, each placed with
-  /// place() (ADR 0028, point 2).
+  /// Adds the children of an assembly whose nominal global transform is `to_global` and whose
+  /// subtree has the overlay `overlay`, each placed with place() (ADR 0028, point 2).
   void add_assembly(const model::Assembly& assembly,
                     const math::Isometry3& to_global,
+                    const std::optional<math::Isometry3>& overlay,
                     const std::string& location) {
-    math::Isometry3 previous;  // global transform of the preceding child (valid if i > 0)
+    math::Isometry3 previous;  // nominal transform of the preceding child (valid if i > 0)
     for (std::size_t i = 0; i < assembly.children.size(); ++i) {
       const std::string child_location = idx(location + "/children", i);
       const auto& value = assembly.children[i].value;
       const math::Isometry3* sibling = i > 0 ? &previous : nullptr;
       if (const auto* sub = std::get_if<model::Assembly>(&value)) {
-        const math::Isometry3 global = place(sub->pose, to_global, sibling, child_location);
-        add_assembly(*sub, global, child_location);
-        previous = global;
+        const Placed placed =
+            place(sub->pose, to_global, sibling, child_location, overlay, node_motion(sub->name));
+        add_assembly(*sub, placed.nominal, placed.overlay, child_location);
+        previous = placed.nominal;
       } else {
         const auto& element = std::get<model::Element>(value);
-        const math::Isometry3 global = place(element.pose, to_global, sibling, child_location);
-        add_element(element, global, child_location);
-        previous = global;
+        const Placed placed = place(element.pose, to_global, sibling, child_location, overlay,
+                                    node_motion(element.name));
+        add_element(element, placed, child_location);
+        previous = placed.nominal;
       }
     }
   }
 
+  /// `frame`: the frames of the element (place()); its surfaces are placed in the nominal frame
+  /// and moved with the overlay of the element, axes follow the perturbed frame.
   void add_element(const model::Element& element,
-                   const math::Isometry3& to_global,
+                   const Placed& frame,
                    const std::string& location) {
+    const math::Isometry3& to_global = frame.global;
     ElementInfo info;
     info.kind = element.kind;
     info.location = location;
@@ -552,12 +801,16 @@ class Compiler {
     } else if (lens_or_plate && !element.segment_materials.empty()) {
       for (std::size_t i = 0; i < element.segment_materials.size(); ++i) {
         info.media_locations.push_back(idx(location + "/material", i));
-        info.media.push_back(
-            medium(element.segment_materials[i], info.media_locations.back()).value_or(0));
+        const auto m = medium(element.segment_materials[i], info.media_locations.back());
+        info.unresolved_material = info.unresolved_material || !m;
+        info.media.push_back(m.value_or(0));
       }
     } else if (element.material) {
       // The shorthand holds for all segments; resolved once, reported once.
-      const std::uint32_t m = medium(*element.material, location + "/material").value_or(0);
+      const std::optional<std::uint32_t> resolved =
+          medium(*element.material, location + "/material");
+      info.unresolved_material = !resolved;
+      const std::uint32_t m = resolved.value_or(0);
       const std::size_t count = lens_or_plate ? element.surfaces.size() - 1 : 1;
       info.media.assign(count, m);
       info.media_locations.assign(count, location + "/material");
@@ -567,6 +820,8 @@ class Compiler {
                                             std::not_equal_to<>()) == info.media.end();
     info.segmented = element.kind == model::ElementKind::Lens ||
                      (element.kind == model::ElementKind::Plate && !uniform);
+    info.structure_media = info.media;
+    apply_material_changes(element, info);
     const auto element_index = static_cast<std::uint32_t>(elements_.size());
     elements_.push_back(info);
 
@@ -582,9 +837,13 @@ class Compiler {
       c.element = element_index;
       c.location = surface_location;
       // Surface j > 0 may refer to surface j - 1, the last surface added and its preceding
-      // sibling (ADR 0028, point 2); surface 0 is absolute (validate).
-      c.to_global =
-          place(s.pose, to_global, j > 0 ? &surfaces_.back().to_global : nullptr, surface_location);
+      // sibling (ADR 0028, point 2); surface 0 is absolute (validate). Nominal frames, the
+      // overlay of the element and the motion of the surface (ADR 0036, point 1b).
+      const Placed placed =
+          place(s.pose, frame.nominal, j > 0 ? &nominal_surfaces_.back() : nullptr,
+                surface_location, frame.overlay, surface_motion(s.id));
+      nominal_surfaces_.push_back(placed.nominal);
+      c.to_global = placed.global;
       c.to_local = c.to_global.inverse();
       c.shape = compile_shape(s.shape, surface_location + "/shape");
       c.aperture = s.aperture;
@@ -874,8 +1133,8 @@ class Compiler {
       leave = true;  // the surface does not bound the segment
     } else if (i == 0 || i == last) {
       segment = i == 0 ? 0 : last - 1;
-    } else if (info.media[i - 1] == info.media[i]) {
-      segment = i;  // both sides are the same material
+    } else if (info.structure_media[i - 1] == info.structure_media[i]) {
+      segment = i;  // both sides are the same material (nominal, see ElementInfo)
     } else {
       return std::nullopt;
     }
@@ -942,6 +1201,14 @@ class Compiler {
   const model::System& system_;
   const material::MaterialLibrary& materials_;
   const coating::CoatingLibrary& coatings_;
+  const Perturbation& perturbation_;
+  /// Nominal global transform of every surface added so far (ADR 0036, point 1b): placements
+  /// refer to these, never to the perturbed CompiledSurface::to_global.
+  std::vector<math::Isometry3> nominal_surfaces_;
+  /// Targets of the overlay met in the tree (check_perturbation_targets()).
+  std::set<std::string, std::less<>> used_nodes_;
+  std::set<model::SurfaceId> used_surfaces_;
+  std::set<std::string, std::less<>> used_material_elements_;
   std::vector<std::string> surface_locations_;  // JSON pointer per surface
   /// Compiled coating per reference; none once it failed (reported once).
   std::map<std::string, std::optional<std::uint32_t>, std::less<>> coating_index_;
@@ -1022,10 +1289,18 @@ CompiledSystem compile(const model::System& system,
   return compile(system, materials, none, configuration_index(system, configuration));
 }
 
-CompiledSystem compile(const model::System& input,
+CompiledSystem compile(const model::System& system,
                        const material::MaterialLibrary& materials,
                        const coating::CoatingLibrary& coatings,
                        std::size_t configuration) {
+  return compile(system, materials, coatings, configuration, Perturbation{});
+}
+
+CompiledSystem compile(const model::System& input,
+                       const material::MaterialLibrary& materials,
+                       const coating::CoatingLibrary& coatings,
+                       std::size_t configuration,
+                       const Perturbation& perturbation) {
   std::vector<model::Diagnostic> diagnostics = model::validate(input);
   if (model::has_errors(diagnostics)) {
     std::erase_if(diagnostics,
@@ -1050,7 +1325,7 @@ CompiledSystem compile(const model::System& input,
   if (bound) resolved = model::resolve_parameters(input, configuration);
   const model::System& system = resolved ? *resolved : input;
 
-  Compiler compiler(system, materials, coatings);
+  Compiler compiler(system, materials, coatings, perturbation);
   compiler.run();
   if (!compiler.errors_.empty()) throw CompileError(std::move(compiler.errors_));
 
