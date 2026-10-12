@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -160,5 +161,16 @@ struct ToleranceSet {
   }
   bool operator==(const ToleranceSet&) const = default;
 };
+
+/// The file name of a kind ("radius", ..., "abbe"; ADR 0035, point 2), as used in the ids of
+/// generated items.
+[[nodiscard]] std::string_view tolerance_kind_name(ToleranceKind kind) noexcept;
+
+/// 64-bit FNV-1a hash of the UTF-8 bytes of a tolerance id (ADR 0036, point 5): hash =
+/// offset_basis; per octet hash = (hash xor octet) * FNV_Prime mod 2^64, with offset_basis
+/// 0xCBF29CE484222325 and FNV_Prime 0x00000100000001B3 (RFC 9923, "The FNV Non-Cryptographic
+/// Hash Algorithm", 2026, Sec. 2 and Sec. 5; draft-eastlake-fnv-35, same sections). Two ids of
+/// one set with equal hashes are an error (validate: tolerances.id_hash_collision).
+[[nodiscard]] std::uint64_t tolerance_id_hash(std::string_view id) noexcept;
 
 }  // namespace rtt::model

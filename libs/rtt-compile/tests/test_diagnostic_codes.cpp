@@ -119,6 +119,33 @@ rtt::model::ParameterRow row(std::string name, rtt::model::ParameterForm form) {
 }
 
 /// RMS spot operand on `path`, field 0, target 0 (ADR 0030).
+/// An explicit tolerance item at a node or surface of the singlet (ADR 0035, point 2).
+rtt::model::ToleranceItem tolerance(const std::string& id,
+                                    rtt::model::ToleranceAnchor anchor,
+                                    const std::string& name,
+                                    rtt::model::ToleranceKind kind,
+                                    double limit = 0.01) {
+  rtt::model::ToleranceItem item;
+  item.id = id;
+  item.target.anchor = anchor;
+  item.target.name = name;
+  item.kind = kind;
+  item.limit = limit;
+  return item;
+}
+
+/// A compensator on the detector position of the singlet, travel [lo, hi] mm (ADR 0035,
+/// point 6).
+rtt::model::Compensator detector_focus(double lo, double hi) {
+  rtt::model::Compensator k;
+  k.target.anchor = rtt::model::ToleranceAnchor::Node;
+  k.target.name = "image";
+  k.target.param = "/pose/position/2";
+  k.travel_min = lo;
+  k.travel_max = hi;
+  return k;
+}
+
 rtt::model::SpotRmsOperand spot_rms(const std::string& path) {
   rtt::model::SpotRmsOperand o;
   o.path = path;
@@ -605,6 +632,89 @@ std::vector<Case> cases() {
          o.wavelength = 0;
          s.optimization.operands = {o};
        }},
+      // --- schema 0.6 (#253): the tolerance set (ADR 0035, point 9)
+      {"tolerances.unknown_target", "/tolerances/items/0/node",
+       [](System& s) {
+         s.tolerances.items = {
+             tolerance("a", ToleranceAnchor::Node, "L9", ToleranceKind::DecenterX)};
+       }},
+      {"tolerances.target_invalid", "/tolerances/items/0/kind",
+       [](System& s) {
+         s.tolerances.items = {
+             tolerance("a", ToleranceAnchor::Surface, "L1.S2", ToleranceKind::Radius)};
+       }},
+      {"tolerances.bound_param", "/tolerances/items/0",
+       [](System& s) {
+         ParameterRow row;
+         row.name = "D";
+         row.form = 106.363;
+         s.parameters = {row};
+         element(s, 2).pose.position[2] = Param::bound("D");
+         s.tolerances.items = {
+             tolerance("a", ToleranceAnchor::Node, "image", ToleranceKind::Thickness)};
+       }},
+      {"tolerances.limit_invalid", "/tolerances/items/0/limit",
+       [](System& s) {
+         s.tolerances.items = {
+             tolerance("a", ToleranceAnchor::Node, "L1", ToleranceKind::DecenterX, 0.0)};
+       }},
+      {"tolerances.id_invalid", "/tolerances/items/0/id",
+       [](System& s) {
+         s.tolerances.items = {
+             tolerance("", ToleranceAnchor::Node, "L1", ToleranceKind::DecenterX)};
+       }},
+      {"tolerances.id_duplicate", "/tolerances/items/1/id",
+       [](System& s) {
+         s.tolerances.items = {
+             tolerance("a", ToleranceAnchor::Node, "L1", ToleranceKind::DecenterX),
+             tolerance("a", ToleranceAnchor::Node, "L1", ToleranceKind::DecenterY)};
+       }},
+      {"tolerances.quantity_duplicate", "/tolerances/items/1",
+       [](System& s) {
+         s.tolerances.items = {
+             tolerance("a", ToleranceAnchor::Node, "L1", ToleranceKind::DecenterX),
+             tolerance("b", ToleranceAnchor::Node, "L1", ToleranceKind::DecenterX)};
+       }},
+      {"tolerances.id_hash_collision", "/tolerances/items/1/id",
+       [](System& s) {
+         // FNV-1a 64 of both ids is 0x4EAC0C95540867E4 (RFC 9923, Sec. 2 and 5).
+         s.tolerances.items = {tolerance("8yn0iYCKYHlIj4-BwPqk", ToleranceAnchor::Node, "L1",
+                                         ToleranceKind::DecenterX),
+                               tolerance("GReLUrM4wMqfg9yzV3KQ", ToleranceAnchor::Node, "L1",
+                                         ToleranceKind::DecenterY)};
+       }},
+      {"tolerances.class_unknown", "/tolerances/class",
+       [](System& s) { s.tolerances.tolerance_class = static_cast<ToleranceClass>(7); }},
+      {"tolerances.abbe_on_const", "/tolerances/items/0/kind",
+       [](System& s) {
+         element(s, 1).material = "CONST:1.5";
+         s.tolerances.items = {tolerance("a", ToleranceAnchor::Node, "L1", ToleranceKind::Abbe)};
+       }},
+      {"tolerances.material_unsupported", "/tolerances/items/0/node",
+       [](System& s) {
+         element(s, 1).material = "CONST:1.5,2.0";
+         s.tolerances.items = {tolerance("a", ToleranceAnchor::Node, "L1", ToleranceKind::Index)};
+       }},
+      {"tolerances.compensator_target", "/tolerances/compensators/0",
+       [](System& s) {
+         s.tolerances.compensators = {detector_focus(-1.0, 1.0)};
+         s.tolerances.compensators[0].target.param.reset();
+         s.tolerances.compensator_merit = rtt::model::Optimization{{spot_rms("main")}, {}};
+       }},
+      {"tolerances.compensator_bounds", "/tolerances/compensators/0/travel_min",
+       [](System& s) {
+         s.tolerances.compensators = {detector_focus(0.0, 1.0)};
+         s.tolerances.compensator_merit = rtt::model::Optimization{{spot_rms("main")}, {}};
+       }},
+      {"tolerances.compensator_merit_missing", "/tolerances/compensators",
+       [](System& s) { s.tolerances.compensators = {detector_focus(-1.0, 1.0)}; }},
+      {"tolerances.criterion_bounds", "/tolerances/criteria/0",
+       [](System& s) {
+         s.tolerances.criteria = {rtt::model::Criterion{"spot", spot_rms("main"), std::nullopt,
+                                                        std::nullopt, std::nullopt}};
+       }},
+      {"tolerances.monte_carlo_invalid", "/tolerances/monte_carlo/trials",
+       [](System& s) { s.tolerances.monte_carlo = rtt::model::MonteCarloDefaults{1, 0}; }},
       // compile: a configuration index beyond the configurations (#165)
       {"config.unknown", "/configurations", [](System& s) { s.configurations = {{"a"}}; }, 1},
       // compile: material changes of the overlay (ADR 0036, point 1c; #254). L1 is CONST:1.5168;

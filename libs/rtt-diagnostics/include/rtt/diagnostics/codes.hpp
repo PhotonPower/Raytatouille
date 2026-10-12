@@ -258,6 +258,27 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
     {"tolerances.abbe_on_const", Severity::Error, "validate",
      "Abbe number tolerance at a CONST material (n_F - n_C = 0); compile also reports it for "
      "any material with n_F = n_C when applying the perturbation (#254)"},
+    {"tolerances.bound_param", Severity::Error, "validate",
+     "tolerance or compensator at a Param bound to a parameter row or at an expression row"},
+    {"tolerances.class_unknown", Severity::Error, "validate",
+     "tolerance class outside coarse, normal, precise, none (API only; the file reader rejects "
+     "the name)"},
+    {"tolerances.compensator_bounds", Severity::Error, "validate",
+     "compensator travel_min >= 0, travel_max <= 0 or not finite"},
+    {"tolerances.compensator_merit_missing", Severity::Error, "validate",
+     "compensators, but the compensator merit (or the optimization it falls back on) is missing "
+     "or empty"},
+    {"tolerances.compensator_target", Severity::Error, "validate",
+     "compensator neither an unbound Param nor a row of the form value, or a target twice"},
+    {"tolerances.criterion_bounds", Severity::Error, "validate",
+     "criterion without bound, min > max, max_change <= 0, a bound not finite, or target or "
+     "weight at its operand"},
+    {"tolerances.id_duplicate", Severity::Error, "validate",
+     "tolerance item id or criterion id used twice"},
+    {"tolerances.id_hash_collision", Severity::Error, "validate",
+     "two tolerance ids (explicit or generated) with the same 64-bit FNV-1a hash"},
+    {"tolerances.id_invalid", Severity::Error, "validate",
+     "empty tolerance or criterion id, or an explicit id starting with class:"},
     {"tolerances.limit_invalid", Severity::Error, "validate",
      "tolerance limit <= 0 or not finite, >= 1 for curvature_relative, >= |R| for radius, or a "
      "pivot not finite; compile reports n_d + dn_d <= 1 or nu_d + dnu_d <= 0 when applying the "
@@ -265,6 +286,15 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
     {"tolerances.material_unsupported", Severity::Error, "validate",
      "material tolerance at a crystal, a metal (complex index) or an element without material; "
      "for catalog materials compile reports it when applying the perturbation (#254)"},
+    {"tolerances.monte_carlo_invalid", Severity::Error, "validate",
+     "Monte Carlo seed above 2^53 - 1, or trials outside 1 ... 2^32"},
+    {"tolerances.quantity_duplicate", Severity::Error, "validate",
+     "two explicit tolerance items perturb the same quantity"},
+    {"tolerances.target_invalid", Severity::Error, "validate",
+     "tolerance kind, anchor, param pointer or segment do not fit the target, or a single value "
+     "of a kind no class generates there"},
+    {"tolerances.unknown_target", Severity::Error, "validate",
+     "tolerance target (surface, node or parameter row) not found"},
     {"value.not_finite", Severity::Error, "validate", "number of the model not finite"},
     {"wavelengths.empty", Severity::Error, "validate", "no wavelength"},
     {"wavelengths.reference_count", Severity::Error, "validate",
