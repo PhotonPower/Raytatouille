@@ -6,6 +6,136 @@ Neue Einträge stehen bis zum nächsten Release als Fragmente in [`changelog.d/`
 
 ## [Unreleased]
 
+## [0.8.0] – M6 Beugung
+
+### Hinzugefügt
+- Dateiformat 0.5.0: Interaktionen `ideal_lens` und `ideal_cylinder_lens` am `thin_element`
+  (ADR 0031) mit `focal_length`, `object_distance` und `axis_deg`; Migration von 0.4 ändert nur
+  die Version. Prüfcodes `interaction.ideal_lens_not_allowed`, `interaction.focal_length_invalid`,
+  `interaction.object_distance_invalid` und `paths.ideal_lens_event`. compile löst die Linsendaten
+  auf; Tracer und paraxiale Daten folgen, bis dahin `EventImpossible` bzw. `ParaxialError`.
+  Python-Lesetypen `rt.model.IdealLens` und `IdealCylinderLens`. Referenzdatei
+  `tests/reference/r2/ideal_lens.rtt.json` (#178).
+- `rtt-trace`: ideale Linse und ideale Zylinderlinse im Tracer (ADR 0031): Steigungsregel als
+  kollineare Abbildung, exakt für jeden Strahl; optischer Weg exakt für die Auslegungs-Konjugierte
+  `object_distance`; P = R(k_ein → k_aus), Gewicht unverändert; Rückweg gespiegelt (#178).
+- `rtt-paraxial`: die ideale Linse als y-nu-Schritt mit φ = |n|/f (`rear_focal_length` = f, EFL =
+  f/|n|), Seidel-Beiträge 0; damit zielen `make_rays`, Spot, OPD und die Optimierung durch sie.
+  Die Zylinderlinse bleibt paraxial ein `ParaxialError` (nicht rotationssymmetrisch). Beispiel
+  `examples/python/ideal_lens.py` (#178).
+- `rtt-trace`: Pupillenabtastung `PointListPupil` mit einer expliziten Punktliste in normierten
+  Pupillenkoordinaten (ADR 0032, Punkt 2), jeder Punkt gezielt wie `SinglePupilPoint`; Spot,
+  Pfadanalysen und `opd_points` nehmen sie an. Python: `rt.trace.PointListPupil(px, py)` (#202).
+- `rtt-analysis`: Through-Focus der OPD über `OpdOptions::focus_shift` (Referenzsphäre um
+  C′ = C + Δ d_c, ADR 0032, Punkt 5) und die Zellen der Pupillenfunktion `pupil_cells(N)` mit
+  Flächenanteil und Schwerpunkt in geschlossener Form (ADR 0032, Punkt 1) (#202).
+- `rtt-analysis`: Pupillenfunktion `pupil_function` auf N×N Zellen mit Flächenanteil, Amplitude
+  (Gauß-Apodisation als Option), W, Status und auf Wunsch der PRT-Matrix je Zelle, Zuordnung
+  s ≈ s₀ + M p auf die Richtungssinus mit Kennzahl und Warnung `pupil.mapping_nonlinear`, und
+  `refocus` für Through-Focus ohne erneutes Tracen (ADR 0032, Nachtrag #202). `AnalysisError`
+  kann einen Ort ohne verlorenen Strahl tragen (#202).
+- `rtt-analysis`: Zernike-Polynome nach Noll (`zernike`, `zernike_radial`, `noll_to_nm`,
+  `noll_from_nm`) und der Zernike-Fit der Pupillenfunktion mit σ, σ_BF und der Strehl-Näherung
+  nach Maréchal (`zernike_fit`, ADR 0032, Punkte 6 und 7); Warnung `zernike.pupil_incomplete` (#203).
+- Neue Abhängigkeit pocketfft (BSD-3-Clause, über vcpkg; ADR 0033) für die FFT-Beugung von M6.
+  Presets ohne vcpkg finden den Header mit `find_path` oder laden ihn per FetchContent auf dem
+  Pin des vcpkg-Ports (`RTT_FETCH_POCKETFFT`, Standard an); die CI prüft die Pins mit
+  `tools/check_pins.py`. In `rtt-analysis` intern `detail::fft1`/`fft2`: einfädig, ohne
+  globalen Zustand, bitgleich bei jedem Aufruf (#204).
+- `rtt-analysis`: Beugungs-PSF über FFT (`psf`, ADR 0033) mit Bildgitter senkrecht zum
+  Hauptstrahl, Normierung mit der exakten Pupillenenergie, Strehl-Zahl, Maximum,
+  `edge_energy_deficit`, polychromatisch auf dem Gitter der Referenzwellenlänge
+  (`polychromatic_scale_error`, `outside_field`), Warnungen `psf.aliasing` und
+  `psf.pupil_undersampled`; `psf_at` (direkte Summe an beliebigen Punkten, in Strehl-Einheiten)
+  und `through_focus` (`ThroughFocus`: Strehl-Zahl je Fokusverschiebung über `refocus`) (#205).
+- `rtt-analysis`: FFT-MTF (`mtf`, ADR 0033) tangential und sagittal bis zur Grenzfrequenz,
+  komplexe OTF und 2D-Karte auf Wunsch, polychromatisch auf den Frequenzen der Referenz;
+  Encircled Energy (`encircled_energy`) über die Pupillenverschiebungen bis `radius_max`, um C′
+  oder `EeCentre::LinearPhase`; beide auch auf Ebene einer Pupillenfunktion (#206).
+- `rtt-trace`: akkumulierte geometrische Transformation Q je Strahl auf Anforderung
+  (`RayBatch::enable_q()`, dann `q`, `q_matrix`), Q je Ereignis nach ADR 0034 ohne
+  Singularität; damit die physikalische Retardance eines ganzen Pfads über
+  `physical_retardance(P, Q, k₀)`. Ohne Anforderung bleibt der Trace so schnell wie bisher.
+  `RayPaths` zeichnet auf Anforderung (`polarization`) P und, mit Q im Batch, Q je Slot auf
+  (#207, #76).
+- Python: `RayBatch.enable_q()`, `has_q`, `q(row, col)` und `q_matrices()` für die
+  akkumulierte geometrische Transformation Q; `rt.trace.trace(..., record_path=True,
+  polarization=True)` zeichnet P und Q je Slot auf (`RayPaths.polarization`, `prt`, `q`).
+  Ergebnisformat 0.1.9 mit diesen Schlüsseln; ältere Dateien lesen sich ohne Q (#207, #76).
+- `rtt-analysis`: Jones-Pupille `jones_pupil()` (ADR 0034): je Pupillenpunkt die 2×2-Jones-Matrix
+  in Doppelpol- oder Dipol-Basis mit der Phase aus W, dazu Karten von Transmission,
+  Diattenuation und physikalischer Retardance mit Orientierung und Elliptizität; Option globale
+  Phase am Hauptstrahl entfernen. Für rotationssymmetrische Pfade (#208).
+- `rtt-analysis`: Jones-Pupille für vorgegebene Startstrahlen, `jones_pupil(system, path, start,
+  chief)`, auch für gefaltete und gekippte Pfade; Phase aus der OPL bis zur Bildfläche. Warnung
+  `pupil.basis_pole` für Punkte an einem Pol der Basis (#208).
+- `rtt-analysis`: Option Feldamplitude der Jones-Pupille (`JonesPupilOptions::field_amplitude`):
+  J ohne die Leistungsfaktoren √c der Transmissionen, aus dem Pfad zurückgerechnet; Warnungen
+  `pupil.field_amplitude_absorbing` und `pupil.chief_phase_unavailable` (#208).
+- `rtt-py`: Jones-Pupille aus Python, `raytatouille.analysis.jones_pupil()` in beiden Formen
+  (Komfortform und vorgegebene Startstrahlen mit `start` und `chief`), Ergebnistyp `JonesPupil`
+  mit `JonesBasis`; Ergebnisformat 0.1.10 mit dem Typ `JonesPupil` (#208).
+- Python: `rt.analysis.opd_points`, `focus_shift` bei `opd_map`/`opd_fan`, `pupil_cells`,
+  `pupil_function`, `refocus`, `zernike_fit` sowie `zernike`, `zernike_radial`, `noll_to_nm`,
+  `noll_from_nm`; Ergebnisformat 0.1.8 mit `OpdPupilPoints`, `PupilCells`, `PupilFunction`
+  und `ZernikeFit`; Beispiel `examples/python/wavefront.py` (#209).
+- `rtt-py`: Beugung in Python: `rt.analysis.psf`, `psf_at`, `through_focus`, `mtf` und
+  `encircled_energy` (auch auf einer Pupillenfunktion), `Psf.positions()`, Plots für PSF,
+  MTF, Encircled Energy und Through-Focus, Beispiel `examples/python/diffraction.py`;
+  Ergebnisformat 0.1.12 mit `Psf`, `ThroughFocus`, `Mtf` und `EncircledEnergy`; die Ringpupille
+  in Python: `pupil_cells(grid, obscuration)`, `PupilCells.obscuration`/`inner_rim` und
+  `PupilFunction.obscuration`, auch im Ergebnisformat (#209, #229).
+- `rtt-analysis`: Interferogramm zweier Pfade (`interferogram`): OPL-Differenz an den Treffern
+  des Bezugspfads mit Übertragung der zweiten Welle, Phase, Streifen und Intensität der
+  Zweistrahl-Interferenz, Scherung und Ankunft je Startstrahl (#210).
+- `rtt-py`: `rt.analysis.interferogram` mit `Interferogram`, `InterferogramPoints` und
+  `InterferogramArrival`; Ergebnisformat 0.1.10 mit dem Typ `Interferogram` (#210).
+- `rtt-analysis`: Stokes-Karte der Pupille, `stokes_pupil()` aus einer Jones-Pupille für einen
+  Eingangszustand: Stokes-Parameter als Leistung des polarisierten Eingangs und die
+  Polarisationsellipse je Punkt (#211).
+- `rtt-py`: Stokes-Karte aus Python, `raytatouille.analysis.stokes_pupil(jones, e1, e2)`,
+  Ergebnistyp `StokesPupil`; Ergebnisformat 0.1.13 mit dem Typ `StokesPupil` (#211).
+- Abnahme M6: `test_m6_acceptance.cpp` mit PSF, Encircled Energy, MTF, Defokus-Strehl,
+  Zernike, Jones-Pupille der 45°-Faltung (kollimiert und konvergent) und der idealen Linse auf
+  den Referenzsystemen unter `tests/reference/m6/`; Python = C++ in `test_bitwise_m6.py`
+  (#212).
+- `rtt-trace`: virtuelle Referenzstrahlen für zentral abgeschattete Systeme:
+  `RayBatch::set_ignore_obscurations()` lässt den Innenradius kreisförmiger Aperturen ungeprüft,
+  `inside_aperture(surface, hit, ignore_inner)`, `trace::stop_radius()` gibt den Stoppradius zu
+  |p| = 1 (ADR 0032, Nachtrag #229; #229).
+- `rtt-analysis`: Pupillenfunktion, PSF, MTF und EE zentral abgeschatteter Systeme mit
+  exakten Ringzellen: `pupil_cells(N, ε)`, ε aus dem Innenradius des Stopps
+  (`PupilFunction::obscuration`), Zellen am Innenrand als virtuelle Strahlen;
+  `zernike.pupil_incomplete` auf dem Ring. Abnahme gegen die analytische PSF und MTF der
+  Ringpupille (ADR 0032 und 0033, Nachträge #229; #229).
+
+### Geändert
+- `rtt-trace`: Pupillenkoordinaten sind bei endlichem Objekt an der Objektraum-Steigung
+  orientiert (py > 0 heißt immer: Strahl steigt gegenüber dem Hauptstrahl; Entscheidung des
+  Maintainers, Nachtrag zu ADR 0007). Strahlen und Strahl-Operanden springen damit nicht mehr,
+  wenn die Eintrittspupille durch das Unendliche geht (etwa bei einer Blende nahe der
+  Brennebene; bisher Stufe von 1,14 mm bei `m1/telecentric_singlet`). **Geänderte Bedeutung:**
+  Bei virtueller Eintrittspupille jenseits des Objekts ist der Pupillenpunkt (px, py) jetzt der
+  gespiegelte EP-Punkt; Ray Fans und OPD-Karten solcher Systeme erscheinen um 180° gedreht.
+  Ersetzt die Orientierung an der Referenzwellenlänge aus #96; Objekte im Unendlichen sind
+  unverändert (#35).
+- `rtt-trace`, `rtt-compile`: Als idealer Leiter reflektiert nur noch ein Spiegel ohne
+  Material (`CompiledSurface::ideal_conductor`). Ein Spiegel mit Material, dessen Index dem des
+  Mediums davor gleicht (z. B. `CONST:1.0` in `VACUUM`), reflektiert jetzt mit Fresnel gegen
+  sein Material, also mit R = 0 (ADR 0034, Punkt 7; #207).
+- `rtt-analysis`, `rtt-optim`: Spot, Ray Fans, OPD, Pupillenfunktion, PSF, Verzeichnung,
+  Bildfeldwölbung, Farbfehler und der Spot-Bezug des Optimierers gehen bei zentral abgeschatteten
+  Systemen (Ringapertur, `inner_radius`) nicht mehr mit `AnalysisError` ab: Haupt-, parabasale
+  und Zonenstrahlen werden als virtuelle Referenzstrahlen ohne den Innenrand getraced, bitgleich
+  zum System ohne Abschattung. `stop.clips_beam` meldet nur noch den Beschnitt am Außenrand des
+  Stopps (ADR 0032, Nachtrag #229; #229).
+
+### Behoben
+- `rtt-paraxial`: `first_order` erkennt Eintrittspupille, Austrittspupille und Bild „im
+  Unendlichen“ mit einer relativen Rundungsschranke wie das Afokal-Kriterium, statt mit einem
+  exakten Vergleich auf 0. Eine Blende oder ein Objekt bis auf Rundung in einer Brennebene gibt
+  damit keine Pupille bzw. kein Bild in rund 1e16 mm mehr (#35).
+
 ## [0.7.0] – M5 Optimierung
 
 ### Hinzugefügt
