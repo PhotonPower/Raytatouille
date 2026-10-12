@@ -825,11 +825,15 @@ TEST_CASE("perturbation: thin-lens focal length and colour follow dn and dnu",
                          2.0 * std::abs((nd - 1.0) * (nd - 1.0) - a) / a + 2.0 * std::abs(w);
     REQUIRE(bound < 0.05);
     CHECK(std::abs(actual / predicted - 1.0) <= bound);
-    // Sharper: against the leading term itself. Its error is O(eps alpha beta) with
-    // eps = s - 1, alpha = (n_F - n_d)/(n_F - 1), beta = (n_C - n_d)/(n_C - 1): about 5e-5 for
-    // N-BK7 (review of #266).
+    // Sharper: against the leading term itself (review of #266). With eps = s - 1 =
+    // -dnu/(nu + dnu), alpha = (n_F - n_d)/(n_F - 1), beta = (n_C - n_d)/(n_C - 1) and
+    // w = alpha + beta the exact change is f dnu/nu^2 times (n_d - 1)^2/a * nu/(nu + dnu) *
+    // [(1 - w) - eps alpha beta] / ((1 + eps alpha)(1 + eps beta)); the denominator is
+    // 1 + eps w + O(eps^2), so the relative rest of the leading term is about -eps w (4.5e-5 for
+    // N-BK7). Bound: twice that.
     const double leading = (nd - 1.0) * (nd - 1.0) / a * nu / (nu + kDv) * (1.0 - w);
-    CHECK(std::abs(actual / predicted - leading) <= 1e-4);
+    const double eps = -kDv / (nu + kDv);
+    CHECK(std::abs(actual / predicted - leading) <= 2.0 * std::abs(eps * w));
   }
 }
 
