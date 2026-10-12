@@ -1,5 +1,5 @@
 add_library(rtt_model src/element.cpp src/expression.cpp src/expression_eval.cpp
-  src/parameters.cpp src/pose.cpp src/tolerance.cpp src/validate.cpp)
+  src/parameters.cpp src/pose.cpp src/tolerance.cpp src/tolerance_targets.cpp src/validate.cpp)
 add_library(rtt::model ALIAS rtt_model)
 target_include_directories(rtt_model PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
