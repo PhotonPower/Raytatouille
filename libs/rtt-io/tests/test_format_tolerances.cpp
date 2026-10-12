@@ -185,8 +185,8 @@ TEST_CASE("tolerances: a criterion from the file has target 0 and weight 1", "[i
   const System s = rtt::io::parse_system(rtt::io::to_json(toleranced_singlet()));
   REQUIRE(s.tolerances.criteria.size() == 3);
   for (const Criterion& c : s.tolerances.criteria) {
-    const OperandCommon& common =
-        std::visit([](const auto& op) -> const OperandCommon& { return op.common; }, c.operand);
+    // By value: GCC 13 takes a reference to the result of std::visit for a dangling temporary.
+    const OperandCommon common = std::visit([](const auto& op) { return op.common; }, c.operand);
     CHECK(common.target == 0.0);
     CHECK(common.weight == 1.0);
   }
