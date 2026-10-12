@@ -66,8 +66,8 @@ std::string with_interaction_json(const System& s, const json& interaction) {
 
 }  // namespace
 
-TEST_CASE("schema version is 0.5.0", "[io][0.5]") {
-  REQUIRE(rtt::model::kSchemaVersion == "0.5.0");
+TEST_CASE("schema version is 0.6.0", "[io][0.5]") {
+  REQUIRE(rtt::model::kSchemaVersion == "0.6.0");
 }
 
 TEST_CASE("ideal lens: canonical form and round trip", "[io][0.5]") {
@@ -156,7 +156,7 @@ TEST_CASE("migration 0.4 -> 0.5 changes only the version", "[io][0.5][migration]
   json j = json::parse(rtt::io::to_json(rtt::model::test::make_singlet()));
   j["schema_version"] = "0.4.0";
   const System s = rtt::io::parse_system(j.dump());
-  CHECK(s.schema_version == "0.5.0");
+  CHECK(s.schema_version == "0.6.0");
   json written = json::parse(rtt::io::to_json(s));
   written["schema_version"] = "0.4.0";
   CHECK(written == j);

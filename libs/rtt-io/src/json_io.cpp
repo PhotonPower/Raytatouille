@@ -85,6 +85,44 @@ const EnumTable<SpotReference> kSpotReferences = {
     {"chief", SpotReference::Chief},
 };
 
+/// Tolerance kinds (ADR 0035, point 2), in the order of the table there.
+const EnumTable<ToleranceKind> kToleranceKinds = {
+    {"radius", ToleranceKind::Radius},
+    {"curvature_relative", ToleranceKind::CurvatureRelative},
+    {"conic", ToleranceKind::Conic},
+    {"thickness", ToleranceKind::Thickness},
+    {"param", ToleranceKind::Param},
+    {"parameter", ToleranceKind::Parameter},
+    {"decenter_x", ToleranceKind::DecenterX},
+    {"decenter_y", ToleranceKind::DecenterY},
+    {"shift_z", ToleranceKind::ShiftZ},
+    {"tilt_x_deg", ToleranceKind::TiltXDeg},
+    {"tilt_y_deg", ToleranceKind::TiltYDeg},
+    {"tilt_z_deg", ToleranceKind::TiltZDeg},
+    {"index", ToleranceKind::Index},
+    {"abbe", ToleranceKind::Abbe},
+};
+
+const EnumTable<ToleranceDistribution> kToleranceDistributions = {
+    {"normal", ToleranceDistribution::Normal},
+    {"uniform", ToleranceDistribution::Uniform},
+    {"endpoint", ToleranceDistribution::Endpoint},
+};
+
+const EnumTable<ToleranceClass> kToleranceClasses = {
+    {"none", ToleranceClass::None},
+    {"coarse", ToleranceClass::Coarse},
+    {"normal", ToleranceClass::Normal},
+    {"precise", ToleranceClass::Precise},
+};
+
+/// File keys of the anchors (ADR 0035, point 2).
+const EnumTable<ToleranceAnchor> kToleranceAnchors = {
+    {"surface", ToleranceAnchor::Surface},
+    {"node", ToleranceAnchor::Node},
+    {"parameter", ToleranceAnchor::Parameter},
+};
+
 template <class E>
 std::string_view enum_name(E value, const EnumTable<E>& table) {
   for (const auto& [name, v] : table) {
@@ -577,6 +615,7 @@ struct Migration {
   bool before_0_3 = false;  ///< the event kind "diffract" existed
   bool before_0_4 = false;  ///< Params could carry a pickup; no 0.4 forms
   bool before_0_5 = false;  ///< no ideal lenses (ADR 0031)
+  bool before_0_6 = false;  ///< no tolerance set (ADR 0035)
 };
 
 /// Checks the schema version of `j` and tells which migrations to the current version it needs.
@@ -591,6 +630,7 @@ struct Migration {
 ///   (ADR 0030) are new.
 /// - 0.4 -> 0.5 (ADR 0031): content unchanged, only the interactions ideal_lens and
 ///   ideal_cylinder_lens are new.
+/// - 0.5 -> 0.6 (ADR 0035): content unchanged, only the section "tolerances" is new.
 Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
   const std::string ours(kSchemaVersion);
   const std::string mm = major_minor(version);
@@ -599,12 +639,13 @@ Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
     if (const Json* root = find(j, "root")) {
       check_material_forms(*root, Ctx().at("root"), mm == "0.2");
     }
-    return {true, true, true};
+    return {true, true, true, true};
   }
-  if (mm == "0.3") return {false, true, true};
-  if (mm == "0.4") return {false, false, true};
+  if (mm == "0.3") return {false, true, true, true};
+  if (mm == "0.4") return {false, false, true, true};
+  if (mm == "0.5") return {false, false, false, true};
   c.fail("incompatible schema_version '" + version + "', this build reads " + ours +
-         " and migrates 0.1, 0.2, 0.3 and 0.4");
+         " and migrates 0.1, 0.2, 0.3, 0.4 and 0.5");
 }
 
 /// Files before 0.5 (ADR 0031): an ideal lens or ideal cylinder lens is an error at the type of
@@ -887,6 +928,172 @@ Optimization read_optimization(const Json& j, const Ctx& c) {
   return o;
 }
 
+// ================================================================ tolerances =====
+//
+// The section "tolerances" (ADR 0035). The reader checks keys and types (ADR 0008); whether
+// kind, anchor, param and segment fit together, and every range, is validate's
+// (tolerances.*).
+
+/// A non-negative integer up to 2^64 - 1 (Monte Carlo seed and trials; the ranges of ADR 0035,
+/// point 8 are validate's).
+std::uint64_t read_uint64(const Json& j, const Ctx& c) {
+  if (!j.is_number_integer()) c.fail("expected an integer, got " + std::string(type_name(j)));
+  if (!j.is_number_unsigned()) c.fail("expected a non-negative integer, got " + j.dump());
+  return j.get<std::uint64_t>();
+}
+
+/// A 0-based segment index (ADR 0017).
+std::uint32_t read_segment(const Json& j, const Ctx& c) {
+  const int v = read_int(j, c);
+  if (v < 0) c.fail("a segment is 0-based and not negative");
+  return static_cast<std::uint32_t>(v);
+}
+
+/// Exactly one of the anchor keys in `allowed` (ADR 0035, point 2), plus "param" and "segment"
+/// if present. The keys of `j` are checked by the caller.
+ToleranceTarget read_target(const Json& j,
+                            const Ctx& c,
+                            std::initializer_list<ToleranceAnchor> allowed) {
+  ToleranceTarget t;
+  int found = 0;
+  std::string names;
+  for (const ToleranceAnchor a : allowed) {
+    const std::string_view key = enum_name(a, kToleranceAnchors);
+    names += (names.empty() ? "" : ", ") + std::string(key);
+    if (const Json* v = find(j, key)) {
+      ++found;
+      t.anchor = a;
+      t.name = read_string(*v, c.at(key));
+    }
+  }
+  if (found != 1) c.fail("expected exactly one target of: " + names);
+  read_opt(j, "param", c, t.param, read_string);
+  read_opt(j, "segment", c, t.segment, read_segment);
+  return t;
+}
+
+ToleranceItem read_tolerance_item(const Json& j, const Ctx& c) {
+  expect_object(
+      j, c,
+      {"id", "surface", "node", "parameter", "param", "segment", "kind", "limit", "distribution"});
+  ToleranceItem item;
+  item.id = read_string(require(j, "id", c), c.at("id"));
+  item.target = read_target(
+      j, c, {ToleranceAnchor::Surface, ToleranceAnchor::Node, ToleranceAnchor::Parameter});
+  item.kind = read_enum(require(j, "kind", c), c.at("kind"), kToleranceKinds);
+  item.limit = read_number(require(j, "limit", c), c.at("limit"));
+  if (const Json* d = find(j, "distribution")) {
+    item.distribution = read_enum(*d, c.at("distribution"), kToleranceDistributions);
+  }
+  return item;
+}
+
+/// One entry of "overrides": exactly one of the forms class, single value and pivot (ADR 0035,
+/// point 5); a mixed entry is an error at the entry.
+ToleranceOverride read_tolerance_override(const Json& j, const Ctx& c) {
+  if (!j.is_object()) c.fail("expected an object, got " + std::string(type_name(j)));
+  const bool has_class = find(j, "class") != nullptr;
+  const bool has_kind = find(j, "kind") != nullptr;
+  const bool has_pivot = find(j, "pivot") != nullptr;
+  if ((has_class ? 1 : 0) + (has_kind ? 1 : 0) + (has_pivot ? 1 : 0) != 1) {
+    c.fail("an override has exactly one of class, kind (a single value) and pivot");
+  }
+  if (has_class) {
+    expect_object(j, c, {"node", "class"});
+    ToleranceClassOverride o;
+    o.node = read_string(require(j, "node", c), c.at("node"));
+    o.tolerance_class = read_enum(require(j, "class", c), c.at("class"), kToleranceClasses);
+    return o;
+  }
+  if (has_kind) {
+    expect_object(j, c, {"node", "surface", "segment", "kind", "limit", "distribution"});
+    ToleranceValueOverride o;
+    o.target = read_target(j, c, {ToleranceAnchor::Surface, ToleranceAnchor::Node});
+    o.kind = read_enum(require(j, "kind", c), c.at("kind"), kToleranceKinds);
+    o.limit = read_number(require(j, "limit", c), c.at("limit"));
+    if (const Json* d = find(j, "distribution")) {
+      o.distribution = read_enum(*d, c.at("distribution"), kToleranceDistributions);
+    }
+    return o;
+  }
+  expect_object(j, c, {"node", "surface", "pivot"});
+  TolerancePivotOverride o;
+  o.target = read_target(j, c, {ToleranceAnchor::Surface, ToleranceAnchor::Node});
+  o.pivot = read_vec3(require(j, "pivot", c), c.at("pivot"));
+  return o;
+}
+
+Compensator read_compensator(const Json& j, const Ctx& c) {
+  expect_object(j, c, {"surface", "node", "parameter", "param", "travel_min", "travel_max"});
+  Compensator k;
+  k.target = read_target(
+      j, c, {ToleranceAnchor::Surface, ToleranceAnchor::Node, ToleranceAnchor::Parameter});
+  k.travel_min = read_number(require(j, "travel_min", c), c.at("travel_min"));
+  k.travel_max = read_number(require(j, "travel_max", c), c.at("travel_max"));
+  return k;
+}
+
+/// The operand of a criterion: an operand of ADR 0030 without target and weight (ADR 0035,
+/// point 7); the model keeps target 0 and weight 1.
+Operand read_criterion_operand(const Json& j, const Ctx& c) {
+  if (!j.is_object()) return read_operand(j, c);  // reports the structural error
+  for (const char* key : {"target", "weight"}) {
+    if (find(j, key) != nullptr) {
+      c.at(key).fail("the operand of a criterion has no " + std::string(key));
+    }
+  }
+  Json with_target = j;
+  with_target["target"] = 0.0;
+  return read_operand(with_target, c);
+}
+
+Criterion read_criterion(const Json& j, const Ctx& c) {
+  expect_object(j, c, {"id", "operand", "min", "max", "max_change"});
+  Criterion k;
+  k.id = read_string(require(j, "id", c), c.at("id"));
+  k.operand = read_criterion_operand(require(j, "operand", c), c.at("operand"));
+  read_opt(j, "min", c, k.min, read_number);
+  read_opt(j, "max", c, k.max, read_number);
+  read_opt(j, "max_change", c, k.max_change, read_number);
+  return k;
+}
+
+/// The optional list `key` of `j`, each entry read by `reader`.
+template <class T, class F>
+void read_list(const Json& j, std::string_view key, const Ctx& c, std::vector<T>& out, F reader) {
+  if (const Json* a = find(j, key)) {
+    const Ctx lc = c.at(key);
+    expect_array(*a, lc);
+    out.reserve(a->size());
+    for (std::size_t i = 0; i < a->size(); ++i) out.push_back(reader((*a)[i], lc.at(i)));
+  }
+}
+
+/// The section "tolerances" (ADR 0035, point 1): every key optional.
+ToleranceSet read_tolerances(const Json& j, const Ctx& c) {
+  expect_object(j, c,
+                {"class", "overrides", "items", "compensators", "compensator_merit", "criteria",
+                 "monte_carlo"});
+  ToleranceSet t;
+  if (const Json* v = find(j, "class")) {
+    t.tolerance_class = read_enum(*v, c.at("class"), kToleranceClasses);
+  }
+  read_list(j, "overrides", c, t.overrides, read_tolerance_override);
+  read_list(j, "items", c, t.items, read_tolerance_item);
+  read_list(j, "compensators", c, t.compensators, read_compensator);
+  read_opt(j, "compensator_merit", c, t.compensator_merit, read_optimization);
+  read_list(j, "criteria", c, t.criteria, read_criterion);
+  if (const Json* m = find(j, "monte_carlo")) {
+    const Ctx mc = c.at("monte_carlo");
+    expect_object(*m, mc, {"seed", "trials"});
+    MonteCarloDefaults d;
+    read_opt(*m, "seed", mc, d.seed, read_uint64);
+    read_opt(*m, "trials", mc, d.trials, read_uint64);
+    t.monte_carlo = d;
+  }
+  return t;
+}
+
 System read_migrated(const Json& j, const Migration& m);
 
 /// `warnings` may be null: the warnings of the migration are dropped.
@@ -895,6 +1102,11 @@ System read_system_tree(const Json& j, std::vector<Diagnostic>* warnings) {
   if (!j.is_object()) c.fail("expected an object, got " + std::string(type_name(j)));
   const std::string version = read_string(require(j, "schema_version", c), c.at("schema_version"));
   const Migration m = migrate(j, version, c.at("schema_version"));
+  // Files before 0.6 (ADR 0035, point 10): a tolerance set is an error, so that a version is
+  // never silently upgraded; checked first, so that its pointer does not depend on other forms.
+  if (m.before_0_6 && find(j, "tolerances") != nullptr) {
+    c.at("tolerances").fail("a tolerance set needs schema_version 0.6 or later (ADR 0035)");
+  }
   if (m.before_0_5) {
     if (const Json* root = find(j, "root")) check_0_5_forms(*root, c.at("root"));
   }
@@ -911,7 +1123,7 @@ System read_migrated(const Json& j, const Migration& m) {
   expect_object(
       j, c,
       {"schema_version", "name", "units", "environment", "object", "wavelengths", "aperture",
-       "fields", "configurations", "parameters", "root", "paths", "optimization"});
+       "fields", "configurations", "parameters", "root", "paths", "optimization", "tolerances"});
   System s;
   s.schema_version = std::string(kSchemaVersion);
   read_opt(j, "name", c, s.name, read_string);
@@ -1024,6 +1236,7 @@ System read_migrated(const Json& j, const Migration& m) {
   if (const Json* o = find(j, "optimization")) {
     s.optimization = read_optimization(*o, c.at("optimization"));
   }
+  if (const Json* t = find(j, "tolerances")) s.tolerances = read_tolerances(*t, c.at("tolerances"));
   return s;
 }
 
@@ -1119,6 +1332,7 @@ class Writer {
     o["paths"] = std::move(paths);
 
     if (edit_ || !s.optimization.empty()) o["optimization"] = optimization(s.optimization);
+    if (edit_ || !s.tolerances.empty()) o["tolerances"] = tolerances(s.tolerances);
     return o;
   }
 
@@ -1520,6 +1734,114 @@ class Writer {
     OJson o;
     put_generator_head(o, "rms_wavefront", g);
     put_generator_sampling(o, g);
+    return o;
+  }
+
+  // ---- tolerance set (ADR 0035): keys in the order of point 1; an entry starts with its id,
+  // then the anchor, param, segment, kind, limit, distribution.
+
+  OJson tolerances(const ToleranceSet& t) const {
+    OJson o;
+    if (edit_ || t.tolerance_class != ToleranceClass::None) {
+      o["class"] = std::string(enum_name(t.tolerance_class, kToleranceClasses));
+    }
+    if (edit_ || !t.overrides.empty()) {
+      OJson a = OJson::array();
+      for (const ToleranceOverride& v : t.overrides) {
+        a.push_back(std::visit([this](const auto& x) { return tolerance_override(x); }, v));
+      }
+      o["overrides"] = std::move(a);
+    }
+    if (edit_ || !t.items.empty()) {
+      OJson a = OJson::array();
+      for (const ToleranceItem& item : t.items) a.push_back(tolerance_item(item));
+      o["items"] = std::move(a);
+    }
+    if (edit_ || !t.compensators.empty()) {
+      OJson a = OJson::array();
+      for (const Compensator& k : t.compensators) {
+        OJson ko;
+        put_target(ko, k.target);
+        ko["travel_min"] = num(k.travel_min);
+        ko["travel_max"] = num(k.travel_max);
+        a.push_back(std::move(ko));
+      }
+      o["compensators"] = std::move(a);
+    }
+    if (const std::optional<Optimization>& m = t.compensator_merit) {
+      o["compensator_merit"] = optimization(*m);
+    }
+    if (edit_ || !t.criteria.empty()) {
+      OJson a = OJson::array();
+      for (const Criterion& k : t.criteria) a.push_back(criterion(k));
+      o["criteria"] = std::move(a);
+    }
+    if (const std::optional<MonteCarloDefaults>& m = t.monte_carlo) {
+      OJson mo = OJson::object();
+      if (m->seed) mo["seed"] = *m->seed;
+      if (m->trials) mo["trials"] = *m->trials;
+      o["monte_carlo"] = std::move(mo);
+    }
+    return o;
+  }
+
+  static void put_target(OJson& o, const ToleranceTarget& t) {
+    o[std::string(enum_name(t.anchor, kToleranceAnchors))] = t.name;
+    if (t.param) o["param"] = *t.param;
+    if (t.segment) o["segment"] = *t.segment;
+  }
+
+  void put_kind_limit(OJson& o,
+                      ToleranceKind kind,
+                      double limit,
+                      ToleranceDistribution distribution) const {
+    o["kind"] = std::string(enum_name(kind, kToleranceKinds));
+    o["limit"] = num(limit);
+    if (edit_ || distribution != ToleranceDistribution::Normal) {
+      o["distribution"] = std::string(enum_name(distribution, kToleranceDistributions));
+    }
+  }
+
+  OJson tolerance_item(const ToleranceItem& item) const {
+    OJson o;
+    o["id"] = item.id;
+    put_target(o, item.target);
+    put_kind_limit(o, item.kind, item.limit, item.distribution);
+    return o;
+  }
+
+  OJson tolerance_override(const ToleranceClassOverride& v) const {
+    OJson o;
+    o["node"] = v.node;
+    o["class"] = std::string(enum_name(v.tolerance_class, kToleranceClasses));
+    return o;
+  }
+
+  OJson tolerance_override(const ToleranceValueOverride& v) const {
+    OJson o;
+    put_target(o, v.target);
+    put_kind_limit(o, v.kind, v.limit, v.distribution);
+    return o;
+  }
+
+  OJson tolerance_override(const TolerancePivotOverride& v) const {
+    OJson o;
+    put_target(o, v.target);
+    o["pivot"] = OJson::array({num(v.pivot[0]), num(v.pivot[1]), num(v.pivot[2])});
+    return o;
+  }
+
+  /// A criterion: its operand without target and weight (ADR 0035, point 7).
+  OJson criterion(const Criterion& k) const {
+    OJson o;
+    o["id"] = k.id;
+    OJson op = std::visit([this](const auto& x) { return operand(x); }, k.operand);
+    op.erase("target");
+    op.erase("weight");
+    o["operand"] = std::move(op);
+    if (k.min) o["min"] = num(*k.min);
+    if (k.max) o["max"] = num(*k.max);
+    if (k.max_change) o["max_change"] = num(*k.max_change);
     return o;
   }
 

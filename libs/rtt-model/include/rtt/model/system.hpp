@@ -18,12 +18,13 @@
 
 namespace rtt::model {
 
-/// Version of the file format written by this library. rtt-io also reads 0.1, 0.2 and 0.3 files
-/// and migrates them (0.2: per-segment materials of Lens and Plate, ADR 0017; 0.3: orders at
-/// every event without "diffract", diffraction efficiency, crystals and optic axis, ADR
-/// 0025/0026; 0.4: Pose.reference and Pose.order, ADR 0028; parameter table, configurations and
-/// bounds, pickup dropped, ADR 0029; merit function, ADR 0030).
-inline constexpr std::string_view kSchemaVersion = "0.5.0";
+/// Version of the file format written by this library. rtt-io also reads 0.1 to 0.5 files and
+/// migrates them (0.2: per-segment materials of Lens and Plate, ADR 0017; 0.3: orders at every
+/// event without "diffract", diffraction efficiency, crystals and optic axis, ADR 0025/0026; 0.4:
+/// Pose.reference and Pose.order, ADR 0028; parameter table, configurations and bounds, pickup
+/// dropped, ADR 0029; merit function, ADR 0030; 0.5: ideal lenses, ADR 0031; 0.6: tolerance
+/// set, ADR 0035).
+inline constexpr std::string_view kSchemaVersion = "0.6.0";
 
 struct Wavelength {
   double um = 0.0;  ///< vacuum wavelength in micrometre

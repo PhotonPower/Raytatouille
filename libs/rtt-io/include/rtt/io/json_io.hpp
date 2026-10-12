@@ -6,7 +6,7 @@
 /// Parsing is strict: unknown keys, wrong types, wrong units and incompatible schema
 /// versions are errors. Writing is canonical: the same model always yields the same bytes,
 /// so `to_json(parse(text)) == text` holds for every canonical file. Files of an older supported
-/// schema version (0.1, 0.2, 0.3) are migrated on reading: the event kind "diffract" of files
+/// schema version (0.1 to 0.5) are migrated on reading: the event kind "diffract" of files
 /// before 0.3 is read as "transmit" with its order (ADR 0025); the pickup of a Param in a file
 /// before 0.4 is dropped with the warning io.pickup_dropped, its value stays (ADR 0029). Forms of
 /// a newer version in an older file are errors. Writing always uses `model::kSchemaVersion`.
