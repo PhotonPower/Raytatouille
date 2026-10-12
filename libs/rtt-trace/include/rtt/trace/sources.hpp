@@ -22,7 +22,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <span>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -267,6 +269,104 @@ struct AimedRay {
                                  std::uint16_t wavelength,
                                  const PupilSampling& sampling,
                                  Aiming aiming,
+                                 const RunControl& control);
+
+namespace detail {
+struct AimData;  // sources.cpp
+}  // namespace detail
+
+/// Paraxial aiming data of one path at one wavelength, computed from a compiled system (ADR 0007,
+/// addendum #252; ADR 0036, point 2): entrance pupil (position and radius, or the marginal slope
+/// of an object-space telecentric system), stop scale, orientation sigma of the pupil labels, the
+/// stop event and the data of the field conversion at the reference wavelength. For the
+/// perturbed trials of a tolerance analysis, which are not rotationally symmetric, these data
+/// come from the nominal system (rtt::paraxial::first_order rejects the trials). An immutable
+/// value: cheap to copy, safe to read from many threads. Created with aim_reference().
+class AimReference {
+ public:
+  /// Path the data belong to.
+  [[nodiscard]] compile::PathId path() const noexcept;
+  /// Index of the wavelength the data belong to.
+  [[nodiscard]] std::uint16_t wavelength() const noexcept;
+  /// Internal data (sources.cpp); not part of the API.
+  [[nodiscard]] const detail::AimData& data() const noexcept { return *data_; }
+
+ private:
+  friend AimReference aim_reference(const compile::CompiledSystem& system,
+                                    compile::PathId path,
+                                    std::uint16_t wavelength);
+  explicit AimReference(std::shared_ptr<const detail::AimData> data) : data_(std::move(data)) {}
+  std::shared_ptr<const detail::AimData> data_;
+};
+
+/// The aiming data of `path` at `wavelength` of `system` (usually the nominal system), computed
+/// once: the same paraxial computation that aim_ray() and make_rays() do without a reference.
+/// @throws as aim_ray() for the path, the wavelength, the stop and the entrance pupil (also
+///         rtt::paraxial::ParaxialError for a path that is not rotationally symmetric)
+[[nodiscard]] AimReference aim_reference(const compile::CompiledSystem& system,
+                                         compile::PathId path,
+                                         std::uint16_t wavelength);
+
+/// aim_ray() with the aiming data of `reference` instead of the paraxial data of `system`
+/// (ADR 0007, addendum #252; ADR 0036, point 2). The entrance pupil, the stop scale, sigma, the
+/// Newton start and the field conversion come from the reference, so a field point means the
+/// same direction or object point as in the reference system. The ray is traced through
+/// `system`, the target sigma (px R_s, py R_s) lies in the local coordinates of the stop surface
+/// of `system`, and the start plane (object at infinity) lies before the surfaces of `system`
+/// (bundle reserve of 3 entrance-pupil radii around the reference chief ray, and 1 mm; a
+/// decenter well below the pupil radius stays inside it). Real aiming thus converges onto a
+/// perturbed stop: the chief ray passes through its centre. With the reference of `system`
+/// itself the result is bitwise that of aim_ray() without reference.
+/// @throws std::invalid_argument if `reference` does not fit: another path or wavelength than
+///         `path` and `wavelength`; in `system` another name, number of events or surface id,
+///         kind or order of an event of the path; other wavelength values or another reference
+///         wavelength; other field type or field values (x, y); another object (at infinity,
+///         distance) or system aperture (type, value) (ADR 0007, addendum #252, precision #255);
+///         and as aim_ray() for px, py, the field and the start plane
+[[nodiscard]] AimedRay aim_ray(const compile::CompiledSystem& system,
+                               compile::PathId path,
+                               std::uint16_t field,
+                               std::uint16_t wavelength,
+                               double px,
+                               double py,
+                               Aiming aiming,
+                               const AimReference& reference);
+
+/// aim_ray() for an arbitrary field value with the aiming data of `reference` (see above).
+/// @throws as the overload above, and std::invalid_argument if a field value is not finite
+[[nodiscard]] AimedRay aim_ray(const compile::CompiledSystem& system,
+                               compile::PathId path,
+                               const model::Field& field,
+                               std::uint16_t wavelength,
+                               double px,
+                               double py,
+                               Aiming aiming,
+                               const AimReference& reference);
+
+/// |R_s| of the aim target with the data of `reference`, mm (see stop_radius() above); equal to
+/// stop_radius(system, path, wavelength) of the system the reference was computed from.
+[[nodiscard]] double stop_radius(const AimReference& reference);
+
+/// make_rays() with the aiming data of `reference` (see aim_ray() with a reference); bitwise the
+/// same for every number of threads.
+/// @throws as aim_ray() with a reference
+[[nodiscard]] RayBatch make_rays(const compile::CompiledSystem& system,
+                                 compile::PathId path,
+                                 std::span<const std::uint16_t> fields,
+                                 std::uint16_t wavelength,
+                                 const PupilSampling& sampling,
+                                 Aiming aiming,
+                                 const AimReference& reference);
+
+/// make_rays() with the aiming data of `reference`, cancellation and progress (see above).
+/// @throws as make_rays() with a reference, Cancelled, or the exception of the progress callback
+[[nodiscard]] RayBatch make_rays(const compile::CompiledSystem& system,
+                                 compile::PathId path,
+                                 std::span<const std::uint16_t> fields,
+                                 std::uint16_t wavelength,
+                                 const PupilSampling& sampling,
+                                 Aiming aiming,
+                                 const AimReference& reference,
                                  const RunControl& control);
 
 }  // namespace rtt::trace
