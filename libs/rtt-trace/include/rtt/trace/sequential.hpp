@@ -58,8 +58,10 @@ class Tracer {
 /// last_surface the last surface reached. Rays whose status is not Alive at the start are
 /// skipped. Each ray is traced independently;
 /// the batch is split with oneTBB parallel_for and static_partitioner (ADR 0004), so the result
-/// does not depend on the number of threads. The medium indices are the real parts of the
-/// compiled media at the ray's wavelength. Every event is traced with its diffraction order and
+/// does not depend on the number of threads. The media enter with their complex indices
+/// n + i kappa at the ray's wavelength (EventMedia): directions and OPL use Re(n) (in a crystal
+/// the mode index), Fresnel and coating coefficients the complex index, and kappa the volume
+/// absorption of the weight (move_to_hit). Every event is traced with its diffraction order and
 /// the efficiencies of its surface (apply_event, ADR 0025).
 class SequentialTracer final : public Tracer {
  public:
