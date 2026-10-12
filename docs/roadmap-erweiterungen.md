@@ -1,6 +1,6 @@
 # Roadmap-Erweiterungen
 
-> **Status: entschieden** (2026-10-09, Koordinator im Auftrag des Maintainers; siehe [Entscheidungen](#entscheidungen)). Stand nach 0.7.0 (M5 abgeschlossen; die Einträge sind gegen ADR 0028 bis 0031 und Schema 0.4.0 abgeglichen). Verbindlich ist ein Eintrag erst, wenn er unter „Entscheidungen“ als freigegeben steht; Einträge mit „Ideenliste“ werden beim Planen des jeweiligen Meilensteins neu bewertet. Die Roadmap-Tabelle in [architecture.md](architecture.md) bleibt die Quelle für die Meilensteine.
+> **Status: entschieden** (2026-10-09, Koordinator im Auftrag des Maintainers; siehe [Entscheidungen](#entscheidungen)). Stand nach 0.8.0 (M6 abgeschlossen; die Einträge sind gegen ADR 0028 bis 0034 und Schema 0.5.0 abgeglichen; neu ist der Abschnitt [Offene Punkte nach M6](#offene-punkte-nach-m6)). Verbindlich ist ein Eintrag erst, wenn er unter „Entscheidungen“ als freigegeben steht; Einträge mit „Ideenliste“ werden beim Planen des jeweiligen Meilensteins neu bewertet. Die Roadmap-Tabelle in [architecture.md](architecture.md) bleibt die Quelle für die Meilensteine.
 
 ## Herkunft und Umgang mit der Quelle
 
@@ -80,6 +80,30 @@ Setzt ADR 0029 (Parametertabelle) und ADR 0030 (Merit-Funktion im Abschnitt `opt
 ## Paket P7: v2 und später
 
 Huygens-PSF und -MTF (17.5.2, 17.6.2), Beamlet-Propagation (17.9), Faserkopplung single- und multimode (17.10), kohärente Bestrahlungsstärke (17.7.2), Bildsimulation (17.8), Glassubstitution und globale Optimierung (19.7), ISO-10110-Zeichnung (3.6.1.4) und STEP-Export der Flächen. Alle stehen schon in architecture.md unter „Später“ oder v2; hier nur zur Vollständigkeit.
+
+## Offene Punkte nach M6
+
+Ideenliste aus der Umsetzung von M6 (0.8.0), gesammelt von den Agenten; neu zu bewerten beim Planen. Herkunft in Klammern.
+
+- **Wellenfront und Beugung:**
+  - Ringpolynome nach Mahajan für den Zernike-Fit auf der Ringpupille; heute Noll mit Warnung `zernike.pupil_incomplete` (ADR 0032, Nachtrag #229).
+  - Momentenschwerpunkt als Bezug der Encircled Energy neben `Reference` und `LinearPhase` (ADR 0033, Nachtrag #206).
+  - Encircled Energy der Ringpupille als weiterer Abnahmefall; die Formel steht im Nachtrag #229 zu ADR 0033.
+  - PSF je Fokuslage aus einem Trace (ADR 0033, Punkt 8) sowie MTF und Encircled Energy durch den Fokus als Komfortform.
+  - Inverses Zielen auf ein Richtungssinus-Raster, damit die lineare Zuordnung bei großer NA entfällt (ADR 0032, H3).
+  - Fringe-Zernike als Umrechnung (ADR 0032, H2a).
+  - Polychromatische 2D-MTF-Karte; heute nur monochromatisch (#206).
+  - Exakte Ringzellen bei Abschattung auf anderen Flächen als dem Stopp; heute Treppe (ADR 0032, Nachtrag #229).
+  - Vektor-PSF (H7) und Apodisation im Dateiformat (W4, braucht einen Schemasprung).
+- **Interferogramm (#210):**
+  - Sichtbarkeit aus den Polarisationsmatrizen beider Pfade; heute skalar mit gleicher Polarisation.
+  - Phasen der Wechselwirkungen (Metall, Schichten, Verzögerer) in φ; heute nur die OPL.
+  - Übertragung zweiter Ordnung bei gekrümmten Wellen; heute Abschätzung n′s⊥²/(2R) und Ausgabe der Scherung.
+  - Der gekippte Michelson als Referenzdatei unter `tests/reference/m6/`.
+- **Kristalle, Optimierung, Trace:**
+  - OPD, Pupillenfunktion und Jones-Pupille für Pfade mit Kristall-Modi; heute Fehler (ADR 0034, H6).
+  - MTF- und Strehl-Operanden für die Optimierung (ADR 0033, H9) und ein skaleninvarianter FD-Schritt bei kleinen Variablen (#196, Kommentar).
+  - Aufzeichnender Trace mit Abbruch und Fortschritt; heute läuft die Feldamplitude der Jones-Pupille als ein Block (#208, B1).
 
 ## Bewusst nicht aufgenommen
 

@@ -95,6 +95,13 @@ Zwei Fehlerquellen, die nur die CI sieht, vorab lokal prüfen:
 - **MSVC wertet Verengungen in Bereichsschleifen als Fehler.** `for (const std::uint16_t x : {0, 1})`
   wandelt `int`-Literale um (C4244, mit `/WX` ein Fehler); die Literale typisieren, z. B.
   `{std::uint16_t{0}, std::uint16_t{1}}` (#220, #223).
+- **Clang-Warnungen ohne clang-Build.** Wer lokal nur mit GCC baut, prüft geänderte
+  Übersetzungseinheiten zusätzlich mit `clang++ -fsyntax-only -Werror` und den Projektwarnungen
+  (z. B. `-Wunused-lambda-capture`, `-Wshadow-uncaptured-local`); die CI baut mit clang und den
+  Sanitizern (#239, #247).
+- **Plot-Tests brauchen matplotlib.** Fehlt matplotlib in der lokalen venv, überspringt pytest
+  die Plot- und Beispieltests still; dann deckt sie nur die CI ab. Beim Ändern von Plot-Helfern
+  matplotlib installieren oder die CI-Läufe gezielt ansehen.
 
 ## Aufbau
 
