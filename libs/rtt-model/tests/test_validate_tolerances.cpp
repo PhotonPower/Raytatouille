@@ -201,6 +201,43 @@ TEST_CASE("tolerances: every code at its pointer", "[model][tolerances][validate
       {"compensator at an expression row",
        [](System& s) { s.tolerances.compensators[0].target = at(A::Parameter, "HALF"); },
        "tolerances.bound_param", comp + "0/parameter"},
+      // rows that the object distance or the system aperture depend on (#255, addendum #253)
+      {"row bound to the object distance",
+       [](System& s) {
+         s.parameters.push_back(row("OBJ", 100.0));
+         s.object = {false, Param::bound("OBJ")};
+         s.tolerances.items[6].target = at(A::Parameter, "OBJ");
+       },
+       "tolerances.target_invalid", items + "6/parameter"},
+      {"row reached through an expression (item)",
+       [](System& s) {
+         s.parameters.push_back(row("X", 99.0));
+         ParameterRow obj;
+         obj.name = "OBJ";
+         obj.form = ParameterExpression{"X + 1"};
+         s.parameters.push_back(obj);
+         s.object = {false, Param::bound("OBJ")};
+         s.tolerances.items[6].target = at(A::Parameter, "X");
+       },
+       "tolerances.target_invalid", items + "6/parameter"},
+      {"row reached through an expression (compensator)",
+       [](System& s) {
+         s.parameters.push_back(row("X", 99.0));
+         ParameterRow obj;
+         obj.name = "OBJ";
+         obj.form = ParameterExpression{"X + 1"};
+         s.parameters.push_back(obj);
+         s.object = {false, Param::bound("OBJ")};
+         s.tolerances.compensators[0].target = at(A::Parameter, "X");
+       },
+       "tolerances.compensator_target", comp + "0/parameter"},
+      {"compensator on the row of the system aperture",
+       [](System& s) {
+         s.parameters.push_back(row("EPD", 20.0));
+         s.aperture.value = Param::bound("EPD");
+         s.tolerances.compensators[0].target = at(A::Parameter, "EPD");
+       },
+       "tolerances.compensator_target", comp + "0/parameter"},
       // limit_invalid
       {"limit zero", [](System& s) { s.tolerances.items[7].limit = 0.0; },
        "tolerances.limit_invalid", items + "7/limit"},
