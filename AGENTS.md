@@ -63,6 +63,13 @@ Fehlerquellen, die nur die CI sieht, vorab lokal prüfen:
   ctest setzt sie (`ctest -R rtt_py`). Ohne sie werden die Bitvergleiche still übersprungen, und
   pytest ist trotzdem grün. Wer pytest direkt startet, setzt die drei Variablen wie
   `libs/rtt-py/CMakeLists.txt` und prüft, dass kein Bitvergleich übersprungen wurde.
+- **Veralteter `__pycache__` der Python-Tests.** Sind lokal nur die Tests rot, die den Dateinamen
+  einer Warnung prüfen (`w.filename == __file__`), und steht in `w.filename` ein fremder oder anders
+  geschriebener Pfad (z. B. Backslashes statt Vorwärts-Slashes), liegt es am Cache: pytest
+  verwendet das umgeschriebene Testmodul aus `libs/rtt-py/tests/__pycache__` wieder und prüft dabei
+  nur Änderungszeit und Größe der Quelle, nicht den Pfad. `co_filename` bleibt so der Pfad der
+  ersten Übersetzung, aus ihm nimmt `warnings.warn` den Dateinamen; `__file__` kommt aus dem
+  aktuellen Import. Abhilfe: `libs/rtt-py/tests/__pycache__` löschen; die Tests nicht ändern.
 - **Bitvergleiche brauchen einen Inhaltswächter.** Liefern C++ und Python beide dasselbe Falsche
   (z. B. alle Strahlen verfehlt), ist der Vergleich trotzdem grün. Jeder neue Fall bekommt deshalb
   eine Prüfung auf den erwarteten Status und auf Werte, die sich unterscheiden.
@@ -79,6 +86,13 @@ Fehlerquellen, die nur die CI sieht, vorab lokal prüfen:
   nicht, und umgekehrt. Ist GCC 13 lokal nicht verfügbar, die CI-Läufe von `ci-linux-gcc` nach dem
   Push gezielt ansehen. Dazu gehört `-Wrange-loop-construct`: Eine Bereichsschleife per Wert über
   `const Vec3` meldet nur GCC 13, also über Klassentypen immer `const T&` (#218).
+- **`-Wdangling-reference` bei Aufrufen mit temporärem Argument.** Bindet man das
+  Referenz-Ergebnis eines Aufrufs an eine Referenz und bekommt der Aufruf ein Temporäres, hält GCC
+  (13 wie 16) das Ergebnis für eine Referenz auf das Temporäre und bricht mit `-Werror` ab, auch
+  wenn sie auf ein langlebiges Objekt zeigt. Beispiele: ein `std::string` aus einem Literal
+  (`const auto& f = frame(c, "/root/…")`, #266), ein Lambda in
+  `const T& x = std::visit([](const auto& op) -> const T& { return op.member; }, v)` (#268).
+  Abhilfe: per Wert binden oder einen Zeiger zurückgeben.
 - **Keine exakten Vergleiche über libm-Ergebnisse auf Konstanten.** GCC faltet z. B.
   `std::cbrt(kKonstante)` bei Optimierung zur Übersetzungszeit korrekt gerundet; die Laufzeit-libm
   (glibc, MinGW) darf um 1 ulp abweichen. Ein Test, der sich darauf verlässt, dass er denselben Wert
