@@ -279,11 +279,12 @@ ist der Namensraum der erzeugten Items).
 | `parameter` | Zeile | Einheit der Zeile | Offset auf die Zeile, in allen Konfigurationen derselbe |
 | `decenter_x`, `decenter_y`, `shift_z` | Fläche oder Knoten | mm | starre Verschiebung im Nennrahmen des Ziels und seines Teilbaums |
 | `tilt_x_deg`, `tilt_y_deg`, `tilt_z_deg` | Fläche oder Knoten | Grad | starre Drehung um die Achse des Nennrahmens durch den Pivot |
-| `index`, `abbe` | Element (Lens, Plate) | dimensionslos | Δn_d bzw. Δν_d; `segment` (0-basiert) bei mehreren Materialien |
+| `index`, `abbe` | Element mit isotropem Material (Klassen: nur Lens und Plate) | dimensionslos | Δn_d bzw. Δν_d; `segment` (0-basiert) bei einer Liste `material`; eine Liste aus lauter gleichen Einträgen ist ein Material, dort gilt nur `segment` 0 |
 
 `thickness` ist ein Maß (Offset auf ein Param), `shift_z` eine Lage (starr): Eine Dickentoleranz
 schiebt relativ platzierte Folgeknoten mit, eine starre Verschiebung nicht. Params auf
-Systemebene (Objektabstand, Systemapertur) sind keine Toleranz- und keine Kompensatorziele.
+Systemebene (Objektabstand, Systemapertur) sind keine Toleranz- und keine Kompensatorziele,
+ebenso eine Zeile der Parametertabelle, von der sie abhängen (direkt gebunden oder über Ausdrücke).
 
 **Klassen und Überschreibungen.** Die Klasse erzeugt Items aus einer festen Tabelle der
 Bibliothek (Flächen: `curvature_relative`, `conic` an Asphären, `thickness` ab der zweiten
