@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/PhotonPower/Raytatouille/schema/raytatouille.schema.json",
-  "title": "Raytatouille system file (.rtt.json), schema 0.5",
-  "description": "Units: lengths mm, wavelengths um, angles in degree where the key ends in _deg. Parsing in rtt-io is the reference; this schema must accept exactly what rtt-io accepts structurally for the current schema version. rtt-io migrates older files (0.1, 0.2, 0.3, 0.4); run rtt format before checking them against this schema. Semantic rules (names of parameter rows, one value per configuration, bounds) are checked by validate, not here.",
+  "title": "Raytatouille system file (.rtt.json), schema 0.6",
+  "description": "Units: lengths mm, wavelengths um, angles in degree where the key ends in _deg. Parsing in rtt-io is the reference; this schema must accept exactly what rtt-io accepts structurally for the current schema version. rtt-io migrates older files (0.1 to 0.5); run rtt format before checking them against this schema. Semantic rules (names of parameter rows, one value per configuration, bounds, the targets and limits of tolerances) are checked by validate, not here.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "units", "wavelengths", "aperture", "fields", "root", "paths"],
   "properties": {
-    "schema_version": {"type": "string", "pattern": "^0\\.5\\.[0-9]+$"},
+    "schema_version": {"type": "string", "pattern": "^0\\.6\\.[0-9]+$"},
     "name": {"type": "string"},
     "units": {
       "type": "object",
@@ -94,16 +94,147 @@
     "paths": {"type": "array", "items": {"$ref": "#/$defs/path"}},
     "optimization": {
       "description": "Merit function (ADR 0030): operands and generators. Omitted without a merit function. Paths, configurations, parameter rows and surfaces are named; field and wavelength are indices into fields.points and wavelengths (missing wavelength: the reference wavelength). The names and the index ranges are checked by validate (merit.*), not here.",
+      "$ref": "#/$defs/merit"
+    },
+    "tolerances": {
+      "description": "Tolerance set (ADR 0035): class of the system, overrides, explicit items, compensators, their merit function, criteria and Monte Carlo defaults; every key optional, omitted without tolerances. Targets are anchors (surface id, node name, parameter row) with an attached pointer for Params, never indices. Whether kind, target, param and segment fit together, the limits, the id rules and the ranges of seed and trials are checked by validate (tolerances.*), not here.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "class": {"$ref": "#/$defs/tolerance_class"},
+        "overrides": {"type": "array", "items": {"$ref": "#/$defs/tolerance_override"}},
+        "items": {"type": "array", "items": {"$ref": "#/$defs/tolerance_item"}},
+        "compensators": {"type": "array", "items": {"$ref": "#/$defs/compensator"}},
+        "compensator_merit": {
+          "description": "Merit function of the compensators, built like optimization; missing: optimization is used.",
+          "$ref": "#/$defs/merit"
+        },
+        "criteria": {"type": "array", "items": {"$ref": "#/$defs/criterion"}},
+        "monte_carlo": {
+          "description": "Defaults of a Monte Carlo run; the API may override both. validate requires seed <= 2^53 - 1 and 1 <= trials <= 2^32.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "seed": {"$ref": "#/$defs/uint64"},
+            "trials": {"$ref": "#/$defs/uint64"}
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "index": {"type": "integer", "minimum": 0, "maximum": 65535},
+    "uint64": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615},
+    "merit": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "operands": {"type": "array", "items": {"$ref": "#/$defs/operand"}},
         "generators": {"type": "array", "items": {"$ref": "#/$defs/generator"}}
       }
-    }
-  },
-  "$defs": {
-    "index": {"type": "integer", "minimum": 0, "maximum": 65535},
+    },
+    "tolerance_class": {
+      "description": "Tolerance class (ADR 0035, point 5); none means no generated items.",
+      "enum": ["none", "coarse", "normal", "precise"]
+    },
+    "tolerance_kind": {
+      "description": "What a tolerance changes (ADR 0035, point 2): radius (mm), curvature_relative (dC/C), conic, thickness (offset on pose.position[2], mm), param (offset on the attached Param), parameter (offset on a row), decenter_x, decenter_y, shift_z (rigid, mm), tilt_x_deg, tilt_y_deg, tilt_z_deg (rigid, degree, about the pivot), index (dn_d), abbe (dnu_d).",
+      "enum": ["radius", "curvature_relative", "conic", "thickness", "param", "parameter",
+               "decenter_x", "decenter_y", "shift_z", "tilt_x_deg", "tilt_y_deg", "tilt_z_deg",
+               "index", "abbe"]
+    },
+    "tolerance_distribution": {
+      "description": "normal (default; sigma = limit/2, truncated at +-limit), uniform on [-limit, limit], or endpoint (+-limit).",
+      "enum": ["normal", "uniform", "endpoint"]
+    },
+    "segment": {
+      "description": "0-based segment of an element with several materials (ADR 0017).",
+      "type": "integer", "minimum": 0, "maximum": 2147483647
+    },
+    "tolerance_item": {
+      "description": "An explicit tolerance: id, exactly one anchor (surface, node or parameter), param (a pointer relative to the anchor's object in the edit form, kind param), segment (index and abbe), kind, limit T (perturbation in [-T, T]) and distribution.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "limit"],
+      "oneOf": [{"required": ["surface"]}, {"required": ["node"]}, {"required": ["parameter"]}],
+      "properties": {
+        "id": {"type": "string"},
+        "surface": {"type": "string"},
+        "node": {"type": "string"},
+        "parameter": {"type": "string"},
+        "param": {"type": "string"},
+        "segment": {"$ref": "#/$defs/segment"},
+        "kind": {"$ref": "#/$defs/tolerance_kind"},
+        "limit": {"type": "number"},
+        "distribution": {"$ref": "#/$defs/tolerance_distribution"}
+      }
+    },
+    "tolerance_override": {
+      "description": "Exactly one of three forms (ADR 0035, point 5): a class for a node and its subtree (none switches generation off), a single value for one generated kind at a node or surface, or the pivot of the tilts of one node or surface (mm, in its coordinates, not inherited).",
+      "type": "object",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "required": ["node", "class"],
+          "properties": {"node": {"type": "string"}, "class": {"$ref": "#/$defs/tolerance_class"}}
+        },
+        {
+          "additionalProperties": false,
+          "required": ["kind", "limit"],
+          "oneOf": [{"required": ["surface"]}, {"required": ["node"]}],
+          "properties": {
+            "surface": {"type": "string"},
+            "node": {"type": "string"},
+            "segment": {"$ref": "#/$defs/segment"},
+            "kind": {"$ref": "#/$defs/tolerance_kind"},
+            "limit": {"type": "number"},
+            "distribution": {"$ref": "#/$defs/tolerance_distribution"}
+          }
+        },
+        {
+          "additionalProperties": false,
+          "required": ["pivot"],
+          "oneOf": [{"required": ["surface"]}, {"required": ["node"]}],
+          "properties": {
+            "surface": {"type": "string"},
+            "node": {"type": "string"},
+            "pivot": {"$ref": "#/$defs/vec3"}
+          }
+        }
+      ]
+    },
+    "compensator": {
+      "description": "A compensator (ADR 0035, point 6): an unbound Param (surface or node with param) or a row of the form value (parameter), with travel_min < 0 < travel_max relative to the value of the trial, unit of the target.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["travel_min", "travel_max"],
+      "oneOf": [{"required": ["surface"]}, {"required": ["node"]}, {"required": ["parameter"]}],
+      "properties": {
+        "surface": {"type": "string"},
+        "node": {"type": "string"},
+        "parameter": {"type": "string"},
+        "param": {"type": "string"},
+        "travel_min": {"type": "number"},
+        "travel_max": {"type": "number"}
+      }
+    },
+    "criterion": {
+      "description": "A criterion (ADR 0035, point 7): an operand of ADR 0030 without target and weight, with at least one of min, max (absolute) and max_change (|value - nominal value|); at least one bound is checked by validate.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "operand"],
+      "properties": {
+        "id": {"type": "string"},
+        "operand": {
+          "$ref": "#/$defs/operand_fields",
+          "required": ["type"],
+          "properties": {"target": false, "weight": false}
+        },
+        "min": {"type": "number"},
+        "max": {"type": "number"},
+        "max_change": {"type": "number"}
+      }
+    },
     "selection": {
       "description": "Field or wavelength indices of a generator; omitted for all (with their weights); never empty.",
       "type": "array",
@@ -112,8 +243,12 @@
     },
     "operand": {
       "description": "One operand (ADR 0030, points 1 and 3): residual sqrt(weight) (value - target). target is required; weight defaults to 1; configuration names a configuration (missing: configuration 0).",
+      "$ref": "#/$defs/operand_fields",
+      "required": ["type", "target"]
+    },
+    "operand_fields": {
+      "description": "The keys of an operand per type (ADR 0030, point 3); which of type and target are required is set where it is used.",
       "type": "object",
-      "required": ["type", "target"],
       "oneOf": [
         {
           "description": "Paraxial quantity of a path: efl and bfl in mm, image_fnumber and magnification dimensionless.",

@@ -1,0 +1,158 @@
+{
+  "schema_version": "0.6.0",
+  "name": "Cemented achromat N-BK7/F2 with a tolerance set (ADR 0035)",
+  "units": {"length": "mm", "wavelength": "um"},
+  "wavelengths": [
+    {"um": 0.4861},
+    {"um": 0.5876, "reference": true},
+    {"um": 0.6563}
+  ],
+  "aperture": {"type": "epd", "value": 20.0},
+  "fields": {
+    "points": [
+      {},
+      {"y": 3.5},
+      {"y": 5.0}
+    ]
+  },
+  "parameters": [
+    {"name": "R1", "value": 61.5}
+  ],
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 10.0}
+          }
+        ]
+      },
+      {
+        "type": "assembly",
+        "name": "objective",
+        "children": [
+          {
+            "type": "lens",
+            "name": "L1",
+            "pose": {"position": [0.0, 0.0, 5.0]},
+            "material": ["SCHOTT:N-BK7", "SCHOTT:F2"],
+            "surfaces": [
+              {
+                "id": "L1.S1",
+                "shape": {
+                  "base": {
+                    "type": "conic",
+                    "radius": {"param": "R1"}
+                  }
+                },
+                "aperture": {"type": "circular", "radius": 12.7}
+              },
+              {
+                "id": "L1.S2",
+                "pose": {"position": [0.0, 0.0, 6.0]},
+                "shape": {
+                  "base": {"type": "conic", "radius": -35.2}
+                },
+                "aperture": {"type": "circular", "radius": 12.7}
+              },
+              {
+                "id": "L1.S3",
+                "pose": {"position": [0.0, 0.0, 9.0]},
+                "shape": {
+                  "base": {"type": "conic", "radius": -136.9}
+                },
+                "aperture": {"type": "circular", "radius": 12.7}
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 110.614]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ],
+  "tolerances": {
+    "class": "normal",
+    "overrides": [
+      {"node": "objective", "class": "precise"},
+      {"surface": "L1.S2", "kind": "curvature_relative", "limit": 0.005},
+      {
+        "node": "L1",
+        "segment": 1,
+        "kind": "index",
+        "limit": 0.001,
+        "distribution": "uniform"
+      },
+      {"node": "objective", "pivot": [0.0, 0.0, 9.5]},
+      {"node": "image", "class": "none"}
+    ],
+    "items": [
+      {
+        "id": "S3-wedge",
+        "surface": "L1.S3",
+        "kind": "tilt_x_deg",
+        "limit": 0.02
+      },
+      {
+        "id": "S1-conic",
+        "surface": "L1.S1",
+        "param": "/shape/base/conic",
+        "kind": "param",
+        "limit": 0.01,
+        "distribution": "uniform"
+      },
+      {
+        "id": "R1",
+        "parameter": "R1",
+        "kind": "parameter",
+        "limit": 0.1,
+        "distribution": "endpoint"
+      }
+    ],
+    "compensators": [
+      {
+        "node": "image",
+        "param": "/pose/position/2",
+        "travel_min": -1.0,
+        "travel_max": 1.0
+      }
+    ],
+    "compensator_merit": {
+      "operands": [
+        {"type": "spot_rms", "path": "main", "target": 0.0}
+      ]
+    },
+    "criteria": [
+      {
+        "id": "spot-axis",
+        "operand": {"type": "spot_rms", "path": "main"},
+        "max": 0.02
+      },
+      {
+        "id": "spot-edge",
+        "operand": {"type": "spot_rms", "path": "main", "field": 2},
+        "max": 0.03
+      },
+      {
+        "id": "efl",
+        "operand": {"type": "efl", "path": "main"},
+        "max_change": 0.5
+      }
+    ],
+    "monte_carlo": {"seed": 20261012, "trials": 200}
+  }
+}

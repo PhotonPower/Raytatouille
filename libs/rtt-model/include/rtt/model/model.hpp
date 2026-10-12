@@ -12,4 +12,5 @@
 #include "rtt/model/pose.hpp"
 #include "rtt/model/surface.hpp"
 #include "rtt/model/system.hpp"
+#include "rtt/model/tolerance.hpp"
 #include "rtt/model/validate.hpp"

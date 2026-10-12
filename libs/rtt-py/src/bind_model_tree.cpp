@@ -23,6 +23,7 @@
 #include "rtt/model/pose.hpp"
 #include "rtt/model/surface.hpp"
 #include "rtt/model/system.hpp"
+#include "rtt/model/tolerance.hpp"
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -174,6 +175,177 @@ void bind_optimization(nb::module_& m) {
                                        "The merit function (ADR 0030; read-only copy).")
       .def_ro("operands", &model::Optimization::operands, "Operands in file order.")
       .def_ro("generators", &model::Optimization::generators, "Generators in file order.");
+}
+
+/// The anchor of a tolerance target as one attribute per file key (ADR 0035, points 2 and 3):
+/// the name at the key of the anchor, None at the others.
+template <typename T>
+void anchor_attribute(nb::class_<T>& cls,
+                      const char* key,
+                      model::ToleranceAnchor anchor,
+                      const char* doc) {
+  cls.def_prop_ro(
+      key,
+      [anchor](const T& o) -> std::optional<std::string> {
+        if (o.target.anchor != anchor) return std::nullopt;
+        return o.target.name;
+      },
+      doc);
+}
+
+template <typename T>
+void surface_node_attributes(nb::class_<T>& cls) {
+  anchor_attribute(cls, "surface", model::ToleranceAnchor::Surface,
+                   "Id of the target surface; None if the target is not a surface.");
+  anchor_attribute(cls, "node", model::ToleranceAnchor::Node,
+                   "Name of the target element or assembly; None if the target is not a node.");
+}
+
+template <typename T>
+void row_attribute(nb::class_<T>& cls) {
+  anchor_attribute(cls, "parameter", model::ToleranceAnchor::Parameter,
+                   "Name of the target row of the parameter table; None if the target is not a "
+                   "row.");
+}
+
+template <typename T>
+void param_attribute(nb::class_<T>& cls) {
+  cls.def_prop_ro(
+      "param", [](const T& o) { return o.target.param; },
+      "JSON pointer of a Param relative to the anchor's object in the edit form, e.g. "
+      "\"/shape/base/conic\"; None without.");
+}
+
+template <typename T>
+void segment_attribute(nb::class_<T>& cls) {
+  cls.def_prop_ro(
+      "segment", [](const T& o) { return o.target.segment; },
+      "0-based segment of an element with several materials (index and abbe); None without.");
+}
+
+/// The tolerance set (ADR 0035; #253). The defaults are those of rtt/model/tolerance.hpp.
+void bind_tolerances(nb::module_& m) {
+  nb::enum_<model::ToleranceKind>(m, "ToleranceKind",
+                                  "What a tolerance changes (ADR 0035, point 2).")
+      .value("RADIUS", model::ToleranceKind::Radius, "R' = R + dR, mm (file: \"radius\")")
+      .value("CURVATURE_RELATIVE", model::ToleranceKind::CurvatureRelative,
+             "C' = C (1 + d), dimensionless (file: \"curvature_relative\")")
+      .value("CONIC", model::ToleranceKind::Conic, "conic constant k' = k + dk (file: \"conic\")")
+      .value("THICKNESS", model::ToleranceKind::Thickness,
+             "offset on pose.position[2] of the target, mm (file: \"thickness\")")
+      .value("PARAM", model::ToleranceKind::Param,
+             "offset on the value of the attached Param (file: \"param\")")
+      .value("PARAMETER", model::ToleranceKind::Parameter,
+             "offset on a row of the parameter table (file: \"parameter\")")
+      .value("DECENTER_X", model::ToleranceKind::DecenterX,
+             "rigid shift along x of the nominal frame, mm (file: \"decenter_x\")")
+      .value("DECENTER_Y", model::ToleranceKind::DecenterY,
+             "rigid shift along y of the nominal frame, mm (file: \"decenter_y\")")
+      .value("SHIFT_Z", model::ToleranceKind::ShiftZ,
+             "rigid shift along z of the nominal frame, mm (file: \"shift_z\")")
+      .value("TILT_X_DEG", model::ToleranceKind::TiltXDeg,
+             "rigid rotation about x through the pivot, degree (file: \"tilt_x_deg\")")
+      .value("TILT_Y_DEG", model::ToleranceKind::TiltYDeg,
+             "rigid rotation about y through the pivot, degree (file: \"tilt_y_deg\")")
+      .value("TILT_Z_DEG", model::ToleranceKind::TiltZDeg,
+             "rigid rotation about z through the pivot, degree (file: \"tilt_z_deg\")")
+      .value("INDEX", model::ToleranceKind::Index, "dn_d, dimensionless (file: \"index\")")
+      .value("ABBE", model::ToleranceKind::Abbe, "dnu_d, dimensionless (file: \"abbe\")");
+  nb::enum_<model::ToleranceDistribution>(m, "ToleranceDistribution",
+                                          "Distribution of a tolerance within [-T, T].")
+      .value("NORMAL", model::ToleranceDistribution::Normal,
+             "sigma = T/2, truncated at +-T (file: \"normal\")")
+      .value("UNIFORM", model::ToleranceDistribution::Uniform,
+             "uniform on [-T, T] (file: \"uniform\")")
+      .value("ENDPOINT", model::ToleranceDistribution::Endpoint,
+             "-T or +T with probability 1/2 each (file: \"endpoint\")");
+  nb::enum_<model::ToleranceClass>(m, "ToleranceClass",
+                                   "Tolerance class (ADR 0035, point 5); file key \"class\".")
+      .value("NONE", model::ToleranceClass::None, "no generated items (file: \"none\")")
+      .value("COARSE", model::ToleranceClass::Coarse, "(file: \"coarse\")")
+      .value("NORMAL", model::ToleranceClass::Normal, "(file: \"normal\")")
+      .value("PRECISE", model::ToleranceClass::Precise, "(file: \"precise\")");
+
+  auto item = read_only_class<model::ToleranceItem>(
+      m, "ToleranceItem", "An explicit tolerance (ADR 0035, point 2; read-only copy).");
+  item.def_ro("id", &model::ToleranceItem::id,
+              "Id; determines the random sequence of the item (ADR 0036).");
+  surface_node_attributes(item);
+  row_attribute(item);
+  param_attribute(item);
+  segment_attribute(item);
+  item.def_ro("kind", &model::ToleranceItem::kind, "What the tolerance changes.")
+      .def_ro("limit", &model::ToleranceItem::limit,
+              "Limit T > 0 in the unit of the kind; the perturbation lies in [-T, T].")
+      .def_ro("distribution", &model::ToleranceItem::distribution, "Distribution in [-T, T].");
+
+  read_only_class<model::ToleranceClassOverride>(
+      m, "ToleranceClassOverride",
+      "Another class for a node and its subtree; NONE switches generation off (read-only copy).")
+      .def_ro("node", &model::ToleranceClassOverride::node, "Name of an element or assembly.")
+      .def_ro("tolerance_class", &model::ToleranceClassOverride::tolerance_class,
+              "The class (file key \"class\").");
+
+  auto value = read_only_class<model::ToleranceValueOverride>(
+      m, "ToleranceValueOverride",
+      "A single value for one generated kind at one node or surface (read-only copy).");
+  surface_node_attributes(value);
+  segment_attribute(value);
+  value.def_ro("kind", &model::ToleranceValueOverride::kind, "The generated kind.")
+      .def_ro("limit", &model::ToleranceValueOverride::limit, "Limit T > 0.")
+      .def_ro("distribution", &model::ToleranceValueOverride::distribution,
+              "Distribution in [-T, T].");
+
+  auto pivot = read_only_class<model::TolerancePivotOverride>(
+      m, "TolerancePivotOverride",
+      "The pivot of the tilts of one node or surface, not inherited (read-only copy).");
+  surface_node_attributes(pivot);
+  pivot.def_ro("pivot", &model::TolerancePivotOverride::pivot,
+               "Pivot [x, y, z] in mm in the coordinates of the target.");
+
+  auto compensator = read_only_class<model::Compensator>(
+      m, "Compensator",
+      "An unbound Param or a row of the form value that the compensation may move (ADR 0035, "
+      "point 6; read-only copy).");
+  surface_node_attributes(compensator);
+  row_attribute(compensator);
+  param_attribute(compensator);
+  compensator
+      .def_ro("travel_min", &model::Compensator::travel_min,
+              "Lower travel (< 0) relative to the value of the trial, unit of the target.")
+      .def_ro("travel_max", &model::Compensator::travel_max,
+              "Upper travel (> 0) relative to the value of the trial, unit of the target.");
+
+  read_only_class<model::Criterion>(
+      m, "Criterion",
+      "An operand with bounds on its value (ADR 0035, point 7); its target is 0 and its weight "
+      "1 (read-only copy).")
+      .def_ro("id", &model::Criterion::id, "Id, unique among the criteria.")
+      .def_ro("operand", &model::Criterion::operand, "The operand (ADR 0030).")
+      .def_ro("min", &model::Criterion::min, "Absolute lower bound; None without.")
+      .def_ro("max", &model::Criterion::max, "Absolute upper bound; None without.")
+      .def_ro("max_change", &model::Criterion::max_change,
+              "Bound on |value - nominal value|; None without.");
+
+  read_only_class<model::MonteCarloDefaults>(
+      m, "MonteCarloDefaults", "Defaults of a Monte Carlo run (ADR 0035, point 8; read-only copy).")
+      .def_ro("seed", &model::MonteCarloDefaults::seed, "Seed; None without.")
+      .def_ro("trials", &model::MonteCarloDefaults::trials, "Number of trials; None without.");
+
+  read_only_class<model::ToleranceSet>(m, "ToleranceSet",
+                                       "The tolerance set (ADR 0035; read-only copy).")
+      .def_ro("tolerance_class", &model::ToleranceSet::tolerance_class,
+              "Class of the system (file key \"class\").")
+      .def_ro("overrides", &model::ToleranceSet::overrides,
+              "Overrides in file order: ToleranceClassOverride, ToleranceValueOverride or "
+              "TolerancePivotOverride.")
+      .def_ro("items", &model::ToleranceSet::items, "Explicit items in file order.")
+      .def_ro("compensators", &model::ToleranceSet::compensators, "Compensators in file order.")
+      .def_ro("compensator_merit", &model::ToleranceSet::compensator_merit,
+              "Merit function of the compensators; None: the system's optimization is used.")
+      .def_ro("criteria", &model::ToleranceSet::criteria, "Criteria in file order.")
+      .def_ro("monte_carlo", &model::ToleranceSet::monte_carlo,
+              "Monte Carlo defaults; None without.");
 }
 
 }  // namespace
@@ -579,6 +751,7 @@ void bind_model_tree(nb::module_& m) {
               "at_infinity (Param).");
 
   bind_optimization(m);
+  bind_tolerances(m);
 }
 
 }  // namespace rtt::py

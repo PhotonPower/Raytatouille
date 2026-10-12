@@ -27,7 +27,7 @@ from raytatouille import model
 #: Every optional key is missing, so each first instance of a class in this system carries the
 #: parser's defaults. Required keys have arbitrary values; the stop-size aperture has no value.
 DEFAULTS_TEXT = """{
-  "schema_version": "0.5.0",
+  "schema_version": "0.6.0",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [{"um": 0.5}],
   "aperture": {"type": "stop_size"},
@@ -76,6 +76,14 @@ ENUM_NAMES: dict[type, dict[str, str]] = {
                           "relative_to_sibling": "RELATIVE_TO_SIBLING"},
     model.PoseOrder: {"translate_first": "TRANSLATE_FIRST", "rotate_first": "ROTATE_FIRST"},
     model.SpotReference: {"centroid": "CENTROID", "chief": "CHIEF"},
+    # The tolerance set (ADR 0035, #253).
+    model.ToleranceKind: {k: k.upper() for k in (
+        "radius", "curvature_relative", "conic", "thickness", "param", "parameter", "decenter_x",
+        "decenter_y", "shift_z", "tilt_x_deg", "tilt_y_deg", "tilt_z_deg", "index", "abbe")},
+    model.ToleranceDistribution: {"normal": "NORMAL", "uniform": "UNIFORM",
+                                  "endpoint": "ENDPOINT"},
+    model.ToleranceClass: {"none": "NONE", "coarse": "COARSE", "normal": "NORMAL",
+                           "precise": "PRECISE"},
 }
 
 #: Type strings of the variants (and of an assembly) and their classes.
@@ -115,12 +123,21 @@ READ_ONLY_CLASSES: list[type] = [
     model.Param, model.Pose, model.ShapeStack, model.Surface, model.Element, model.Assembly,
     model.Event, model.Path, model.FieldSet, model.SystemAperture, model.ObjectSpace,
     model.Optimization,
+    model.ToleranceSet, model.ToleranceItem, model.ToleranceClassOverride,
+    model.ToleranceValueOverride, model.TolerancePivotOverride, model.Compensator,
+    model.Criterion, model.MonteCarloDefaults,
     *(c for c in VARIANT_CLASSES.values() if c is not model.Assembly),
 ]
 
 #: File keys whose attribute has another name (the JSON key "object" would shadow the builtin
 #: in the stubs, ADR 0024 addendum).
-ATTRIBUTE_OF_KEY = {"object": "object_space"}
+ATTRIBUTE_OF_KEY = {"object": "object_space", "class": "tolerance_class"}
+
+#: Classes of the tolerance set with a target: exactly one anchor key, the other anchor
+#: attributes are None (ADR 0035, point 2), so no single default instance fits all.
+TARGET_CLASSES = (model.ToleranceItem, model.ToleranceValueOverride,
+                  model.TolerancePivotOverride, model.Compensator)
+TARGET_KEYS = {"surface", "node", "parameter"}
 
 
 def attributes(obj: Any) -> list[str]:
@@ -169,6 +186,21 @@ MERIT_DEFAULTS: dict[str, Any] = {
 }
 for _cls, _obj in first_instances(rt.System.from_json(json.dumps(
         {**json.loads(DEFAULTS_TEXT), "optimization": MERIT_DEFAULTS}))).items():
+    DEFAULTS.setdefault(_cls, _obj)
+
+#: One entry of every class of the tolerance set with only its required keys (#253), added to
+#: DEFAULTS in the same way; System and ToleranceSet keep the defaults without tolerances.
+TOLERANCE_DEFAULTS: dict[str, Any] = {
+    "overrides": [{"node": "E", "class": "none"},
+                  {"node": "E", "kind": "thickness", "limit": 1.0},
+                  {"node": "E", "pivot": [0.0, 0.0, 0.0]}],
+    "items": [{"id": "i", "node": "E", "kind": "thickness", "limit": 1.0}],
+    "compensators": [{"parameter": "X", "travel_min": -1.0, "travel_max": 1.0}],
+    "criteria": [{"id": "c", "operand": {"type": "efl", "path": "p"}}],
+    "monte_carlo": {},
+}
+for _cls, _obj in first_instances(rt.System.from_json(json.dumps(
+        {**json.loads(DEFAULTS_TEXT), "tolerances": TOLERANCE_DEFAULTS}))).items():
     DEFAULTS.setdefault(_cls, _obj)
 
 
@@ -248,6 +280,10 @@ def check(expected: Any, actual: Any, where: str) -> None:
             check(value, getattr(actual, name), at)
             covered.add(name)
     missing = [name for name in attributes(actual) if name not in covered]
+    if isinstance(actual, TARGET_CLASSES):
+        for name in [m for m in missing if m in TARGET_KEYS]:
+            assert getattr(actual, name) is None, f"{where}/{name} (other anchor)"
+        missing = [m for m in missing if m not in TARGET_KEYS]
     if missing:  # classes without optional keys need no entry in DEFAULTS
         default = DEFAULTS[type(actual)]
         for name in missing:

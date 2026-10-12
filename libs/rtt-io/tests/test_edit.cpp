@@ -194,7 +194,7 @@ void node_keys(const json& n, const std::string& where) {
 void edit_form_keys(const json& e) {
   has_keys(e,
            {"schema_version", "name", "units", "environment", "object", "wavelengths", "aperture",
-            "fields", "parameters", "root", "paths", "optimization"},
+            "fields", "parameters", "root", "paths", "optimization", "tolerances"},
            {"configurations"}, "");
   // The merit function (ADR 0030; #162 part B): both lists always, every value of an entry,
   // the optional selections only if set.
@@ -231,6 +231,31 @@ void edit_form_keys(const json& e) {
     REQUIRE(generators.contains(type));
     has_keys(g, generators.at(type), {"configuration", "fields", "wavelengths"},
              "/optimization/generators");
+  }
+  // The tolerance set (ADR 0035; #253): the class and the lists always, compensator_merit and
+  // monte_carlo only if set; every value of an entry, anchor, param and segment as given.
+  const json& t = e["tolerances"];
+  has_keys(t, {"class", "overrides", "items", "compensators", "criteria"},
+           {"compensator_merit", "monte_carlo"}, "/tolerances");
+  const Keys anchors = {"surface", "node", "parameter", "param", "segment"};
+  for (const json& item : t["items"]) {
+    has_keys(item, {"id", "kind", "limit", "distribution"}, anchors, "/tolerances/items");
+  }
+  for (const json& o : t["overrides"]) {
+    if (o.contains("class")) {
+      has_keys(o, {"node", "class"}, {}, "/tolerances/overrides");
+    } else if (o.contains("pivot")) {
+      has_keys(o, {"pivot"}, {"surface", "node"}, "/tolerances/overrides");
+    } else {
+      has_keys(o, {"kind", "limit", "distribution"}, {"surface", "node", "segment"},
+               "/tolerances/overrides");
+    }
+  }
+  for (const json& k : t["compensators"]) {
+    has_keys(k, {"travel_min", "travel_max"}, anchors, "/tolerances/compensators");
+  }
+  for (const json& k : t["criteria"]) {
+    has_keys(k, {"id", "operand"}, {"min", "max", "max_change"}, "/tolerances/criteria");
   }
   has_keys(e["environment"], {"temperature_c", "pressure_atm", "medium"}, {}, "/environment");
   has_keys(e["object"], {"at_infinity", "distance"}, {}, "/object");
