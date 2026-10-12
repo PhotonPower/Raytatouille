@@ -262,9 +262,9 @@ void bind_tolerances(nb::module_& m) {
   nb::enum_<model::ToleranceClass>(m, "ToleranceClass",
                                    "Tolerance class (ADR 0035, point 5); file key \"class\".")
       .value("NONE", model::ToleranceClass::None, "no generated items (file: \"none\")")
-      .value("COARSE", model::ToleranceClass::Coarse, "file: \"coarse\"")
-      .value("NORMAL", model::ToleranceClass::Normal, "file: \"normal\"")
-      .value("PRECISE", model::ToleranceClass::Precise, "file: \"precise\"");
+      .value("COARSE", model::ToleranceClass::Coarse, "(file: \"coarse\")")
+      .value("NORMAL", model::ToleranceClass::Normal, "(file: \"normal\")")
+      .value("PRECISE", model::ToleranceClass::Precise, "(file: \"precise\")");
 
   auto item = read_only_class<model::ToleranceItem>(
       m, "ToleranceItem", "An explicit tolerance (ADR 0035, point 2; read-only copy).");
