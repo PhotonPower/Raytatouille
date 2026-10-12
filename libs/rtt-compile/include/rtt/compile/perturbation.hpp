@@ -34,13 +34,14 @@ struct RigidMotion {
   /// rotate_first (the point that the pose maps onto its pivot Q).
   std::optional<math::Vec3> pivot_mm;
 
-  /// True if t and the angles are exactly zero: the motion is the identity and is skipped,
-  /// whatever the pivot.
+  /// True if t and the angles are exactly zero: the motion is the identity and is skipped after
+  /// the target check, whatever the pivot.
   [[nodiscard]] bool is_identity() const;
 };
 
 /// Change of the material of an element segment (ADR 0036, point 1c): Delta n_d and Delta nu_d.
-/// The perturbed index keeps every relative partial dispersion:
+/// The perturbed index keeps every relative partial dispersion P_x,y = (n_x - n_y)/(n_F - n_C)
+/// (SCHOTT TIE-29, Eq. (2.2-1)), with nu_d = (n_d - 1)/(n_F - n_C) (Eq. (2.1-1)):
 ///   D = n_F - n_C, nu_d = (n_d - 1) / D, D' = (n_d + Delta n_d - 1) / (nu_d + Delta nu_d),
 ///   n'(lambda) = n(lambda) + Delta n_d + (D'/D - 1) (n(lambda) - n_d)
 /// on the real part; kappa is unchanged. With D = 0 (CONST) n' = n + Delta n_d. The lines d, F
@@ -53,7 +54,8 @@ struct MaterialChange {
   double delta_nd = 0.0;  ///< Delta n_d, dimensionless
   double delta_vd = 0.0;  ///< Delta nu_d, dimensionless
 
-  /// True if both changes are exactly zero: the entry is skipped.
+  /// True if both changes are exactly zero: the entry is skipped after the target checks
+  /// (unknown element, segment, crystal or element without material still count).
   [[nodiscard]] bool is_zero() const noexcept { return delta_nd == 0.0 && delta_vd == 0.0; }
 };
 
@@ -99,7 +101,8 @@ inline constexpr double kLineCAirUm = 0.6562725;
 /// Vacuum wavelength in um of a line with wavelength `air_um` (in um) in standard air of 20 degC
 /// and 1 atm: lambda_vac = lambda_air * n_air(lambda_vac), n_air after Ciddor (air.hpp), solved
 /// by fixed-point iteration from lambda_air (at most 10 steps, stops when a step changes
-/// nothing). This is the wavelength scale of the catalogues (CatalogMaterial in agf.hpp, #25).
+/// nothing). Standard air for all materials (decision E2 for #254); CatalogMaterial (agf.hpp, #25)
+/// uses the reference temperature of each glass, which shifts the line by about 3 pm at 25 degC.
 [[nodiscard]] double line_vacuum_wavelength_um(double air_um);
 
 }  // namespace rtt::compile

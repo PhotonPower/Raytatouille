@@ -367,6 +367,14 @@ TEST_CASE("perturbation: sign of tilts against a hand calculation", "[compile][p
     const CompiledSystem c = compile_with(s, p);
     CHECK(near(vertex(c, "L.S2"), Vec3(5.0 * sn, 0.0, 10.0 + 5.0 * cs)));
   }
+  SECTION("tilt_x of a surface turns it about its vertex (its pose pivot)") {
+    Perturbation p;
+    p.surfaces[SurfaceId("L.S2")] = tilt_x(kTheta);
+    const CompiledSystem c = compile_with(s, p);
+    CHECK(near(vertex(c, "L.S2"), Vec3(0.0, 0.0, 15.0)));
+    CHECK(near(surface(c, "L.S2").to_global.rotation().col(2), Vec3(0.0, -sn, cs)));
+    CHECK(near(surface(c, "L.S2").to_global.rotation().col(1), Vec3(0.0, cs, sn)));
+  }
   SECTION("tilt_z turns +x towards +y") {
     Perturbation p;
     p.nodes["L"] = motion(Vec3::Zero(), Vec3(0.0, 0.0, kTheta));
@@ -775,8 +783,11 @@ TEST_CASE("perturbation: CONST, segments and the structure of an element",
     for (std::size_t w = 0; w < 2; ++w) CHECK(same(n_of(c, 0, w), 1.5 + 2e-3));
   }
   SECTION("cemented doublet: only the perturbed segment changes") {
+    // At the d line the correction (D'/D - 1)(n - n_d) is exactly 0, so n'_d = n_d + dn.
     System s = empty_system();
     s.environment.medium = "AIR";
+    s.wavelengths = {
+        {rtt::compile::line_vacuum_wavelength_um(rtt::compile::kLineDAirUm), 1.0, true}};
     Element doublet = biconvex("D", Pose::along_z(10.0), "SCHOTT:N-BK7");
     doublet.material.reset();
     doublet.surfaces.push_back(plane("D.S3", 2.0, PoseReference::RelativeToPreceding));

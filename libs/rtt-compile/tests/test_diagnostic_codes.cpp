@@ -608,7 +608,7 @@ std::vector<Case> cases() {
       // compile: a configuration index beyond the configurations (#165)
       {"config.unknown", "/configurations", [](System& s) { s.configurations = {{"a"}}; }, 1},
       // compile: material changes of the overlay (ADR 0036, point 1c; #254). L1 is CONST:1.5168;
-      // TEST:WIDE ends at 0.5 um, below it lies the line F.
+      // TEST:WIDE starts at 0.5 um; the line F lies below it.
       {"tolerances.abbe_on_const", "/root/children/1/material", [](System&) {}, 0,
        material_change(1e-3, 1.0)},
       {"tolerances.limit_invalid", "/root/children/1/material", [](System&) {}, 0,
