@@ -525,6 +525,58 @@ TEST_CASE("perturbation: thickness moves the following nodes, shift_z does not",
   }
 }
 
+TEST_CASE("perturbation: a child placed relative to a surface outside the assembly moves with it",
+          "[compile][perturbation]") {
+  // ADR 0028, addendum #252 ("Punkt 8 für Toleranzen erledigt"): L0 at z = 0 (2 mm thick) in
+  // front of the assembly A at z = 20; the first child L1 of A is placed relative_to_preceding
+  // 5 mm behind L0.S2, i.e. at global z = 7, z_A = -13 in A coordinates (L1.S2 at z_A = -9).
+  // A tilt of A about its origin moves L1 rigidly with A: (0, -z sin theta, 20 + z cos theta);
+  // L0 outside A stays bitwise.
+  System s = empty_system();
+  s.root.children.push_back({lens("L0", Pose{}, 2.0)});
+  Assembly a{"A", Pose::along_z(20.0), {}};
+  a.children.push_back({lens("L1", relative_z(5.0), 4.0)});
+  s.root.children.push_back({std::move(a)});
+  const CompiledSystem nominal = compile_plain(s);
+  REQUIRE(near(vertex(nominal, "L1.S1"), Vec3(0.0, 0.0, 7.0)));
+  Perturbation p;
+  p.nodes["A"] = tilt_x(kTheta);
+  const CompiledSystem c = compile_with(s, p);
+  const double sn = std::sin(kTheta);
+  const double cs = std::cos(kTheta);
+  for (const auto& [id, z] :
+       std::array<std::pair<const char*, double>, 2>{{{"L1.S1", -13.0}, {"L1.S2", -9.0}}}) {
+    INFO(id);
+    CHECK(near(vertex(c, id), Vec3(0.0, -z * sn, 20.0 + z * cs)));
+    CHECK(near(surface(c, id).to_global.rotation().col(2), Vec3(0.0, -sn, cs)));
+  }
+  for (const char* id : {"L0.S1", "L0.S2"}) {
+    INFO(id);
+    CHECK(same(surface(c, id).to_global, surface(nominal, id).to_global));
+  }
+}
+
+TEST_CASE("perturbation: a perturbed sibling does not move the next one",
+          "[compile][perturbation]") {
+  // M2 is placed relative_to_sibling 10 mm behind M1 (ADR 0028, point 2); a motion of M1 leaves
+  // M2 at its nominal place (placements use the nominal frames, ADR 0036, point 1b).
+  System s = empty_system();
+  s.root.children.push_back({lens("M1", Pose::along_z(40.0), 2.0)});
+  Pose sibling = Pose::along_z(10.0);
+  sibling.reference = PoseReference::RelativeToSibling;
+  s.root.children.push_back({lens("M2", sibling, 2.0)});
+  const CompiledSystem nominal = compile_plain(s);
+  REQUIRE(near(vertex(nominal, "M2.S1"), Vec3(0.0, 0.0, 50.0)));
+  Perturbation p;
+  p.nodes["M1"] = motion(Vec3(0.1, 0.0, 0.0), Vec3(kTheta, 0.0, 0.0));
+  const CompiledSystem c = compile_with(s, p);
+  CHECK(!near(vertex(c, "M1.S2"), vertex(nominal, "M1.S2"), 1e-3));
+  for (const char* id : {"M2.S1", "M2.S2"}) {
+    INFO(id);
+    CHECK(same(surface(c, id).to_global, surface(nominal, id).to_global));
+  }
+}
+
 TEST_CASE("perturbation: a motion of the assembly equals the motion of its children",
           "[compile][perturbation]") {
   // Acceptance: A with a base rotation; children whose frames in A are pure translations by p_c
@@ -773,6 +825,11 @@ TEST_CASE("perturbation: thin-lens focal length and colour follow dn and dnu",
                          2.0 * std::abs((nd - 1.0) * (nd - 1.0) - a) / a + 2.0 * std::abs(w);
     REQUIRE(bound < 0.05);
     CHECK(std::abs(actual / predicted - 1.0) <= bound);
+    // Sharper: against the leading term itself. Its error is O(eps alpha beta) with
+    // eps = s - 1, alpha = (n_F - n_d)/(n_F - 1), beta = (n_C - n_d)/(n_C - 1): about 5e-5 for
+    // N-BK7 (review of #266).
+    const double leading = (nd - 1.0) * (nd - 1.0) / a * nu / (nu + kDv) * (1.0 - w);
+    CHECK(std::abs(actual / predicted - leading) <= 1e-4);
   }
 }
 

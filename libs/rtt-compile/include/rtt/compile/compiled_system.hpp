@@ -296,7 +296,9 @@ class CompiledSystem;
 ///   their element (the surface motion does not turn the axes, as the surface pose does not).
 /// - Node frames: NodeFrame::reference is O * (nominal reference) and NodeFrame::to_global is
 ///   G'_X, so to_global = reference * to_isometry(pose) * T_X; the to_global of a surface stays
-///   bitwise CompiledSurface::to_global.
+///   bitwise CompiledSurface::to_global. For a node outside a perturbed subtree that is placed
+///   relative to a surface inside it, `reference` is the nominal frame of that surface and then
+///   differs from the surface's (perturbed) to_global.
 /// - Materials: the perturbed segment gets a medium of its own (MaterialChange). The structure
 ///   comes from the nominal media: whether a Plate is segmented, and whether an inner surface
 ///   reached from outside is ambiguous, so the path rules do not change.
