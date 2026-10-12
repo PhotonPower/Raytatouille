@@ -13,7 +13,7 @@ Neue Einträge stehen bis zum nächsten Release als Fragmente in [`changelog.d/`
   (ADR 0031) mit `focal_length`, `object_distance` und `axis_deg`; Migration von 0.4 ändert nur
   die Version. Prüfcodes `interaction.ideal_lens_not_allowed`, `interaction.focal_length_invalid`,
   `interaction.object_distance_invalid` und `paths.ideal_lens_event`. compile löst die Linsendaten
-  auf; Tracer und paraxiale Daten folgen, bis dahin `EventImpossible` bzw. `ParaxialError`.
+  auf.
   Python-Lesetypen `rt.model.IdealLens` und `IdealCylinderLens`. Referenzdatei
   `tests/reference/r2/ideal_lens.rtt.json` (#178).
 - `rtt-trace`: ideale Linse und ideale Zylinderlinse im Tracer (ADR 0031): Steigungsregel als
@@ -49,7 +49,8 @@ Neue Einträge stehen bis zum nächsten Release als Fragmente in [`changelog.d/`
   `psf.pupil_undersampled`; `psf_at` (direkte Summe an beliebigen Punkten, in Strehl-Einheiten)
   und `through_focus` (`ThroughFocus`: Strehl-Zahl je Fokusverschiebung über `refocus`) (#205).
 - `rtt-analysis`: FFT-MTF (`mtf`, ADR 0033) tangential und sagittal bis zur Grenzfrequenz,
-  komplexe OTF und 2D-Karte auf Wunsch, polychromatisch auf den Frequenzen der Referenz;
+  komplexe OTF und 2D-Karte (monochromatisch) auf Wunsch; Kurven polychromatisch auf den
+  Frequenzen der Referenz;
   Encircled Energy (`encircled_energy`) über die Pupillenverschiebungen bis `radius_max`, um C′
   oder `EeCentre::LinearPhase`; beide auch auf Ebene einer Pupillenfunktion (#206).
 - `rtt-trace`: akkumulierte geometrische Transformation Q je Strahl auf Anforderung
@@ -74,7 +75,7 @@ Neue Einträge stehen bis zum nächsten Release als Fragmente in [`changelog.d/`
   `pupil.field_amplitude_absorbing` und `pupil.chief_phase_unavailable` (#208).
 - `rtt-py`: Jones-Pupille aus Python, `raytatouille.analysis.jones_pupil()` in beiden Formen
   (Komfortform und vorgegebene Startstrahlen mit `start` und `chief`), Ergebnistyp `JonesPupil`
-  mit `JonesBasis`; Ergebnisformat 0.1.10 mit dem Typ `JonesPupil` (#208).
+  mit `JonesBasis`; Ergebnisformat 0.1.11 mit dem Typ `JonesPupil` (#208).
 - Python: `rt.analysis.opd_points`, `focus_shift` bei `opd_map`/`opd_fan`, `pupil_cells`,
   `pupil_function`, `refocus`, `zernike_fit` sowie `zernike`, `zernike_radial`, `noll_to_nm`,
   `noll_from_nm`; Ergebnisformat 0.1.8 mit `OpdPupilPoints`, `PupilCells`, `PupilFunction`

@@ -95,6 +95,8 @@ Ideenliste aus der Umsetzung von M6 (0.8.0), gesammelt von den Agenten; neu zu b
   - Polychromatische 2D-MTF-Karte; heute nur monochromatisch (#206).
   - Exakte Ringzellen bei Abschattung auf anderen Flächen als dem Stopp; heute Treppe (ADR 0032, Nachtrag #229).
   - Vektor-PSF (H7) und Apodisation im Dateiformat (W4, braucht einen Schemasprung).
+  - PSF, MTF und Encircled Energy in Winkelmaß für afokale Systeme; heute `AnalysisError` (architecture.md, Abnahme M6; #250).
+  - Reste aus P2: Feldraster-Analysen (W2), Poincaré-Punkte und Transmissions-Fan (W3), Gaußstrahl-Quelle (W4), Ghost-Erweiterungen (W5).
 - **Interferogramm (#210):**
   - Sichtbarkeit aus den Polarisationsmatrizen beider Pfade; heute skalar mit gleicher Polarisation.
   - Phasen der Wechselwirkungen (Metall, Schichten, Verzögerer) in φ; heute nur die OPL.
@@ -115,7 +117,7 @@ Ideenliste aus der Umsetzung von M6 (0.8.0), gesammelt von den Agenten; neu zu b
 
 1. P0 sofort, parallel zu M5; R3 braucht G6.
 2. P1 mit M5; O1 und O3 setzen ADR 0029 und 0030 voraus, O2 erweitert die Operandenregistry von ADR 0030, O6 braucht je einen ADR für den Toleranz- und den Analyseabschnitt (Name, Inhalt, Schema-Version, Migration; der Toleranzabschnitt mit M7).
-3. P2 und P3 mit M6 und M7; W1 setzt #122 voraus (erledigt), W3 die Jones-Pupille aus M6.
+3. P2 und P3 mit M6 und M7; W1 setzt #122 voraus (erledigt), W3 die Jones-Pupille aus M6 (erledigt). Nach M6 sind von P2 nur W1 und Teile von W3 und W4 umgesetzt; der Rest ist neu zu bewerten.
 4. P4 mit M8; R2 läuft als eigenes Issue schon früher, das Format kommt mit dem nächsten Schemasprung (siehe Entscheidungen).
 5. P5 erst nach v1.0; X1 ist der größte Eingriff in den Tracer und beginnt mit dem ADR, der schon vor M8 vorliegen soll.
 
@@ -134,7 +136,7 @@ Getroffen am 2026-10-09 vom Koordinator; der Maintainer hat die Entscheidung üb
 | O3 | **Nach 0.7.0**, als erste Ergänzung der Optimierung (Randbedingungen auf Mittendicke, Randdicke, Baulänge). |
 | O4, O5 | **Nach 0.7.0**, Ideenliste bis zur Planung der Optimierungs-Ergänzungen. |
 | O6 | **Mit M7**, nur der Abschnitt für den Toleranzsatz; Analyse-Voreinstellungen werden nicht in die Systemdatei aufgenommen. |
-| W1 bis W5 | **Mit M6.** |
+| W1 bis W5 | **Mit M6.** Stand nach 0.8.0: W1 umgesetzt (#210), die Michelson-Abnahme ist offen; W3 nur die Polarisationskarte der Pupille (`stokes_pupil`, #211), Poincaré-Punkte und Transmissions-Fan offen; W4 nur die Gauß-Apodisation als Analyse-Option (#202), Gaußstrahl-Quelle und Apodisation im Format offen; W2 und W5 nicht begonnen. Die Reste werden neu bewertet (siehe „Offene Punkte nach M6“). |
 | T1 | **Mit M7.** |
 | F1 bis F5 | **Mit M8.** F4 ohne CodeV-`.seq`, solange keine frei zugängliche Formatbeschreibung vorliegt. |
 | X1 | **ADR früh** (nach 0.7.0, vor M8), damit Ray Aiming, Paraxial und Analysen nicht die Annahme „Strahlen sind zwischen Flächen Geraden“ fest einbauen; die Umsetzung kommt in v1.x nach v1.0 und vor M10. |

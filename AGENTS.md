@@ -47,7 +47,7 @@ Vor jedem PR müssen lokal grün sein: Build mit `-DRTT_WARNINGS_AS_ERRORS=ON`, 
 `clang-format --dry-run -Werror`, die Schema-Tests. Clang-tidy läuft mit
 `-DRTT_ENABLE_CLANG_TIDY=ON`, Sanitizer mit `-DRTT_ENABLE_SANITIZERS=ON`.
 
-Zwei Fehlerquellen, die nur die CI sieht, vorab lokal prüfen:
+Fehlerquellen, die nur die CI sieht, vorab lokal prüfen:
 
 - **Python mit dem NumPy-Stand für Python 3.10.** Die CI testet `rtt-py` auch mit dem Pin für
   Python < 3.11 aus `libs/rtt-py/tests/requirements.txt` (derzeit `numpy==2.2.6`). Ältere NumPy
@@ -97,8 +97,9 @@ Zwei Fehlerquellen, die nur die CI sieht, vorab lokal prüfen:
   `{std::uint16_t{0}, std::uint16_t{1}}` (#220, #223).
 - **Clang-Warnungen ohne clang-Build.** Wer lokal nur mit GCC baut, prüft geänderte
   Übersetzungseinheiten zusätzlich mit `clang++ -fsyntax-only -Werror` und den Projektwarnungen
-  (z. B. `-Wunused-lambda-capture`, `-Wshadow-uncaptured-local`); die CI baut mit clang und den
-  Sanitizern (#239, #247).
+  (z. B. `-Wunused-lambda-capture`, #239); die CI baut mit clang und den Sanitizern. Wer nur mit
+  clang prüft, ergänzt `-Wshadow-uncaptured-local`, sonst fehlt, was GCCs `-Wshadow` in Lambdas
+  meldet (#247).
 - **Plot-Tests brauchen matplotlib.** Fehlt matplotlib in der lokalen venv, überspringt pytest
   die Plot- und Beispieltests still; dann deckt sie nur die CI ab. Beim Ändern von Plot-Helfern
   matplotlib installieren oder die CI-Läufe gezielt ansehen.
