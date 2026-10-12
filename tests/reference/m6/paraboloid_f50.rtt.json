@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.5.0",
+  "schema_version": "0.6.0",
   "name": "M6 acceptance: paraboloid R = -200 mm with stop, D = 2 mm (F/50), for the defocus Strehl",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [

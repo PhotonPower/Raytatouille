@@ -72,7 +72,13 @@
       {
         "type": "detector",
         "name": "image",
-        "pose": {"position": [0.0, 0.0, {"param": "BFD"}]},
+        "pose": {
+          "position": [
+            0.0,
+            0.0,
+            {"param": "BFD"}
+          ]
+        },
         "surfaces": [
           {"id": "IMG"}
         ]
@@ -87,14 +93,38 @@
     "overrides": [
       {"node": "objective", "class": "precise"},
       {"surface": "L1.S2", "kind": "curvature_relative", "limit": 0.005},
-      {"node": "L1", "segment": 1, "kind": "index", "limit": 0.001, "distribution": "uniform"},
+      {
+        "node": "L1",
+        "segment": 1,
+        "kind": "index",
+        "limit": 0.001,
+        "distribution": "uniform"
+      },
       {"node": "objective", "pivot": [0.0, 0.0, 9.5]},
       {"node": "image", "class": "none"}
     ],
     "items": [
-      {"id": "S3-wedge", "surface": "L1.S3", "kind": "tilt_x_deg", "limit": 0.02},
-      {"id": "S1-conic", "surface": "L1.S1", "param": "/shape/base/conic", "kind": "param", "limit": 0.01, "distribution": "uniform"},
-      {"id": "bfd", "parameter": "BFD", "kind": "parameter", "limit": 0.1, "distribution": "endpoint"}
+      {
+        "id": "S3-wedge",
+        "surface": "L1.S3",
+        "kind": "tilt_x_deg",
+        "limit": 0.02
+      },
+      {
+        "id": "S1-conic",
+        "surface": "L1.S1",
+        "param": "/shape/base/conic",
+        "kind": "param",
+        "limit": 0.01,
+        "distribution": "uniform"
+      },
+      {
+        "id": "bfd",
+        "parameter": "BFD",
+        "kind": "parameter",
+        "limit": 0.1,
+        "distribution": "endpoint"
+      }
     ],
     "compensators": [
       {"parameter": "BFD", "travel_min": -1.0, "travel_max": 1.0}
@@ -105,9 +135,21 @@
       ]
     },
     "criteria": [
-      {"id": "spot-axis", "operand": {"type": "spot_rms", "path": "main"}, "max": 0.02},
-      {"id": "spot-edge", "operand": {"type": "spot_rms", "path": "main", "field": 2}, "max": 0.03},
-      {"id": "efl", "operand": {"type": "efl", "path": "main"}, "max_change": 0.5}
+      {
+        "id": "spot-axis",
+        "operand": {"type": "spot_rms", "path": "main"},
+        "max": 0.02
+      },
+      {
+        "id": "spot-edge",
+        "operand": {"type": "spot_rms", "path": "main", "field": 2},
+        "max": 0.03
+      },
+      {
+        "id": "efl",
+        "operand": {"type": "efl", "path": "main"},
+        "max_change": 0.5
+      }
     ],
     "monte_carlo": {"seed": 20261012, "trials": 200}
   }
