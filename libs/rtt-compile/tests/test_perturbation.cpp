@@ -598,9 +598,9 @@ TEST_CASE("perturbation: node frames are the perturbed frames", "[compile][pertu
   const auto& a = std::get<Assembly>(s.root.children[0].value);
   const auto& l1 = std::get<Element>(a.children[0].value);
   const auto& l2 = std::get<Element>(a.children[1].value);
-  const auto& f1 = frame(c, "/root/children/0/children/0");
+  const rtt::compile::NodeFrame f1 = frame(c, "/root/children/0/children/0");
   CHECK(f1.to_global.is_approx(f1.reference * rtt::model::to_isometry(l1.pose), kTol));
-  const auto& f2 = frame(c, "/root/children/0/children/1");
+  const rtt::compile::NodeFrame f2 = frame(c, "/root/children/0/children/1");
   CHECK(f2.to_global.is_approx(
       f2.reference * rtt::model::to_isometry(l2.pose) * motion_transform(t, angles, Vec3::Zero()),
       kTol));
