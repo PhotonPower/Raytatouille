@@ -15,7 +15,7 @@ Präzisierungen und Ergänzungen einer angenommenen Entscheidung kommen als dati
 | [0004](0004.md) | Parallelität mit oneTBB | angenommen |
 | [0005](0005.md) | Strahlen als Structure-of-Arrays | angenommen |
 | [0006](0006.md) | Physik-Templates über den Skalartyp | angenommen, präzisiert durch [0014](0014.md), [0015](0015.md) |
-| [0007](0007.md) | Ableitungen per finiter Differenz in v1 (mit Nachträgen zur Zielung und zur Pupillenkonvention, #96, #35 B) | angenommen |
+| [0007](0007.md) | Ableitungen per finiter Differenz in v1 (mit Nachträgen zur Zielung, zur Pupillenkonvention und zum Bezug eines anderen Systems, #96, #35 B, #252) | angenommen |
 | [0008](0008.md) | JSON-Dateiformat mit strengem Parser | angenommen |
 | [0009](0009.md) | Fehlerbehandlung | angenommen |
 | [0010](0010.md) | Lizenz MIT | angenommen |
@@ -36,13 +36,15 @@ Präzisierungen und Ergänzungen einer angenommenen Entscheidung kommen als dati
 | [0025](0025.md) | Gitter als Phasenschicht (Ordnung, Effizienz, Evaneszenz) | angenommen |
 | [0026](0026.md) | Kristallmodell (einachsig, optische Achse, Strahlzustand) | angenommen |
 | [0027](0027.md) | Ghost-Generator (Zweifachreflexions-Pfade als erzeugte explizite Pfade) | angenommen |
-| [0028](0028.md) | Relative Platzierung (Pose.reference, Pose.order) | angenommen |
+| [0028](0028.md) | Relative Platzierung (Pose.reference, Pose.order; Nachtrag #252: Starrkörper-Überlagerung für Toleranzen) | angenommen |
 | [0029](0029.md) | Parametertabelle und Konfigurationen | angenommen |
 | [0030](0030.md) | Optimierung (Merit-Funktion, Operanden, Levenberg-Marquardt) | angenommen |
 | [0031](0031.md) | Ideale Linse und ideale Zylinderlinse | angenommen |
 | [0032](0032.md) | Pupillenfunktion und Wellenfront-Auswertung (Zernike-Fit, Strehl, Through-Focus) | angenommen |
 | [0033](0033.md) | FFT-Beugung: PSF, MTF, Encircled Energy | angenommen |
 | [0034](0034.md) | Polarisation in der Pupille (P je Ereignis, akkumuliertes Q, Jones-Pupille) | angenommen |
+| [0035](0035.md) | Toleranzsatz im Systemfile (Abschnitt `tolerances`, Klassen, Kompensatoren, Kriterien) | vorgeschlagen |
+| [0036](0036.md) | Toleranzanalyse (Störungsmodell, nominaler Bezug, Kompensatoren, Zufall, Statistik) | vorgeschlagen |
 
 ## Vorlage
 
