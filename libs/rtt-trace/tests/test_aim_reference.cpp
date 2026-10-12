@@ -216,8 +216,11 @@ constexpr std::array<std::array<double, 2>, 4> kPupil{
 void require_on_target(const CompiledSystem& nominal, const CompiledSystem& perturbed) {
   for (std::uint16_t wl = 0; wl < nominal.wavelengths_um().size(); ++wl) {
     const AimReference reference = rtt::trace::aim_reference(nominal, PathId{0}, wl);
-    const double r_s = signed_stop_radius(nominal, wl);
-    CHECK(std::abs(std::abs(r_s) - rtt::trace::stop_radius(reference)) <= kAimTolerance);
+    // R_s = sigma r_ep stop_scale of the reference, with the sign of the nominal stop image
+    // (measured by real aiming, which fixes only the sign here; review of #270).
+    const double measured = signed_stop_radius(nominal, wl);
+    CHECK(std::abs(std::abs(measured) - rtt::trace::stop_radius(reference)) <= kAimTolerance);
+    const double r_s = std::copysign(rtt::trace::stop_radius(reference), measured);
     for (std::uint16_t field = 0; field < nominal.fields().points.size(); ++field) {
       for (const auto& [px, py] : kPupil) {
         INFO("wavelength " << wl << ", field " << field << ", p = (" << px << ", " << py << ")");
@@ -379,6 +382,64 @@ TEST_CASE("aim reference: fields mean the nominal directions and object points",
     const auto b = rtt::trace::aim_ray(perturbed, PathId{0}, std::uint16_t{1}, 0, 0.0, 0.0,
                                        Aiming::Real, reference);
     CHECK(b.ray.pos == Vec3(0.0, 2.0, -100.0));
+    require_on_target(nominal, perturbed);
+  }
+}
+
+namespace {
+
+/// `s` with the radius of L1.S1 changed from 40 to 42 mm: a rotationally symmetric perturbation
+/// before the stop, so the aimed system has valid paraxial data of its own, with another entrance
+/// pupil and another paraxial chief ray than the nominal system.
+System steeper_l1(System s) {
+  element(s, "L1").surfaces[0].shape.base = rtt::model::Conic{Param(42.0), Param(0.0)};
+  return s;
+}
+
+bool differs(const Vec3& a, const Vec3& b) {
+  return (a - b).cwiseAbs().maxCoeff() > 1e-6;
+}
+
+}  // namespace
+
+TEST_CASE("aim reference: the field conversion comes from the reference, also for a valid system",
+          "[sources][aim_reference]") {
+  // Review of #270 (P2-1): with a symmetric perturbation both systems have paraxial data. The
+  // chief ray with the nominal reference is that of the nominal system (field conversion of the
+  // reference); without reference the perturbed system converts with its own data and differs
+  // (content guard).
+  SECTION("paraxial image height, object at infinity: the direction") {
+    System s = two_lenses();
+    s.fields = {FieldType::ParaxialImageHeight, {{0.0, 0.0, 1.0}, {0.0, 1.5, 1.0}}};
+    const CompiledSystem nominal = compiled(s);
+    const CompiledSystem perturbed = compiled(steeper_l1(s));
+    const AimReference reference = rtt::trace::aim_reference(nominal, PathId{0}, 0);
+    const auto a = rtt::trace::aim_ray(nominal, PathId{0}, std::uint16_t{1}, 0, 0.0, 0.0);
+    const auto b = rtt::trace::aim_ray(perturbed, PathId{0}, std::uint16_t{1}, 0, 0.0, 0.0,
+                                       Aiming::Real, reference);
+    const auto own = rtt::trace::aim_ray(perturbed, PathId{0}, std::uint16_t{1}, 0, 0.0, 0.0);
+    CHECK(same(a.ray.dir.x(), b.ray.dir.x()));
+    CHECK(same(a.ray.dir.y(), b.ray.dir.y()));
+    CHECK(same(a.ray.dir.z(), b.ray.dir.z()));
+    CHECK(differs(own.ray.dir, a.ray.dir));
+    require_on_target(nominal, perturbed);
+  }
+  SECTION("field angle, finite object: the object point on the nominal chief ray") {
+    // hx = (z_obj - z_ep_ref) tan theta with the entrance pupil of the reference.
+    System s = two_lenses();
+    s.object.at_infinity = false;
+    s.object.distance = Param(100.0);
+    const CompiledSystem nominal = compiled(s);
+    const CompiledSystem perturbed = compiled(steeper_l1(s));
+    const AimReference reference = rtt::trace::aim_reference(nominal, PathId{0}, 0);
+    const auto a = rtt::trace::aim_ray(nominal, PathId{0}, std::uint16_t{1}, 0, 0.0, 0.0);
+    const auto b = rtt::trace::aim_ray(perturbed, PathId{0}, std::uint16_t{1}, 0, 0.0, 0.0,
+                                       Aiming::Real, reference);
+    const auto own = rtt::trace::aim_ray(perturbed, PathId{0}, std::uint16_t{1}, 0, 0.0, 0.0);
+    CHECK(same(a.ray.pos.x(), b.ray.pos.x()));
+    CHECK(same(a.ray.pos.y(), b.ray.pos.y()));
+    CHECK(same(a.ray.pos.z(), b.ray.pos.z()));
+    CHECK(differs(own.ray.pos, a.ray.pos));
     require_on_target(nominal, perturbed);
   }
 }
