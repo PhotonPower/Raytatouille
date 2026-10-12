@@ -296,17 +296,28 @@ class Compiler {
       // A list of equal entries is one material, like the shorthand (ADR 0035, point 2).
       const bool one_material =
           std::adjacent_find(list.begin(), list.end(), std::not_equal_to<>()) == list.end();
-      if (list.empty() == target.segment.has_value() ||
-          (!list.empty() && *target.segment >= (one_material ? std::size_t{1} : list.size()))) {
-        throw std::invalid_argument(
-            "compile: the material change of element '" + element.name +
-            (list.empty()   ? "' has one material and takes no segment"
-             : one_material ? "' has one material in all segments and takes only segment 0"
-                            : "' needs a segment below " + std::to_string(list.size())));
+      const std::string what = "compile: the material change of element '" + element.name;
+      std::size_t k = 0;  // the segment of a list (0 for the shorthand)
+      if (list.empty()) {
+        if (target.segment.has_value()) {
+          throw std::invalid_argument(what + "' has one material and takes no segment");
+        }
+      } else {
+        if (!target.segment.has_value()) {
+          throw std::invalid_argument(what + "' needs a segment");
+        }
+        k = target.segment.value();
+        if (one_material && k != 0) {
+          throw std::invalid_argument(
+              what + "' has one material in all segments and takes only segment 0");
+        }
+        if (k >= list.size()) {
+          throw std::invalid_argument(what + "' needs a segment below " +
+                                      std::to_string(list.size()));
+        }
       }
       if (change.is_zero() || info.unresolved_material) continue;  // its error stops compile()
       if (!one_material) {
-        const std::size_t k = *target.segment;
         if (const auto m = perturbed_medium(info.media[k], change, info.media_locations[k])) {
           info.media[k] = *m;
         }
