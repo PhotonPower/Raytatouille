@@ -527,11 +527,15 @@ Ein Feature ist erst fertig, wenn es mindestens einen Referenztest gegen eine un
   7. Konvergente 45°-Faltung hinter einer idealen Linse: je Punkt D und δ aus Fresnel am lokalen Einfallswinkel, W aus der OPL: `m6/fold45_focus`.
   8. Ideale Linse: Airy-Nullstelle und Strehl-Zahl 1 auf 10⁻¹²: `r2/ideal_lens`.
   9. Ringpupille ε = 0,4: Nullstelle, Profil und MTF gegen Hakobyan (1) und die Überlappung zweier Ringe nach MathWorld (11), (12). Der Fall steht in `test_annular.cpp` (#229, Teil C), mit derselben Toleranzregel.
-- **Reproduzierbar:** PSF, Through-Focus und Jones-Pupille sind bei 1, 4 und allen Threads bitgleich. Python ist für die Abnahmesysteme bitgleich zu C++: `test_bitwise_m6.py`, mit Inhaltswachen. Dazu kommen die Bitvergleiche der Bausteine (`test_bitwise_pupil.py`, `test_bitwise_psf.py`, `test_bitwise_jones.py`).
+- **Reproduzierbar:** PSF, Through-Focus und Jones-Pupille sind bei 1, 4 und allen Threads bitgleich; für MTF und Encircled Energy prüft das `test_mtf_ee.cpp` (#206). Python ist für die Abnahmesysteme bitgleich zu C++: `test_bitwise_m6.py`, mit Inhaltswachen. Dazu kommen die Bitvergleiche der Bausteine (`test_bitwise_pupil.py`, `test_bitwise_psf.py`, `test_bitwise_jones.py`).
 - **Bekannte Grenzen:**
   - Fraunhofer-Näherung in Richtungssinus mit linearer Zuordnung der Eintrittspupille (Kennzahl und Warnung `pupil.mapping_nonlinear`); keine Vektor-PSF (H7).
   - Zernike-Polynome auf dem Ring sind nicht orthogonal (Warnung `zernike.pupil_incomplete`).
   - Pfade mit Kristall-Modi geben in der Pupillenfunktion und der Jones-Pupille einen Fehler (H6, #35).
+  - Eine Abschattung, die nicht am Stopp sitzt, wird nicht als Ring berücksichtigt: Ihre Zellen enden real verloren, als Treppe am Innenrand (ADR 0032, Nachtrag #229).
+  - Ein afokaler Bildraum hat keine Zuordnung M: PSF, MTF, Encircled Energy und Through-Focus geben dort einen `AnalysisError` an `/paths/i`.
+  - Die Jones-Pupille braucht einen ankommenden Hauptstrahl. Geht er verloren oder streift er die Bildfläche, ist das ein `AnalysisError`; hat er kein J, bleibt mit `remove_global_phase` die Phase stehen (Warnung `pupil.chief_phase_unavailable`).
+- **Umfang:** Die übrigen M6-Bausteine sind über ihre eigenen Tests und Bitvergleiche abgenommen: Q und P je Ereignis (#207), das Interferogramm zweier Pfade (#210) und die Stokes-Karte (#211).
 
 **Teststufen:** Unit-Tests mit Catch2 v3 in jeder Bibliothek; Property-Tests (RapidCheck, ab M1) für Energieerhaltung, |dir| = 1, P·k_ein = k_aus, Umkehrbarkeit, Invarianz bei starrer Bewegung; Golden-Tests mit Standardsystemen aus der Literatur; NSC-Tests (M9) gegen analytische Fälle (Lambert-Strahler, Etendue, Integrationskugel, Leistungsbilanz); Benchmarks mit Google Benchmark (Ziel ≥ 5 Mio. Strahl-Flächen-Schnitte pro Sekunde und Kern bei Sphären inkl. Polarisation, Regression > 10 % blockiert); Schema-Tests mit pytest.
 

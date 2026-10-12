@@ -61,9 +61,8 @@ using rtt::trace::RayStatus;
 namespace {
 
 constexpr double kPi = std::numbers::pi;
-constexpr double kF = 100.0;             // focal length of the paraboloid, R / 2, mm
-constexpr double kLambdaMm = 0.5876e-3;  // reference wavelength of the m6 paraboloids, mm
-const Cx kMetal(1.2, 7.26);              // test metal of the m6 folds (as M3)
+constexpr double kF = 100.0;  // focal length of the paraboloid, R / 2, mm
+const Cx kMetal(1.2, 7.26);   // test metal of the m6 folds (as M3)
 
 System load(const std::string& relative) {
   return rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/" + relative);
@@ -83,6 +82,11 @@ PupilFunction pupil(const CompiledSystem& cs, PathId path, int n) {
 double image_index(const CompiledSystem& cs, PathId path) {
   const auto& last = cs.path(path).events.back();
   return std::abs(cs.media()[last.medium_after].index[cs.reference_wavelength()].real());
+}
+
+/// Reference wavelength of `cs` in vacuum, mm (read from the compiled system, not assumed).
+double wavelength_mm(const CompiledSystem& cs) {
+  return cs.wavelengths_um()[cs.reference_wavelength()] * 1e-3;
 }
 
 /// F#_w = 1 / (2 |M_11|) of the mapping.
@@ -145,7 +149,7 @@ double first_null(const PupilFunction& p, double lambda_mm) {
 
 /// The Airy zero on the grids 64 and 128 against j11 lambda F#_w / pi (case 1 and 8).
 void check_airy_zero(const CompiledSystem& cs, PathId path, double n_u) {
-  const double lambda_mm = cs.wavelengths_um()[cs.reference_wavelength()] * 1e-3;
+  const double lambda_mm = wavelength_mm(cs);
   const PupilFunction p64 = pupil(cs, path, 64);
   const PupilFunction p128 = pupil(cs, path, 128);
   guard_mapping(p128, n_u);
@@ -214,7 +218,8 @@ bool same_bits(const std::vector<Cx>& a, const std::vector<Cx>& b) {
          (a.empty() || std::memcmp(a.data(), b.data(), a.size() * sizeof(Cx)) == 0);
 }
 
-/// 5 x 5 parallel rays along +z from z = 0 at x, y in {-3, -1.5, 0, 1.5, 3} (inside D = 6),
+/// 5 x 5 parallel rays along +z from z = 0 at x, y in {-3, -1.5, 0, 1.5, 3} (a square of half
+/// width 3 mm; the corner rays lie at r = 4.24 mm, inside the fold mirror and the detector),
 /// labelled with pupil coordinates (x, y) / 3; the chief ray (0, 0) has index 12.
 RayBatch parallel_rays() {
   RayBatch rays(25);
@@ -281,7 +286,7 @@ TEST_CASE("M6 case 2: encircled energy 1 - J0^2 - J1^2, paraboloid F/10", "[m6]"
   const double n_u = image_index(cs, PathId{0}) * 10.0 / (2.0 * kF);
   const PupilFunction p = pupil(cs, PathId{0}, 16);
   guard_mapping(p, n_u);
-  const double unit = kLambdaMm * f_number(p);  // lambda F#_w, mm
+  const double unit = wavelength_mm(cs) * f_number(p);  // lambda F#_w, mm
   const std::vector<double> units{0.5, 1.0, j11() / kPi, 2.0, 3.0, 5.0};
   std::vector<double> radii;
   for (const double u : units) radii.push_back(u * unit);
@@ -318,7 +323,7 @@ TEST_CASE("M6 case 3: MTF (2 / pi) [acos x - x sqrt(1 - x^2)], paraboloid F/10",
   const double n_u = image_index(cs, PathId{0}) * 10.0 / (2.0 * kF);
   const PupilFunction p = pupil(cs, PathId{0}, 16);
   guard_mapping(p, n_u);
-  const double nu_c = 1.0 / (kLambdaMm * f_number(p));
+  const double nu_c = 1.0 / (wavelength_mm(cs) * f_number(p));
   rtt::analysis::MtfOptions o256;
   o256.pupil.grid = 256;
   rtt::analysis::MtfOptions o512;
@@ -373,15 +378,16 @@ TEST_CASE("M6 case 4: defocus Strehl sinc^2(w), paraboloid F/50", "[m6]") {
   REQUIRE(fo.exit_pupil->z.has_value());
   const double z_exit = *fo.exit_pupil->z;
   REQUIRE(z_exit > -kF);
+  const double lambda = wavelength_mm(cs);
   std::vector<double> shifts;
   std::vector<double> ws;
   for (const double w_target : {0.1, 0.3, 0.5, 0.8}) {
-    const double delta = w_target * kLambdaMm / one_minus_cos;
+    const double delta = w_target * lambda / one_minus_cos;
     const double r = std::abs(-kF - delta - z_exit);
     const double t = delta * delta * sin_a * sin_a;
     const double w_mm = n_image * (delta * one_minus_cos - t / (std::sqrt(r * r - t) + r));
     shifts.push_back(delta);
-    ws.push_back(w_mm / kLambdaMm);
+    ws.push_back(w_mm / lambda);
   }
   PupilFunctionOptions o128;
   o128.grid = 128;
@@ -420,7 +426,7 @@ TEST_CASE("M6 case 5: Zernike c11 and c4 from W040 = S_I / 8, plano-convex lens"
   REQUIRE(image.has_value());
   const Vec3 vertex = cs.surfaces()[*image].to_global.apply_point(Vec3::Zero());
   CHECK(std::abs(vertex.z() - *fo.rear_focal_z) <= 1e-9);  // the file holds the paraxial focus
-  const double lambda_mm = cs.wavelengths_um()[ref] * 1e-3;
+  const double lambda_mm = wavelength_mm(cs);
   const double w040 = rtt::paraxial::seidel(cs, PathId{0}, ref).sum.s1 / 8.0 / lambda_mm;
   const auto fit = rtt::analysis::zernike_fit(pupil(cs, PathId{0}, 64));
   const auto& c = fit.coefficients;
@@ -495,7 +501,7 @@ TEST_CASE("M6 case 7: Jones pupil of a converging 45 deg fold, per point against
   [[maybe_unused]] const auto stats =
       rtt::trace::SequentialTracer().trace(cs, PathId{0}, traced, paths);
   const Vec3 n(0.0, -std::sin(kPi / 4.0), std::cos(kPi / 4.0));
-  const double lambda_mm = 0.55e-3;
+  const double lambda = wavelength_mm(cs);
   const double opl_c = paths.opl[chief * paths.slots + 3];  // slots: start, IL, M, IMG
   REQUIRE(jp.status.size() == start.size());
   double w_max = 0.0;
@@ -510,7 +516,7 @@ TEST_CASE("M6 case 7: Jones pupil of a converging 45 deg fold, per point against
     const double delta = std::abs(std::arg(-f.rp / f.rs));
     CHECK(std::abs(jp.diattenuation[r] - d) <= 1e-10);
     CHECK(std::abs(jp.retardance[r] - delta) <= 1e-10);
-    const double w = (opl_c - paths.opl[r * paths.slots + 3]) / lambda_mm;
+    const double w = (opl_c - paths.opl[r * paths.slots + 3]) / lambda;
     CHECK(std::abs(jp.w[r] - w) <= 1e-9);
     w_max = std::max(w_max, std::abs(w));
     d_min = std::min(d_min, d);
