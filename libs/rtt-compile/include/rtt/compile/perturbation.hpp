@@ -61,7 +61,9 @@ struct MaterialChange {
 
 /// The material of an element segment: `segment` (0-based, between surfaces `segment` and
 /// `segment + 1`, ADR 0017) is required for an element with one material per segment
-/// (`segment_materials`) and must be empty for an element with one material (shorthand).
+/// (`segment_materials`) and must be empty for an element with one material (shorthand). A list
+/// of equal entries is one material (ADR 0035, point 2, addendum #254): only segment 0, and the
+/// change holds for all segments.
 struct MaterialTarget {
   std::string element;                 ///< element name (unique, node.name_duplicate)
   std::optional<std::size_t> segment;  ///< see above

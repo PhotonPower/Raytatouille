@@ -302,7 +302,11 @@ Perturbation zero_overlay(const System& s) {
     for (const Surface& surface : e->surfaces) p.surfaces[surface.id] = zero;
     if (e->crystal) return;
     if (!e->segment_materials.empty()) {
-      for (std::size_t k = 0; k < e->segment_materials.size(); ++k) {
+      // A list of equal entries is one material: segment 0 only (ADR 0035, point 2).
+      const auto& list = e->segment_materials;
+      const bool one =
+          std::adjacent_find(list.begin(), list.end(), std::not_equal_to<>()) == list.end();
+      for (std::size_t k = 0; k < (one ? std::size_t{1} : list.size()); ++k) {
         p.materials[{e->name, k}] = MaterialChange{};
       }
     } else if (e->material) {
@@ -805,29 +809,61 @@ TEST_CASE("perturbation: CONST, segments and the structure of an element",
     CHECK(same(f2.index[0].real(), f2_nominal.index[0].real() + 1e-3));
   }
   SECTION("the structure comes from the nominal media") {
-    // A lens of two equal segments may be entered through its inner surface (ADR 0017); after a
-    // change of one segment it still may, the path rules do not change.
+    // Segments 0 and 1 are the same material, so the inner surface T.S2 may be entered from
+    // outside (ADR 0017). After a change of segment 0 alone it still may: the path rules come
+    // from the nominal media, and the ray enters the unchanged segment 1.
     System s = empty_system();
-    Element lens3{"T",
+    Element lens4{"T",
                   ElementKind::Lens,
                   Pose::along_z(10.0),
                   std::nullopt,
                   {plane("T.S1", 0.0), plane("T.S2", 2.0, PoseReference::RelativeToPreceding),
-                   plane("T.S3", 2.0, PoseReference::RelativeToPreceding)}};
-    lens3.segment_materials = {"CONST:1.5", "CONST:1.5"};
-    s.root.children.push_back({lens3});
+                   plane("T.S3", 2.0, PoseReference::RelativeToPreceding),
+                   plane("T.S4", 2.0, PoseReference::RelativeToPreceding)}};
+    lens4.segment_materials = {"CONST:1.5", "CONST:1.5", "CONST:1.7"};
+    s.root.children.push_back({lens4});
     s.paths = {{"main",
                 false,
                 {Event{SurfaceId("T.S2"), EventKind::Refract, 0},
-                 Event{SurfaceId("T.S3"), EventKind::Refract, 0}}}};
+                 Event{SurfaceId("T.S3"), EventKind::Refract, 0},
+                 Event{SurfaceId("T.S4"), EventKind::Refract, 0}}}};
     const CompiledSystem nominal = compile_plain(s);
     Perturbation p;
-    p.materials[{"T", std::size_t{1}}] = {1e-3, 0.0};
+    p.materials[{"T", std::size_t{0}}] = {1e-3, 0.0};
     const CompiledSystem c = compile_with(s, p);
-    CHECK(c.elements()[0].segmented == nominal.elements()[0].segmented);
+    CHECK(c.elements()[0].media[0] != c.elements()[0].media[1]);
+    CHECK(same(n_of(c, 0, 0), 1.5 + 1e-3));
     CHECK(c.paths()[0].events[0].medium_after == c.elements()[0].media[1]);
-    CHECK(same(n_of(c, 0, 0), 1.5));
-    CHECK(same(c.media()[c.elements()[0].media[1]].index[0].real(), 1.5 + 1e-3));
+    CHECK(c.paths()[0].events[0].medium_after == nominal.paths()[0].events[0].medium_after);
+  }
+  SECTION("a list of equal materials is one material: segment 0 changes all segments") {
+    // Decision for #254 (ADR 0035, point 2, addendum): like the shorthand.
+    for (const ElementKind kind : {ElementKind::Lens, ElementKind::Plate}) {
+      System s = empty_system();
+      Element body{"B",
+                   kind,
+                   Pose::along_z(10.0),
+                   std::nullopt,
+                   {plane("B.S1", 0.0), plane("B.S2", 2.0, PoseReference::RelativeToPreceding),
+                    plane("B.S3", 2.0, PoseReference::RelativeToPreceding)}};
+      body.segment_materials = {"CONST:1.5", "CONST:1.5"};
+      s.root.children.push_back({body});
+      s.paths = {{"main",
+                  false,
+                  {Event{SurfaceId("B.S1"), EventKind::Refract, 0},
+                   Event{SurfaceId("B.S3"), EventKind::Refract, 0}}}};
+      const CompiledSystem nominal = compile_plain(s);
+      Perturbation p;
+      p.materials[{"B", std::size_t{0}}] = {1e-3, 0.0};
+      const CompiledSystem c = compile_with(s, p);
+      CHECK(c.elements()[0].media[0] == c.elements()[0].media[1]);
+      CHECK(c.elements()[0].segmented == nominal.elements()[0].segmented);
+      CHECK(same(n_of(c, 0, 0), 1.5 + 1e-3));
+      CHECK(c.paths()[0].events[0].medium_after == c.elements()[0].media[0]);
+      Perturbation second;
+      second.materials[{"B", std::size_t{1}}] = {1e-3, 0.0};
+      CHECK_THROWS_AS((void)compile_with(s, second), std::invalid_argument);
+    }
   }
   SECTION("a plate of one material stays one body") {
     System s = empty_system();

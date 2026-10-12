@@ -267,8 +267,10 @@ class Compiler {
   }
 
   /// Material changes of the overlay for `element` (ADR 0036, point 1c): replaces the perturbed
-  /// entries of info.media by media of their own. Shorthand: one perturbed medium for all
-  /// segments; segment list: the entry of the segment. Errors at the material of the element
+  /// entries of info.media by media of their own. One material (the shorthand, or a list of equal
+  /// entries, ADR 0035, point 2, addendum #254): one perturbed medium for all segments, from
+  /// segment 0 of the list; otherwise the entry of the segment. Errors at the material of the
+  /// element
   /// (at the element itself if it has none): tolerances.material_unsupported for a crystal or an
   /// element without material.
   /// @throws std::invalid_argument for a `segment` that does not fit the element (see compile())
@@ -290,16 +292,20 @@ class Compiler {
                    "' without material (ADR 0035, point 2)");
         continue;
       }
-      const bool list = !element.segment_materials.empty();
-      if (list != target.segment.has_value() ||
-          (list && *target.segment >= element.segment_materials.size())) {
+      const auto& list = element.segment_materials;
+      // A list of equal entries is one material, like the shorthand (ADR 0035, point 2).
+      const bool one_material =
+          std::adjacent_find(list.begin(), list.end(), std::not_equal_to<>()) == list.end();
+      if (list.empty() == target.segment.has_value() ||
+          (!list.empty() && *target.segment >= (one_material ? std::size_t{1} : list.size()))) {
         throw std::invalid_argument(
             "compile: the material change of element '" + element.name +
-            (list ? "' needs a segment below " + std::to_string(element.segment_materials.size())
-                  : "' has one material and takes no segment"));
+            (list.empty()   ? "' has one material and takes no segment"
+             : one_material ? "' has one material in all segments and takes only segment 0"
+                            : "' needs a segment below " + std::to_string(list.size())));
       }
       if (change.is_zero() || info.unresolved_material) continue;  // its error stops compile()
-      if (list) {
+      if (!one_material) {
         const std::size_t k = *target.segment;
         if (const auto m = perturbed_medium(info.media[k], change, info.media_locations[k])) {
           info.media[k] = *m;

@@ -302,9 +302,10 @@ class CompiledSystem;
 ///   reached from outside is ambiguous, so the path rules do not change.
 /// @throws std::invalid_argument for an entry the model has no target for (unknown node name,
 ///         the root, unknown SurfaceId or element name), a `segment` that is missing for an
-///         element with segment materials, given for one with a single material or out of
-///         range, and non-finite values (only reachable through the API; rtt-tolerance builds
-///         the overlay from a validated tolerance set)
+///         element with segment materials, given for one with a single material, out of
+///         range, or other than 0 for a list of equal materials, and non-finite values (only
+///         reachable through the API; rtt-tolerance builds the overlay from a validated tolerance
+///         set)
 /// @throws CompileError as compile(), and for a material change (at .../material or
 ///         .../material/<i> of the element) with tolerances.material_unsupported (crystal,
 ///         element without material, kappa != 0 at d, F or C, a line outside the range of the
