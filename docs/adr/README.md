@@ -44,7 +44,7 @@ Präzisierungen und Ergänzungen einer angenommenen Entscheidung kommen als dati
 | [0033](0033.md) | FFT-Beugung: PSF, MTF, Encircled Energy | angenommen |
 | [0034](0034.md) | Polarisation in der Pupille (P je Ereignis, akkumuliertes Q, Jones-Pupille) | angenommen |
 | [0035](0035.md) | Toleranzsatz im Systemfile (Abschnitt `tolerances`, Klassen, Kompensatoren, Kriterien) | angenommen |
-| [0036](0036.md) | Toleranzanalyse (Störungsmodell, nominaler Bezug, Kompensatoren, Zufall, Statistik) | angenommen |
+| [0036](0036.md) | Toleranzanalyse (Störungsmodell, nominaler Bezug, Kompensatoren, Zufall, Statistik; Nachtrag #254: Linien in Normalluft, Prüfungen in compile) | angenommen |
 
 ## Vorlage
 
