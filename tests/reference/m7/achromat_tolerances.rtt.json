@@ -143,8 +143,8 @@
         "max": 0.02
       },
       {
-        "id": "spot-edge",
-        "operand": {"type": "spot_rms", "path": "main", "field": 2},
+        "id": "spot-zone",
+        "operand": {"type": "spot_rms", "path": "main", "field": 1},
         "max": 0.03
       },
       {
