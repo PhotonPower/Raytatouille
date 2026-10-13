@@ -49,13 +49,13 @@ std::string json_string(const std::string& s) {
   return out + "\"";
 }
 
-}  // namespace
-
-OptimResult optimize(const model::System& system,
-                     const material::MaterialLibrary& materials,
-                     const coating::CoatingLibrary* coatings,
-                     const OptimizeOptions& options,
-                     const trace::RunControl& control) {
+/// optimize() with or without the overlay of a trial (ADR 0030, addendum #256).
+OptimResult run(const model::System& system,
+                const material::MaterialLibrary& materials,
+                const coating::CoatingLibrary* coatings,
+                const OptimizeOptions& options,
+                const trace::RunControl& control,
+                const TrialOverlay* overlay) {
   // ADR 0030, point 11 (addendum #167): a cancellation requested before the start ends the run
   // before any compile or evaluation, with the input.
   if (control.cancel && control.cancel->cancelled()) {
@@ -69,7 +69,7 @@ OptimResult optimize(const model::System& system,
     }
     return result;
   }
-  const MeritFunction merit(system, materials, coatings);
+  const MeritFunction merit(system, materials, coatings, overlay);
   const std::vector<Variable>& variables = merit.variables();
   // ADR 0030, point 10 (addendum #167): a run without variables or without a merit function is
   // an input error, never a silent "converged".
@@ -215,6 +215,25 @@ OptimResult optimize(const model::System& system,
   }
   for (const model::Diagnostic& d : end.warnings) result.diagnostics.push_back(d);
   return result;
+}
+
+}  // namespace
+
+OptimResult optimize(const model::System& system,
+                     const material::MaterialLibrary& materials,
+                     const coating::CoatingLibrary* coatings,
+                     const OptimizeOptions& options,
+                     const trace::RunControl& control) {
+  return run(system, materials, coatings, options, control, nullptr);
+}
+
+OptimResult optimize(const model::System& system,
+                     const material::MaterialLibrary& materials,
+                     const coating::CoatingLibrary* coatings,
+                     const OptimizeOptions& options,
+                     const trace::RunControl& control,
+                     const TrialOverlay& overlay) {
+  return run(system, materials, coatings, options, control, &overlay);
 }
 
 }  // namespace rtt::optim

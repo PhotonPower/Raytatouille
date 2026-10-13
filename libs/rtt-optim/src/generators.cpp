@@ -12,6 +12,8 @@
 #include <variant>
 #include <vector>
 
+#include "generators_detail.hpp"
+#include "rtt/analysis/nominal_reference.hpp"
 #include "rtt/analysis/opd.hpp"
 #include "rtt/math/types.hpp"
 #include "rtt/trace/ray_batch.hpp"
@@ -89,15 +91,20 @@ compile::PathId path_of(const compile::CompiledSystem& cs, const std::string& na
   return *id;
 }
 
-/// Traces the rays of one field and wavelength (real aiming) through the whole path.
+/// Traces the rays of one field and wavelength (real aiming) through the whole path; aimed with
+/// the nominal reference if there is one (ADR 0030, addendum #256).
 trace::RayBatch traced(const compile::CompiledSystem& cs,
                        compile::PathId path,
                        std::uint16_t field,
                        std::uint16_t wavelength,
                        const trace::PupilSampling& sampling,
-                       bool reference = false) {
-  trace::RayBatch rays =
-      trace::make_rays(cs, path, std::span<const std::uint16_t>(&field, 1), wavelength, sampling);
+                       bool reference,
+                       const analysis::NominalReference* nominal) {
+  const std::span<const std::uint16_t> fields(&field, 1);
+  trace::RayBatch rays = nominal != nullptr
+                             ? trace::make_rays(cs, path, fields, wavelength, sampling,
+                                                trace::Aiming::Real, nominal->aim(wavelength))
+                             : trace::make_rays(cs, path, fields, wavelength, sampling);
   // Reference rays are virtual (ADR 0032, addendum #229), as in rtt-analysis.
   rays.set_ignore_obscurations(reference);
   static_cast<void>(trace::SequentialTracer().trace(cs, path, rays));
@@ -162,6 +169,7 @@ Expansion expand(const model::Generator& g, const compile::CompiledSystem& cs) {
 void spot_residuals(const model::SpotGenerator& g,
                     const compile::CompiledSystem& cs,
                     const Expansion& e,
+                    const analysis::NominalReference* nominal,
                     std::span<double> out,
                     GeneratorStats& stats) {
   const std::uint32_t image = cs.path(e.path).events.back().surface;
@@ -172,7 +180,7 @@ void spot_residuals(const model::SpotGenerator& g,
     std::vector<Point> hits;
     hits.reserve(e.wavelengths.size() * n);
     for (const std::uint16_t l : e.wavelengths) {
-      const trace::RayBatch rays = traced(cs, e.path, e.fields[f], l, e.gauss);
+      const trace::RayBatch rays = traced(cs, e.path, e.fields[f], l, e.gauss, false, nominal);
       for (std::size_t k = 0; k < n; ++k) hits.push_back(local_hit(cs, rays, k, image));
     }
     // Reference: centroid weighted with W_l q_k over the arrived rays, or the chief ray of the
@@ -200,7 +208,7 @@ void spot_residuals(const model::SpotGenerator& g,
       }
     } else {
       const trace::RayBatch chief = traced(cs, e.path, e.fields[f], cs.reference_wavelength(),
-                                           trace::SinglePupilPoint{0.0, 0.0}, true);
+                                           trace::SinglePupilPoint{0.0, 0.0}, true, nominal);
       reference = local_hit(cs, chief, 0, image);
       if (!reference.arrived) {
         why = "the chief ray of field " + std::to_string(e.fields[f]) +
@@ -249,14 +257,17 @@ void spot_residuals(const model::SpotGenerator& g,
 /// per field and wavelength.
 void wavefront_residuals(const compile::CompiledSystem& cs,
                          const Expansion& e,
+                         const analysis::NominalReference* nominal,
                          std::span<double> out,
                          GeneratorStats& stats) {
   const std::size_t n = e.q.size();
+  analysis::OpdOptions options;
+  if (nominal != nullptr) options.reference = *nominal;
   std::size_t o = 0;
   for (std::size_t f = 0; f < e.fields.size(); ++f) {
     for (std::size_t l = 0; l < e.wavelengths.size(); ++l) {
       const analysis::OpdPupilPoints p =
-          analysis::opd_points(cs, e.path, e.fields[f], e.wavelengths[l], e.gauss);
+          analysis::opd_points(cs, e.path, e.fields[f], e.wavelengths[l], e.gauss, options);
       double sq = 0.0;
       double sw = 0.0;
       for (std::size_t k = 0; k < n; ++k) {
@@ -313,15 +324,23 @@ void generator_residuals(const model::Generator& generator,
                          const compile::CompiledSystem& system,
                          std::span<double> out,
                          GeneratorStats& stats) {
+  detail::generator_residuals(generator, system, nullptr, out, stats);
+}
+
+void detail::generator_residuals(const model::Generator& generator,
+                                 const compile::CompiledSystem& system,
+                                 const analysis::NominalReference* nominal,
+                                 std::span<double> out,
+                                 GeneratorStats& stats) {
   if (out.size() != generator_size(generator, system)) {
     throw std::invalid_argument("optimize: wrong number of generator residuals");
   }
   const Expansion e = expand(generator, system);
   stats = GeneratorStats{};
   if (const auto* spot = std::get_if<model::SpotGenerator>(&generator)) {
-    spot_residuals(*spot, system, e, out, stats);
+    spot_residuals(*spot, system, e, nominal, out, stats);
   } else {
-    wavefront_residuals(system, e, out, stats);
+    wavefront_residuals(system, e, nominal, out, stats);
   }
 }
 
