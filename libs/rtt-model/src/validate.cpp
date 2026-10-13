@@ -1027,7 +1027,7 @@ class Validator {
           return;
         }
         const Param& p = kind == ToleranceKind::Conic ? *conic : *radius;
-        if (p.is_bound()) {
+        if (p.param) {
           report("tolerances.bound_param", loc,
                  "bound to row '" + *p.param + "': tolerance the row instead");
         } else if (kind == ToleranceKind::Radius && std::isfinite(limit) &&
@@ -1043,7 +1043,7 @@ class Validator {
           return;
         }
         const Param& z = anchor_pose(index, t)->position[2];
-        if (z.is_bound()) {
+        if (z.param) {
           report("tolerances.bound_param", loc,
                  "bound to row '" + *z.param + "': tolerance the row instead");
         }
@@ -1058,11 +1058,13 @@ class Validator {
           report("tolerances.target_invalid", loc, "the kind param needs a param pointer");
           return;
         }
-        const Param* p = index.param(*index.anchor_pointer(t) + *t.param);
+        const std::optional<std::string> anchor = index.anchor_pointer(t);
+        if (!anchor) return;  // unreachable: check_anchor found the surface or node
+        const Param* p = index.param(*anchor + *t.param);
         if (p == nullptr) {
           report("tolerances.target_invalid", loc + "/param",
                  "'" + *t.param + "' is not a Param of '" + t.name + "'");
-        } else if (p->is_bound()) {
+        } else if (p->param) {
           report("tolerances.bound_param", loc + "/param",
                  "bound to row '" + *p->param + "': tolerance the row instead");
         }
@@ -1142,9 +1144,11 @@ class Validator {
         } else if (v->target.segment) {
           report("tolerances.target_invalid", loc + "/segment", "segment only with index and abbe");
         }
+        const std::optional<std::string> anchor = index.anchor_pointer(v->target);
+        if (!anchor) continue;  // unreachable: a surface or node, checked above
         const std::string key =
-            *index.anchor_pointer(v->target) + ":" + std::string(tolerance_kind_name(v->kind)) +
-            ":" + (v->target.segment ? std::to_string(*v->target.segment) : std::string("-"));
+            *anchor + ":" + std::string(tolerance_kind_name(v->kind)) + ":" +
+            (v->target.segment ? std::to_string(*v->target.segment) : std::string("-"));
         if (!values.insert(key).second) {
           report("tolerances.target_invalid", loc, "a second single value for this target");
         }
@@ -1157,7 +1161,8 @@ class Validator {
         if (!check_anchor(index, p.target, loc)) continue;
         if (p.target.anchor == ToleranceAnchor::Parameter || p.target.param || p.target.segment) {
           report("tolerances.target_invalid", loc, "a pivot belongs to a surface or node");
-        } else if (!pivots.insert(*index.anchor_pointer(p.target)).second) {
+        } else if (const std::optional<std::string> anchor = index.anchor_pointer(p.target);
+                   anchor && !pivots.insert(*anchor).second) {
           report("tolerances.target_invalid", loc, "a second pivot for this target");
         }
       }
@@ -1262,14 +1267,16 @@ class Validator {
                  "a compensator at a surface or node needs a param pointer");
           continue;
         }
-        key = *index.anchor_pointer(k.target) + *k.target.param;
+        const std::optional<std::string> anchor = index.anchor_pointer(k.target);
+        if (!anchor) continue;  // unreachable: check_anchor found the surface or node
+        key = *anchor + *k.target.param;
         const Param* p = index.param(key);
         if (p == nullptr) {
           report("tolerances.compensator_target", loc + "/param",
                  "'" + *k.target.param + "' is not a Param of '" + k.target.name + "'");
           continue;
         }
-        if (p->is_bound()) {
+        if (p->param) {
           report("tolerances.bound_param", loc + "/param",
                  "bound to row '" + *p->param + "': use the row as compensator");
           continue;

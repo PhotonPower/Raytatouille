@@ -34,6 +34,7 @@ struct Row {
 
 std::vector<Row> rows(const ClassTolerances& r) {
   std::vector<Row> out;
+  out.reserve(r.items.size());
   for (const ClassTolerance& c : r.items) out.push_back({c.id, c.skip, c.tolerance_class});
   return out;
 }
@@ -324,7 +325,7 @@ TEST_CASE("class: the result does not depend on the limits or on other items",
           "[model][tolerances]") {
   // Ids and order depend only on the tree, the classes and the overrides (ADR 0035, point 5):
   // an explicit item elsewhere and other limits change nothing but the replaced entry.
-  System a = toleranced();
+  const System a = toleranced();
   System b = a;
   b.tolerances.items = {item("roll", at(A::Node, "fold"), K::TiltZDeg)};
   b.tolerances.overrides = {value(A::Node, "L1", K::Thickness)};
