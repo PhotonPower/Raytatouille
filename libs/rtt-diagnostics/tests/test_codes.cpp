@@ -57,7 +57,7 @@ TEST_CASE("every code names its producer", "[diagnostics]") {
     INFO(info.code);
     REQUIRE((info.producer == "validate" || info.producer == "compile" ||
              info.producer == "analysis" || info.producer == "agf" || info.producer == "edit" ||
-             info.producer == "io" || info.producer == "optim"));
+             info.producer == "io" || info.producer == "optim" || info.producer == "tolerance"));
   }
   REQUIRE(find_code("stop.not_on_path")->producer == "compile");
   REQUIRE(find_code("rays.lost")->producer == "analysis");
@@ -65,4 +65,5 @@ TEST_CASE("every code names its producer", "[diagnostics]") {
   REQUIRE(find_code("edit.patch_invalid")->producer == "edit");
   REQUIRE(find_code("io.pickup_dropped")->producer == "io");
   REQUIRE(find_code("optim.no_variables")->producer == "optim");
+  REQUIRE(find_code("tolerances.compensator_infeasible")->producer == "tolerance");
 }
