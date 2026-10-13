@@ -269,6 +269,9 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "the name)"},
     {"tolerances.compensator_bounds", Severity::Error, "validate",
      "compensator travel_min >= 0, travel_max <= 0 or not finite"},
+    {"tolerances.compensator_infeasible", Severity::Warning, "tolerance",
+     "the perturbed value of a compensator lies on or outside a bound of its target; it stays "
+     "there in this trial (ADR 0036, point 3)"},
     {"tolerances.compensator_merit_missing", Severity::Error, "validate",
      "compensators, but the compensator merit (or the optimization it falls back on) is missing "
      "or empty"},
