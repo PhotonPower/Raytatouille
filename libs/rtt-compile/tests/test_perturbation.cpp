@@ -254,7 +254,8 @@ RigidMotion tilt_x(double theta) {
 const rtt::compile::CompiledSurface& surface(const CompiledSystem& cs, const std::string& id) {
   const auto i = cs.find_surface(SurfaceId(id));
   REQUIRE(i.has_value());
-  return cs.surfaces()[*i];
+  const std::uint32_t index = i.value_or(0);  // bound once after the check (clang-tidy)
+  return cs.surfaces()[index];
 }
 
 Vec3 vertex(const CompiledSystem& cs, const std::string& id) {
@@ -683,11 +684,15 @@ TEST_CASE("perturbation: crystal and polarizer axes turn with the element",
   p.nodes["P"] = motion(Vec3::Zero(), Vec3(0.0, kTheta, 0.0));
   const CompiledSystem c = compile_with(s, p);
   const auto crystal_medium = c.paths()[0].events[0].medium_after;
-  REQUIRE(c.media()[crystal_medium].optic_axis.has_value());
-  CHECK(
-      near(*c.media()[crystal_medium].optic_axis, Vec3(0.0, -std::sin(kTheta), std::cos(kTheta))));
-  REQUIRE(surface(c, "P.S1").ideal_axis.has_value());
-  CHECK(near(*surface(c, "P.S1").ideal_axis, Vec3(std::cos(kTheta), 0.0, -std::sin(kTheta))));
+  const auto& optic_axis = c.media()[crystal_medium].optic_axis;
+  REQUIRE(optic_axis.has_value());
+  const Vec3 crystal_axis = optic_axis.value_or(Vec3::Zero());  // bound once (clang-tidy)
+  CHECK(near(crystal_axis, Vec3(0.0, -std::sin(kTheta), std::cos(kTheta))));
+  // By value: surface() gets a temporary string (-Wdangling-reference, AGENTS.md).
+  const auto ideal_axis = surface(c, "P.S1").ideal_axis;
+  REQUIRE(ideal_axis.has_value());
+  const Vec3 polarizer_axis = ideal_axis.value_or(Vec3::Zero());  // bound once (clang-tidy)
+  CHECK(near(polarizer_axis, Vec3(std::cos(kTheta), 0.0, -std::sin(kTheta))));
 }
 
 namespace {
