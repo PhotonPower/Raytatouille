@@ -139,3 +139,25 @@ def test_files_from_0_1_12_need_the_new_keys(name: str, key: str, version: str):
     doc["schema_version"] = version
     with pytest.raises(jsonschema.ValidationError):
         VALIDATOR.validate(doc)
+
+
+# ToleranceItems (#261): an item names exactly one anchor (surface, node or parameter), a class
+# entry exactly one of surface and node; the others are null.
+
+
+def _set_anchors(doc: dict, where: str, values: dict) -> None:
+    entry = doc["data"]["items"][0] if where == "item" else doc["data"]["classes"]["items"][0]
+    entry.update(values)
+
+
+@pytest.mark.parametrize("where,values", [
+    ("item", {"surface": None, "node": None, "parameter": None}),
+    ("item", {"surface": "L1.S1", "node": "L1"}),
+    ("item", {"node": "L1", "parameter": "R1"}),
+    ("class", {"surface": None, "node": None}),
+    ("class", {"surface": "L1.S1", "node": "L1"}),
+])
+def test_tolerance_items_need_exactly_one_anchor(where: str, values: dict):
+    doc = _broken(lambda d: _set_anchors(d, where, values), "ToleranceItems.result.json")
+    with pytest.raises(jsonschema.ValidationError):
+        VALIDATOR.validate(doc)
