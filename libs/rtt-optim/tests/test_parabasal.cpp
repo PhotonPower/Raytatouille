@@ -12,6 +12,7 @@
 #include <numbers>
 #include <optional>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -213,7 +214,7 @@ TEST_CASE("parabasal: nominal systems within the Richardson bound", "[optim][par
       {"ideal lens", ideal_lens(100.0), {Q::Efl, Q::Bfl, Q::ImageFNumber}, false},
       {"object-space telecentric singlet",
        rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m1/telecentric_singlet.rtt.json"),
-       {Q::ImageFNumber, Q::Magnification},
+       {Q::Magnification},
        false},
   };
   for (const Case& c : cases) {
@@ -243,9 +244,16 @@ TEST_CASE("parabasal: nominal systems within the Richardson bound", "[optim][par
         const double r_ep = *fo.entrance_pupil->diameter / 2.0;
         r = q == Q::Efl ? 20.0 * kEps / (kDelta * r_ep / std::abs(*fo.efl)) * std::abs(x0)
                         : 20.0 * kEps * size_of(ci) / (kDelta * r_ep) * std::abs(x0);
-      } else {
+      } else if (q == Q::ImageFNumber) {
         const double f_number = value(c.system, Q::ImageFNumber);
         const double u_m = 1.0 / (2.0 * n_image * f_number);
+        r = 20.0 * kEps / (kDelta * u_m) * std::abs(x0);
+      } else {
+        // magnification: the smaller of the marginal slopes, object side u = NA / n (aperture
+        // ObjectSpaceNA in both cases, vacuum) and image side u' = u / |m|.
+        REQUIRE(c.system.aperture.type == rtt::model::SystemApertureType::ObjectSpaceNA);
+        const double u = c.system.aperture.value.value;
+        const double u_m = std::min(u, u / std::abs(x0));
         r = 20.0 * kEps / (kDelta * u_m) * std::abs(x0);
       }
       INFO("X0 " << x0 << ", X(delta) - X0 " << x1 - x0 << ", X(2 delta) - X(delta) " << x2 - x1
@@ -334,8 +342,9 @@ TEST_CASE("parabasal: object-space telecentric, efl and bfl are not supported in
           "[optim][parabasal]") {
   // Addendum #256: with the entrance pupil at infinity an axis-parallel bundle cannot be aimed at
   // the stop (every such bundle converges on the stop centre); efl and bfl of a trial are a start
-  // error with the reason, never a silent value. image_fnumber and magnification (the bundle of the
-  // axis point, aimed as object-space telecentric, #96) are defined.
+  // error with the reason, never a silent value. magnification (the bundle of the axis point,
+  // aimed as object-space telecentric, #96) is defined; image_fnumber is not defined, as in
+  // rtt::paraxial::prescription, which has no marginal ray with the entrance pupil at infinity.
   const System s =
       rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m1/telecentric_singlet.rtt.json");
   const TrialOverlay o = overlay_of(s);
@@ -352,11 +361,10 @@ TEST_CASE("parabasal: object-space telecentric, efl and bfl are not supported in
     // Without overlay the nominal values exist (content guard: the gap is the trial's only).
     CHECK(std::isfinite(value(s, q)));
   }
-  // Their values: the Richardson case "object-space telecentric singlet" above.
-  for (const FirstOrderQuantity q :
-       {FirstOrderQuantity::ImageFNumber, FirstOrderQuantity::Magnification}) {
-    CHECK(std::isfinite(value(s, q, &o)));
-  }
+  // magnification: the Richardson case "object-space telecentric singlet" above.
+  CHECK(std::isfinite(value(s, FirstOrderQuantity::Magnification, &o)));
+  CHECK(std::isnan(value(s, FirstOrderQuantity::ImageFNumber)));
+  CHECK(std::isnan(value(s, FirstOrderQuantity::ImageFNumber, &o)));
 }
 
 TEST_CASE("parabasal: magnification with the object at infinity stays a start error",

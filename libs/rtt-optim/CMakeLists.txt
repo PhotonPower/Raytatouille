@@ -1,5 +1,5 @@
 add_library(rtt_optim src/bounds.cpp src/generators.cpp src/levenberg_marquardt.cpp src/merit.cpp
-  src/optimize.cpp src/overlay_basis.cpp src/variables.cpp)
+  src/optimize.cpp src/overlay_basis.cpp src/parabasal.cpp src/variables.cpp)
 add_library(rtt::optim ALIAS rtt_optim)
 target_include_directories(rtt_optim PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)

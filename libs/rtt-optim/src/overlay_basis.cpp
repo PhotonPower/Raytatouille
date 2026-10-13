@@ -12,6 +12,7 @@
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/model/parameters.hpp"
 #include "rtt/paraxial/paraxial.hpp"
+#include "rtt/paraxial/prescription.hpp"
 
 namespace rtt::optim {
 
@@ -107,6 +108,7 @@ NominalBasis nominal_basis(const model::System& nominal,
           wd.efl = fo.efl;
           wd.magnification = fo.lateral_magnification;
           wd.last_vertex = last_vertex(cs, path, wl);
+          wd.f_number = paraxial::prescription(cs, path, wl).paraxial_working_f_number.has_value();
         } catch (...) {
           wd.unsupported = message_of(std::current_exception());
         }

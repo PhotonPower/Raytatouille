@@ -25,6 +25,10 @@ struct WavelengthData {
   std::string unsupported;
   std::optional<double> efl;            ///< nominal EFL, mm (sign of efl; none: afocal)
   std::optional<double> magnification;  ///< nominal lateral magnification (sign of magnification)
+  /// Whether rtt::paraxial::prescription defines the working F-number of the nominal path (it
+  /// has no marginal ray, e.g., for an entrance pupil at infinity with a finite object);
+  /// image_fnumber of a trial is defined only where the nominal one is.
+  bool f_number = false;
   /// Event index of the last vertex of the path (the last event that changes the ray, as
   /// rtt::paraxial::first_order: reflection, change of index or an ideal lens); none if no event
   /// changes the ray. Start of bfl (addendum #256).
