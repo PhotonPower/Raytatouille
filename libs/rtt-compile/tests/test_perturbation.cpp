@@ -1094,12 +1094,13 @@ TEST_CASE("perturbation: indices at the Fraunhofer lines and nu_d", "[compile][p
     CHECK(same(f.nd, nd));
     CHECK(same(f.nf, nf));
     CHECK(same(f.nc, nc));
-    const std::optional<double> vd = f.abbe_number();
-    REQUIRE(vd.has_value());
-    CHECK(same(vd.value(), (nd - 1.0) / (nf - nc)));
+    const std::optional<double> abbe = f.abbe_number();
+    REQUIRE(abbe.has_value());
+    const double vd = abbe.value_or(0.0);  // bound once after the check (clang-tidy)
+    CHECK(same(vd, (nd - 1.0) / (nf - nc)));
     // Content guard: V(d) = 64.17 of the NM line of N-BK7 in tests/catalogs/schott.agf (relative
     // to air at the catalogue temperature; here absolute at 25 degC, which differs by < 0.1).
-    CHECK(std::abs(vd.value() - 64.17) < 0.1);
+    CHECK(std::abs(vd - 64.17) < 0.1);
   }
   SECTION("a real CONST material has no nu_d") {
     const FraunhoferIndices f = fraunhofer_indices(*lib.resolve("CONST:1.5"), t, p);
