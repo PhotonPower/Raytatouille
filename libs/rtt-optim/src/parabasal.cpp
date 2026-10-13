@@ -77,6 +77,21 @@ Mat2 map_of(const Vec2& xx, const Vec2& xy, const Vec2& yx, const Vec2& yy) {
           (yx[1] * xy[1] - yy[1] * xx[1]) / det, (yy[1] * xx[0] - yx[1] * xy[0]) / det};
 }
 
+/// The mean principal value (sigma_1 + sigma_2)/2 of A = Y X^-1 (map_of, singular_sum); none if
+/// X is singular, i.e. the input differences of the two pairs do not span the plane (coincident
+/// or collinear parabasal rays).
+std::optional<double> mean_principal(const Vec2& xx,
+                                     const Vec2& xy,
+                                     const Vec2& yx,
+                                     const Vec2& yy) {
+  const Mat2 a = map_of(xx, xy, yx, yy);
+  if (std::isnan(a[0])) return std::nullopt;
+  return singular_sum(a) / 2.0;
+}
+
+constexpr const char* kDegenerate =
+    "degenerate parabasal rays (their offsets do not span the plane)";
+
 /// The five rays traced with recording: 0 chief, 1 (+delta, 0), 2 (-delta, 0), 3 (0, +delta),
 /// 4 (0, -delta).
 struct Bundle {
@@ -215,9 +230,10 @@ ParabasalValue parabasal_value(const model::FirstOrderOperand& op,
       };
       const std::array<Vec2, 2> x = pairs(offset);
       const std::array<Vec2, 2> y = pairs(nu);
-      const double sum = singular_sum(map_of(x[0], x[1], y[0], y[1]));
-      if (!(sum > 0.0)) return undefined("the trial is afocal (no EFL)");
-      const double efl = 2.0 / sum;
+      const std::optional<double> phi = mean_principal(x[0], x[1], y[0], y[1]);
+      if (!phi.has_value()) return undefined(kDegenerate);
+      if (!(phi.value() > 0.0)) return undefined("the trial is afocal (no EFL)");
+      const double efl = 1.0 / phi.value();
       return {nominal.efl.has_value() && nominal.efl.value() < 0.0 ? -efl : efl, {}};
     }
     case Q::Bfl: {
@@ -265,9 +281,10 @@ ParabasalValue parabasal_value(const model::FirstOrderOperand& op,
       };
       const std::array<Vec2, 2> x = pairs(pupil_of);
       const std::array<Vec2, 2> y = pairs(image_slope);
-      const double u_image = singular_sum(map_of(x[0], x[1], y[0], y[1])) / 2.0;
-      if (!(u_image > 0.0)) return undefined("collimated output (no marginal slope)");
-      return {1.0 / (2.0 * n_image * u_image), {}};
+      const std::optional<double> u_image = mean_principal(x[0], x[1], y[0], y[1]);
+      if (!u_image.has_value()) return undefined(kDegenerate);
+      if (!(u_image.value() > 0.0)) return undefined("collimated output (no marginal slope)");
+      return {1.0 / (2.0 * n_image * u_image.value()), {}};
     }
     case Q::Magnification: {
       // m = n u / (n' u') (docs/quellen.md, "Pupillen, Winkel- und Lateralvergrößerung"), u and
@@ -279,10 +296,11 @@ ParabasalValue parabasal_value(const model::FirstOrderOperand& op,
       const std::array<Vec2, 2> x =
           pairs([&](std::size_t r) { return slope(b.paths.direction_at(r, 0), d_object, object); });
       const std::array<Vec2, 2> y = pairs(image_slope);
-      const double ratio = singular_sum(map_of(x[0], x[1], y[0], y[1])) / 2.0;  // u' / u
-      if (!(ratio > 0.0)) return undefined("collimated output (no marginal slope)");
+      const std::optional<double> ratio = mean_principal(x[0], x[1], y[0], y[1]);  // u' / u
+      if (!ratio.has_value()) return undefined(kDegenerate);
+      if (!(ratio.value() > 0.0)) return undefined("collimated output (no marginal slope)");
       const double n_object = index_of(system, events.front().medium_before, wavelength);
-      const double m = n_object / (n_image * ratio);
+      const double m = n_object / (n_image * ratio.value());
       return {nominal.magnification.has_value() && nominal.magnification.value() < 0.0 ? -m : m,
               {}};
     }

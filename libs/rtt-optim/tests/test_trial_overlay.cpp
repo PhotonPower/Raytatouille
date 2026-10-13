@@ -90,9 +90,12 @@ System ideal_lens() {
   return s;
 }
 
-TrialOverlay overlay_of(const System& nominal, rtt::compile::Perturbation perturbation = {}) {
+TrialOverlay overlay_of(const System& nominal,
+                        rtt::compile::Perturbation perturbation = {},
+                        const rtt::material::MaterialLibrary& materials = library(),
+                        const rtt::coating::CoatingLibrary* coatings = nullptr) {
   return TrialOverlay{std::move(perturbation),
-                      rtt::optim::nominal_basis(nominal, library(), nullptr), 1e-3};
+                      rtt::optim::nominal_basis(nominal, materials, coatings), 1e-3};
 }
 
 /// Every operand kind but the paraxial ones, and both generators, on the system's first path in
@@ -131,9 +134,12 @@ rtt::model::Optimization battery(const System& s, const rtt::compile::CompiledSy
 }
 
 /// The evaluation at the start values, or the name of the exception's type.
-std::variant<MeritEvaluation, std::string> outcome(const System& s, const TrialOverlay* overlay) {
+std::variant<MeritEvaluation, std::string> outcome(const System& s,
+                                                   const rtt::material::MaterialLibrary& materials,
+                                                   const rtt::coating::CoatingLibrary& coatings,
+                                                   const TrialOverlay* overlay) {
   try {
-    const MeritFunction merit(s, library(), nullptr, overlay);
+    const MeritFunction merit(s, materials, &coatings, overlay);
     return merit.evaluate(merit.start());
   } catch (const std::exception& e) {
     return std::string(typeid(e).name());
@@ -156,21 +162,36 @@ TEST_CASE("trial overlay: empty perturbation and the basis of the same system ar
           "[optim][overlay]") {
   // Addendum #256: spot, OPD, rays and both generators aim with the nominal aiming data and take
   // the nominal exit pupil; from the same system these are the same numbers from the same
-  // computation (#255, #265), and an empty perturbation compiles bitwise (#254).
+  // computation (#255, #265), and an empty perturbation compiles bitwise (#254). Every reference
+  // system that compiles with the catalogues of the reference files (as test_nominal_reference.cpp
+  // in rtt-analysis).
+  rtt::material::MaterialLibrary m1;
+  m1.add_catalog(std::string(RTT_CATALOG_DIR) + "/schott.agf");
+  rtt::material::MaterialLibrary m2;
+  m2.add_catalog(std::string(RTT_CATALOG_DIR) + "/m2/schott.agf");
+  rtt::coating::CoatingLibrary coatings;
+  coatings.add_catalog(std::string(RTT_CATALOG_DIR) + "/coatings/demo.json");
+  coatings.add_catalog(std::string(RTT_CATALOG_DIR) + "/coatings/m3.json");
   std::size_t compared = 0;
   for (const fs::path& file : reference_files()) {
     INFO(file.string());
     System s = rtt::io::load_system(file);
     std::optional<rtt::compile::CompiledSystem> cs;
-    try {
-      cs.emplace(rtt::compile::compile(s, library()));
-    } catch (const rtt::compile::CompileError&) {
-      continue;  // a catalogue or coating library is needed
+    const rtt::material::MaterialLibrary* materials = nullptr;
+    for (const rtt::material::MaterialLibrary* lib : {&m1, &m2}) {
+      try {
+        cs.emplace(rtt::compile::compile(s, *lib, coatings));
+        materials = lib;
+        break;
+      } catch (const rtt::compile::CompileError& e) {
+        static_cast<void>(e);  // another catalogue
+      }
     }
+    if (materials == nullptr) continue;
     s.optimization = battery(s, *cs);
-    const TrialOverlay overlay = overlay_of(s);
-    const auto a = outcome(s, nullptr);
-    const auto b = outcome(s, &overlay);
+    const TrialOverlay overlay = overlay_of(s, {}, *materials, &coatings);
+    const auto a = outcome(s, *materials, coatings, nullptr);
+    const auto b = outcome(s, *materials, coatings, &overlay);
     REQUIRE(a.index() == b.index());
     if (a.index() == 1) {
       CHECK(std::get<1>(a) == std::get<1>(b));
@@ -188,7 +209,7 @@ TEST_CASE("trial overlay: empty perturbation and the basis of the same system ar
     CHECK(x.warnings.size() == y.warnings.size());
     ++compared;
   }
-  CHECK(compared >= 10U);
+  CHECK(compared >= 20U);
 }
 
 TEST_CASE("trial overlay: the perturbation is in every evaluation of optimize",
@@ -272,6 +293,11 @@ TEST_CASE("trial overlay: a nominal basis of another system is an invalid argume
   configured.configurations = {{"a"}, {"b"}};
   const TrialOverlay other_count = overlay_of(configured);
   CHECK_THROWS_AS(MeritFunction(s, library(), nullptr, &other_count), std::invalid_argument);
+  // Another number of wavelengths: checked by the constructor.
+  System more = s;
+  more.wavelengths.push_back({0.6563, 1.0, false});
+  const TrialOverlay fewer = overlay_of(s);
+  CHECK_THROWS_AS(MeritFunction(more, library(), nullptr, &fewer), std::invalid_argument);
   // Another wavelength: the aiming data do not fit (trace::AimReference, #255), at the first
   // evaluation.
   System shifted = s;
