@@ -256,8 +256,8 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
     {"surface_aperture.semi_axis_invalid", Severity::Error, "validate",
      "elliptical aperture semi axis not finite or <= 0 mm"},
     {"tolerances.abbe_on_const", Severity::Error, "validate",
-     "Abbe number tolerance at a CONST material (n_F - n_C = 0); compile also reports it for "
-     "any material with n_F = n_C when applying the perturbation (#254)"},
+     "explicit Abbe number tolerance at a CONST material (n_F - n_C = 0); compile also reports it "
+     "for any material with n_F = n_C when applying the perturbation (#254)"},
     {"tolerances.bound_param", Severity::Error, "validate",
      "tolerance or compensator at a Param bound to a parameter row or at an expression row"},
     {"tolerances.class_unknown", Severity::Error, "validate",
@@ -269,7 +269,8 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "compensators, but the compensator merit (or the optimization it falls back on) is missing "
      "or empty"},
     {"tolerances.compensator_target", Severity::Error, "validate",
-     "compensator neither an unbound Param nor a row of the form value, or a target twice"},
+     "compensator neither an unbound Param nor a row of the form value, a target twice, or a row "
+     "the object distance or the system aperture depend on"},
     {"tolerances.criterion_bounds", Severity::Error, "validate",
      "criterion without bound, min > max, max_change <= 0, a bound not finite, or target or "
      "weight at its operand"},
@@ -284,15 +285,16 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "pivot not finite; compile reports n_d + dn_d <= 1 or nu_d + dnu_d <= 0 when applying the "
      "perturbation (#254)"},
     {"tolerances.material_unsupported", Severity::Error, "validate",
-     "material tolerance at a crystal, a metal (complex index) or an element without material; "
-     "for catalog materials compile reports it when applying the perturbation (#254)"},
+     "explicit material tolerance at a crystal, a metal (complex index) or an element without "
+     "material; for catalog materials compile reports it when applying the perturbation (#254)"},
     {"tolerances.monte_carlo_invalid", Severity::Error, "validate",
      "Monte Carlo seed above 2^53 - 1, or trials outside 1 ... 2^32"},
     {"tolerances.quantity_duplicate", Severity::Error, "validate",
      "two explicit tolerance items perturb the same quantity"},
     {"tolerances.target_invalid", Severity::Error, "validate",
-     "tolerance kind, anchor, param pointer or segment do not fit the target, or a single value "
-     "of a kind no class generates there"},
+     "tolerance kind, anchor, param pointer or segment do not fit the target, a single value of "
+     "a kind no class generates there, or a row the object distance or the system aperture "
+     "depend on"},
     {"tolerances.unknown_target", Severity::Error, "validate",
      "tolerance target (surface, node or parameter row) not found"},
     {"value.not_finite", Severity::Error, "validate", "number of the model not finite"},
