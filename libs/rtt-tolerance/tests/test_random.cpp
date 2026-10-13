@@ -42,6 +42,7 @@
 #include <numbers>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -138,9 +139,38 @@ std::vector<double> sample(const ToleranceItem& i) {
 
 TEST_CASE("random: Philox-4x32-10 gives the known-answer vectors", "[tolerance][random]") {
   // Known-answer vectors "philox4x32 10" from Random123, tests/kat_vectors
-  // (github.com/DEShawResearch/random123): counter, key, expected output.
-  // Copyright 2010-2012, D. E. Shaw Research. All rights reserved. Redistributed under the
-  // BSD-3-Clause license of Random123 (docs/quellen.md, ADR 0036, point 5).
+  // (github.com/DEShawResearch/random123): counter, key, expected output (docs/quellen.md,
+  // ADR 0036, point 5). License of Random123, file LICENSE, verbatim:
+  //
+  // Copyright 2010-2012, D. E. Shaw Research.
+  // All rights reserved.
+  //
+  // Redistribution and use in source and binary forms, with or without
+  // modification, are permitted provided that the following conditions are
+  // met:
+  //
+  // * Redistributions of source code must retain the above copyright
+  //   notice, this list of conditions, and the following disclaimer.
+  //
+  // * Redistributions in binary form must reproduce the above copyright
+  //   notice, this list of conditions, and the following disclaimer in the
+  //   documentation and/or other materials provided with the distribution.
+  //
+  // * Neither the name of D. E. Shaw Research nor the names of its
+  //   contributors may be used to endorse or promote products derived from
+  //   this software without specific prior written permission.
+  //
+  // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  // "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  // LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+  // A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+  // OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+  // SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+  // LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+  // DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+  // THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+  // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
   struct Kat {
     rtt::tolerance::PhiloxCounter counter;
     rtt::tolerance::PhiloxKey key;
@@ -161,11 +191,15 @@ TEST_CASE("random: Philox-4x32-10 gives the known-answer vectors", "[tolerance][
 }
 
 TEST_CASE("random: FNV-1a 64 gives the values of the specification", "[tolerance][random]") {
-  // draft-eastlake-fnv-35, Sec. 8.3 (FNV test code), FNV64svalues: the strings "", "a" and
-  // "foobar" without terminating NUL. The empty string gives the offset_basis (Sec. 2.2).
+  // draft-eastlake-fnv-35, Sec. 8.3 (FNV test code), FNV64svalues: the four test strings without
+  // terminating NUL; "initial teststring is null so initial result is offset_basis" (Sec. 8.3).
   CHECK(fnv1a64("") == 0xcbf29ce484222325ULL);
   CHECK(fnv1a64("a") == 0xaf63dc4c8601ec8cULL);
   CHECK(fnv1a64("foobar") == 0x85944171f73967e8ULL);
+  // Bytes >= 0x80 (ids are UTF-8): with a sign-extended char the hash would be
+  // 0xbdb17e70953fffa1 instead.
+  constexpr std::string_view kHigh{"Hello!\x01\xFF\xED", 9};
+  CHECK(fnv1a64(kHigh) == 0xbd51ea7094ee6fa1ULL);
 }
 
 TEST_CASE("random: 53-bit uniform numbers from two words", "[tolerance][random]") {
@@ -189,11 +223,11 @@ TEST_CASE("random: the words of a call and Box-Muller", "[tolerance][random]") {
   const std::uint64_t h = fnv1a64(u.id);
   const rtt::tolerance::PhiloxKey key{static_cast<std::uint32_t>(seed),
                                       static_cast<std::uint32_t>(seed >> 32)};
-  const auto call = [&](std::uint32_t j) {
-    return philox4x32_10(
-        {trial, static_cast<std::uint32_t>(h), static_cast<std::uint32_t>(h >> 32), j}, key);
+  const auto call_of = [&](std::uint32_t t, std::uint32_t j) {
+    return philox4x32_10({t, static_cast<std::uint32_t>(h), static_cast<std::uint32_t>(h >> 32), j},
+                         key);
   };
-  const auto w0 = call(0);
+  const auto w0 = call_of(trial, 0);
   const double u_a = uniform53(w0[0], w0[1]);
   const double u_b = uniform53(w0[2], w0[3]);
   CHECK(same(perturbation(seed, trial, u), 0.05 * (2.0 * u_a - 1.0)));
@@ -205,19 +239,44 @@ TEST_CASE("random: the words of a call and Box-Muller", "[tolerance][random]") {
   // Normal: draw k from call floor(k/2), z1 for even and z2 for odd k; the first |z| <= 2.
   ToleranceItem n = u;
   n.distribution = ToleranceDistribution::Normal;
-  double expected = std::numeric_limits<double>::quiet_NaN();
-  for (int k = 0; k < rtt::tolerance::kMaxNormalDraws; ++k) {
-    const auto w = call(static_cast<std::uint32_t>(k / 2));
-    const auto [z1, z2] =
-        rtt::tolerance::detail::box_muller(uniform53(w[0], w[1]), uniform53(w[2], w[3]));
-    const double z = k % 2 == 0 ? z1 : z2;
-    if (std::abs(z) <= 2.0) {
-      expected = 0.025 * z;
-      break;
+  // Reference of trial t: the value and the accepted k (-1 if all draws are rejected).
+  const auto reference = [&](std::uint32_t t) {
+    for (int k = 0; k < rtt::tolerance::kMaxNormalDraws; ++k) {
+      const auto w = call_of(t, static_cast<std::uint32_t>(k / 2));
+      const auto [z1, z2] =
+          rtt::tolerance::detail::box_muller(uniform53(w[0], w[1]), uniform53(w[2], w[3]));
+      const double z = k % 2 == 0 ? z1 : z2;
+      if (std::abs(z) <= 2.0) return std::pair<double, int>{0.025 * z, k};
+    }
+    return std::pair<double, int>{std::numeric_limits<double>::quiet_NaN(), -1};
+  };
+  const auto [expected, k_trial] = reference(trial);
+  REQUIRE(k_trial >= 0);
+  CHECK(same(perturbation(seed, trial, n), expected));
+  // Most trials accept at k = 0 (P = 0.954), which covers neither z2 nor call floor(k/2) for
+  // k >= 2. Search trials that accept at an odd k and at a k >= 2 (P = 0.0436 and 0.0021 per
+  // trial; 20000 trials miss one of them with P of about 1e-18).
+  std::uint32_t trial_odd = 0;
+  std::uint32_t trial_late = 0;
+  int k_odd = -1;
+  int k_late = -1;
+  for (std::uint32_t t = 0; t < 20000 && (k_odd < 0 || k_late < 0); ++t) {
+    const int k = reference(t).second;
+    if (k_odd < 0 && k % 2 == 1) {
+      k_odd = k;
+      trial_odd = t;
+    }
+    if (k_late < 0 && k >= 2) {
+      k_late = k;
+      trial_late = t;
     }
   }
-  REQUIRE(std::isfinite(expected));
-  CHECK(same(perturbation(seed, trial, n), expected));
+  INFO("odd k = " << k_odd << " at trial " << trial_odd << ", k >= 2: " << k_late << " at trial "
+                  << trial_late);
+  REQUIRE(k_odd >= 1);
+  REQUIRE(k_late >= 2);
+  CHECK(same(perturbation(seed, trial_odd, n), reference(trial_odd).first));
+  CHECK(same(perturbation(seed, trial_late, n), reference(trial_late).first));
 
   // Box-Muller (MathWorld, Eqs. (1), (2)) with x1 = 1 - u_a and x2 = u_b.
   const auto [z1, z2] = rtt::tolerance::detail::box_muller(u_a, u_b);
@@ -256,6 +315,8 @@ TEST_CASE("random: rejection of the truncated normal distribution", "[tolerance]
                  [] { return 0.75; }),
              0.1 * (2.0 * 0.75 - 1.0)));
   CHECK(calls == kMax);
+  // The fallback is tested here, in the template, only: in perturbation() all 64 draws are
+  // rejected with P = 0.0455^64, about 1e-86, so no seed reaches u_a of call 32 there.
 }
 
 TEST_CASE("random: values lie in [-T, T] and invalid limits are rejected", "[tolerance][random]") {

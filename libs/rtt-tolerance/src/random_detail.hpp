@@ -22,6 +22,9 @@ namespace rtt::tolerance::detail {
 /// Truncated normal value with sigma = limit / 2 by rejection (ADR 0036, point 5): `normal(k)`
 /// gives draw z_k of a standard normal distribution; the first sigma z_k with |z_k| <= 2,
 /// k < max_draws, is returned. Otherwise limit (2 u - 1) with u = fallback() in [0, 1).
+/// `normal` is called with k = 0, 1, 2, ... in ascending order, each k at most once, and stops
+/// at the first accepted draw; random.cpp relies on this (it computes the pair of a call at its
+/// even k and keeps it for the odd k).
 template <class Normal, class Fallback>
 [[nodiscard]] double truncated_normal(double limit,
                                       int max_draws,
