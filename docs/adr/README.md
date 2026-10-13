@@ -40,7 +40,7 @@ Präzisierungen und Ergänzungen einer angenommenen Entscheidung kommen als dati
 | [0029](0029.md) | Parametertabelle und Konfigurationen | angenommen |
 | [0030](0030.md) | Optimierung (Merit-Funktion, Operanden, Levenberg-Marquardt) | angenommen |
 | [0031](0031.md) | Ideale Linse und ideale Zylinderlinse | angenommen |
-| [0032](0032.md) | Pupillenfunktion und Wellenfront-Auswertung (Zernike-Fit, Strehl, Through-Focus) | angenommen |
+| [0032](0032.md) | Pupillenfunktion und Wellenfront-Auswertung (Zernike-Fit, Strehl, Through-Focus; Nachtrag #265: nominaler Bezug für Spot und OPD) | angenommen |
 | [0033](0033.md) | FFT-Beugung: PSF, MTF, Encircled Energy | angenommen |
 | [0034](0034.md) | Polarisation in der Pupille (P je Ereignis, akkumuliertes Q, Jones-Pupille) | angenommen |
 | [0035](0035.md) | Toleranzsatz im Systemfile (Abschnitt `tolerances`, Klassen, Kompensatoren, Kriterien; Nachtrag #254: einheitliche Segmentliste ist ein Material) | angenommen |
