@@ -96,7 +96,7 @@ inline trace::RayBatch trace_rays(const CompiledSystem& system,
                                   std::uint16_t wavelength,
                                   const trace::PupilSampling& sampling,
                                   trace::Aiming aiming,
-                                  const NominalReference* nominal = nullptr) {
+                                  const NominalReference* nominal) {
   trace::RayBatch rays = aim_rays(system, path, field, wavelength, sampling, aiming, nominal);
   [[maybe_unused]] const auto stats = trace::SequentialTracer().trace(system, path, rays);
   return rays;
@@ -111,7 +111,7 @@ inline trace::RayBatch trace_rays(const CompiledSystem& system,
                                   const trace::PupilSampling& sampling,
                                   trace::Aiming aiming,
                                   const trace::RunControl& control,
-                                  const NominalReference* nominal = nullptr) {
+                                  const NominalReference* nominal) {
   const std::uint16_t fields[] = {field};
   trace::RayBatch rays =
       nominal != nullptr
@@ -132,7 +132,7 @@ inline trace::RayBatch trace_reference_rays(const CompiledSystem& system,
                                             std::uint16_t wavelength,
                                             const trace::PupilSampling& sampling,
                                             trace::Aiming aiming,
-                                            const NominalReference* nominal = nullptr) {
+                                            const NominalReference* nominal) {
   trace::RayBatch rays = aim_rays(system, path, field, wavelength, sampling, aiming, nominal);
   rays.set_ignore_obscurations(true);
   [[maybe_unused]] const auto stats = trace::SequentialTracer().trace(system, path, rays);

@@ -372,7 +372,8 @@ JonesPupil jones_pupil(const CompiledSystem& system,
   reject_crystal_modes(system, path);  // before any ray is traced
 
   // Reference sphere and chief ray of the reference wavelength, as opd_points().
-  const detail::Reference ref = detail::make_reference(system, path, field, options.aiming, 0.0);
+  const detail::Reference ref =
+      detail::make_reference(system, path, field, options.aiming, 0.0, nullptr);
   const std::uint32_t image = detail::image_surface(system, path);
   const Vec3 x_b = system.surfaces()[image].to_global.apply_vector(Vec3::UnitX());
   check_grazing(system, image, x_b, ref.chief_dir);
@@ -399,7 +400,8 @@ JonesPupil jones_pupil(const CompiledSystem& system,
   const double n_image = detail::image_index(system, path, wavelength);
   const trace::RayBatch chief_start = trace::make_rays(
       system, path, fields, wavelength, trace::SinglePupilPoint{0.0, 0.0}, options.aiming);
-  const trace::RayBatch chief = detail::chief_ray(system, path, field, wavelength, options.aiming);
+  const trace::RayBatch chief =
+      detail::chief_ray(system, path, field, wavelength, options.aiming, nullptr);
   const double opl_chief =
       detail::chief_opl(position(chief, 0), direction(chief, 0), chief.opl()[0], ref, n_image);
 

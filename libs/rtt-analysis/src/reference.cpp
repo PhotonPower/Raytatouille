@@ -117,7 +117,9 @@ std::optional<double> opl_to_sphere(
 double image_index(const CompiledSystem& system, PathId path, std::uint16_t wavelength) {
   // Isotropic image medium only. A crystal (ADR 0026) cannot be the image medium here:
   // make_reference and make_rays call paraxial::first_order, which rejects the ordinary and
-  // extraordinary events that lead into a crystal (guard test in test_opd.cpp). An OPD inside a
+  // extraordinary events that lead into a crystal (guard test in test_opd.cpp); with a nominal
+  // reference the rejection comes from first_order of the nominal system, kept in the
+  // reference, whose media a tolerance does not change. An OPD inside a
   // crystal needs the index of the mode and is a follow-up after M4 (#35).
   const auto& last = system.path(path).events.back();
   return std::abs(system.media()[last.medium_after].index[wavelength].real());

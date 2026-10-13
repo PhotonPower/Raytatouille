@@ -52,7 +52,7 @@ struct Reference {
                                        std::uint16_t field,
                                        trace::Aiming aiming,
                                        double focus_shift,
-                                       const NominalReference* nominal = nullptr);
+                                       const NominalReference* nominal);
 
 /// OPL of a ray at p with direction d and OPL `opl` on the image surface up to the reference
 /// sphere, up to a constant n' R common to all rays; none if the line misses the sphere.
@@ -71,7 +71,7 @@ struct Reference {
                                         std::uint16_t field,
                                         std::uint16_t wavelength,
                                         trace::Aiming aiming,
-                                        const NominalReference* nominal = nullptr);
+                                        const NominalReference* nominal);
 
 /// OPL of the chief ray up to the sphere, the reference of W.
 /// @throws AnalysisError if it misses the sphere
@@ -101,6 +101,6 @@ struct Reference {
                                                    const Reference& ref,
                                                    LossCounter& losses,
                                                    const trace::RunControl& control,
-                                                   const NominalReference* nominal = nullptr);
+                                                   const NominalReference* nominal);
 
 }  // namespace rtt::analysis::detail

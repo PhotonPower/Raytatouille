@@ -452,7 +452,7 @@ std::optional<PupilMapping> make_mapping(const CompiledSystem& system,
   // Virtual reference rays (ADR 0032, addendum #229): M is the derivative at p = 0, also in a
   // centrally obscured pupil.
   const trace::RayBatch rays =
-      detail::trace_reference_rays(system, path, field, wavelength, parabasal, aiming);
+      detail::trace_reference_rays(system, path, field, wavelength, parabasal, aiming, nullptr);
   std::array<std::array<double, 2>, 4> s{};
   for (std::size_t i = 0; i < 4; ++i) {
     if (!detail::arrived(rays, i, image)) {
@@ -504,7 +504,7 @@ PupilFunction pupil_function(const compile::CompiledSystem& system,
   PupilCells cells = pupil_cells(options.grid, epsilon);
 
   const detail::Reference ref =
-      detail::make_reference(system, path, field, options.aiming, options.focus_shift);
+      detail::make_reference(system, path, field, options.aiming, options.focus_shift, nullptr);
   const std::uint32_t image = detail::image_surface(system, path);
   // ADR 0032, point 4: the frame of the PSF plane needs x_B not parallel to d_c.
   const math::Vec3 x_b = system.surfaces()[image].to_global.apply_vector(math::Vec3::UnitX());
@@ -543,7 +543,8 @@ PupilFunction pupil_function(const compile::CompiledSystem& system,
   e.reference_pos = ref.chief_pos;
   e.reference_dir = ref.chief_dir;
   e.exit_pupil = ref.exit_pupil;
-  const trace::RayBatch chief = detail::chief_ray(system, path, field, wavelength, options.aiming);
+  const trace::RayBatch chief =
+      detail::chief_ray(system, path, field, wavelength, options.aiming, nullptr);
   e.chief_pos = {chief.pos_x()[0], chief.pos_y()[0], chief.pos_z()[0]};
   e.chief_dir = {chief.dir_x()[0], chief.dir_y()[0], chief.dir_z()[0]};
   e.chief_opl = chief.opl()[0];
@@ -557,11 +558,11 @@ PupilFunction pupil_function(const compile::CompiledSystem& system,
     (cells.inner_rim[j] != 0 ? rim : list).points.push_back({pf.px[j], pf.py[j]});
   }
   const trace::RayBatch rays =
-      detail::trace_rays(system, path, field, wavelength, list, options.aiming, control);
+      detail::trace_rays(system, path, field, wavelength, list, options.aiming, control, nullptr);
   const trace::RayBatch rim_rays =
-      rim.points.empty()
-          ? trace::RayBatch()
-          : detail::trace_reference_rays(system, path, field, wavelength, rim, options.aiming);
+      rim.points.empty() ? trace::RayBatch()
+                         : detail::trace_reference_rays(system, path, field, wavelength, rim,
+                                                        options.aiming, nullptr);
   const double nan = std::numeric_limits<double>::quiet_NaN();
   for (auto* column :
        {&e.pos_x, &e.pos_y, &e.pos_z, &e.dir_x, &e.dir_y, &e.dir_z, &e.opl, &e.weight}) {

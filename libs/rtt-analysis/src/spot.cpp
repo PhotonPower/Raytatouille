@@ -27,7 +27,7 @@ Point2 chief_point(const CompiledSystem& system,
                    PathId path,
                    std::uint16_t field,
                    trace::Aiming aiming,
-                   const NominalReference* nominal = nullptr) {
+                   const NominalReference* nominal) {
   const std::uint32_t image = image_surface(system, path);
   const trace::RayBatch rays =
       trace_reference_rays(system, path, field, system.reference_wavelength(),
@@ -174,12 +174,12 @@ RayFan ray_fan(const compile::CompiledSystem& system,
   fan.field = field;
   fan.wavelength = wavelength;
   fan.image_surface = image_surface(system, path);
-  fan.chief = chief_point(system, path, field, options.aiming);
+  fan.chief = chief_point(system, path, field, options.aiming, nullptr);
 
   detail::LossCounter losses(system, path, options.lost_warning_fraction);
   const auto make_fan = [&](const trace::PupilSampling& sampling, bool tangential) {
     const trace::RayBatch rays =
-        trace_rays(system, path, field, wavelength, sampling, options.aiming, control);
+        trace_rays(system, path, field, wavelength, sampling, options.aiming, control, nullptr);
     losses.add(rays, fan.image_surface);
     std::vector<FanPoint> points;
     points.reserve(rays.size());
