@@ -348,8 +348,8 @@ class Compiler {
       return std::nullopt;  // reported by medium()
     }
     // n_d, n_F, n_C with the helper that also gives the class limits of abbe (#260).
-    const FraunhoferIndices lines = fraunhofer_indices(
-        *material, system_.environment.temperature_c, system_.environment.pressure_atm);
+    const FraunhoferIndices lines = fraunhofer_indices(*material, system_.environment.temperature_c,
+                                                       system_.environment.pressure_atm);
     constexpr std::array<const char*, 3> kNames{"d", "F", "C"};
     switch (lines.status) {
       case FraunhoferIndices::Status::OutOfRange:
@@ -382,7 +382,8 @@ class Compiler {
       return std::nullopt;
     }
     double scale = 1.0;  // D'/D
-    if (const std::optional<double> abbe = lines.abbe_number()) {  // none for D = 0
+    // No nu_d for D = 0.
+    if (const std::optional<double> abbe = lines.abbe_number()) {
       const double vd = *abbe;
       if (!(vd + change.delta_vd > 0.0)) {
         report("tolerances.limit_invalid", location,

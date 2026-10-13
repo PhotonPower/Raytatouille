@@ -497,8 +497,8 @@ TEST_CASE("tolerances: single values at a crystal are no error", "[model][tolera
   l2.crystal = CrystalMaterial{"BIREFRINGENT:CALCITE", "BIREFRINGENT:CALCITE-E"};
   std::erase_if(s.tolerances.items, [](const ToleranceItem& i) { return i.id == "L2-index"; });
   const std::size_t first = s.tolerances.overrides.size();
-  s.tolerances.overrides.push_back(ToleranceValueOverride{at(A::Node, "L2"), K::Index, 0.001,
-                                                          ToleranceDistribution::Normal});
+  s.tolerances.overrides.push_back(
+      ToleranceValueOverride{at(A::Node, "L2"), K::Index, 0.001, ToleranceDistribution::Normal});
   s.tolerances.overrides.push_back(
       ToleranceValueOverride{at(A::Node, "L2"), K::Abbe, 1.0, ToleranceDistribution::Normal});
   const std::vector<Diagnostic> d = tolerance_diagnostics(s);
@@ -529,7 +529,7 @@ TEST_CASE("tolerances: hash collision of an explicit with a generated id",
   System s = valid();
   Element& stop = std::get<Element>(s.root.children[0].value);
   REQUIRE(stop.name == "stop");
-  stop.name = node_name;  // class normal: generates decenter_x at the stop
+  stop.name = node_name;                   // class normal: generates decenter_x at the stop
   s.tolerances.items[7].id = explicit_id;  // "roll" at fold
   // Content guard: the generated id exists and is generated.
   const ClassTolerances r = class_tolerances(s);

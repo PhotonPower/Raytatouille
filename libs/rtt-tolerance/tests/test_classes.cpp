@@ -143,8 +143,9 @@ const rtt::material::MaterialLibrary& schott() {
 double nu_d(const rtt::model::System& system, const std::string& reference) {
   const auto m = schott().resolve(reference);
   const auto at = [&](double air_um) {
-    return m->index(rtt::compile::line_vacuum_wavelength_um(air_um),
-                    system.environment.temperature_c, system.environment.pressure_atm)
+    return m
+        ->index(rtt::compile::line_vacuum_wavelength_um(air_um), system.environment.temperature_c,
+                system.environment.pressure_atm)
         .real();
   };
   const double nd = at(rtt::compile::kLineDAirUm);
@@ -242,9 +243,8 @@ TEST_CASE("classes: kinds no class generates at a level have no limit", "[tolera
       CHECK_THROWS_AS((void)class_limit(c, x.kind, x.level), std::invalid_argument);
     }
   }
-  CHECK_THROWS_AS(
-      (void)class_limit(static_cast<ToleranceClass>(9), K::Thickness, L::Element),
-      std::invalid_argument);
+  CHECK_THROWS_AS((void)class_limit(static_cast<ToleranceClass>(9), K::Thickness, L::Element),
+                  std::invalid_argument);
   CHECK_THROWS_AS(
       (void)class_limit(ToleranceClass::Normal, static_cast<ToleranceKind>(99), L::Element),
       std::invalid_argument);
@@ -562,9 +562,9 @@ TEST_CASE("expand: abbe of a glass without dispersion is skipped", "[tolerance][
   CHECK(items.count("class:node:L1:abbe:0") == 0U);
   // Content guard: the flint keeps its abbe item, the flat glass its index item.
   REQUIRE(items.count("class:node:L1:abbe:1") == 1U);
-  CHECK(same(items.at("class:node:L1:abbe:1").limit,
-             class_limit(ToleranceClass::Precise, K::Abbe, L::Element) *
-                 nu_d(system, l1_glass(1))));
+  CHECK(
+      same(items.at("class:node:L1:abbe:1").limit,
+           class_limit(ToleranceClass::Precise, K::Abbe, L::Element) * nu_d(system, l1_glass(1))));
   CHECK(items.count("class:node:L1:index:0") == 1U);
 }
 

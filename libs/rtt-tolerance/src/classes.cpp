@@ -38,7 +38,7 @@ constexpr std::array<Row, 15> kTable{{
     {K::TiltXDeg, L::Element, 0.2, 0.1, 0.05},     // degree
     {K::TiltYDeg, L::Element, 0.2, 0.1, 0.05},     // degree
     {K::Index, L::Element, 1e-3, 5e-4, 2e-4},
-    {K::Abbe, L::Element, 0.008, 0.005, 0.002},  // share of nu_d
+    {K::Abbe, L::Element, 0.008, 0.005, 0.002},    // share of nu_d
     {K::DecenterX, L::Assembly, 0.25, 0.1, 0.05},  // mm
     {K::DecenterY, L::Assembly, 0.25, 0.1, 0.05},  // mm
     {K::ShiftZ, L::Assembly, 0.25, 0.1, 0.05},     // mm

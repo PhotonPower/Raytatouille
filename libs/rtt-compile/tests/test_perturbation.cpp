@@ -1064,8 +1064,7 @@ class RedOnly final : public rtt::material::Material {
   [[nodiscard]] rtt::math::Complex index(double, double, double) const override {
     return {1.6, 0.0};
   }
-  [[nodiscard]] std::optional<rtt::material::WavelengthRange> wavelength_range_um()
-      const override {
+  [[nodiscard]] std::optional<rtt::material::WavelengthRange> wavelength_range_um() const override {
     return rtt::material::WavelengthRange{0.55, 2.0};
   }
 };
