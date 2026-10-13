@@ -2,6 +2,7 @@
 // tolerances.* at its pointer, the merit codes in criteria and compensator merit, and a valid set
 // without diagnostics.
 
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <cstddef>
@@ -482,6 +483,64 @@ TEST_CASE("tolerances: single values where the class skips the material are no e
   REQUIRE(r.value_overrides.size() >= 3);
   const std::vector<OverrideStatus> tail(r.value_overrides.end() - 3, r.value_overrides.end());
   CHECK(tail == expected);
+}
+
+TEST_CASE("tolerances: single values at a crystal are no error", "[model][tolerances][validate]") {
+  // ADR 0035, point 5: the class skips index and abbe at a crystal; a single value there has no
+  // effect (second review of #272). An explicit item there stays an error (case "index at a
+  // crystal" above), so the explicit L2-index is removed first.
+  System s = valid();
+  auto& objective = std::get<Assembly>(s.root.children[1].value);
+  Element& l2 = std::get<Element>(objective.children[1].value);
+  REQUIRE(l2.name == "L2");
+  l2.material.reset();
+  l2.crystal = CrystalMaterial{"BIREFRINGENT:CALCITE", "BIREFRINGENT:CALCITE-E"};
+  std::erase_if(s.tolerances.items, [](const ToleranceItem& i) { return i.id == "L2-index"; });
+  const std::size_t first = s.tolerances.overrides.size();
+  s.tolerances.overrides.push_back(
+      ToleranceValueOverride{at(A::Node, "L2"), K::Index, 0.001, ToleranceDistribution::Normal});
+  s.tolerances.overrides.push_back(
+      ToleranceValueOverride{at(A::Node, "L2"), K::Abbe, 1.0, ToleranceDistribution::Normal});
+  const std::vector<Diagnostic> d = tolerance_diagnostics(s);
+  for (const Diagnostic& x : d) UNSCOPED_INFO(to_string(x));
+  CHECK(d.empty());
+  // Content guard: both are listed as skipped because of the crystal.
+  const ClassTolerances r = class_tolerances(s);
+  const std::vector<OverrideStatus> expected = {
+      {first, OverrideEffect::Skipped, ClassSkip::Crystal},
+      {first + 1, OverrideEffect::Skipped, ClassSkip::Crystal}};
+  REQUIRE(r.value_overrides.size() >= 2);
+  const std::vector<OverrideStatus> tail(r.value_overrides.end() - 2, r.value_overrides.end());
+  CHECK(tail == expected);
+}
+
+TEST_CASE("tolerances: hash collision of an explicit with a generated id",
+          "[model][tolerances][validate]") {
+  // Second review of #272. The pair was found once, outside the tests, by a parallel rho search
+  // with distinguished points over f(h) = (h odd ? "E" : "class:node:N") + 11 base-62 digits of
+  // h (+ ":decenter_x"), hashed with FNV-1a 64 (RFC 9923, Sec. 2 and 5): about 7e9 steps.
+  // Both ids hash to 0x5FF81F3183B7743E (docs/quellen.md, FNV row).
+  const std::string explicit_id = "EV1VJMvHpphP";
+  const std::string node_name = "NK7EEpYgd3He";
+  const std::string generated_id = "class:node:" + node_name + ":decenter_x";
+  REQUIRE(tolerance_id_hash(explicit_id) == tolerance_id_hash(generated_id));
+  REQUIRE(explicit_id != generated_id);
+
+  System s = valid();
+  Element& stop = std::get<Element>(s.root.children[0].value);
+  REQUIRE(stop.name == "stop");
+  stop.name = node_name;                   // class normal: generates decenter_x at the stop
+  s.tolerances.items[7].id = explicit_id;  // "roll" at fold
+  // Content guard: the generated id exists and is generated.
+  const ClassTolerances r = class_tolerances(s);
+  REQUIRE(std::any_of(r.items.begin(), r.items.end(), [&](const ClassTolerance& c) {
+    return c.id == generated_id && c.generated();
+  }));
+  const std::vector<Diagnostic> d = tolerance_diagnostics(s);
+  for (const Diagnostic& x : d) UNSCOPED_INFO(to_string(x));
+  REQUIRE(d.size() == 1);
+  CHECK(d[0].code == "tolerances.id_hash_collision");
+  CHECK(d[0].location == "/tolerances/items/7/id");  // generated ids are entered first
 }
 
 TEST_CASE("tolerances: a class alone never invalidates a valid file",

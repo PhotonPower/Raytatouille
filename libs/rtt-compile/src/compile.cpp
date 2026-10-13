@@ -347,32 +347,28 @@ class Compiler {
     } catch (const material::UnknownMaterial&) {
       return std::nullopt;  // reported by medium()
     }
-    const double t = system_.environment.temperature_c;
-    const double p = system_.environment.pressure_atm;
-    const auto range = material->wavelength_range_um();
-    constexpr std::array<double, 3> kLines{kLineDAirUm, kLineFAirUm, kLineCAirUm};
+    // n_d, n_F, n_C with the helper that also gives the class limits of abbe (#260).
+    const FraunhoferIndices lines = fraunhofer_indices(*material, system_.environment.temperature_c,
+                                                       system_.environment.pressure_atm);
     constexpr std::array<const char*, 3> kNames{"d", "F", "C"};
-    std::array<double, 3> n{};
-    for (std::size_t k = 0; k < kLines.size(); ++k) {
-      const double wl = line_vacuum_wavelength_um(kLines[k]);
-      if (range && !range->contains(wl)) {
+    switch (lines.status) {
+      case FraunhoferIndices::Status::OutOfRange:
         report("tolerances.material_unsupported", location,
-               std::string("the line ") + kNames[k] + " (" + number(wl) +
+               std::string("the line ") + kNames.at(lines.line) + " (" +
+                   number(lines.wavelength_um) +
                    " um in vacuum) is outside the valid range of material '" + reference +
                    "': no material tolerance (ADR 0036, point 1c)");
         return std::nullopt;
-      }
-      const math::Complex value = material->index(wl, t, p);
-      if (value.imag() != 0.0) {
+      case FraunhoferIndices::Status::Complex:
         report("tolerances.material_unsupported", location,
                std::string("material '") + reference + "' has a complex index at the line " +
-                   kNames[k] + ": no material tolerance (ADR 0035, point 2)");
+                   kNames.at(lines.line) + ": no material tolerance (ADR 0035, point 2)");
         return std::nullopt;
-      }
-      n[k] = value.real();
+      case FraunhoferIndices::Status::Ok:
+        break;
     }
-    const double nd = n[0];
-    const double dispersion = n[1] - n[2];  // D = n_F - n_C
+    const double nd = lines.nd;
+    const double dispersion = lines.dispersion();  // D = n_F - n_C
     if (dispersion == 0.0 && change.delta_vd != 0.0) {
       report("tolerances.abbe_on_const", location,
              "Abbe number tolerance at material '" + reference +
@@ -386,8 +382,9 @@ class Compiler {
       return std::nullopt;
     }
     double scale = 1.0;  // D'/D
-    if (dispersion != 0.0) {
-      const double vd = (nd - 1.0) / dispersion;
+    // No nu_d for D = 0.
+    if (const std::optional<double> abbe = lines.abbe_number()) {
+      const double vd = *abbe;
       if (!(vd + change.delta_vd > 0.0)) {
         report("tolerances.limit_invalid", location,
                "nu_d + delta nu_d = " + number(vd + change.delta_vd) + " <= 0 for material '" +

@@ -1055,3 +1055,70 @@ TEST_CASE("perturbation: entries without target are invalid arguments", "[compil
                   std::invalid_argument);
   CHECK_THROWS_AS((void)compile_with(doublet, material("L", 2, 1e-3, 0.0)), std::invalid_argument);
 }
+
+namespace {
+
+/// Constant index 1.6 on [0.55, 2] um: the line F (0.486 um) is outside.
+class RedOnly final : public rtt::material::Material {
+ public:
+  [[nodiscard]] rtt::math::Complex index(double, double, double) const override {
+    return {1.6, 0.0};
+  }
+  [[nodiscard]] std::optional<rtt::material::WavelengthRange> wavelength_range_um() const override {
+    return rtt::material::WavelengthRange{0.55, 2.0};
+  }
+};
+
+}  // namespace
+
+TEST_CASE("perturbation: indices at the Fraunhofer lines and nu_d", "[compile][perturbation]") {
+  // Shared by the material overlay and the class limits of abbe in rtt-tolerance (#260).
+  using rtt::compile::fraunhofer_indices;
+  using rtt::compile::FraunhoferIndices;
+  using rtt::compile::line_vacuum_wavelength_um;
+  MaterialLibrary lib;
+  lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/schott.agf");
+  const double t = 25.0;
+  const double p = 1.0;
+
+  SECTION("a catalog glass: the material at the vacuum wavelengths of the lines") {
+    const auto glass = lib.resolve("SCHOTT:N-BK7");
+    const FraunhoferIndices f = fraunhofer_indices(*glass, t, p);
+    REQUIRE(f.status == FraunhoferIndices::Status::Ok);
+    const auto at = [&](double air_um) {
+      return glass->index(line_vacuum_wavelength_um(air_um), t, p).real();
+    };
+    const double nd = at(rtt::compile::kLineDAirUm);
+    const double nf = at(rtt::compile::kLineFAirUm);
+    const double nc = at(rtt::compile::kLineCAirUm);
+    CHECK(same(f.nd, nd));
+    CHECK(same(f.nf, nf));
+    CHECK(same(f.nc, nc));
+    const std::optional<double> abbe = f.abbe_number();
+    REQUIRE(abbe.has_value());
+    const double vd = abbe.value_or(0.0);  // bound once after the check (clang-tidy)
+    CHECK(same(vd, (nd - 1.0) / (nf - nc)));
+    // Content guard: V(d) = 64.17 of the NM line of N-BK7 in tests/catalogs/schott.agf (relative
+    // to air at the catalogue temperature; here absolute at 25 degC, which differs by < 0.1).
+    CHECK(std::abs(vd - 64.17) < 0.1);
+  }
+  SECTION("a real CONST material has no nu_d") {
+    const FraunhoferIndices f = fraunhofer_indices(*lib.resolve("CONST:1.5"), t, p);
+    REQUIRE(f.status == FraunhoferIndices::Status::Ok);
+    CHECK(f.nd == 1.5);
+    CHECK(f.dispersion() == 0.0);
+    CHECK_FALSE(f.abbe_number().has_value());
+  }
+  SECTION("a metal: complex at the line d") {
+    const FraunhoferIndices f = fraunhofer_indices(*lib.resolve("CONST:0.2,3.0"), t, p);
+    CHECK(f.status == FraunhoferIndices::Status::Complex);
+    CHECK(f.line == 0U);
+  }
+  SECTION("a line outside the range: F") {
+    const RedOnly red;
+    const FraunhoferIndices f = fraunhofer_indices(red, t, p);
+    CHECK(f.status == FraunhoferIndices::Status::OutOfRange);
+    CHECK(f.line == 1U);
+    CHECK(f.wavelength_um == line_vacuum_wavelength_um(rtt::compile::kLineFAirUm));
+  }
+}
