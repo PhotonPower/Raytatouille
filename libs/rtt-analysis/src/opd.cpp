@@ -49,11 +49,13 @@ OpdPupilPoints opd_points(const compile::CompiledSystem& system,
   result.field = field;
   result.wavelength = wavelength;
   check_focus_shift(options);
-  const Reference ref = make_reference(system, path, field, options.aiming, options.focus_shift);
+  const NominalReference* nominal = detail::nominal_of(options.reference, path);
+  const Reference ref =
+      make_reference(system, path, field, options.aiming, options.focus_shift, nominal);
   result.sphere = ref.sphere;
   detail::LossCounter losses(system, path, options.lost_warning_fraction);
   result.points = points_against(system, path, field, wavelength, sampling, options.aiming, ref,
-                                 losses, control);
+                                 losses, control, nominal);
   result.losses = losses.result();
   result.warnings = losses.warnings();
   return result;
@@ -80,11 +82,13 @@ OpdMap opd_map(const compile::CompiledSystem& system,
   map.field = field;
   map.wavelength = wavelength;
   check_focus_shift(options);
-  const Reference ref = make_reference(system, path, field, options.aiming, options.focus_shift);
+  const NominalReference* nominal = detail::nominal_of(options.reference, path);
+  const Reference ref =
+      make_reference(system, path, field, options.aiming, options.focus_shift, nominal);
   map.sphere = ref.sphere;
   detail::LossCounter losses(system, path, options.lost_warning_fraction);
   map.points = points_against(system, path, field, wavelength, trace::GridPupil{options.grid},
-                              options.aiming, ref, losses, control);
+                              options.aiming, ref, losses, control, nominal);
   map.losses = losses.result();
   map.warnings = losses.warnings();
 
@@ -135,15 +139,17 @@ OpdFan opd_fan(const compile::CompiledSystem& system,
   fan.field = field;
   fan.wavelength = wavelength;
   check_focus_shift(options);
-  const Reference ref = make_reference(system, path, field, options.aiming, options.focus_shift);
+  const NominalReference* nominal = detail::nominal_of(options.reference, path);
+  const Reference ref =
+      make_reference(system, path, field, options.aiming, options.focus_shift, nominal);
   fan.sphere = ref.sphere;
   detail::LossCounter losses(system, path, options.lost_warning_fraction);
   fan.tangential =
       points_against(system, path, field, wavelength, trace::FanYPupil{options.fan_points},
-                     options.aiming, ref, losses, control);
+                     options.aiming, ref, losses, control, nominal);
   fan.sagittal =
       points_against(system, path, field, wavelength, trace::FanXPupil{options.fan_points},
-                     options.aiming, ref, losses, control);
+                     options.aiming, ref, losses, control, nominal);
   fan.losses = losses.result();
   fan.warnings = losses.warnings();
   return fan;

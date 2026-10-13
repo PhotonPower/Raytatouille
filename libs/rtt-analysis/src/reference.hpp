@@ -43,13 +43,16 @@ struct Reference {
                                      double focus_shift,
                                      double lambda_mm);
 
-/// The reference of `field`: chief ray of the reference wavelength, paraxial exit pupil.
+/// The reference of `field`: chief ray of the reference wavelength, paraxial exit pupil; with
+/// a nominal reference the chief ray aimed with it and the exit pupil of the nominal system
+/// (ADR 0032, addendum #265).
 /// @throws as opd_points() (no stop, chief ray lost, exit pupil on the image surface)
 [[nodiscard]] Reference make_reference(const CompiledSystem& system,
                                        PathId path,
                                        std::uint16_t field,
                                        trace::Aiming aiming,
-                                       double focus_shift);
+                                       double focus_shift,
+                                       const NominalReference* nominal);
 
 /// OPL of a ray at p with direction d and OPL `opl` on the image surface up to the reference
 /// sphere, up to a constant n' R common to all rays; none if the line misses the sphere.
@@ -67,7 +70,8 @@ struct Reference {
                                         PathId path,
                                         std::uint16_t field,
                                         std::uint16_t wavelength,
-                                        trace::Aiming aiming);
+                                        trace::Aiming aiming,
+                                        const NominalReference* nominal);
 
 /// OPL of the chief ray up to the sphere, the reference of W.
 /// @throws AnalysisError if it misses the sphere
@@ -96,6 +100,7 @@ struct Reference {
                                                    trace::Aiming aiming,
                                                    const Reference& ref,
                                                    LossCounter& losses,
-                                                   const trace::RunControl& control);
+                                                   const trace::RunControl& control,
+                                                   const NominalReference* nominal);
 
 }  // namespace rtt::analysis::detail

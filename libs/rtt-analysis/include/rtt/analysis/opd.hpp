@@ -34,8 +34,10 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
+#include "rtt/analysis/nominal_reference.hpp"
 #include "rtt/analysis/spot.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/math/types.hpp"
@@ -77,6 +79,14 @@ struct OpdOptions {
   /// wavelength on the image surface (> 0 in the direction of propagation). 0 gives the sphere
   /// of before bit for bit. Finite; C' on the exit-pupil centre is an AnalysisError.
   double focus_shift = 0.0;
+  /// Nominal reference (ADR 0036, point 2; ADR 0032, addendum #265): the rays, the chief rays
+  /// included, are aimed with the paraxial data of the nominal system, and the reference sphere
+  /// has its centre on the chief ray of the trial (as without reference) and its radius to the
+  /// exit-pupil centre E of the nominal system. For a perturbed trial that
+  /// rtt::paraxial::first_order rejects. Cheap to copy (shared, immutable content). None: the
+  /// paraxial data of `system`, as before. With the reference of the same system the result is
+  /// bitwise that without reference.
+  std::optional<NominalReference> reference = std::nullopt;
 };
 
 /// OPD map over the pupil.

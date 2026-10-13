@@ -6,6 +6,7 @@ add_library(rtt_analysis
   src/field.cpp
   src/ghosts.cpp
   src/jones.cpp
+  src/nominal_reference.cpp
   src/opd.cpp
   src/paths.cpp
   src/psf.cpp
@@ -48,6 +49,7 @@ if(RTT_BUILD_TESTS)
       tests/test_m6_acceptance.cpp
       tests/test_mtf_ee.cpp
       tests/test_no_stop.cpp
+      tests/test_nominal_reference.cpp
       tests/test_obscured.cpp
       tests/test_opd.cpp
       tests/test_opd_points.cpp
