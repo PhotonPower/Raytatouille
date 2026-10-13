@@ -1,5 +1,6 @@
 #include "tolerance_targets.hpp"
 
+#include <algorithm>
 #include <charconv>
 #include <cmath>
 #include <system_error>
@@ -68,6 +69,23 @@ std::optional<std::string> TargetIndex::anchor_pointer(const ToleranceTarget& ta
     if (const NodeEntry* n = node(target.name)) return n->pointer;
   }
   return std::nullopt;
+}
+
+bool class_generates(const TargetIndex& index, const ToleranceTarget& target, ToleranceKind kind) {
+  const auto contains = [kind](const auto& kinds) {
+    return std::find(kinds.begin(), kinds.end(), kind) != kinds.end();
+  };
+  if (target.anchor == ToleranceAnchor::Surface) {
+    const SurfaceEntry* s = index.surface(target.name);
+    if (s == nullptr) return false;
+    // The thickness of the segment before surface j >= 1 (ADR 0035, point 5).
+    return contains(kSurfaceKinds) && (kind != ToleranceKind::Thickness || s->index >= 1);
+  }
+  if (target.anchor != ToleranceAnchor::Node) return false;
+  const NodeEntry* n = index.node(target.name);
+  if (n == nullptr) return false;
+  if (n->assembly != nullptr) return contains(kAssemblyKinds);
+  return contains(kElementKinds) || contains(kMaterialKinds);
 }
 
 bool is_rigid(ToleranceKind kind) noexcept {

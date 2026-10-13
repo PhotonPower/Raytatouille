@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <array>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -61,18 +60,10 @@ std::uint64_t tolerance_id_hash(std::string_view id) noexcept {
 
 namespace {
 
+using detail::kAssemblyKinds;
+using detail::kElementKinds;
+using detail::kMaterialKinds;
 using detail::MaterialClass;
-
-/// The kinds a class generates per level, in the order of ADR 0035, point 5.
-constexpr std::array kSurfaceKinds = {ToleranceKind::CurvatureRelative, ToleranceKind::Conic,
-                                      ToleranceKind::Thickness};
-constexpr std::array kElementKinds = {ToleranceKind::Thickness, ToleranceKind::DecenterX,
-                                      ToleranceKind::DecenterY, ToleranceKind::TiltXDeg,
-                                      ToleranceKind::TiltYDeg};
-constexpr std::array kMaterialKinds = {ToleranceKind::Index, ToleranceKind::Abbe};
-constexpr std::array kAssemblyKinds = {ToleranceKind::DecenterX, ToleranceKind::DecenterY,
-                                       ToleranceKind::ShiftZ, ToleranceKind::TiltXDeg,
-                                       ToleranceKind::TiltYDeg};
 
 ClassSkip material_skip(const std::string& reference, ToleranceKind kind) {
   switch (detail::classify_material(reference)) {
@@ -262,25 +253,11 @@ class ClassGenerator {
       node = s->element->name;
     }
     const auto it = effective_.find(node);
-    if (it != effective_.end() && it->second == ToleranceClass::None && generatable(v)) {
+    if (it != effective_.end() && it->second == ToleranceClass::None &&
+        detail::class_generates(index_, v.target, v.kind)) {
       return {i, OverrideEffect::ClassNone, ClassSkip::None};
     }
     return {i, OverrideEffect::NotGenerated, ClassSkip::None};
-  }
-
-  /// True if a class generates the kind of `v` at the level of its target.
-  bool generatable(const ToleranceValueOverride& v) const {
-    const auto contains = [&](const auto& kinds) {
-      for (const ToleranceKind k : kinds) {
-        if (k == v.kind) return true;
-      }
-      return false;
-    };
-    if (v.target.anchor == ToleranceAnchor::Surface) return contains(kSurfaceKinds);
-    const detail::NodeEntry* n = index_.node(v.target.name);
-    if (n == nullptr) return false;
-    if (n->assembly != nullptr) return contains(kAssemblyKinds);
-    return contains(kElementKinds) || contains(kMaterialKinds);
   }
 
   const System& system_;

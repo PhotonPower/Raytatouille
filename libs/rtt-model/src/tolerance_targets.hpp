@@ -5,6 +5,7 @@
 /// edit form, the Params by pointer, and the perturbed quantity of a tolerance. Shared by the
 /// class enumeration and validate.
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -78,5 +79,25 @@ enum class MaterialClass : std::uint8_t { Other, RealConst, Metal };
 
 /// True for the rigid kinds (decenter, shift, tilts).
 [[nodiscard]] bool is_rigid(ToleranceKind kind) noexcept;
+
+/// The kinds a class generates per level, in the order of ADR 0035, point 5. Thickness at a
+/// surface only for surface j >= 1 of its element.
+inline constexpr std::array kSurfaceKinds = {ToleranceKind::CurvatureRelative, ToleranceKind::Conic,
+                                             ToleranceKind::Thickness};
+inline constexpr std::array kElementKinds = {ToleranceKind::Thickness, ToleranceKind::DecenterX,
+                                             ToleranceKind::DecenterY, ToleranceKind::TiltXDeg,
+                                             ToleranceKind::TiltYDeg};
+inline constexpr std::array kMaterialKinds = {ToleranceKind::Index, ToleranceKind::Abbe};
+inline constexpr std::array kAssemblyKinds = {ToleranceKind::DecenterX, ToleranceKind::DecenterY,
+                                              ToleranceKind::ShiftZ, ToleranceKind::TiltXDeg,
+                                              ToleranceKind::TiltYDeg};
+
+/// True if a class generates `kind` at the level of `target` (ADR 0035, point 5): the surface
+/// kinds at a surface (thickness only at surface j >= 1), the assembly kinds at an assembly, the
+/// element and material kinds at an element. Whether the class then skips it there (plane,
+/// bound, material) is the enumeration's. False for a row, the root or an unknown target.
+[[nodiscard]] bool class_generates(const TargetIndex& index,
+                                   const ToleranceTarget& target,
+                                   ToleranceKind kind);
 
 }  // namespace rtt::model::detail

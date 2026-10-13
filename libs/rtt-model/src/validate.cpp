@@ -922,49 +922,62 @@ class Validator {
     return n->element != nullptr ? &n->element->pose : &n->assembly->pose;
   }
 
-  /// The material kinds: an element with an isotropic material, the segment as ADR 0035,
-  /// point 2 requires; Metal, crystals and CONST at abbe are reported.
-  void check_material(const detail::TargetIndex& index,
-                      const ToleranceTarget& t,
-                      ToleranceKind kind,
-                      const std::string& loc) {
+  /// The segment structure of a material kind (ADR 0035, point 2; addendum #254): the target is
+  /// an element, `segment` is given exactly for a material list, lies inside it and is 0 at a
+  /// uniform list. Returns the element, or null after a report.
+  const Element* check_segment(const detail::TargetIndex& index,
+                               const ToleranceTarget& t,
+                               const std::string& loc) {
     const detail::NodeEntry* n = t.anchor == ToleranceAnchor::Node ? index.node(t.name) : nullptr;
     if (n == nullptr || n->element == nullptr) {
       report("tolerances.target_invalid", loc + "/kind",
              "index and abbe need an element as target");
-      return;
+      return nullptr;
     }
     const Element& e = *n->element;
-    std::optional<std::string> material;
-    if (!e.segment_materials.empty()) {
-      if (!t.segment) {
-        report("tolerances.target_invalid", loc,
-               "element '" + e.name + "' has several materials: segment is required");
-        return;
-      }
-      if (*t.segment >= e.segment_materials.size()) {
-        report("tolerances.target_invalid", loc + "/segment",
-               "element '" + e.name + "' has " + std::to_string(e.segment_materials.size()) +
-                   " segments");
-        return;
-      }
-      // A uniform list is one material and one body (ADR 0035, addendum #254): only segment 0.
-      const auto& list = e.segment_materials;
-      if (*t.segment >= 1 && std::all_of(list.begin(), list.end(),
-                                         [&](const std::string& x) { return x == list.front(); })) {
-        report("tolerances.target_invalid", loc + "/segment",
-               "element '" + e.name + "' has one material in every segment: segment 0");
-        return;
-      }
-      material = e.segment_materials[*t.segment];
-    } else {
+    const auto& list = e.segment_materials;
+    if (list.empty()) {
       if (t.segment) {
         report("tolerances.target_invalid", loc + "/segment",
                "element '" + e.name + "' has one material: no segment");
-        return;
+        return nullptr;
       }
-      material = e.material;
+      return &e;
     }
+    if (!t.segment) {
+      report("tolerances.target_invalid", loc,
+             "element '" + e.name + "' has several materials: segment is required");
+      return nullptr;
+    }
+    const std::uint32_t segment = *t.segment;
+    if (segment >= list.size()) {
+      report("tolerances.target_invalid", loc + "/segment",
+             "element '" + e.name + "' has " + std::to_string(list.size()) + " segments");
+      return nullptr;
+    }
+    // A uniform list is one material and one body (ADR 0035, addendum #254): only segment 0.
+    if (segment >= 1 && std::all_of(list.begin(), list.end(),
+                                    [&](const std::string& x) { return x == list.front(); })) {
+      report("tolerances.target_invalid", loc + "/segment",
+             "element '" + e.name + "' has one material in every segment: segment 0");
+      return nullptr;
+    }
+    return &e;
+  }
+
+  /// The material kinds of an explicit item: the segment structure, then an isotropic material;
+  /// metals, crystals and CONST at abbe are reported.
+  void check_material(const detail::TargetIndex& index,
+                      const ToleranceTarget& t,
+                      ToleranceKind kind,
+                      const std::string& loc) {
+    const Element* element = check_segment(index, t, loc);
+    if (element == nullptr) return;
+    const Element& e = *element;
+    const std::optional<std::string> material =
+        e.segment_materials.empty()
+            ? e.material
+            : std::optional<std::string>(e.segment_materials[t.segment.value_or(0)]);
     if (e.crystal || !material) {
       report("tolerances.material_unsupported", loc + "/node",
              "element '" + e.name + "' has no isotropic material");
@@ -1097,24 +1110,6 @@ class Validator {
     }
   }
 
-  /// True if a class generates `kind` at the level of the target (ADR 0035, point 5).
-  static bool generatable(const detail::TargetIndex& index,
-                          const ToleranceTarget& t,
-                          ToleranceKind kind) {
-    using K = ToleranceKind;
-    if (t.anchor == ToleranceAnchor::Surface) {
-      return kind == K::CurvatureRelative || kind == K::Conic || kind == K::Thickness;
-    }
-    const detail::NodeEntry* n = index.node(t.name);
-    if (n == nullptr) return false;
-    if (n->assembly != nullptr) {
-      return kind == K::DecenterX || kind == K::DecenterY || kind == K::ShiftZ ||
-             kind == K::TiltXDeg || kind == K::TiltYDeg;
-    }
-    return kind == K::Thickness || kind == K::DecenterX || kind == K::DecenterY ||
-           kind == K::TiltXDeg || kind == K::TiltYDeg || kind == K::Index || kind == K::Abbe;
-  }
-
   void check_overrides(const detail::TargetIndex& index) {
     std::unordered_set<std::string> classes;
     std::unordered_set<std::string> values;
@@ -1132,15 +1127,17 @@ class Validator {
       } else if (const auto* v = std::get_if<ToleranceValueOverride>(&overrides[i])) {
         check_limit(v->limit, v->kind, loc + "/limit");
         if (!check_anchor(index, v->target, loc)) continue;
-        if (v->target.anchor == ToleranceAnchor::Parameter || v->target.param ||
-            !generatable(index, v->target, v->kind)) {
+        if (v->target.param || !detail::class_generates(index, v->target, v->kind)) {
           report("tolerances.target_invalid", loc + "/kind",
                  "no class generates '" + std::string(tolerance_kind_name(v->kind)) +
                      "' at this target; use an explicit item");
           continue;
         }
         if (v->kind == ToleranceKind::Index || v->kind == ToleranceKind::Abbe) {
-          check_material(index, v->target, v->kind, loc);
+          // Only the segment structure: where the class skips the material (CONST at abbe, no
+          // material, a crystal or metal, no Lens or Plate) the value has no effect and is no
+          // error (ADR 0035, point 5).
+          check_segment(index, v->target, loc);
         } else if (v->target.segment) {
           report("tolerances.target_invalid", loc + "/segment", "segment only with index and abbe");
         }
