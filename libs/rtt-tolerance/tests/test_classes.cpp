@@ -1,0 +1,450 @@
+// Tolerance classes (ADR 0035, point 5; ADR 0036, point 9; #260): the class table and expand().
+//
+// The numbers of the class table await the decision of the maintainer (plan #260, section 3);
+// until then these tests check its structure (every generated combination has a limit, coarse >
+// normal > precise) and take the expected limits of generated items from class_limit().
+
+#include <oneapi/tbb/parallel_for.h>
+#include <oneapi/tbb/task_arena.h>
+
+#include <algorithm>
+#include <array>
+#include <bit>
+#include <catch2/catch_test_macros.hpp>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
+#include <functional>
+#include <map>
+#include <optional>
+#include <set>
+#include <stdexcept>
+#include <string>
+#include <utility>
+#include <variant>
+#include <vector>
+
+#include "rtt/compile/compiled_system.hpp"
+#include "rtt/io/json_io.hpp"
+#include "rtt/model/model.hpp"
+#include "rtt/model/tolerance.hpp"
+#include "rtt/model/tolerance_classes.hpp"
+#include "rtt/model/validate.hpp"
+#include "rtt/tolerance/classes.hpp"
+#include "rtt/tolerance/expand.hpp"
+#include "rtt/tolerance/random.hpp"
+
+namespace fs = std::filesystem;
+
+using rtt::model::ClassSkip;
+using rtt::model::ToleranceAnchor;
+using rtt::model::ToleranceClass;
+using rtt::model::ToleranceDistribution;
+using rtt::model::ToleranceItem;
+using rtt::model::ToleranceKind;
+using rtt::model::ToleranceLevel;
+using rtt::tolerance::class_limit;
+using rtt::tolerance::expand;
+using rtt::tolerance::ItemOrigin;
+using rtt::tolerance::ToleranceItems;
+
+namespace {
+
+using K = ToleranceKind;
+using L = ToleranceLevel;
+
+struct Combo {
+  ToleranceKind kind;
+  ToleranceLevel level;
+  auto operator<=>(const Combo&) const = default;
+};
+
+/// The 15 combinations a class generates (ADR 0035, point 5): surface 3, element 5 plus the two
+/// material kinds, assembly 5.
+constexpr std::array<Combo, 15> kCombos{{
+    {K::CurvatureRelative, L::Surface},
+    {K::Conic, L::Surface},
+    {K::Thickness, L::Surface},
+    {K::Thickness, L::Element},
+    {K::DecenterX, L::Element},
+    {K::DecenterY, L::Element},
+    {K::TiltXDeg, L::Element},
+    {K::TiltYDeg, L::Element},
+    {K::Index, L::Element},
+    {K::Abbe, L::Element},
+    {K::DecenterX, L::Assembly},
+    {K::DecenterY, L::Assembly},
+    {K::ShiftZ, L::Assembly},
+    {K::TiltXDeg, L::Assembly},
+    {K::TiltYDeg, L::Assembly},
+}};
+
+constexpr std::array<ToleranceClass, 3> kClasses{ToleranceClass::Coarse, ToleranceClass::Normal,
+                                                 ToleranceClass::Precise};
+
+bool same(double a, double b) {
+  return std::bit_cast<std::uint64_t>(a) == std::bit_cast<std::uint64_t>(b);
+}
+
+rtt::model::System reference() {
+  return rtt::io::load_system(fs::path(RTT_REFERENCE_DIR) / "m7" / "achromat_tolerances.rtt.json");
+}
+
+std::vector<fs::path> reference_files() {
+  std::vector<fs::path> files;
+  for (const auto& entry : fs::recursive_directory_iterator(RTT_REFERENCE_DIR)) {
+    const std::string name = entry.path().filename().string();
+    if (entry.is_regular_file() && name.ends_with(".rtt.json")) files.push_back(entry.path());
+  }
+  std::sort(files.begin(), files.end());
+  return files;
+}
+
+bool has_errors(const rtt::model::System& system) {
+  const std::vector<rtt::model::Diagnostic> d = rtt::model::validate(system);
+  return std::any_of(d.begin(), d.end(), [](const rtt::model::Diagnostic& x) {
+    return x.severity == rtt::model::Severity::Error;
+  });
+}
+
+std::map<std::string, ToleranceItem> by_id(const ToleranceItems& r) {
+  std::map<std::string, ToleranceItem> out;
+  for (const ToleranceItem& i : r.items) out.emplace(i.id, i);
+  return out;
+}
+
+/// By value: bound to a reference, GCC takes the result for one into the temporary string of a
+/// literal argument (-Wdangling-reference, AGENTS.md).
+rtt::model::ClassTolerance find_class(const ToleranceItems& r, const std::string& id) {
+  const auto it = std::find_if(r.classes.items.begin(), r.classes.items.end(),
+                               [&](const rtt::model::ClassTolerance& c) { return c.id == id; });
+  REQUIRE(it != r.classes.items.end());
+  return *it;
+}
+
+rtt::model::ToleranceTarget node(const std::string& name) {
+  rtt::model::ToleranceTarget t;
+  t.anchor = ToleranceAnchor::Node;
+  t.name = name;
+  return t;
+}
+
+}  // namespace
+
+TEST_CASE("classes: every generated combination has a limit, coarse > normal > precise",
+          "[tolerance][classes]") {
+  for (const Combo& c : kCombos) {
+    INFO("kind " << rtt::model::tolerance_kind_name(c.kind) << ", level "
+                 << static_cast<int>(c.level));
+    const double coarse = class_limit(ToleranceClass::Coarse, c.kind, c.level);
+    const double normal = class_limit(ToleranceClass::Normal, c.kind, c.level);
+    const double precise = class_limit(ToleranceClass::Precise, c.kind, c.level);
+    CHECK(std::isfinite(coarse));
+    CHECK(precise > 0.0);
+    CHECK(coarse > normal);
+    CHECK(normal > precise);
+    CHECK_THROWS_AS((void)class_limit(ToleranceClass::None, c.kind, c.level),
+                    std::invalid_argument);
+  }
+  // The list above is the one of rtt-model: the reference file generates exactly these
+  // combinations (skipped ones included), so a kind added there fails here.
+  const ToleranceItems r = expand(reference());
+  std::set<Combo> generated;
+  for (const rtt::model::ClassTolerance& c : r.classes.items) generated.insert({c.kind, c.level});
+  CHECK(generated == std::set<Combo>(kCombos.begin(), kCombos.end()));
+}
+
+TEST_CASE("classes: kinds no class generates at a level have no limit", "[tolerance][classes]") {
+  const std::array<Combo, 9> invalid{{
+      {K::Radius, L::Surface},
+      {K::Param, L::Surface},
+      {K::TiltXDeg, L::Surface},
+      {K::TiltZDeg, L::Element},
+      {K::ShiftZ, L::Element},
+      {K::Parameter, L::Element},
+      {K::Thickness, L::Assembly},
+      {K::Index, L::Assembly},
+      {K::TiltZDeg, L::Assembly},
+  }};
+  for (const ToleranceClass c : kClasses) {
+    for (const Combo& x : invalid) {
+      INFO("kind " << rtt::model::tolerance_kind_name(x.kind) << ", level "
+                   << static_cast<int>(x.level));
+      CHECK_THROWS_AS((void)class_limit(c, x.kind, x.level), std::invalid_argument);
+    }
+  }
+  CHECK_THROWS_AS(
+      (void)class_limit(static_cast<ToleranceClass>(9), K::Thickness, L::Element),
+      std::invalid_argument);
+  CHECK_THROWS_AS(
+      (void)class_limit(ToleranceClass::Normal, static_cast<ToleranceKind>(99), L::Element),
+      std::invalid_argument);
+  CHECK_THROWS_AS(
+      (void)class_limit(ToleranceClass::Normal, K::Thickness, static_cast<ToleranceLevel>(7)),
+      std::invalid_argument);
+}
+
+TEST_CASE("expand: class, class override, single values and explicit items",
+          "[tolerance][classes]") {
+  // tests/reference/m7/achromat_tolerances.rtt.json: class normal; objective precise (and so L1
+  // and its surfaces); image none; single values curvature_relative 0.005 at L1.S2 and index
+  // 0.001 uniform at L1 segment 1; explicit S3-wedge, S1-conic (param on /shape/base/conic of
+  // L1.S1) and R1. L1.S1 has its radius bound to the row R1 and conic 0; STO is plane; stop
+  // has no material in the beam.
+  const rtt::model::System system = reference();
+  REQUIRE(system.tolerances.tolerance_class == ToleranceClass::Normal);
+  REQUIRE(system.tolerances.items.size() == 3);
+  const ToleranceItems r = expand(system);
+
+  struct Expected {
+    std::string id;
+    ToleranceClass tolerance_class;
+    ToleranceLevel level;
+  };
+  constexpr ToleranceClass n = ToleranceClass::Normal;
+  constexpr ToleranceClass p = ToleranceClass::Precise;
+  const std::vector<Expected> generated{
+      {"class:node:stop:thickness", n, L::Element},
+      {"class:node:stop:decenter_x", n, L::Element},
+      {"class:node:stop:decenter_y", n, L::Element},
+      {"class:node:stop:tilt_x_deg", n, L::Element},
+      {"class:node:stop:tilt_y_deg", n, L::Element},
+      {"class:node:objective:decenter_x", p, L::Assembly},
+      {"class:node:objective:decenter_y", p, L::Assembly},
+      {"class:node:objective:shift_z", p, L::Assembly},
+      {"class:node:objective:tilt_x_deg", p, L::Assembly},
+      {"class:node:objective:tilt_y_deg", p, L::Assembly},
+      {"class:node:L1:thickness", p, L::Element},
+      {"class:node:L1:decenter_x", p, L::Element},
+      {"class:node:L1:decenter_y", p, L::Element},
+      {"class:node:L1:tilt_x_deg", p, L::Element},
+      {"class:node:L1:tilt_y_deg", p, L::Element},
+      {"class:node:L1:index:0", p, L::Element},
+      {"class:node:L1:index:1", p, L::Element},
+      {"class:node:L1:abbe:0", p, L::Element},
+      {"class:node:L1:abbe:1", p, L::Element},
+      {"class:surface:L1.S2:curvature_relative", p, L::Surface},
+      {"class:surface:L1.S2:thickness", p, L::Surface},
+      {"class:surface:L1.S3:curvature_relative", p, L::Surface},
+      {"class:surface:L1.S3:thickness", p, L::Surface},
+  };
+  REQUIRE(r.items.size() == generated.size() + 3);
+  REQUIRE(r.origins.size() == r.items.size());
+
+  for (std::size_t i = 0; i < generated.size(); ++i) {
+    const Expected& e = generated[i];
+    const ToleranceItem& item = r.items[i];
+    INFO("item " << i << ": " << item.id << ", expected " << e.id);
+    REQUIRE(item.id == e.id);
+    REQUIRE(r.origins[i].source == ItemOrigin::Source::Class);
+    REQUIRE(r.origins[i].index < r.classes.items.size());
+    const rtt::model::ClassTolerance& c = r.classes.items[r.origins[i].index];
+    CHECK(c.id == e.id);
+    CHECK(c.generated());
+    CHECK(c.tolerance_class == e.tolerance_class);
+    CHECK(c.level == e.level);
+    CHECK(item.target == c.target);
+    CHECK(item.kind == c.kind);
+    // Limit and distribution: the single value, else the class table and normal.
+    if (e.id == "class:surface:L1.S2:curvature_relative") {
+      CHECK(same(item.limit, 0.005));
+      CHECK(item.distribution == ToleranceDistribution::Normal);
+    } else if (e.id == "class:node:L1:index:1") {
+      CHECK(same(item.limit, 0.001));
+      CHECK(item.distribution == ToleranceDistribution::Uniform);
+    } else {
+      CHECK(same(item.limit, class_limit(e.tolerance_class, c.kind, e.level)));
+      CHECK(item.distribution == ToleranceDistribution::Normal);
+    }
+  }
+  // The explicit items follow unchanged, in file order.
+  for (std::size_t i = 0; i < 3; ++i) {
+    const std::size_t k = generated.size() + i;
+    CHECK(r.items[k] == system.tolerances.items[i]);
+    CHECK(r.origins[k] == ItemOrigin{ItemOrigin::Source::Explicit, i});
+  }
+
+  // Skipped and replaced kinds stay in `classes`, with the reason.
+  CHECK(find_class(r, "class:node:stop:index").skip == ClassSkip::NoMaterialInBeam);
+  CHECK(find_class(r, "class:surface:STO:curvature_relative").skip == ClassSkip::Plane);
+  CHECK(find_class(r, "class:surface:L1.S1:curvature_relative").skip == ClassSkip::Bound);
+  const rtt::model::ClassTolerance conic = find_class(r, "class:surface:L1.S1:conic");
+  CHECK(conic.skip == ClassSkip::Sphere);
+  CHECK(conic.replaced_by == std::optional<std::size_t>(1));  // S1-conic
+  // image is under the class none: nothing listed.
+  CHECK(std::none_of(r.classes.items.begin(), r.classes.items.end(),
+                     [](const rtt::model::ClassTolerance& c) { return c.target.name == "image"; }));
+  REQUIRE(r.classes.value_overrides.size() == 2);
+  CHECK(r.classes.value_overrides[0].effect == rtt::model::OverrideEffect::Applied);
+  CHECK(r.classes.value_overrides[1].effect == rtt::model::OverrideEffect::Applied);
+}
+
+TEST_CASE("expand: without a class only the explicit items", "[tolerance][classes]") {
+  rtt::model::System system = reference();
+  system.tolerances.tolerance_class = ToleranceClass::None;
+  std::erase_if(system.tolerances.overrides, [](const rtt::model::ToleranceOverride& o) {
+    return std::holds_alternative<rtt::model::ToleranceClassOverride>(o);
+  });
+  REQUIRE(!has_errors(system));
+  const ToleranceItems r = expand(system);
+  CHECK(r.classes.items.empty());
+  REQUIRE(r.items.size() == 3);
+  for (std::size_t i = 0; i < 3; ++i) {
+    CHECK(r.items[i] == system.tolerances.items[i]);
+    CHECK(r.origins[i] == ItemOrigin{ItemOrigin::Source::Explicit, i});
+  }
+}
+
+TEST_CASE("expand: an added override leaves the other items and their draws unchanged",
+          "[tolerance][classes]") {
+  const rtt::model::System before = reference();
+  rtt::model::System after = before;
+  // L1 (and its surfaces) coarse instead of precise; a single value at the objective.
+  after.tolerances.overrides.emplace_back(
+      rtt::model::ToleranceClassOverride{"L1", ToleranceClass::Coarse});
+  after.tolerances.overrides.emplace_back(rtt::model::ToleranceValueOverride{
+      node("objective"), K::DecenterX, 0.07, ToleranceDistribution::Uniform});
+  REQUIRE(!has_errors(after));
+  const ToleranceItems a = expand(before);
+  const ToleranceItems b = expand(after);
+  const std::map<std::string, ToleranceItem> ia = by_id(a);
+  const std::map<std::string, ToleranceItem> ib = by_id(b);
+  REQUIRE(ia.size() == ib.size());
+
+  const auto affected = [](const std::string& id) {
+    return id.starts_with("class:node:L1:") || id.starts_with("class:surface:L1.") ||
+           id == "class:node:objective:decenter_x";
+  };
+  const std::uint64_t seed = 20261012;  // monte_carlo.seed of the reference file
+  std::size_t unchanged = 0;
+  std::size_t changed = 0;
+  for (const auto& [id, x] : ia) {
+    INFO(id);
+    const auto it = ib.find(id);
+    REQUIRE(it != ib.end());
+    const ToleranceItem& y = it->second;
+    if (!affected(id)) {
+      ++unchanged;
+      CHECK(x == y);
+      bool draws_same = true;
+      for (std::uint32_t t = 0; t < 200; ++t) {
+        draws_same = draws_same && same(rtt::tolerance::perturbation(seed, t, x),
+                                        rtt::tolerance::perturbation(seed, t, y));
+      }
+      CHECK(draws_same);
+      continue;
+    }
+    ++changed;
+    CHECK(x.target == y.target);
+    CHECK(x.kind == y.kind);
+    if (id == "class:node:objective:decenter_x") {
+      CHECK(same(y.limit, 0.07));
+      CHECK(y.distribution == ToleranceDistribution::Uniform);
+    } else if (id == "class:surface:L1.S2:curvature_relative") {
+      CHECK(same(y.limit, 0.005));  // the single value goes before the class override
+    } else if (id == "class:node:L1:index:1") {
+      CHECK(same(y.limit, 0.001));
+    } else {
+      const rtt::model::ClassTolerance c = find_class(b, id);
+      CHECK(c.tolerance_class == ToleranceClass::Coarse);
+      CHECK(same(y.limit, class_limit(ToleranceClass::Coarse, y.kind, c.level)));
+      CHECK(y.limit > x.limit);  // coarse instead of precise
+    }
+  }
+  // stop 5, objective 4, explicit 3; L1 9, L1.S2 2, L1.S3 2, objective:decenter_x 1.
+  CHECK(unchanged == 12U);
+  CHECK(changed == 14U);
+}
+
+TEST_CASE("expand: the draws of a class set are reproducible for every number of threads",
+          "[tolerance][classes]") {
+  const rtt::model::System system = reference();
+  const ToleranceItems first = expand(system);
+  const ToleranceItems second = expand(system);
+  REQUIRE(first.items == second.items);
+  REQUIRE(first.items.size() > system.tolerances.items.size());  // the class generates items
+  const std::uint64_t seed = 20261012;
+  constexpr std::uint32_t kN = 500;
+  const std::size_t m = first.items.size();
+  std::vector<double> serial;
+  for (std::uint32_t t = 0; t < kN; ++t) {
+    const std::vector<double> v = rtt::tolerance::perturbations(seed, t, first.items);
+    serial.insert(serial.end(), v.begin(), v.end());
+  }
+  // Content guard: the values are not all equal (e.g. all 0).
+  CHECK(std::adjacent_find(serial.begin(), serial.end(), std::not_equal_to<>()) != serial.end());
+  for (const int threads : {1, 4, oneapi::tbb::task_arena::automatic}) {
+    INFO("threads " << threads);
+    std::vector<double> out(serial.size());
+    oneapi::tbb::task_arena arena(threads);
+    arena.execute([&] {
+      oneapi::tbb::parallel_for(std::uint32_t{0}, kN, [&](std::uint32_t t) {
+        const std::vector<double> v = rtt::tolerance::perturbations(seed, t, second.items);
+        std::copy(v.begin(), v.end(), out.begin() + static_cast<std::ptrdiff_t>(t * m));
+      });
+    });
+    bool all_same = true;
+    for (std::size_t i = 0; i < serial.size(); ++i) all_same = all_same && same(out[i], serial[i]);
+    CHECK(all_same);
+  }
+}
+
+TEST_CASE("expand: a class never makes a valid reference file invalid", "[tolerance][classes]") {
+  // ADR 0035, point 5: class alone never invalidates a valid file (up to a hash collision of two
+  // generated ids). Every valid reference file with each class.
+  std::size_t files = 0;
+  std::size_t with_generated = 0;
+  for (const fs::path& file : reference_files()) {
+    rtt::model::System system = rtt::io::load_system(file);
+    if (has_errors(system)) continue;
+    ++files;
+    for (const ToleranceClass c : kClasses) {
+      INFO(file.string() << ", class " << static_cast<int>(c));
+      system.tolerances.tolerance_class = c;
+      ToleranceItems r;
+      REQUIRE_NOTHROW(r = expand(system));
+      REQUIRE(r.origins.size() == r.items.size());
+      const auto generated = static_cast<std::size_t>(
+          std::count_if(r.classes.items.begin(), r.classes.items.end(),
+                        [](const rtt::model::ClassTolerance& x) { return x.generated(); }));
+      CHECK(r.items.size() == generated + system.tolerances.items.size());
+      for (const ToleranceItem& i : r.items) {
+        CHECK(std::isfinite(i.limit));
+        CHECK(i.limit > 0.0);
+      }
+      if (c == ToleranceClass::Normal && generated > 0) ++with_generated;
+    }
+  }
+  CHECK(files >= 20U);
+  CHECK(with_generated == files);  // every system has at least one element
+}
+
+TEST_CASE("expand: an invalid tolerance set throws CompileError with all errors",
+          "[tolerance][classes]") {
+  rtt::model::System system = reference();
+  // thickness at surface 0 (no class generates it) and an unknown target.
+  rtt::model::ToleranceTarget s0;
+  s0.anchor = ToleranceAnchor::Surface;
+  s0.name = "L1.S1";
+  system.tolerances.overrides.emplace_back(
+      rtt::model::ToleranceValueOverride{s0, K::Thickness, 0.01, ToleranceDistribution::Normal});
+  system.tolerances.overrides.emplace_back(rtt::model::ToleranceValueOverride{
+      node("nowhere"), K::DecenterX, 0.01, ToleranceDistribution::Normal});
+  try {
+    (void)expand(system);
+    FAIL("no CompileError");
+  } catch (const rtt::compile::CompileError& e) {
+    std::vector<std::pair<std::string, std::string>> got;
+    for (const rtt::model::Diagnostic& d : e.diagnostics()) {
+      CHECK(d.severity == rtt::model::Severity::Error);
+      got.emplace_back(d.code, d.location);
+    }
+    const std::pair<std::string, std::string> invalid{"tolerances.target_invalid",
+                                                      "/tolerances/overrides/5/kind"};
+    const std::pair<std::string, std::string> unknown{"tolerances.unknown_target",
+                                                      "/tolerances/overrides/6/node"};
+    CHECK(std::find(got.begin(), got.end(), invalid) != got.end());
+    CHECK(std::find(got.begin(), got.end(), unknown) != got.end());
+  }
+}
