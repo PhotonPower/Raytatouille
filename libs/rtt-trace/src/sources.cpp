@@ -12,6 +12,7 @@
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -58,6 +59,14 @@ std::vector<double> even_points(int n) {
   return v;
 }
 
+/// Unit image height of an AimReference (field type paraxial image height): the value, or the
+/// message of the error that unit_image_height() gave for the reference system, thrown where
+/// make_field() needs the value (as without reference).
+struct ReferenceUnit {
+  double value = 0.0;
+  std::string error;
+};
+
 /// Everything that is the same for all rays of one path and wavelength.
 struct Context {
   const CompiledSystem* system = nullptr;
@@ -90,6 +99,9 @@ struct Context {
   /// label_sign * (px, py) * r_ep * stop_scale, so py > 0 is a ray rising in object space for
   /// every wavelength and on both sides of an entrance pupil at infinity.
   double label_sign = 1.0;
+  /// Set for the context of an AimReference with paraxial image heights (#255): the unit image
+  /// height of the reference system, so make_field() does not trace the aimed system paraxially.
+  std::optional<ReferenceUnit> reference_unit;
 };
 
 /// Ray start for one field.
@@ -387,8 +399,12 @@ FieldStart make_field(const Context& c, const model::Field& f) {
       hy = f.y;
       break;
     case model::FieldType::ParaxialImageHeight: {
-      // Linear in the field value: scale the unit chief ray (decided for #8).
-      const double unit = unit_image_height(c);
+      // Linear in the field value: scale the unit chief ray (decided for #8); with a reference
+      // the unit of the reference system (#255).
+      if (c.reference_unit && !c.reference_unit->error.empty()) {
+        throw std::invalid_argument(c.reference_unit->error);
+      }
+      const double unit = c.reference_unit ? c.reference_unit->value : unit_image_height(c);
       tx = f.x / unit;
       ty = f.y / unit;
       hx = tx;
@@ -636,6 +652,100 @@ void check_gauss(const GaussPupil& g) {
   }
 }
 
+/// What a system aimed with an AimReference must share with the reference system (ADR 0007,
+/// addendum #252, precision #255): the path, the wavelengths, the field values and, because
+/// make_field() reads them from the aimed system, the object and the system aperture. Values
+/// only: bounds, bindings and the variable flag of the Params do not matter for aiming.
+struct Signature {
+  std::string path_name;
+  std::vector<std::tuple<std::string, model::EventKind, int>> events;  ///< surface id, kind, order
+  std::vector<double> wavelengths_um;
+  std::uint16_t reference_wavelength = 0;
+  model::FieldType field_type = model::FieldType::AngleDeg;
+  std::vector<std::pair<double, double>> fields;  ///< (x, y); the weights do not aim
+  bool object_at_infinity = true;
+  double object_distance = 0.0;  ///< 0 for an object at infinity
+  model::SystemApertureType aperture_type = model::SystemApertureType::EntrancePupilDiameter;
+  double aperture_value = 0.0;
+};
+
+Signature signature(const CompiledSystem& system, PathId path) {
+  Signature s;
+  const compile::CompiledPath& p = system.path(path);
+  s.path_name = p.name;
+  for (const compile::CompiledEvent& e : p.events) {
+    s.events.emplace_back(system.surfaces()[e.surface].id.str(), e.kind, e.order);
+  }
+  s.wavelengths_um = system.wavelengths_um();
+  s.reference_wavelength = system.reference_wavelength();
+  s.field_type = system.fields().type;
+  for (const model::Field& f : system.fields().points) s.fields.emplace_back(f.x, f.y);
+  s.object_at_infinity = system.object().at_infinity;
+  s.object_distance = s.object_at_infinity ? 0.0 : system.object().distance.value;
+  s.aperture_type = system.aperture().type;
+  s.aperture_value = system.aperture().value.value;
+  return s;
+}
+
+/// The first difference between the reference system `a` and the aimed system `b`, empty if
+/// they fit.
+std::string mismatch(const Signature& a, const Signature& b) {
+  if (a.path_name != b.path_name || a.events != b.events) return "the path differs";
+  if (a.wavelengths_um != b.wavelengths_um || a.reference_wavelength != b.reference_wavelength) {
+    return "the wavelengths differ";
+  }
+  if (a.field_type != b.field_type || a.fields != b.fields) return "the fields differ";
+  if (a.object_at_infinity != b.object_at_infinity || a.object_distance != b.object_distance) {
+    return "the object differs";
+  }
+  if (a.aperture_type != b.aperture_type || a.aperture_value != b.aperture_value) {
+    return "the system aperture differs";
+  }
+  return {};
+}
+
+}  // namespace
+
+namespace detail {
+
+/// Data of an AimReference (sources.hpp): the context of make_context() without the system
+/// (context.system is null) and the signature of the reference system.
+struct AimData {
+  Context context;
+  Signature signature;
+};
+
+}  // namespace detail
+
+namespace {
+
+/// The context for aiming `system` with `reference` (ADR 0007, addendum #252): the paraxial data
+/// of the reference, the rays through `system`.
+/// @throws std::invalid_argument if the reference does not fit (see aim_ray() with a reference)
+Context context_from(const AimReference& reference,
+                     const CompiledSystem& system,
+                     PathId path,
+                     std::uint16_t wavelength) {
+  const detail::AimData& d = reference.data();
+  if (path != d.context.path || wavelength != d.context.wavelength) {
+    throw std::invalid_argument(
+        "sources: the aim reference belongs to path " + std::to_string(d.context.path.index) +
+        " and wavelength " + std::to_string(d.context.wavelength) + ", not to path " +
+        std::to_string(path.index) + " and wavelength " + std::to_string(wavelength));
+  }
+  if (path.index >= system.paths().size()) {
+    throw std::invalid_argument("sources: path index " + std::to_string(path.index) +
+                                " does not exist");
+  }
+  if (const std::string why = mismatch(d.signature, signature(system, path)); !why.empty()) {
+    throw std::invalid_argument("sources: the aim reference does not fit the system: " + why +
+                                " (ADR 0007, addendum #252)");
+  }
+  Context c = d.context;
+  c.system = &system;
+  return c;
+}
+
 }  // namespace
 
 std::vector<double> gauss_pupil_weights(const GaussPupil& gauss) {
@@ -750,6 +860,66 @@ AimedRay aim_ray(const compile::CompiledSystem& system,
   return aim(c, make_field(c, field), px, py, aiming);
 }
 
+compile::PathId AimReference::path() const noexcept {
+  return data_->context.path;
+}
+
+std::uint16_t AimReference::wavelength() const noexcept {
+  return data_->context.wavelength;
+}
+
+AimReference aim_reference(const CompiledSystem& system, PathId path, std::uint16_t wavelength) {
+  auto data = std::make_shared<detail::AimData>();
+  data->context = make_context(system, path, wavelength);
+  // The unit image height needs a paraxial trace of the reference system; it is computed here
+  // once, and an error is kept for make_field() (#255).
+  if (system.fields().type == model::FieldType::ParaxialImageHeight) {
+    ReferenceUnit unit;
+    try {
+      unit.value = unit_image_height(data->context);
+    } catch (const std::invalid_argument& e) {
+      unit.error = e.what();
+    }
+    data->context.reference_unit = std::move(unit);
+  }
+  data->context.system = nullptr;
+  data->signature = signature(system, path);
+  return AimReference(std::move(data));
+}
+
+AimedRay aim_ray(const compile::CompiledSystem& system,
+                 compile::PathId path,
+                 std::uint16_t field,
+                 std::uint16_t wavelength,
+                 double px,
+                 double py,
+                 Aiming aiming,
+                 const AimReference& reference) {
+  if (!std::isfinite(px) || !std::isfinite(py)) {
+    throw std::invalid_argument("sources: pupil coordinates must be finite");
+  }
+  const Context c = context_from(reference, system, path, wavelength);
+  return aim(c, make_field(c, field_point(c, field)), px, py, aiming);
+}
+
+AimedRay aim_ray(const compile::CompiledSystem& system,
+                 compile::PathId path,
+                 const model::Field& field,
+                 std::uint16_t wavelength,
+                 double px,
+                 double py,
+                 Aiming aiming,
+                 const AimReference& reference) {
+  if (!std::isfinite(px) || !std::isfinite(py)) {
+    throw std::invalid_argument("sources: pupil coordinates must be finite");
+  }
+  if (!std::isfinite(field.x) || !std::isfinite(field.y)) {
+    throw std::invalid_argument("sources: field values must be finite");
+  }
+  const Context c = context_from(reference, system, path, wavelength);
+  return aim(c, make_field(c, field), px, py, aiming);
+}
+
 namespace {
 
 /// make_rays() with an optional control (run_control.hpp, #83). The rays are aimed in parallel
@@ -766,8 +936,10 @@ RayBatch make_rays_impl(const compile::CompiledSystem& system,
                         std::uint16_t wavelength,
                         const PupilSampling& sampling,
                         Aiming aiming,
+                        const AimReference* reference,
                         const RunControl* control) {
-  const Context c = make_context(system, path, wavelength);
+  const Context c = reference != nullptr ? context_from(*reference, system, path, wavelength)
+                                         : make_context(system, path, wavelength);
   const std::vector<PupilPoint> points = pupil_points(sampling);
   for (const PupilPoint& p : points) {
     if (!std::isfinite(p.px) || !std::isfinite(p.py)) {
@@ -833,7 +1005,7 @@ RayBatch make_rays(const compile::CompiledSystem& system,
                    std::uint16_t wavelength,
                    const PupilSampling& sampling,
                    Aiming aiming) {
-  return make_rays_impl(system, path, fields, wavelength, sampling, aiming, nullptr);
+  return make_rays_impl(system, path, fields, wavelength, sampling, aiming, nullptr, nullptr);
 }
 
 RayBatch make_rays(const compile::CompiledSystem& system,
@@ -843,7 +1015,34 @@ RayBatch make_rays(const compile::CompiledSystem& system,
                    const PupilSampling& sampling,
                    Aiming aiming,
                    const RunControl& control) {
-  return make_rays_impl(system, path, fields, wavelength, sampling, aiming, &control);
+  return make_rays_impl(system, path, fields, wavelength, sampling, aiming, nullptr, &control);
+}
+
+double stop_radius(const AimReference& reference) {
+  // As stop_radius() above, from the context of the reference.
+  const Context& c = reference.data().context;
+  return std::abs(c.r_ep * c.stop_scale);
+}
+
+RayBatch make_rays(const compile::CompiledSystem& system,
+                   compile::PathId path,
+                   std::span<const std::uint16_t> fields,
+                   std::uint16_t wavelength,
+                   const PupilSampling& sampling,
+                   Aiming aiming,
+                   const AimReference& reference) {
+  return make_rays_impl(system, path, fields, wavelength, sampling, aiming, &reference, nullptr);
+}
+
+RayBatch make_rays(const compile::CompiledSystem& system,
+                   compile::PathId path,
+                   std::span<const std::uint16_t> fields,
+                   std::uint16_t wavelength,
+                   const PupilSampling& sampling,
+                   Aiming aiming,
+                   const AimReference& reference,
+                   const RunControl& control) {
+  return make_rays_impl(system, path, fields, wavelength, sampling, aiming, &reference, &control);
 }
 
 }  // namespace rtt::trace
