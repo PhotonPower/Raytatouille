@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "rtt/material/material.hpp"
 #include "rtt/model/system.hpp"
 #include "rtt/model/tolerance.hpp"
 #include "rtt/model/tolerance_classes.hpp"
@@ -30,13 +31,14 @@ struct ItemOrigin {
 struct ToleranceItems {
   /// The generated items in tree order (ADR 0035, point 5), then the explicit items in file
   /// order. Generated items have the ids of model::ClassTolerance ("class:..."), the limit of the
-  /// single-value override or else of class_limit(), and the distribution of the override or
-  /// else normal.
+  /// single-value override or else of class_limit() (for abbe times nu_d of the glass), and the
+  /// distribution of the override or else normal.
   std::vector<model::ToleranceItem> items;
   /// One entry per item, in the same order.
   std::vector<ItemOrigin> origins;
-  /// The full result of model::class_tolerances: also the kinds a class skips (with the reason)
-  /// or an explicit item replaces, and what became of each single-value override.
+  /// The result of model::class_tolerances: also the kinds a class skips (with the reason) or an
+  /// explicit item replaces, and what became of each single-value override. In addition abbe is
+  /// skipped (ConstAbbe) at a glass without dispersion, which only the catalogue shows.
   model::ClassTolerances classes;
 };
 
@@ -45,10 +47,15 @@ struct ToleranceItems {
 /// the classes, the overrides and the items; adding an override does not change the ids of
 /// the other items and so not their random draws (ADR 0036, point 5).
 ///
-/// A metal from a catalog is not recognised here (no catalogs): a generated index or abbe item
-/// at it is reported by the compile of the nominal system in the tolerance run
-/// (tolerances.material_unsupported, #257).
-/// @throws compile::CompileError if model::validate reports errors (all of them, as optimize)
-[[nodiscard]] ToleranceItems expand(const model::System& system);
+/// The limit of a generated abbe item is relative (ADR 0035, addendum #260): the share p of the
+/// class times nu_d of the glass of its segment, nu_d from compile::fraunhofer_indices at the
+/// temperature and pressure of the environment, as in the material overlay of compile. Only
+/// these items need `materials`.
+/// @throws compile::CompileError with all errors if model::validate reports errors (as
+///         optimize), or for the glass of a generated abbe item: material.unknown, or
+///         tolerances.material_unsupported if a line lies outside its range or its index is
+///         complex there (a metal), at the JSON pointer of the material of the element
+[[nodiscard]] ToleranceItems expand(const model::System& system,
+                                    const material::MaterialLibrary& materials);
 
 }  // namespace rtt::tolerance

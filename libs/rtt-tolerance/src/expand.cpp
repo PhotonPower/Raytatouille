@@ -12,7 +12,7 @@
 
 namespace rtt::tolerance {
 
-ToleranceItems expand(const model::System& system) {
+ToleranceItems expand(const model::System& system, const material::MaterialLibrary&) {
   // The input is checked at the API boundary, as optimize does (rtt-optim, merit.cpp).
   std::vector<model::Diagnostic> errors = model::validate(system);
   std::erase_if(errors,

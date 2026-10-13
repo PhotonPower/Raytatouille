@@ -12,11 +12,13 @@
 
 #include <compare>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <optional>
 #include <string>
 
+#include "rtt/material/material.hpp"
 #include "rtt/math/types.hpp"
 #include "rtt/model/ids.hpp"
 
@@ -106,5 +108,35 @@ inline constexpr double kLineCAirUm = 0.6562725;
 /// nothing). Standard air for all materials (decision E2 for #254); CatalogMaterial (agf.hpp, #25)
 /// uses the reference temperature of each glass, which shifts the line by about 3 pm at 25 degC.
 [[nodiscard]] double line_vacuum_wavelength_um(double air_um);
+
+/// Indices of a material at the Fraunhofer lines d, F and C (ADR 0036, point 1c): the material
+/// evaluated at the vacuum wavelengths line_vacuum_wavelength_um(kLine...AirUm), at the
+/// temperature and pressure it is given (compile uses the environment, as for the media).
+/// Shared by the material overlay of compile and by the class limits of abbe in rtt-tolerance
+/// (ADR 0035, addendum #260), so that both use the same nu_d.
+struct FraunhoferIndices {
+  enum class Status : std::uint8_t {
+    Ok,          ///< n_d, n_F and n_C are real
+    OutOfRange,  ///< `line` lies outside the valid range of the material
+    Complex,     ///< the material has kappa != 0 at `line` (a metal)
+  };
+  Status status = Status::Ok;
+  std::size_t line = 0;        ///< the first line that failed: 0 = d, 1 = F, 2 = C
+  double wavelength_um = 0.0;  ///< its vacuum wavelength in um
+  double nd = 0.0;             ///< real part at d (valid for Status::Ok)
+  double nf = 0.0;             ///< real part at F
+  double nc = 0.0;             ///< real part at C
+
+  /// D = n_F - n_C.
+  [[nodiscard]] double dispersion() const noexcept { return nf - nc; }
+  /// nu_d = (n_d - 1) / (n_F - n_C) (SCHOTT TIE-29, Eq. (2.1-1)); none for D = 0 (CONST).
+  [[nodiscard]] std::optional<double> abbe_number() const noexcept;
+};
+
+/// The indices of `material` at the lines d, F and C at `temperature_c` (degC) and
+/// `pressure_atm` (atm). Stops at the first line that fails (Status OutOfRange or Complex).
+[[nodiscard]] FraunhoferIndices fraunhofer_indices(const material::Material& material,
+                                                   double temperature_c,
+                                                   double pressure_atm);
 
 }  // namespace rtt::compile

@@ -17,4 +17,7 @@ if(RTT_BUILD_TESTS)
     LIBS rtt::tolerance rtt::io TBB::tbb)
   # src/: the kernels of the normal distribution (random_detail.hpp) are tested directly.
   target_include_directories(rtt_tolerance_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  # Glass catalogues of the reference systems: nu_d for the class limits of abbe (#260).
+  target_compile_definitions(rtt_tolerance_tests PRIVATE
+    RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs")
 endif()

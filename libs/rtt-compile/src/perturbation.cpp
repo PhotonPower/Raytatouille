@@ -22,4 +22,13 @@ double line_vacuum_wavelength_um(double air_um) {
   return vacuum;
 }
 
+// Stubs for the red run of the tests (#260).
+std::optional<double> FraunhoferIndices::abbe_number() const noexcept {
+  return std::nullopt;
+}
+
+FraunhoferIndices fraunhofer_indices(const material::Material&, double, double) {
+  return {};
+}
+
 }  // namespace rtt::compile
