@@ -484,6 +484,35 @@ TEST_CASE("tolerances: single values where the class skips the material are no e
   CHECK(tail == expected);
 }
 
+TEST_CASE("tolerances: single values at a crystal are no error", "[model][tolerances][validate]") {
+  // ADR 0035, point 5: the class skips index and abbe at a crystal; a single value there has no
+  // effect (second review of #272). An explicit item there stays an error (case "index at a
+  // crystal" above), so the explicit L2-index is removed first.
+  System s = valid();
+  auto& objective = std::get<Assembly>(s.root.children[1].value);
+  Element& l2 = std::get<Element>(objective.children[1].value);
+  REQUIRE(l2.name == "L2");
+  l2.material.reset();
+  l2.crystal = CrystalMaterial{"BIREFRINGENT:CALCITE", "BIREFRINGENT:CALCITE-E"};
+  std::erase_if(s.tolerances.items, [](const ToleranceItem& i) { return i.id == "L2-index"; });
+  const std::size_t first = s.tolerances.overrides.size();
+  s.tolerances.overrides.push_back(ToleranceValueOverride{at(A::Node, "L2"), K::Index, 0.001,
+                                                          ToleranceDistribution::Normal});
+  s.tolerances.overrides.push_back(
+      ToleranceValueOverride{at(A::Node, "L2"), K::Abbe, 1.0, ToleranceDistribution::Normal});
+  const std::vector<Diagnostic> d = tolerance_diagnostics(s);
+  for (const Diagnostic& x : d) UNSCOPED_INFO(to_string(x));
+  CHECK(d.empty());
+  // Content guard: both are listed as skipped because of the crystal.
+  const ClassTolerances r = class_tolerances(s);
+  const std::vector<OverrideStatus> expected = {
+      {first, OverrideEffect::Skipped, ClassSkip::Crystal},
+      {first + 1, OverrideEffect::Skipped, ClassSkip::Crystal}};
+  REQUIRE(r.value_overrides.size() >= 2);
+  const std::vector<OverrideStatus> tail(r.value_overrides.end() - 2, r.value_overrides.end());
+  CHECK(tail == expected);
+}
+
 TEST_CASE("tolerances: a class alone never invalidates a valid file",
           "[model][tolerances][validate]") {
   // ADR 0035, point 5: skips and single values without effect are not errors.
