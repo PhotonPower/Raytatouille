@@ -113,10 +113,10 @@ void run_tolerance_cases(const fs::path& reference_dir,
                          int threads) {
   material::MaterialLibrary schott;
   schott.add_catalog(catalog_dir / "schott.agf");
-  const model::System achromat =
-      io::load_system(reference_dir / "m7/achromat_tolerances.rtt.json");
+  const model::System achromat = io::load_system(reference_dir / "m7/achromat_tolerances.rtt.json");
   oneapi::tbb::task_arena arena(threads);
-  arena.execute([&] { write_items(Writer(out, "achromat_expand"), tolerance::expand(achromat, schott)); });
+  arena.execute(
+      [&] { write_items(Writer(out, "achromat_expand"), tolerance::expand(achromat, schott)); });
 }
 
 }  // namespace rtt::py::reference

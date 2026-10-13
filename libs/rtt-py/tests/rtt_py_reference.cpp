@@ -41,7 +41,6 @@
 #include "pupil_cases.hpp"
 #include "q_cases.hpp"
 #include "reports_cases.hpp"
-#include "tolerance_cases.hpp"
 #include "rtt/coating/catalog.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/io/json_io.hpp"
@@ -51,6 +50,7 @@
 #include "rtt/trace/ray_paths.hpp"
 #include "rtt/trace/sequential.hpp"
 #include "rtt/trace/sources.hpp"
+#include "tolerance_cases.hpp"
 
 namespace fs = std::filesystem;
 using rtt::py::reference::write_column;

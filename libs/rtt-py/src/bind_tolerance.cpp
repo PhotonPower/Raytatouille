@@ -52,8 +52,7 @@ void bind_enums(nb::module_& m) {
       .value("PLANE", model::ClassSkip::Plane,
              "curvature_relative or conic at a surface without a radius")
       .value("SPHERE", model::ClassSkip::Sphere, "conic at a sphere (conic constant 0)")
-      .value("BOUND", model::ClassSkip::Bound,
-             "the Param is bound to a row of the parameter table")
+      .value("BOUND", model::ClassSkip::Bound, "the Param is bound to a row of the parameter table")
       .value("NO_MATERIAL_IN_BEAM", model::ClassSkip::NoMaterialInBeam,
              "index or abbe at an element other than lens and plate")
       .value("NO_MATERIAL", model::ClassSkip::NoMaterial,
@@ -90,7 +89,8 @@ void bind_classes(nb::module_& m) {
           [](const ClassTolerance& c) { return at(c.target, model::ToleranceAnchor::Surface); },
           "Id of the target surface; None if the target is a node.")
       .def_prop_ro(
-          "node", [](const ClassTolerance& c) { return at(c.target, model::ToleranceAnchor::Node); },
+          "node",
+          [](const ClassTolerance& c) { return at(c.target, model::ToleranceAnchor::Node); },
           "Name of the target element or assembly; None if the target is a surface.")
       .def_prop_ro(
           "segment", [](const ClassTolerance& c) { return c.target.segment; },
