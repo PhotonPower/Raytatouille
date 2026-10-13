@@ -72,7 +72,7 @@ def test_items_compensators_and_criteria() -> None:
     assert isinstance(axis, model.Criterion)
     assert (axis.id, axis.min, axis.max, axis.max_change) == ("spot-axis", None, 0.02, None)
     assert isinstance(edge.operand, model.SpotRmsOperand)
-    assert edge.operand.field == 2
+    assert edge.operand.field == 1
     # ADR 0035, point 7: a criterion's operand has the model's target 0 and weight 1.
     assert (edge.operand.target, edge.operand.weight) == (0.0, 1.0)
     assert isinstance(efl.operand, model.FirstOrderOperand)

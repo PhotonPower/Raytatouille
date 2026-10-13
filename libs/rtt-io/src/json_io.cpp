@@ -1831,7 +1831,9 @@ class Writer {
     return o;
   }
 
-  /// A criterion: its operand without target and weight (ADR 0035, point 7).
+  /// A criterion: its operand without target and weight (ADR 0035, point 7). Values other than
+  /// target 0 and weight 1 can only come from the API; validate rejects them
+  /// (tolerances.criterion_bounds), the writer drops them.
   OJson criterion(const Criterion& k) const {
     OJson o;
     o["id"] = k.id;

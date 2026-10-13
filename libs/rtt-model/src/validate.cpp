@@ -13,7 +13,10 @@
 #include <variant>
 #include <vector>
 
+#include "expression.hpp"
 #include "rtt/model/parameters.hpp"
+#include "rtt/model/tolerance_classes.hpp"
+#include "tolerance_targets.hpp"
 
 namespace rtt::model {
 
@@ -66,6 +69,7 @@ class Validator {
     check_stops();
     check_paths();
     check_optimization();
+    check_tolerances();
     return std::move(out_);
   }
 
@@ -654,17 +658,7 @@ class Validator {
   /// The section "optimization" (ADR 0030, points 2-4; #162 part B): names, indices, surfaces on
   /// the path, weights, sampling and finite numbers. Whether an operand can be evaluated on its
   /// path (merit.operand_unsupported) is decided when the optimization starts (#167).
-  void check_optimization() {
-    const Optimization& o = system_.optimization;
-    for (std::size_t i = 0; i < o.operands.size(); ++i) {
-      const std::string loc = idx("/optimization/operands", i);
-      std::visit([&](const auto& op) { check_operand(op, loc); }, o.operands[i]);
-    }
-    for (std::size_t i = 0; i < o.generators.size(); ++i) {
-      const std::string loc = idx("/optimization/generators", i);
-      std::visit([&](const auto& g) { check_generator(g, loc); }, o.generators[i]);
-    }
-  }
+  void check_optimization() { check_merit(system_.optimization, "/optimization"); }
 
   void check_common(const OperandCommon& c, const std::string& loc) {
     if (!std::isfinite(c.target)) report("value.not_finite", loc + "/target", "must be finite");
@@ -813,14 +807,547 @@ class Validator {
     for (std::size_t k = 0; k < list->size(); ++k) check((*list)[k], idx(loc, k));
   }
 
+  // ---- tolerance set (ADR 0035, point 9, and its addendum #253) --------------------------
+
+  void check_tolerances() {
+    const ToleranceSet& t = system_.tolerances;
+    if (t.empty()) return;
+    const detail::TargetIndex index(system_);
+    system_rows_ = system_level_rows();
+    check_tolerance_class(t.tolerance_class, "/tolerances/class");
+    check_overrides(index);
+    check_items(index);
+    check_hashes();
+    check_compensators(index);
+    check_criteria();
+    if (const std::optional<MonteCarloDefaults>& m = t.monte_carlo) {
+      constexpr std::uint64_t kMaxSeed = (std::uint64_t{1} << 53) - 1;
+      constexpr std::uint64_t kMaxTrials = std::uint64_t{1} << 32;
+      if (m->seed && *m->seed > kMaxSeed) {
+        report("tolerances.monte_carlo_invalid", "/tolerances/monte_carlo/seed",
+               "seed above 2^53 - 1 (not exact as a JSON number in many tools)");
+      }
+      if (m->trials && (*m->trials == 0 || *m->trials > kMaxTrials)) {
+        report("tolerances.monte_carlo_invalid", "/tolerances/monte_carlo/trials",
+               "trials outside 1 ... 2^32");
+      }
+    }
+  }
+
+  /// The rows that the object distance or the system aperture depend on: bound directly, or
+  /// read by an expression row they depend on (ADR 0029, point 2), for every configuration.
+  /// Such a row is no tolerance or compensator target (ADR 0035, addendum #253; #255).
+  std::unordered_set<std::string> system_level_rows() const {
+    std::unordered_set<std::string> rows;
+    for (const Param* p : {&system_.object.distance, &system_.aperture.value}) {
+      if (p->param) rows.insert(*p->param);
+    }
+    const std::vector<ParameterRow>& table = system_.parameters;
+    // A row reads only earlier rows, so one pass from the end collects the closure.
+    for (std::size_t r = table.size(); r-- > 0;) {
+      const auto* e = std::get_if<ParameterExpression>(&table[r].form);
+      if (e == nullptr || !rows.contains(table[r].name)) continue;
+      const auto resolve = [&](std::string_view name) {
+        for (std::size_t k = 0; k < r; ++k) {
+          if (table[k].name == name) return detail::NameLookup{detail::NameStatus::Found, k};
+        }
+        return detail::NameLookup{detail::NameStatus::Unknown, 0};
+      };
+      const auto parsed = detail::parse_expression(e->text, resolve);
+      if (const auto* x = std::get_if<detail::Expression>(&parsed)) {
+        for (const detail::Instruction& i : x->code) {
+          if (i.op == detail::OpCode::Row) rows.insert(table[i.row].name);
+        }
+      }  // a syntax error is reported by the parameter checks
+    }
+    return rows;
+  }
+
+  void check_tolerance_class(ToleranceClass c, const std::string& loc) {
+    if (static_cast<std::uint8_t>(c) > static_cast<std::uint8_t>(ToleranceClass::Precise)) {
+      report("tolerances.class_unknown", loc, "unknown tolerance class");
+    }
+  }
+
+  void check_limit(double limit, ToleranceKind kind, const std::string& loc) {
+    if (!std::isfinite(limit) || limit <= 0.0) {
+      report("tolerances.limit_invalid", loc, "limit must be finite and > 0");
+    } else if (kind == ToleranceKind::CurvatureRelative && limit >= 1.0) {
+      report("tolerances.limit_invalid", loc,
+             "curvature_relative >= 1 allows C' = 0 or a change of sign");
+    }
+  }
+
+  /// The anchor of an item, override or compensator: false if it does not resolve (reported).
+  bool check_anchor(const detail::TargetIndex& index,
+                    const ToleranceTarget& target,
+                    const std::string& loc) {
+    switch (target.anchor) {
+      case ToleranceAnchor::Surface:
+        if (index.surface(target.name) != nullptr) return true;
+        report("tolerances.unknown_target", loc + "/surface",
+               "unknown surface '" + target.name + "'");
+        return false;
+      case ToleranceAnchor::Node:
+        if (index.is_root(target.name)) {
+          report("tolerances.target_invalid", loc + "/node", "the root is not a target");
+          return false;
+        }
+        if (index.node(target.name) != nullptr) return true;
+        report("tolerances.unknown_target", loc + "/node", "unknown node '" + target.name + "'");
+        return false;
+      case ToleranceAnchor::Parameter:
+        if (index.row(target.name) != nullptr) return true;
+        report("tolerances.unknown_target", loc + "/parameter",
+               "unknown parameter row '" + target.name + "'");
+        return false;
+    }
+    return false;
+  }
+
+  /// The pose of the anchor's object (surface or node).
+  static const Pose* anchor_pose(const detail::TargetIndex& index, const ToleranceTarget& t) {
+    if (t.anchor == ToleranceAnchor::Surface) return &index.surface(t.name)->surface->pose;
+    const detail::NodeEntry* n = index.node(t.name);
+    return n->element != nullptr ? &n->element->pose : &n->assembly->pose;
+  }
+
+  /// The segment structure of a material kind (ADR 0035, point 2; addendum #254): the target is
+  /// an element, `segment` is given exactly for a material list, lies inside it and is 0 at a
+  /// uniform list. Returns the element, or null after a report.
+  const Element* check_segment(const detail::TargetIndex& index,
+                               const ToleranceTarget& t,
+                               const std::string& loc) {
+    const detail::NodeEntry* n = t.anchor == ToleranceAnchor::Node ? index.node(t.name) : nullptr;
+    if (n == nullptr || n->element == nullptr) {
+      report("tolerances.target_invalid", loc + "/kind",
+             "index and abbe need an element as target");
+      return nullptr;
+    }
+    const Element& e = *n->element;
+    const auto& list = e.segment_materials;
+    if (list.empty()) {
+      if (t.segment) {
+        report("tolerances.target_invalid", loc + "/segment",
+               "element '" + e.name + "' has one material: no segment");
+        return nullptr;
+      }
+      return &e;
+    }
+    if (!t.segment) {
+      report("tolerances.target_invalid", loc,
+             "element '" + e.name + "' has several materials: segment is required");
+      return nullptr;
+    }
+    const std::uint32_t segment = *t.segment;
+    if (segment >= list.size()) {
+      report("tolerances.target_invalid", loc + "/segment",
+             "element '" + e.name + "' has " + std::to_string(list.size()) + " segments");
+      return nullptr;
+    }
+    // A uniform list is one material and one body (ADR 0035, addendum #254): only segment 0.
+    if (segment >= 1 && std::all_of(list.begin(), list.end(),
+                                    [&](const std::string& x) { return x == list.front(); })) {
+      report("tolerances.target_invalid", loc + "/segment",
+             "element '" + e.name + "' has one material in every segment: segment 0");
+      return nullptr;
+    }
+    return &e;
+  }
+
+  /// The material kinds of an explicit item: the segment structure, then an isotropic material;
+  /// metals, crystals and CONST at abbe are reported.
+  void check_material(const detail::TargetIndex& index,
+                      const ToleranceTarget& t,
+                      ToleranceKind kind,
+                      const std::string& loc) {
+    const Element* element = check_segment(index, t, loc);
+    if (element == nullptr) return;
+    const Element& e = *element;
+    const std::optional<std::string> material =
+        e.segment_materials.empty()
+            ? e.material
+            : std::optional<std::string>(e.segment_materials[t.segment.value_or(0)]);
+    if (e.crystal || !material) {
+      report("tolerances.material_unsupported", loc + "/node",
+             "element '" + e.name + "' has no isotropic material");
+      return;
+    }
+    switch (detail::classify_material(*material)) {
+      case detail::MaterialClass::Metal:
+        report("tolerances.material_unsupported", loc + "/node",
+               "'" + *material + "' is a metal (complex index)");
+        break;
+      case detail::MaterialClass::RealConst:
+        if (kind == ToleranceKind::Abbe) {
+          report("tolerances.abbe_on_const", loc + "/kind",
+                 "'" + *material + "' has no dispersion: the Abbe number is not defined");
+        }
+        break;
+      case detail::MaterialClass::Other:
+        break;
+    }
+  }
+
+  /// Whether kind, anchor, param and segment fit (ADR 0035, points 2 and 3); `limit` is checked
+  /// against the radius for the kind radius.
+  void check_item_target(const detail::TargetIndex& index,
+                         const ToleranceTarget& t,
+                         ToleranceKind kind,
+                         double limit,
+                         const std::string& loc) {
+    if (!check_anchor(index, t, loc)) return;
+    if (t.param && kind != ToleranceKind::Param) {
+      report("tolerances.target_invalid", loc + "/param", "param only with the kind param");
+      return;
+    }
+    if (t.segment && kind != ToleranceKind::Index && kind != ToleranceKind::Abbe) {
+      report("tolerances.target_invalid", loc + "/segment", "segment only with index and abbe");
+      return;
+    }
+    const bool row = t.anchor == ToleranceAnchor::Parameter;
+    switch (kind) {
+      case ToleranceKind::Radius:
+      case ToleranceKind::CurvatureRelative:
+      case ToleranceKind::Conic: {
+        const BaseShape* base = t.anchor == ToleranceAnchor::Surface
+                                    ? &index.surface(t.name)->surface->shape.base
+                                    : nullptr;
+        const Param* radius = nullptr;
+        const Param* conic = nullptr;
+        if (base != nullptr) {
+          if (const auto* c = std::get_if<Conic>(base)) {
+            radius = &c->radius;
+            conic = &c->conic;
+          } else if (const auto* a = std::get_if<EvenAsphere>(base)) {
+            radius = &a->radius;
+            conic = &a->conic;
+          }
+        }
+        if (radius == nullptr) {
+          report("tolerances.target_invalid", loc + "/kind",
+                 "needs a surface with a conic or even asphere base (not a plane)");
+          return;
+        }
+        const Param& p = kind == ToleranceKind::Conic ? *conic : *radius;
+        if (p.param) {
+          report("tolerances.bound_param", loc,
+                 "bound to row '" + *p.param + "': tolerance the row instead");
+        } else if (kind == ToleranceKind::Radius && std::isfinite(limit) &&
+                   limit >= std::abs(p.value)) {
+          report("tolerances.limit_invalid", loc + "/limit",
+                 "a radius limit >= |R| allows R' = 0 or a change of sign");
+        }
+        return;
+      }
+      case ToleranceKind::Thickness: {
+        if (row) {
+          report("tolerances.target_invalid", loc + "/kind", "thickness needs a surface or node");
+          return;
+        }
+        const Param& z = anchor_pose(index, t)->position[2];
+        if (z.param) {
+          report("tolerances.bound_param", loc,
+                 "bound to row '" + *z.param + "': tolerance the row instead");
+        }
+        return;
+      }
+      case ToleranceKind::Param: {
+        if (row) {
+          report("tolerances.target_invalid", loc + "/kind", "param needs a surface or node");
+          return;
+        }
+        if (!t.param) {
+          report("tolerances.target_invalid", loc, "the kind param needs a param pointer");
+          return;
+        }
+        const std::optional<std::string> anchor = index.anchor_pointer(t);
+        if (!anchor) return;  // unreachable: check_anchor found the surface or node
+        const Param* p = index.param(*anchor + *t.param);
+        if (p == nullptr) {
+          report("tolerances.target_invalid", loc + "/param",
+                 "'" + *t.param + "' is not a Param of '" + t.name + "'");
+        } else if (p->param) {
+          report("tolerances.bound_param", loc + "/param",
+                 "bound to row '" + *p->param + "': tolerance the row instead");
+        }
+        return;
+      }
+      case ToleranceKind::Parameter: {
+        if (!row) {
+          report("tolerances.target_invalid", loc + "/kind", "parameter needs a parameter row");
+          return;
+        }
+        if (std::holds_alternative<ParameterExpression>(index.row(t.name)->form)) {
+          report("tolerances.bound_param", loc + "/parameter",
+                 "row '" + t.name + "' is an expression");
+        } else if (system_rows_.contains(t.name)) {
+          report("tolerances.target_invalid", loc + "/parameter",
+                 "the object distance or the system aperture depend on row '" + t.name + "'");
+        }
+        return;
+      }
+      case ToleranceKind::Index:
+      case ToleranceKind::Abbe:
+        check_material(index, t, kind, loc);
+        return;
+      default:  // rigid
+        if (row) {
+          report("tolerances.target_invalid", loc + "/kind",
+                 "a position or tilt needs a surface or node");
+        }
+        return;
+    }
+  }
+
+  void check_overrides(const detail::TargetIndex& index) {
+    std::unordered_set<std::string> classes;
+    std::unordered_set<std::string> values;
+    std::unordered_set<std::string> pivots;
+    const std::vector<ToleranceOverride>& overrides = system_.tolerances.overrides;
+    for (std::size_t i = 0; i < overrides.size(); ++i) {
+      const std::string loc = idx("/tolerances/overrides", i);
+      if (const auto* c = std::get_if<ToleranceClassOverride>(&overrides[i])) {
+        ToleranceTarget t;
+        t.name = c->node;
+        if (check_anchor(index, t, loc) && !classes.insert(c->node).second) {
+          report("tolerances.target_invalid", loc, "a second class for node '" + c->node + "'");
+        }
+        check_tolerance_class(c->tolerance_class, loc + "/class");
+      } else if (const auto* v = std::get_if<ToleranceValueOverride>(&overrides[i])) {
+        check_limit(v->limit, v->kind, loc + "/limit");
+        if (!check_anchor(index, v->target, loc)) continue;
+        if (v->target.param || !detail::class_generates(index, v->target, v->kind)) {
+          report("tolerances.target_invalid", loc + "/kind",
+                 "no class generates '" + std::string(tolerance_kind_name(v->kind)) +
+                     "' at this target; use an explicit item");
+          continue;
+        }
+        if (v->kind == ToleranceKind::Index || v->kind == ToleranceKind::Abbe) {
+          // Only the segment structure: where the class skips the material (CONST at abbe, no
+          // material, a crystal or metal, no Lens or Plate) the value has no effect and is no
+          // error (ADR 0035, point 5).
+          check_segment(index, v->target, loc);
+        } else if (v->target.segment) {
+          report("tolerances.target_invalid", loc + "/segment", "segment only with index and abbe");
+        }
+        const std::optional<std::string> anchor = index.anchor_pointer(v->target);
+        if (!anchor) continue;  // unreachable: a surface or node, checked above
+        const std::string key =
+            *anchor + ":" + std::string(tolerance_kind_name(v->kind)) + ":" +
+            (v->target.segment ? std::to_string(*v->target.segment) : std::string("-"));
+        if (!values.insert(key).second) {
+          report("tolerances.target_invalid", loc, "a second single value for this target");
+        }
+      } else {
+        const auto& p = std::get<TolerancePivotOverride>(overrides[i]);
+        if (!std::all_of(p.pivot.begin(), p.pivot.end(),
+                         [](double x) { return std::isfinite(x); })) {
+          report("tolerances.limit_invalid", loc + "/pivot", "pivot must be finite");
+        }
+        if (!check_anchor(index, p.target, loc)) continue;
+        if (p.target.anchor == ToleranceAnchor::Parameter || p.target.param || p.target.segment) {
+          report("tolerances.target_invalid", loc, "a pivot belongs to a surface or node");
+        } else if (const std::optional<std::string> anchor = index.anchor_pointer(p.target);
+                   anchor && !pivots.insert(*anchor).second) {
+          report("tolerances.target_invalid", loc, "a second pivot for this target");
+        }
+      }
+    }
+  }
+
+  void check_tolerance_id(const std::string& id, const std::string& loc, bool item) {
+    if (blank(id)) {
+      report("tolerances.id_invalid", loc, "id must not be empty");
+    } else if (item && id.starts_with("class:")) {
+      report("tolerances.id_invalid", loc, "ids starting with class: are those of class items");
+    }
+  }
+
+  void check_items(const detail::TargetIndex& index) {
+    std::unordered_set<std::string> ids;
+    std::unordered_set<std::string> quantities;
+    const std::vector<ToleranceItem>& items = system_.tolerances.items;
+    for (std::size_t i = 0; i < items.size(); ++i) {
+      const ToleranceItem& item = items[i];
+      const std::string loc = idx("/tolerances/items", i);
+      check_tolerance_id(item.id, loc + "/id", true);
+      if (!blank(item.id) && !ids.insert(item.id).second) {
+        report("tolerances.id_duplicate", loc + "/id", "duplicate id '" + item.id + "'");
+      }
+      check_limit(item.limit, item.kind, loc + "/limit");
+      check_item_target(index, item.target, item.kind, item.limit, loc);
+      if (const std::optional<std::string> q = detail::quantity(index, item.target, item.kind)) {
+        if (!quantities.insert(*q).second) {
+          report("tolerances.quantity_duplicate", loc, "another item perturbs the same quantity");
+        }
+      }
+    }
+  }
+
+  /// Hash collisions over the generated and the explicit ids, in this order (ADR 0035, point
+  /// 5; ADR 0036, point 5). Equal ids are id_duplicate (explicit) or node.name_duplicate.
+  void check_hashes() {
+    std::unordered_map<std::uint64_t, std::string> seen;
+    const auto add = [&](const std::string& id, const std::string& loc) {
+      const auto [it, inserted] = seen.emplace(tolerance_id_hash(id), id);
+      if (!inserted && it->second != id) {
+        report("tolerances.id_hash_collision", loc,
+               "ids '" + it->second + "' and '" + id + "' have the same FNV-1a hash");
+      }
+    };
+    for (const ClassTolerance& c : class_tolerances(system_).items) {
+      if (c.generated()) add(c.id, "/tolerances/class");
+    }
+    const std::vector<ToleranceItem>& items = system_.tolerances.items;
+    for (std::size_t i = 0; i < items.size(); ++i) {
+      if (!blank(items[i].id)) add(items[i].id, idx("/tolerances/items", i) + "/id");
+    }
+  }
+
+  void check_compensators(const detail::TargetIndex& index) {
+    const ToleranceSet& t = system_.tolerances;
+    std::unordered_set<std::string> targets;
+    for (std::size_t i = 0; i < t.compensators.size(); ++i) {
+      const Compensator& k = t.compensators[i];
+      const std::string loc = idx("/tolerances/compensators", i);
+      if (!std::isfinite(k.travel_min) || k.travel_min >= 0.0) {
+        report("tolerances.compensator_bounds", loc + "/travel_min",
+               "travel_min must be finite and < 0");
+      }
+      if (!std::isfinite(k.travel_max) || k.travel_max <= 0.0) {
+        report("tolerances.compensator_bounds", loc + "/travel_max",
+               "travel_max must be finite and > 0");
+      }
+      if (!check_anchor(index, k.target, loc)) continue;
+      std::string key;
+      if (k.target.segment) {
+        report("tolerances.compensator_target", loc, "a compensator has no segment");
+        continue;
+      }
+      if (k.target.anchor == ToleranceAnchor::Parameter) {
+        if (k.target.param) {
+          report("tolerances.compensator_target", loc + "/param", "a row has no param pointer");
+          continue;
+        }
+        const ParameterForm& form = index.row(k.target.name)->form;
+        if (std::holds_alternative<ParameterExpression>(form)) {
+          report("tolerances.bound_param", loc + "/parameter",
+                 "row '" + k.target.name + "' is an expression");
+          continue;
+        }
+        if (!std::holds_alternative<double>(form)) {
+          report("tolerances.compensator_target", loc + "/parameter",
+                 "a row with values per configuration is not a compensator");
+          continue;
+        }
+        if (system_rows_.contains(k.target.name)) {
+          report(
+              "tolerances.compensator_target", loc + "/parameter",
+              "the object distance or the system aperture depend on row '" + k.target.name + "'");
+          continue;
+        }
+        key = "row:" + k.target.name;
+      } else {
+        if (!k.target.param) {
+          report("tolerances.compensator_target", loc,
+                 "a compensator at a surface or node needs a param pointer");
+          continue;
+        }
+        const std::optional<std::string> anchor = index.anchor_pointer(k.target);
+        if (!anchor) continue;  // unreachable: check_anchor found the surface or node
+        key = *anchor + *k.target.param;
+        const Param* p = index.param(key);
+        if (p == nullptr) {
+          report("tolerances.compensator_target", loc + "/param",
+                 "'" + *k.target.param + "' is not a Param of '" + k.target.name + "'");
+          continue;
+        }
+        if (p->param) {
+          report("tolerances.bound_param", loc + "/param",
+                 "bound to row '" + *p->param + "': use the row as compensator");
+          continue;
+        }
+      }
+      if (!targets.insert(key).second) {
+        report("tolerances.compensator_target", loc, "a second compensator on the same target");
+      }
+    }
+    if (const std::optional<Optimization>& m = t.compensator_merit) {
+      check_merit(*m, "/tolerances/compensator_merit");
+    }
+    // The addendum #253 to ADR 0035: the effective merit of the compensators is not empty.
+    if (!t.compensators.empty()) {
+      if (!t.compensator_merit && system_.optimization.empty()) {
+        report("tolerances.compensator_merit_missing", "/tolerances/compensators",
+               "compensators need a compensator_merit or an optimization with operands");
+      } else if (t.compensator_merit && t.compensator_merit->empty()) {
+        report("tolerances.compensator_merit_missing", "/tolerances/compensator_merit",
+               "the compensator merit has neither operands nor generators");
+      }
+    }
+  }
+
+  void check_criteria() {
+    std::unordered_set<std::string> ids;
+    const std::vector<Criterion>& criteria = system_.tolerances.criteria;
+    for (std::size_t i = 0; i < criteria.size(); ++i) {
+      const Criterion& c = criteria[i];
+      const std::string loc = idx("/tolerances/criteria", i);
+      check_tolerance_id(c.id, loc + "/id", false);
+      if (!blank(c.id) && !ids.insert(c.id).second) {
+        report("tolerances.id_duplicate", loc + "/id", "duplicate criterion id '" + c.id + "'");
+      }
+      const std::string op = loc + "/operand";
+      std::visit([&](const auto& o) { check_operand(o, op); }, c.operand);
+      // By value: GCC 13 takes a reference to the result of std::visit for a dangling temporary.
+      const OperandCommon common = std::visit([](const auto& o) { return o.common; }, c.operand);
+      if (common.target != 0.0) {
+        report("tolerances.criterion_bounds", op + "/target", "a criterion has no target");
+      }
+      if (common.weight != 1.0) {
+        report("tolerances.criterion_bounds", op + "/weight", "a criterion has no weight");
+      }
+      if (!c.min && !c.max && !c.max_change) {
+        report("tolerances.criterion_bounds", loc, "a criterion needs min, max or max_change");
+      }
+      const auto finite = [&](const std::optional<double>& v, const char* key) {
+        if (v && !std::isfinite(*v)) {
+          report("tolerances.criterion_bounds", loc + "/" + key, "must be finite");
+          return false;
+        }
+        return true;
+      };
+      if (finite(c.min, "min") && finite(c.max, "max") && c.min && c.max && *c.min > *c.max) {
+        report("tolerances.criterion_bounds", loc + "/min", "min > max");
+      }
+      if (finite(c.max_change, "max_change") && c.max_change && *c.max_change <= 0.0) {
+        report("tolerances.criterion_bounds", loc + "/max_change", "max_change must be > 0");
+      }
+    }
+  }
+
+  /// Operands and generators of a merit function at `loc` (as check_optimization).
+  void check_merit(const Optimization& o, const std::string& loc) {
+    for (std::size_t i = 0; i < o.operands.size(); ++i) {
+      const std::string at = idx(loc + "/operands", i);
+      std::visit([&](const auto& op) { check_operand(op, at); }, o.operands[i]);
+    }
+    for (std::size_t i = 0; i < o.generators.size(); ++i) {
+      const std::string at = idx(loc + "/generators", i);
+      std::visit([&](const auto& g) { check_generator(g, at); }, o.generators[i]);
+    }
+  }
+
   const System& system_;
   std::vector<Diagnostic> out_;
   std::unordered_map<std::string, std::string> surface_ids_;
   std::unordered_set<std::string> phase_surfaces_;  // ids of surfaces with a phase layer
   std::unordered_map<std::string, std::string> node_names_;
   std::vector<std::string> stops_;
-  std::unordered_set<std::string> row_names_;  // names of the parameter rows (ADR 0029)
-  std::size_t surfaces_seen_ = 0;              // surfaces before the node in tree order
+  std::unordered_set<std::string> row_names_;    // names of the parameter rows (ADR 0029)
+  std::unordered_set<std::string> system_rows_;  // rows of object distance and aperture (#255)
+  std::size_t surfaces_seen_ = 0;                // surfaces before the node in tree order
 };
 
 }  // namespace

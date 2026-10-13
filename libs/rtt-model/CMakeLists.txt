@@ -1,5 +1,5 @@
 add_library(rtt_model src/element.cpp src/expression.cpp src/expression_eval.cpp
-  src/parameters.cpp src/pose.cpp src/validate.cpp)
+  src/parameters.cpp src/pose.cpp src/tolerance.cpp src/tolerance_targets.cpp src/validate.cpp)
 add_library(rtt::model ALIAS rtt_model)
 target_include_directories(rtt_model PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
@@ -22,6 +22,7 @@ if(RTT_BUILD_TESTS)
     SOURCES tests/test_validate.cpp tests/test_pose.cpp tests/test_segment_materials.cpp
             tests/test_validate_0_4.cpp tests/test_validate_optimization.cpp
             tests/test_expression.cpp tests/test_parameters.cpp tests/test_validate_ideal_lens.cpp
+            tests/test_tolerance_classes.cpp tests/test_validate_tolerances.cpp
     LIBS rtt::model rtt::model_test_support)
   # src/: the expression parser (expression.hpp) is tested directly.
   target_include_directories(rtt_model_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
