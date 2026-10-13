@@ -29,6 +29,7 @@
 #include <utility>
 #include <vector>
 
+#include "rtt/analysis/nominal_reference.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/trace/ray_batch.hpp"
 #include "rtt/trace/run_control.hpp"
@@ -146,6 +147,12 @@ struct SpotOptions {
   /// Warning "rays.lost" if more than this fraction of the launched rays is lost (ADR 0023);
   /// in [0, 1]. Vignetting at the field edge is intended, hence the default of one half.
   double lost_warning_fraction = 0.5;
+  /// Nominal reference (ADR 0036, point 2; ADR 0032, addendum #265): all rays, the chief ray
+  /// included, are aimed with the paraxial data of the nominal system (trace::AimReference at
+  /// each wavelength), for a perturbed trial that rtt::paraxial::first_order rejects. Cheap to
+  /// copy (shared, immutable content). None: the paraxial data of `system`, as before. With the
+  /// reference of the same system the result is bitwise that without reference.
+  std::optional<NominalReference> reference = std::nullopt;
 };
 
 /// Spot diagram of one field at one wavelength or polychromatic.

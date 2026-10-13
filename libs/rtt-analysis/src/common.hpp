@@ -16,6 +16,7 @@
 #include <variant>
 #include <vector>
 
+#include "rtt/analysis/nominal_reference.hpp"
 #include "rtt/analysis/spot.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/diagnostics/codes.hpp"
@@ -59,15 +60,44 @@ inline std::uint32_t image_surface(const CompiledSystem& system, PathId path) {
   return system.path(path).events.back().surface;
 }
 
-/// Traces rays of one field and wavelength through the whole path.
+/// The nominal reference of the options for `path`, or null without one (ADR 0032, addendum
+/// #265).
+/// @throws std::invalid_argument if the reference belongs to another path
+inline const NominalReference* nominal_of(const std::optional<NominalReference>& reference,
+                                          PathId path) {
+  if (!reference.has_value()) return nullptr;
+  if (reference->path() != path) {
+    throw std::invalid_argument("analysis: the nominal reference belongs to path " +
+                                std::to_string(reference->path().index) + ", not to path " +
+                                std::to_string(path.index));
+  }
+  return &reference.value();
+}
+
+/// make_rays() of one field, aimed with the nominal reference if there is one.
+inline trace::RayBatch aim_rays(const CompiledSystem& system,
+                                PathId path,
+                                std::uint16_t field,
+                                std::uint16_t wavelength,
+                                const trace::PupilSampling& sampling,
+                                trace::Aiming aiming,
+                                const NominalReference* nominal) {
+  const std::uint16_t fields[] = {field};
+  return nominal != nullptr ? trace::make_rays(system, path, fields, wavelength, sampling, aiming,
+                                               nominal->aim(wavelength))
+                            : trace::make_rays(system, path, fields, wavelength, sampling, aiming);
+}
+
+/// Traces rays of one field and wavelength through the whole path; aimed with the nominal
+/// reference if there is one (ADR 0032, addendum #265).
 inline trace::RayBatch trace_rays(const CompiledSystem& system,
                                   PathId path,
                                   std::uint16_t field,
                                   std::uint16_t wavelength,
                                   const trace::PupilSampling& sampling,
-                                  trace::Aiming aiming) {
-  const std::uint16_t fields[] = {field};
-  trace::RayBatch rays = trace::make_rays(system, path, fields, wavelength, sampling, aiming);
+                                  trace::Aiming aiming,
+                                  const NominalReference* nominal = nullptr) {
+  trace::RayBatch rays = aim_rays(system, path, field, wavelength, sampling, aiming, nominal);
   [[maybe_unused]] const auto stats = trace::SequentialTracer().trace(system, path, rays);
   return rays;
 }
@@ -80,10 +110,14 @@ inline trace::RayBatch trace_rays(const CompiledSystem& system,
                                   std::uint16_t wavelength,
                                   const trace::PupilSampling& sampling,
                                   trace::Aiming aiming,
-                                  const trace::RunControl& control) {
+                                  const trace::RunControl& control,
+                                  const NominalReference* nominal = nullptr) {
   const std::uint16_t fields[] = {field};
   trace::RayBatch rays =
-      trace::make_rays(system, path, fields, wavelength, sampling, aiming, control);
+      nominal != nullptr
+          ? trace::make_rays(system, path, fields, wavelength, sampling, aiming,
+                             nominal->aim(wavelength), control)
+          : trace::make_rays(system, path, fields, wavelength, sampling, aiming, control);
   [[maybe_unused]] const auto stats = trace::SequentialTracer().trace(system, path, rays, control);
   return rays;
 }
@@ -97,9 +131,9 @@ inline trace::RayBatch trace_reference_rays(const CompiledSystem& system,
                                             std::uint16_t field,
                                             std::uint16_t wavelength,
                                             const trace::PupilSampling& sampling,
-                                            trace::Aiming aiming) {
-  const std::uint16_t fields[] = {field};
-  trace::RayBatch rays = trace::make_rays(system, path, fields, wavelength, sampling, aiming);
+                                            trace::Aiming aiming,
+                                            const NominalReference* nominal = nullptr) {
+  trace::RayBatch rays = aim_rays(system, path, field, wavelength, sampling, aiming, nominal);
   rays.set_ignore_obscurations(true);
   [[maybe_unused]] const auto stats = trace::SequentialTracer().trace(system, path, rays);
   return rays;

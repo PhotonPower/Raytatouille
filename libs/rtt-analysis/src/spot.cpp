@@ -26,11 +26,12 @@ using detail::trace_reference_rays;
 Point2 chief_point(const CompiledSystem& system,
                    PathId path,
                    std::uint16_t field,
-                   trace::Aiming aiming) {
+                   trace::Aiming aiming,
+                   const NominalReference* nominal = nullptr) {
   const std::uint32_t image = image_surface(system, path);
   const trace::RayBatch rays =
       trace_reference_rays(system, path, field, system.reference_wavelength(),
-                           trace::SinglePupilPoint{0.0, 0.0}, aiming);
+                           trace::SinglePupilPoint{0.0, 0.0}, aiming, nominal);
   if (!arrived(rays, 0, image)) {
     detail::throw_lost(system, rays, 0, field,
                        "analysis: the chief ray of field " + std::to_string(field) +
@@ -91,6 +92,7 @@ SpotDiagram spot(const compile::CompiledSystem& system,
                  const trace::RunControl& control) {
   detail::reject_gauss(options.sampling, "spot");
   check_path(system, path);
+  const NominalReference* nominal = detail::nominal_of(options.reference, path);
   if (field >= system.fields().points.size()) {
     throw std::invalid_argument("analysis: field index " + std::to_string(field) +
                                 " does not exist");
@@ -127,11 +129,11 @@ SpotDiagram spot(const compile::CompiledSystem& system,
   d.field = field;
   d.wavelength = wavelength;
   d.image_surface = image_surface(system, path);
-  d.chief = chief_point(system, path, field, options.aiming);
+  d.chief = chief_point(system, path, field, options.aiming, nominal);
   detail::LossCounter losses(system, path, options.lost_warning_fraction);
   for (std::size_t k = 0; k < wavelengths.size(); ++k) {
-    const trace::RayBatch rays =
-        trace_rays(system, path, field, wavelengths[k], options.sampling, options.aiming, control);
+    const trace::RayBatch rays = trace_rays(system, path, field, wavelengths[k], options.sampling,
+                                            options.aiming, control, nominal);
     losses.add(rays, d.image_surface);
     d.rays_launched += rays.size();
     for (std::size_t i = 0; i < rays.size(); ++i) {

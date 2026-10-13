@@ -59,24 +59,30 @@ Reference make_reference(const CompiledSystem& system,
                          PathId path,
                          std::uint16_t field,
                          trace::Aiming aiming,
-                         double focus_shift) {
+                         double focus_shift,
+                         const NominalReference* nominal) {
   compile::require_stop(system, path);  // before any ray is traced (ADR 0022)
   const std::uint16_t ref = system.reference_wavelength();
   const std::uint32_t image = image_surface(system, path);
   // A virtual reference ray (ADR 0032, addendum #229): a central obscuration does not stop it.
-  const trace::RayBatch chief =
-      trace_reference_rays(system, path, field, ref, trace::SinglePupilPoint{0.0, 0.0}, aiming);
+  const trace::RayBatch chief = trace_reference_rays(
+      system, path, field, ref, trace::SinglePupilPoint{0.0, 0.0}, aiming, nominal);
   if (!arrived(chief, 0, image)) {
     throw_lost(system, chief, 0, field,
                "analysis: the chief ray of field " + std::to_string(field) +
                    " does not reach the image surface");
   }
-  const paraxial::FirstOrder fo = paraxial::first_order(system, path, ref);
-  // With a stop on the path (require_stop above) first_order() always gives the exit pupil.
-  if (!fo.exit_pupil) throw std::logic_error("analysis: no exit pupil despite a stop");
-  const paraxial::Pupil& xp = *fo.exit_pupil;
+  // The exit pupil of the nominal system (ADR 0036, point 2), computed there as here.
   std::optional<math::Vec3> exit_pupil;
-  if (xp.z) exit_pupil = math::Vec3(0.0, 0.0, *xp.z);
+  if (nominal != nullptr) {
+    exit_pupil = nominal->exit_pupil();
+  } else {
+    const paraxial::FirstOrder fo = paraxial::first_order(system, path, ref);
+    // With a stop on the path (require_stop above) first_order() always gives the exit pupil.
+    if (!fo.exit_pupil) throw std::logic_error("analysis: no exit pupil despite a stop");
+    const paraxial::Pupil& xp = *fo.exit_pupil;
+    if (xp.z) exit_pupil = math::Vec3(0.0, 0.0, *xp.z);
+  }
   return reference_at(global_pos(chief, 0), global_dir(chief, 0), exit_pupil, focus_shift,
                       system.wavelengths_um()[ref] * 1e-3);
 }
@@ -121,10 +127,11 @@ trace::RayBatch chief_ray(const CompiledSystem& system,
                           PathId path,
                           std::uint16_t field,
                           std::uint16_t wavelength,
-                          trace::Aiming aiming) {
+                          trace::Aiming aiming,
+                          const NominalReference* nominal) {
   // Reference ray: chief ray of the same wavelength (W(0, 0) = 0, decided for #29).
   trace::RayBatch chief = trace_reference_rays(system, path, field, wavelength,
-                                               trace::SinglePupilPoint{0.0, 0.0}, aiming);
+                                               trace::SinglePupilPoint{0.0, 0.0}, aiming, nominal);
   if (!arrived(chief, 0, image_surface(system, path))) {
     throw_lost(system, chief, 0, field,
                "analysis: the chief ray of field " + std::to_string(field) +
@@ -168,15 +175,16 @@ std::vector<OpdPoint> points_against(const CompiledSystem& system,
                                      trace::Aiming aiming,
                                      const Reference& ref,
                                      LossCounter& losses,
-                                     const trace::RunControl& control) {
+                                     const trace::RunControl& control,
+                                     const NominalReference* nominal) {
   const std::uint32_t image = image_surface(system, path);
   const double n_image = image_index(system, path, wavelength);
-  const trace::RayBatch chief = chief_ray(system, path, field, wavelength, aiming);
+  const trace::RayBatch chief = chief_ray(system, path, field, wavelength, aiming, nominal);
   const double opl_chief =
       chief_opl(global_pos(chief, 0), global_dir(chief, 0), chief.opl()[0], ref, n_image);
 
   const trace::RayBatch rays =
-      trace_rays(system, path, field, wavelength, sampling, aiming, control);
+      trace_rays(system, path, field, wavelength, sampling, aiming, control, nominal);
   std::vector<OpdPoint> points;
   points.reserve(rays.size());
   for (std::size_t i = 0; i < rays.size(); ++i) {
