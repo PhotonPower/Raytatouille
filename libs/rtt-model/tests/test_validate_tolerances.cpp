@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "rtt/model/model.hpp"
+#include "rtt/model/tolerance_classes.hpp"
 #include "test_support.hpp"
 #include "tolerance_fixture.hpp"
 
@@ -187,6 +188,34 @@ TEST_CASE("tolerances: every code at its pointer", "[model][tolerances][validate
                                                                  ToleranceDistribution::Normal});
        },
        "tolerances.target_invalid", over + "4/kind"},
+      {"single value thickness at surface 0 (only j >= 1 is generated)",
+       [](System& s) {
+         s.tolerances.overrides.push_back(ToleranceValueOverride{
+             at(A::Surface, "L1.S1"), K::Thickness, 0.1, ToleranceDistribution::Normal});
+       },
+       "tolerances.target_invalid", over + "4/kind"},
+      {"a second class for a node",
+       [](System& s) {
+         s.tolerances.overrides.push_back(
+             ToleranceClassOverride{"objective", ToleranceClass::Coarse});
+       },
+       "tolerances.target_invalid", over + "4"},
+      {"a second single value for a target",
+       [](System& s) { s.tolerances.overrides.push_back(s.tolerances.overrides[1]); },
+       "tolerances.target_invalid", over + "4"},
+      {"single value without segment at a material list",
+       [](System& s) {
+         s.tolerances.overrides.push_back(ToleranceValueOverride{at(A::Node, "L1"), K::Abbe, 0.1,
+                                                                 ToleranceDistribution::Normal});
+       },
+       "tolerances.target_invalid", over + "4"},
+      {"single value segment >= 1 at a uniform list (addendum #254)",
+       [](System& s) {
+         auto& objective = std::get<Assembly>(s.root.children[1].value);
+         std::get<Element>(objective.children[0].value).segment_materials = {"SCHOTT:N-BK7",
+                                                                             "SCHOTT:N-BK7"};
+       },
+       "tolerances.target_invalid", over + "1/segment"},
       // bound_param
       {"thickness at a bound position",
        [](System& s) { s.tolerances.items[7] = item("gap", at(A::Node, "image"), K::Thickness); },
@@ -201,6 +230,12 @@ TEST_CASE("tolerances: every code at its pointer", "[model][tolerances][validate
       {"compensator at an expression row",
        [](System& s) { s.tolerances.compensators[0].target = at(A::Parameter, "HALF"); },
        "tolerances.bound_param", comp + "0/parameter"},
+      {"compensator at a bound Param",
+       [](System& s) {
+         s.tolerances.compensators[1].target =
+             with_param(at(A::Surface, "L2.S2"), "/pose/position/2");
+       },
+       "tolerances.bound_param", comp + "1/param"},
       // rows that the object distance or the system aperture depend on (#255, addendum #253)
       {"row bound to the object distance",
        [](System& s) {
@@ -238,6 +273,32 @@ TEST_CASE("tolerances: every code at its pointer", "[model][tolerances][validate
          s.tolerances.compensators[0].target = at(A::Parameter, "EPD");
        },
        "tolerances.compensator_target", comp + "0/parameter"},
+      {"values row of the object distance",
+       [](System& s) {
+         s.configurations = {{"a"}, {"b"}};
+         ParameterRow obj;
+         obj.name = "OBJ";
+         obj.form = std::vector<double>{100.0, 101.0};
+         s.parameters.push_back(obj);
+         s.object = {false, Param::bound("OBJ")};
+         s.tolerances.items[6].target = at(A::Parameter, "OBJ");
+       },
+       "tolerances.target_invalid", items + "6/parameter"},
+      {"row reached through two expressions",
+       [](System& s) {
+         s.parameters.push_back(row("X", 98.0));
+         ParameterRow y;
+         y.name = "Y";
+         y.form = ParameterExpression{"X + 1"};
+         ParameterRow obj;
+         obj.name = "OBJ";
+         obj.form = ParameterExpression{"Y + 1"};
+         s.parameters.push_back(y);
+         s.parameters.push_back(obj);
+         s.object = {false, Param::bound("OBJ")};
+         s.tolerances.items[6].target = at(A::Parameter, "X");
+       },
+       "tolerances.target_invalid", items + "6/parameter"},
       // limit_invalid
       {"limit zero", [](System& s) { s.tolerances.items[7].limit = 0.0; },
        "tolerances.limit_invalid", items + "7/limit"},
@@ -287,10 +348,27 @@ TEST_CASE("tolerances: every code at its pointer", "[model][tolerances][validate
       {"class out of range",
        [](System& s) { s.tolerances.tolerance_class = static_cast<ToleranceClass>(7); },
        "tolerances.class_unknown", "/tolerances/class"},
+      {"class override out of range",
+       [](System& s) {
+         std::get<ToleranceClassOverride>(s.tolerances.overrides[0]).tolerance_class =
+             static_cast<ToleranceClass>(7);
+       },
+       "tolerances.class_unknown", over + "0/class"},
       // materials
       {"abbe at CONST", [](System& s) { s.tolerances.items[4].kind = K::Abbe; },
        "tolerances.abbe_on_const", items + "4/kind"},
       {"index at a metal", [](System& s) { s.tolerances.items[4].target = at(A::Node, "fold"); },
+       "tolerances.material_unsupported", items + "4/node"},
+      {"index at a crystal",
+       [](System& s) {
+         auto& objective = std::get<Assembly>(s.root.children[1].value);
+         Element& l2 = std::get<Element>(objective.children[1].value);
+         l2.material.reset();
+         l2.crystal = CrystalMaterial{"BIREFRINGENT:CALCITE", "BIREFRINGENT:CALCITE-E"};
+       },
+       "tolerances.material_unsupported", items + "4/node"},
+      {"index at an element without material",
+       [](System& s) { s.tolerances.items[4].target = at(A::Node, "stop"); },
        "tolerances.material_unsupported", items + "4/node"},
       // compensators
       {"compensator without param",
@@ -378,6 +456,32 @@ TEST_CASE("tolerances: the fallback on optimization and sets without compensator
     s.tolerances.compensator_merit = Optimization{};
     CHECK(tolerance_diagnostics(s).empty());
   }
+}
+
+TEST_CASE("tolerances: single values where the class skips the material are no error",
+          "[model][tolerances][validate]") {
+  // ADR 0035, point 5: a single value of a kind the class skips at its target has no effect and
+  // is no error; validate checks only the segment structure (review of #272, P1-1).
+  System s = valid();
+  const std::size_t first = s.tolerances.overrides.size();
+  s.tolerances.overrides.push_back(ToleranceValueOverride{at(A::Node, "L2"), K::Abbe, 1.0,
+                                                          ToleranceDistribution::Normal});  // CONST
+  s.tolerances.overrides.push_back(ToleranceValueOverride{
+      at(A::Node, "stop"), K::Index, 0.001, ToleranceDistribution::Normal});  // no material
+  s.tolerances.overrides.push_back(ToleranceValueOverride{
+      at(A::Node, "fold"), K::Index, 0.001, ToleranceDistribution::Normal});  // a metal mirror
+  const std::vector<Diagnostic> d = tolerance_diagnostics(s);
+  for (const Diagnostic& x : d) UNSCOPED_INFO(to_string(x));
+  CHECK(d.empty());
+  // Content guard: the class enumeration lists them as skipped, with the reason.
+  const ClassTolerances r = class_tolerances(s);
+  const std::vector<OverrideStatus> expected = {
+      {first, OverrideEffect::Skipped, ClassSkip::ConstAbbe},
+      {first + 1, OverrideEffect::Skipped, ClassSkip::NoMaterialInBeam},
+      {first + 2, OverrideEffect::Skipped, ClassSkip::NoMaterialInBeam}};
+  REQUIRE(r.value_overrides.size() >= 3);
+  const std::vector<OverrideStatus> tail(r.value_overrides.end() - 3, r.value_overrides.end());
+  CHECK(tail == expected);
 }
 
 TEST_CASE("tolerances: a class alone never invalidates a valid file",

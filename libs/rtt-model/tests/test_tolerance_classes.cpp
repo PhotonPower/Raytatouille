@@ -321,6 +321,24 @@ TEST_CASE("class: single values and explicit items by perturbed quantity", "[mod
   CHECK(r.value_overrides == expected);
 }
 
+TEST_CASE("class: thickness at a surface only from surface 1 on, also under class none",
+          "[model][tolerances]") {
+  // ADR 0035, point 5: thickness at surface j >= 1 of an element. At surface 0 no class can
+  // generate it, so a single value there is NotGenerated (validate: target_invalid), not
+  // ClassNone (review of #272, P1-2).
+  System s = toleranced();
+  s.tolerances.overrides = {
+      ToleranceClassOverride{"objective", ToleranceClass::None},  // 0
+      value(A::Surface, "L1.S1", K::Thickness),                   // 1
+      value(A::Surface, "L1.S2", K::Thickness),                   // 2
+  };
+  const ClassTolerances r = class_tolerances(s);
+  using E = OverrideEffect;
+  const std::vector<OverrideStatus> expected = {{1, E::NotGenerated, ClassSkip::None},
+                                                {2, E::ClassNone, ClassSkip::None}};
+  CHECK(r.value_overrides == expected);
+}
+
 TEST_CASE("class: the result does not depend on the limits or on other items",
           "[model][tolerances]") {
   // Ids and order depend only on the tree, the classes and the overrides (ADR 0035, point 5):

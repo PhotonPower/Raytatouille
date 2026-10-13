@@ -118,7 +118,6 @@ rtt::model::ParameterRow row(std::string name, rtt::model::ParameterForm form) {
   return r;
 }
 
-/// RMS spot operand on `path`, field 0, target 0 (ADR 0030).
 /// An explicit tolerance item at a node or surface of the singlet (ADR 0035, point 2).
 rtt::model::ToleranceItem tolerance(const std::string& id,
                                     rtt::model::ToleranceAnchor anchor,
@@ -146,6 +145,7 @@ rtt::model::Compensator detector_focus(double lo, double hi) {
   return k;
 }
 
+/// RMS spot operand on `path`, field 0, target 0 (ADR 0030).
 rtt::model::SpotRmsOperand spot_rms(const std::string& path) {
   rtt::model::SpotRmsOperand o;
   o.path = path;
