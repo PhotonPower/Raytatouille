@@ -36,6 +36,7 @@
 
 namespace fs = std::filesystem;
 using rtt::analysis::NominalReference;
+using rtt::analysis::OpdFan;
 using rtt::analysis::OpdMap;
 using rtt::analysis::OpdOptions;
 using rtt::analysis::OpdPupilPoints;
@@ -70,8 +71,12 @@ void require_same(const SpotDiagram& a, const SpotDiagram& b) {
   }
   CHECK(same(a.chief.x, b.chief.x));
   CHECK(same(a.chief.y, b.chief.y));
+  CHECK(same(a.stats.centroid.x, b.stats.centroid.x));
+  CHECK(same(a.stats.centroid.y, b.stats.centroid.y));
   CHECK(same(a.stats.rms_centroid, b.stats.rms_centroid));
   CHECK(same(a.stats.rms_chief, b.stats.rms_chief));
+  CHECK(same(a.stats.geo_centroid, b.stats.geo_centroid));
+  CHECK(same(a.stats.geo_chief, b.stats.geo_chief));
   CHECK(a.rays_launched == b.rays_launched);
   CHECK(a.rays_arrived == b.rays_arrived);
   CHECK(a.warnings.size() == b.warnings.size());
@@ -103,6 +108,20 @@ void require_same(const OpdMap& a, const OpdMap& b) {
   CHECK(same(a.pv, b.pv));
   CHECK(a.arrived == b.arrived);
   CHECK(a.warnings.size() == b.warnings.size());
+}
+
+void require_same(const OpdFan& a, const OpdFan& b) {
+  require_same(a.sphere, b.sphere);
+  require_same(a.tangential, b.tangential);
+  require_same(a.sagittal, b.sagittal);
+  CHECK(a.warnings.size() == b.warnings.size());
+}
+
+/// Arrived points of a fan or map.
+std::size_t alive(const std::vector<rtt::analysis::OpdPoint>& points) {
+  return static_cast<std::size_t>(std::count_if(points.begin(), points.end(), [](const auto& q) {
+    return q.status == rtt::trace::RayStatus::Alive;
+  }));
 }
 
 void require_same(const OpdPupilPoints& a, const OpdPupilPoints& b) {
@@ -235,7 +254,8 @@ OpdOptions opd_with(const NominalReference& reference) {
 TEST_CASE("nominal reference: the reference of the same system gives bitwise the same results",
           "[analysis][nominal_reference]") {
   // Acceptance: every reference system that compiles, every path, field and wavelength; spot
-  // per wavelength and polychromatic, OPD map and OPD points (Gauss sampling).
+  // per wavelength and polychromatic, OPD map, fan and points (Gauss sampling); with real
+  // aiming, and spot and OPD map also with paraxial aiming (the second branch of make_rays).
   MaterialLibrary m1;
   m1.add_catalog(std::string(RTT_CATALOG_DIR) + "/schott.agf");
   MaterialLibrary m2;
@@ -244,6 +264,7 @@ TEST_CASE("nominal reference: the reference of the same system gives bitwise the
   coatings.add_catalog(std::string(RTT_CATALOG_DIR) + "/coatings/demo.json");
   coatings.add_catalog(std::string(RTT_CATALOG_DIR) + "/coatings/m3.json");
   std::size_t compared = 0;
+  std::size_t fans = 0;
   for (const fs::path& file : reference_files()) {
     INFO(file.string());
     const System s = rtt::io::load_system(file);
@@ -259,37 +280,54 @@ TEST_CASE("nominal reference: the reference of the same system gives bitwise the
     for (std::uint32_t p = 0; p < cs->paths().size(); ++p) {
       const PathId path{p};
       const NominalReference reference = rtt::analysis::nominal_reference(*cs, path);
-      OpdOptions opd;
-      opd.grid = 9;
-      OpdOptions opd_ref = opd;
-      opd_ref.reference = reference;
-      for (std::uint16_t field = 0; field < cs->fields().points.size(); ++field) {
-        INFO("path " << p << ", field " << field);
-        std::vector<std::optional<std::uint16_t>> spots{std::nullopt};
-        for (std::uint16_t wl = 0; wl < cs->wavelengths_um().size(); ++wl) spots.emplace_back(wl);
-        for (const auto& wl : spots) {
-          if (same_outcome([&] { return rtt::analysis::spot(*cs, path, field, wl); },
-                           [&] {
-                             return rtt::analysis::spot(*cs, path, field, wl, spot_with(reference));
-                           })) {
-            ++compared;
+      for (const auto aiming : {rtt::trace::Aiming::Real, rtt::trace::Aiming::Paraxial}) {
+        const bool real = aiming == rtt::trace::Aiming::Real;
+        SpotOptions spot;
+        spot.aiming = aiming;
+        SpotOptions spot_ref = spot;
+        spot_ref.reference = reference;
+        OpdOptions opd;
+        opd.aiming = aiming;
+        opd.grid = 9;
+        opd.fan_points = 7;
+        OpdOptions opd_ref = opd;
+        opd_ref.reference = reference;
+        for (std::uint16_t field = 0; field < cs->fields().points.size(); ++field) {
+          INFO("path " << p << ", field " << field << (real ? ", real" : ", paraxial"));
+          std::vector<std::optional<std::uint16_t>> spots{std::nullopt};
+          for (std::uint16_t wl = 0; wl < cs->wavelengths_um().size(); ++wl) {
+            spots.emplace_back(wl);
           }
-        }
-        for (std::uint16_t wl = 0; wl < cs->wavelengths_um().size(); ++wl) {
-          INFO("wavelength " << wl);
-          if (same_outcome([&] { return rtt::analysis::opd_map(*cs, path, field, wl, opd); },
-                           [&] { return rtt::analysis::opd_map(*cs, path, field, wl, opd_ref); })) {
-            ++compared;
+          for (const auto& wl : spots) {
+            if (same_outcome([&] { return rtt::analysis::spot(*cs, path, field, wl, spot); },
+                             [&] { return rtt::analysis::spot(*cs, path, field, wl, spot_ref); })) {
+              ++compared;
+            }
           }
-          const rtt::trace::GaussPupil gauss{3, 6};
-          same_outcome(
-              [&] { return rtt::analysis::opd_points(*cs, path, field, wl, gauss, opd); },
-              [&] { return rtt::analysis::opd_points(*cs, path, field, wl, gauss, opd_ref); });
+          for (std::uint16_t wl = 0; wl < cs->wavelengths_um().size(); ++wl) {
+            INFO("wavelength " << wl);
+            if (same_outcome(
+                    [&] { return rtt::analysis::opd_map(*cs, path, field, wl, opd); },
+                    [&] { return rtt::analysis::opd_map(*cs, path, field, wl, opd_ref); })) {
+              ++compared;
+            }
+            if (!real) continue;
+            if (same_outcome(
+                    [&] { return rtt::analysis::opd_fan(*cs, path, field, wl, opd); },
+                    [&] { return rtt::analysis::opd_fan(*cs, path, field, wl, opd_ref); })) {
+              ++fans;
+            }
+            const rtt::trace::GaussPupil gauss{3, 6};
+            same_outcome(
+                [&] { return rtt::analysis::opd_points(*cs, path, field, wl, gauss, opd); },
+                [&] { return rtt::analysis::opd_points(*cs, path, field, wl, gauss, opd_ref); });
+          }
         }
       }
     }
   }
   CHECK(compared >= 100U);
+  CHECK(fans >= 20U);
 }
 
 TEST_CASE("nominal reference: a decentered ideal lens, hand values",
@@ -342,6 +380,16 @@ TEST_CASE("nominal reference: a decentered ideal lens, hand values",
     const rtt::math::Vec3 e(0.0, 0.0, *fo.exit_pupil->z);
     CHECK(reference.exit_pupil() == e);
     CHECK(same(map.sphere.radius, (map.sphere.centre - e).norm()));
+
+    // The fans with the reference: the same sphere, W = 0 within the same bound.
+    const OpdFan fan = rtt::analysis::opd_fan(perturbed, PathId{0}, field, 0, opd_with(reference));
+    REQUIRE(alive(fan.tangential) == fan.tangential.size());
+    REQUIRE(alive(fan.sagittal) == fan.sagittal.size());
+    CHECK(fan.tangential.size() > 10);
+    for (const auto* points : {&fan.tangential, &fan.sagittal}) {
+      for (const auto& q : *points) CHECK(std::abs(q.w) <= 1e-8);
+    }
+    require_same(fan.sphere, map.sphere);
   }
 }
 
@@ -351,6 +399,7 @@ TEST_CASE("nominal reference: a decentered and tilted real lens runs",
   const CompiledSystem perturbed = compiled(two_lenses(true));
   const NominalReference reference = rtt::analysis::nominal_reference(nominal, PathId{0});
   CHECK_THROWS_AS(rtt::analysis::opd_map(perturbed, PathId{0}, 1, 0), rtt::paraxial::ParaxialError);
+  CHECK_THROWS_AS(rtt::analysis::opd_fan(perturbed, PathId{0}, 1, 0), rtt::paraxial::ParaxialError);
   for (const std::uint16_t field : {std::uint16_t{0}, std::uint16_t{1}}) {
     INFO("field " << field);
     const SpotDiagram spot =
@@ -368,6 +417,11 @@ TEST_CASE("nominal reference: a decentered and tilted real lens runs",
       CHECK(centre.points[0].status == rtt::trace::RayStatus::Alive);
       CHECK(centre.points[0].w == 0.0);
       require_same(centre.sphere, map.sphere);
+      const OpdFan fan =
+          rtt::analysis::opd_fan(perturbed, PathId{0}, field, wl, opd_with(reference));
+      CHECK(alive(fan.tangential) > 10);
+      CHECK(alive(fan.sagittal) > 10);
+      require_same(fan.sphere, map.sphere);
     }
   }
 }
