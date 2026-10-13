@@ -256,6 +256,11 @@ MeritFunction::MeritFunction(const model::System& system,
     throw std::invalid_argument(
         "optimize: the nominal basis has another number of configurations than the system");
   }
+  if (overlay != nullptr &&
+      detail::BasisAccess::data(overlay->nominal).wavelengths != system.wavelengths.size()) {
+    throw std::invalid_argument(
+        "optimize: the nominal basis has another number of wavelengths than the system");
+  }
 
   const model::Optimization& merit = system.optimization;
   std::vector<model::Diagnostic> unsupported;
