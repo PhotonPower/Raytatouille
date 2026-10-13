@@ -658,17 +658,7 @@ class Validator {
   /// The section "optimization" (ADR 0030, points 2-4; #162 part B): names, indices, surfaces on
   /// the path, weights, sampling and finite numbers. Whether an operand can be evaluated on its
   /// path (merit.operand_unsupported) is decided when the optimization starts (#167).
-  void check_optimization() {
-    const Optimization& o = system_.optimization;
-    for (std::size_t i = 0; i < o.operands.size(); ++i) {
-      const std::string loc = idx("/optimization/operands", i);
-      std::visit([&](const auto& op) { check_operand(op, loc); }, o.operands[i]);
-    }
-    for (std::size_t i = 0; i < o.generators.size(); ++i) {
-      const std::string loc = idx("/optimization/generators", i);
-      std::visit([&](const auto& g) { check_generator(g, loc); }, o.generators[i]);
-    }
-  }
+  void check_optimization() { check_merit(system_.optimization, "/optimization"); }
 
   void check_common(const OperandCommon& c, const std::string& loc) {
     if (!std::isfinite(c.target)) report("value.not_finite", loc + "/target", "must be finite");
