@@ -13,9 +13,12 @@ namespace rtt::tolerance {
 
 /// The limit T of `kind` at `level` in class `tolerance_class`, in the unit of the kind (mm for
 /// lengths, degree for the tilts, dimensionless for curvature_relative, conic and index; ADR
-/// 0035, point 2). The perturbation lies in [-T, T]. For abbe it is the share p of nu_d (SCHOTT
-/// TIE-29, table 5-1); expand() gives the item the limit p * nu_d of its glass (ADR 0035,
-/// addendum #260).
+/// 0035, point 2). The perturbation lies in [-T, T].
+///
+/// **abbe is different:** for abbe this returns the share p of nu_d (SCHOTT TIE-29, table 5-1),
+/// not a limit; the limit of a generated abbe item is p * nu_d of its glass, which expand()
+/// computes (ADR 0035, addendum #260). abbe_share() gives the same number under its own name;
+/// the Python binding of class_limit rejects abbe and points there.
 /// @throws std::invalid_argument for ToleranceClass::None and for a kind that no class generates
 ///         at that level (ADR 0035, point 5: e.g. radius, tilt_z_deg, param, index at an
 ///         assembly)

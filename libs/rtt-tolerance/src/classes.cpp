@@ -69,9 +69,11 @@ double class_limit(model::ToleranceClass tolerance_class,
                               std::string(model::tolerance_kind_name(kind)) + "' at this level");
 }
 
-// Stub for the red run of the tests (#261).
-double abbe_share(model::ToleranceClass) {
-  return 0.0;
+double abbe_share(model::ToleranceClass tolerance_class) {
+  if (tolerance_class == model::ToleranceClass::None) {
+    throw std::invalid_argument("tolerance: abbe_share needs the class coarse, normal or precise");
+  }
+  return class_limit(tolerance_class, model::ToleranceKind::Abbe, model::ToleranceLevel::Element);
 }
 
 }  // namespace rtt::tolerance

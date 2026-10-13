@@ -137,7 +137,7 @@ ToleranceItems expand(const model::System& system, const material::MaterialLibra
     } else if (c.kind == model::ToleranceKind::Abbe) {
       const std::optional<double> vd = abbe.nu_d(c);
       if (!vd) continue;  // reported, or skipped without dispersion
-      item.limit = class_limit(c.tolerance_class, c.kind, c.level) * *vd;
+      item.limit = abbe_share(c.tolerance_class) * *vd;
       item.distribution = model::ToleranceDistribution::Normal;
     } else {
       item.limit = class_limit(c.tolerance_class, c.kind, c.level);

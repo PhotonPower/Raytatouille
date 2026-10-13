@@ -20,6 +20,7 @@ NB_MODULE(_core, m) {
   rtt::py::bind_paths(m);
   rtt::py::bind_reports(m);
   rtt::py::bind_optim(m);
+  rtt::py::bind_tolerance(m);
   rtt::py::bind_polar(m);
   rtt::py::bind_layout(m);
   rtt::py::bind_result_methods(m);  // after all result classes

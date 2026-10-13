@@ -50,6 +50,7 @@
         "DimensionReport",
         "OptimResult",
         "MeritEvaluation",
+        "ToleranceItems",
         "FirstOrder",
         "Seidel",
         "Prescription",
@@ -1386,6 +1387,132 @@
               "ellipticity",
               "warnings"
             ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ToleranceItems"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "items",
+              "origins",
+              "classes"
+            ],
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "surface",
+                    "node",
+                    "parameter",
+                    "param",
+                    "segment",
+                    "kind",
+                    "limit",
+                    "distribution"
+                  ],
+                  "oneOf": [
+                    {
+                      "properties": {
+                        "surface": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "node": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "parameter": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "origins": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "source",
+                    "index"
+                  ]
+                }
+              },
+              "classes": {
+                "type": "object",
+                "required": [
+                  "items",
+                  "value_overrides"
+                ],
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "surface",
+                        "node",
+                        "segment",
+                        "kind",
+                        "level",
+                        "tolerance_class",
+                        "value_override",
+                        "replaced_by",
+                        "skip"
+                      ],
+                      "oneOf": [
+                        {
+                          "properties": {
+                            "surface": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "properties": {
+                            "node": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "value_overrides": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "index",
+                        "effect",
+                        "skip"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }

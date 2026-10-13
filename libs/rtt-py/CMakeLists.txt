@@ -38,13 +38,14 @@ nanobind_add_module(_core NB_STATIC NB_SUPPRESS_WARNINGS
   src/bind_paths.cpp
   src/bind_reports.cpp
   src/bind_optim.cpp
+  src/bind_tolerance.cpp
   src/bind_polar.cpp
   src/bind_results.cpp
   src/polar_batch.cpp
   src/bind_layout.cpp)
 target_link_libraries(_core PRIVATE
   rtt::io rtt::diagnostics rtt::model rtt::material rtt::coating rtt::compile rtt::paraxial
-  rtt::trace rtt::analysis rtt::optim
+  rtt::trace rtt::analysis rtt::optim rtt::tolerance
   rtt::polar TBB::tbb)
 rtt_target_defaults(_core)
 # The $<1:...> keeps multi-config generators from appending a configuration directory.
@@ -68,6 +69,7 @@ set(RTT_PY_SOURCES
   python/raytatouille/polar.py
   python/raytatouille/reports.py
   python/raytatouille/results.py
+  python/raytatouille/tolerance.py
   python/raytatouille/trace.py
   python/raytatouille/py.typed)
 set(RTT_PY_COPIES "")
