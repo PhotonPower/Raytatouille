@@ -23,4 +23,11 @@ namespace rtt::tolerance {
                                  model::ToleranceKind kind,
                                  model::ToleranceLevel level);
 
+/// The share p of nu_d that limits abbe in class `tolerance_class` (SCHOTT TIE-29, section 5,
+/// table 5-1: coarse step 4, normal step 3, precise step 1, i.e. 0.008, 0.005, 0.002;
+/// dimensionless). The limit of a generated abbe item is p * nu_d of its glass (expand(); ADR
+/// 0035, addendum #260). Equal to class_limit(tolerance_class, Abbe, Element).
+/// @throws std::invalid_argument for ToleranceClass::None
+[[nodiscard]] double abbe_share(model::ToleranceClass tolerance_class);
+
 }  // namespace rtt::tolerance

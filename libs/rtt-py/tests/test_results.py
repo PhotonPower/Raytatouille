@@ -156,6 +156,9 @@ PRODUCERS: dict[str, Callable[[rt.CompiledSystem, rt.MaterialLibrary], Any]] = {
     "LoadWarning": lambda cs, lib: preamble_warning(),
     "Diagnostic": lambda cs, lib: rt.compile(
         rt.load(Path(__file__).parent / "data" / "bare_asphere.rtt.json")).diagnostics[0],
+    # tolerance classes (#261)
+    "ToleranceItems": lambda cs, lib: rt.tolerance.expand(
+        rt.load(REFERENCE_DIR / "m7" / "achromat_tolerances.rtt.json"), materials=lib),
 }
 
 

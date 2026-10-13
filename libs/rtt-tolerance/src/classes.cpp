@@ -69,4 +69,9 @@ double class_limit(model::ToleranceClass tolerance_class,
                               std::string(model::tolerance_kind_name(kind)) + "' at this level");
 }
 
+// Stub for the red run of the tests (#261).
+double abbe_share(model::ToleranceClass) {
+  return 0.0;
+}
+
 }  // namespace rtt::tolerance
