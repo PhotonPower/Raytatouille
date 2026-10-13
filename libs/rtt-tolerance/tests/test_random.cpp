@@ -52,7 +52,6 @@
 
 using rtt::model::ToleranceDistribution;
 using rtt::model::ToleranceItem;
-using rtt::tolerance::fnv1a64;
 using rtt::tolerance::perturbation;
 using rtt::tolerance::perturbations;
 using rtt::tolerance::philox4x32_10;
@@ -190,16 +189,20 @@ TEST_CASE("random: Philox-4x32-10 gives the known-answer vectors", "[tolerance][
   for (const Kat& k : kats) CHECK(philox4x32_10(k.counter, k.key) == k.expected);
 }
 
-TEST_CASE("random: FNV-1a 64 gives the values of the specification", "[tolerance][random]") {
+TEST_CASE("random: the id hash is FNV-1a 64 with the values of the specification",
+          "[tolerance][random]") {
+  // The draws use rtt::model::tolerance_id_hash (#272), the hash of validate's collision
+  // check, so both cannot drift apart.
+  using rtt::model::tolerance_id_hash;
   // draft-eastlake-fnv-35, Sec. 8.3 (FNV test code), FNV64svalues: the four test strings without
   // terminating NUL; "initial teststring is null so initial result is offset_basis" (Sec. 8.3).
-  CHECK(fnv1a64("") == 0xcbf29ce484222325ULL);
-  CHECK(fnv1a64("a") == 0xaf63dc4c8601ec8cULL);
-  CHECK(fnv1a64("foobar") == 0x85944171f73967e8ULL);
+  CHECK(tolerance_id_hash("") == 0xcbf29ce484222325ULL);
+  CHECK(tolerance_id_hash("a") == 0xaf63dc4c8601ec8cULL);
+  CHECK(tolerance_id_hash("foobar") == 0x85944171f73967e8ULL);
   // Bytes >= 0x80 (ids are UTF-8): with a sign-extended char the hash would be
   // 0xbdb17e70953fffa1 instead.
   constexpr std::string_view kHigh{"Hello!\x01\xFF\xED", 9};
-  CHECK(fnv1a64(kHigh) == 0xbd51ea7094ee6fa1ULL);
+  CHECK(tolerance_id_hash(kHigh) == 0xbd51ea7094ee6fa1ULL);
 }
 
 TEST_CASE("random: 53-bit uniform numbers from two words", "[tolerance][random]") {
@@ -220,7 +223,7 @@ TEST_CASE("random: the words of a call and Box-Muller", "[tolerance][random]") {
   const std::uint64_t seed = 0x0012345687654321ULL;
   const std::uint32_t trial = 7;
   const ToleranceItem u = item("L1.decenter", 0.05, ToleranceDistribution::Uniform);
-  const std::uint64_t h = fnv1a64(u.id);
+  const std::uint64_t h = rtt::model::tolerance_id_hash(u.id);
   const rtt::tolerance::PhiloxKey key{static_cast<std::uint32_t>(seed),
                                       static_cast<std::uint32_t>(seed >> 32)};
   const auto call_of = [&](std::uint32_t t, std::uint32_t j) {
