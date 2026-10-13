@@ -15,6 +15,7 @@
 #include "rtt/model/system.hpp"
 #include "rtt/model/validate.hpp"
 #include "rtt/optim/levenberg_marquardt.hpp"
+#include "rtt/optim/overlay.hpp"
 #include "rtt/trace/run_control.hpp"
 
 namespace rtt::optim {
@@ -145,5 +146,20 @@ struct OptimResult {
                                    const coating::CoatingLibrary* coatings = nullptr,
                                    const OptimizeOptions& options = {},
                                    const trace::RunControl& control = {});
+
+/// optimize() for a tolerance trial (ADR 0030, addendum #256; ADR 0036, point 3): every
+/// evaluation, the start check, the Jacobian and the final state included, compiles with
+/// `overlay.perturbation` and takes aiming, reference spheres and the paraxial operands from
+/// `overlay.nominal` (see MeritFunction). The result system is the input model with the result
+/// values, without the overlay.
+/// @param overlay the trial's overlay; must outlive the call
+/// @throws as the overload without overlay, and std::invalid_argument if the nominal basis does
+///         not fit the system (MeritFunction)
+[[nodiscard]] OptimResult optimize(const model::System& system,
+                                   const material::MaterialLibrary& materials,
+                                   const coating::CoatingLibrary* coatings,
+                                   const OptimizeOptions& options,
+                                   const trace::RunControl& control,
+                                   const TrialOverlay& overlay);
 
 }  // namespace rtt::optim

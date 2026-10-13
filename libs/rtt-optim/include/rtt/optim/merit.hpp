@@ -19,6 +19,7 @@
 #include "rtt/model/system.hpp"
 #include "rtt/model/validate.hpp"
 #include "rtt/optim/generators.hpp"
+#include "rtt/optim/overlay.hpp"
 #include "rtt/optim/variables.hpp"
 
 namespace rtt::optim {
@@ -82,6 +83,18 @@ struct MeritEvaluation {
 /// Generators rms_spot and rms_wavefront (ADR 0030, point 4; generators.hpp), each in
 /// configuration `configuration` (none: configuration 0), append their residuals after those
 /// of the operands.
+///
+/// With a TrialOverlay (ADR 0030, addendum #256; ADR 0036, point 2) every configuration is
+/// compiled with its perturbation, and the paraxial data come from its nominal basis:
+/// - spot_rms, opd_rms, ray_x, ray_y and both generators aim with the nominal aiming data, and
+///   the wavefront has the nominal exit pupil (#255, #265); with an empty perturbation and the
+///   basis of the same system bitwise the values without overlay;
+/// - efl, bfl, image_fnumber and magnification come from five parabasal rays around the chief
+///   ray (+-delta in x and y, TrialOverlay::parabasal_step), magnitude the mean principal value
+///   of the map, sign from the nominal system: efl and bfl from the axis-parallel bundle (for a
+///   finite object of the variant with the object at infinity, system aperture StopSize),
+///   image_fnumber and magnification from the bundle of the axis point of the object;
+/// - the start check uses the nominal system (a trial is never rotationally symmetric).
 class MeritFunction {
  public:
   /// Prepares the evaluation and checks the operands at the start (ADR 0030, point 10).
@@ -89,20 +102,29 @@ class MeritFunction {
   ///                  by reference, so it must outlive this object (a temporary is rejected)
   /// @param materials material library for compile; must outlive this object
   /// @param coatings  coating library for compile, or nullptr; must outlive this object
+  /// @param overlay   overlay of a tolerance trial, or nullptr; must outlive this object
   /// @throws compile::CompileError if the start system does not compile in a used configuration
+  ///         (with the overlay's perturbation)
+  /// @throws std::invalid_argument if the overlay's nominal basis has another number of
+  ///         configurations or other path names than `system`
   /// @throws OptimError with merit.operand_unsupported for a magnification operand with the
   ///         object at infinity, an operand other than param_value or a generator on a path
   ///         that paraxial::first_order rejects (crystal, order != 0, not rotationally
   ///         symmetric, stop not circular; for a generator at each chosen wavelength), or a
   ///         generator whose chosen field or wavelength weights sum to 0 (ADR 0030, addendum
-  ///         #168), pointer /optimization/operands/i or /optimization/generators/g
+  ///         #168), pointer /optimization/operands/i or /optimization/generators/g; with an
+  ///         overlay the nominal system decides, and efl or bfl whose axis-parallel bundle
+  ///         cannot be aimed in the nominal system (object-space telecentric: entrance pupil at
+  ///         infinity) are unsupported too (addendum #256)
   MeritFunction(const model::System& system,
                 const material::MaterialLibrary& materials,
-                const coating::CoatingLibrary* coatings);
+                const coating::CoatingLibrary* coatings,
+                const TrialOverlay* overlay = nullptr);
   /// No temporary system: the object keeps a reference to it.
   MeritFunction(model::System&& system,
                 const material::MaterialLibrary& materials,
-                const coating::CoatingLibrary* coatings) = delete;
+                const coating::CoatingLibrary* coatings,
+                const TrialOverlay* overlay = nullptr) = delete;
 
   /// The variables, in the order of ADR 0030, point 5.
   [[nodiscard]] const std::vector<Variable>& variables() const noexcept { return variables_; }
@@ -126,6 +148,7 @@ class MeritFunction {
   const model::System* system_;
   const material::MaterialLibrary* materials_;
   const coating::CoatingLibrary* coatings_;
+  const TrialOverlay* overlay_;
   std::vector<Variable> variables_;
   std::vector<std::size_t> configurations_;            ///< configuration of each operand
   std::vector<std::size_t> compiled_;                  ///< configurations to compile, ascending
@@ -133,6 +156,9 @@ class MeritFunction {
   std::vector<std::size_t> generator_configurations_;  ///< configuration of each generator
   std::vector<std::size_t> generator_sizes_;           ///< residuals of each generator
   std::size_t size_ = 0;                               ///< operands plus generator residuals
+  /// With an overlay: configurations whose efl or bfl operands need the variant with the object
+  /// at infinity, ascending.
+  std::vector<std::size_t> variants_;
 };
 
 }  // namespace rtt::optim

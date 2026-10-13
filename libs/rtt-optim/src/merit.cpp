@@ -207,11 +207,14 @@ bool MeritEvaluation::valid() const noexcept {
 
 MeritFunction::MeritFunction(const model::System& system,
                              const material::MaterialLibrary& materials,
-                             const coating::CoatingLibrary* coatings)
+                             const coating::CoatingLibrary* coatings,
+                             const TrialOverlay* overlay)
     : system_(&system),
       materials_(&materials),
       coatings_(coatings),
+      overlay_(overlay),
       variables_(collect_variables(system)) {
+  static_cast<void>(overlay_);  // stub (#256): the overlay is not used yet
   // The model first, also when no operand needs compile (only param_value operands).
   std::vector<model::Diagnostic> errors = model::validate(system);
   std::erase_if(errors,

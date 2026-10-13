@@ -217,4 +217,14 @@ OptimResult optimize(const model::System& system,
   return result;
 }
 
+OptimResult optimize(const model::System& system,
+                     const material::MaterialLibrary& materials,
+                     const coating::CoatingLibrary* coatings,
+                     const OptimizeOptions& options,
+                     const trace::RunControl& control,
+                     const TrialOverlay& overlay) {
+  static_cast<void>(overlay);  // stub (#256)
+  return optimize(system, materials, coatings, options, control);
+}
+
 }  // namespace rtt::optim
