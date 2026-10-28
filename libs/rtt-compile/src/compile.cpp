@@ -125,6 +125,13 @@ class Compiler {
         medium(system_.environment.medium, "/environment/medium");
     environment_ = environment.value_or(0);
     environment_resolved_ = environment.has_value();
+    // The medium of the object space (ADR 0037) is where every path starts; the environment if the
+    // object has none. Resolved after the environment, which stays media_[0].
+    object_medium_ = environment_;
+    if (system_.object.medium) {
+      object_medium_ = medium(*system_.object.medium, "/object/medium").value_or(environment_);
+    }
+    check_object_na();
     check_perturbation_values();
     const math::Isometry3 root = model::to_isometry(system_.root.pose);
     node_frames_.push_back({"/root", math::Isometry3::identity(), root});
@@ -411,6 +418,27 @@ class Compiler {
   /// on a path where the ray meets it: /environment/medium or the material of an element.
   /// Runs only if nothing failed before: after an unresolved material the medium indices of
   /// the events are placeholders that may not even exist in media_.
+  /// The object-space NA is read paraxially, tan U = NA / n, with n of the object space (ADR 0037).
+  /// NA >= n is not physical. For air validate reports it (aperture.na_not_physical), so only an
+  /// object medium other than AIR is checked here, at the reference wavelength.
+  void check_object_na() {
+    if (system_.aperture.type != model::SystemApertureType::ObjectSpaceNA) return;
+    if (!system_.object.medium || *system_.object.medium == "AIR") return;
+    const auto resolved = medium_index_.find(*system_.object.medium);
+    if (resolved == medium_index_.end()) return;  // unresolved: material.unknown is reported
+    std::size_t reference = 0;
+    for (std::size_t i = 0; i < system_.wavelengths.size(); ++i) {
+      if (system_.wavelengths[i].reference) reference = i;
+    }
+    const double n = media_[resolved->second].index[reference].real();
+    const double na = system_.aperture.value.value;
+    if (na >= n) {
+      report("aperture.na_exceeds_index", "/aperture/value",
+             "object-space NA " + std::to_string(na) + " is not below the index " +
+                 std::to_string(n) + " of the object medium '" + *system_.object.medium + "'");
+    }
+  }
+
   void check_wavelength_ranges() {
     if (!errors_.empty()) return;
     check_coating_ranges();
@@ -1178,7 +1206,9 @@ class Compiler {
   /// (#61); from_inside tells whether the ray is inside the surface's element before the event.
   /// `location` is the JSON pointer of the events; errors add the event index.
   void assign_media(std::vector<CompiledEvent>& events, const std::string& location) {
-    MediumState state{std::nullopt, 0, environment_};
+    // A path starts in the medium of the object space (the environment unless the object has a
+    // medium of its own, ADR 0037).
+    MediumState state{std::nullopt, 0, object_medium_};
     for (std::size_t k = 0; k < events.size(); ++k) {
       CompiledEvent& event = events[k];
       event.medium_before = state.current;
@@ -1235,6 +1265,8 @@ class Compiler {
   };
   std::vector<CoatingCheck> coating_checks_;
   std::uint32_t environment_ = 0;
+  /// Medium of the object space: where every path starts (environment_ without object.medium).
+  std::uint32_t object_medium_ = 0;
   /// False if /environment/medium is unresolved: environment_ is then a placeholder that may
   /// alias another medium, and the crystal path rules are skipped (no follow-up errors).
   bool environment_resolved_ = true;

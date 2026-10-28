@@ -30,7 +30,8 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `agf.duplicate_glass_conflict` | Warnung | Glas zweimal mit verschiedenen Daten; es ist mehrdeutig und nicht auflösbar (`UnknownMaterial` mit beiden Zeilen und Alias-Hinweis), beide Blöcke stehen im Listing | agf | Datei:Zeile des zweiten Blocks |
 | `agf.preamble_skipped` | Warnung | Textzeile vor dem ersten Datensatz (CC/NM) übersprungen, z. B. die RadiantZemax-Kopfzeile | agf | Datei:Zeile |
 | `agf.stray_line` | Warnung | einzelnes Wort vor dem nächsten NM-Datensatz übersprungen, nur Leerzeilen dazwischen (NIKON-HIKARI_201911 Z. 10102) | agf | Datei:Zeile |
-| `aperture.na_not_physical` | Warnung | objektseitige NA ≥ 1 in Luft | validate | `/aperture/value` |
+| `aperture.na_exceeds_index` | Warnung | objektseitige NA ≥ Brechungsindex des Objektraums (bei `object.medium` ungleich `AIR`; für Luft meldet validate `aperture.na_not_physical`, ADR 0037) | compile | `/aperture/value` |
+| `aperture.na_not_physical` | Warnung | objektseitige NA ≥ 1 in Luft (Objektraum: `object.medium`, sonst `environment.medium`) | validate | `/aperture/value` |
 | `aperture.stop_missing` | Fehler | Aperturtyp `stop_size` ohne Blendenelement | validate | `/aperture/type` |
 | `aperture.value_invalid` | Fehler | Wert der Systemapertur nicht endlich oder ≤ 0 | validate | `/aperture/value` |
 | `bounds.invalid` | Fehler | `min` nicht kleiner als `max`, oder Grenzen an einer abgeleiteten Zeile (nur über die API) | validate | `…/min` (bei einer Zeile ohne `min`: `…/max`) |
@@ -99,6 +100,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `node.name_duplicate` | Fehler | Name einer Baugruppe oder eines Elements doppelt | validate | `…/name` |
 | `node.name_empty` | Fehler | leerer Name einer Baugruppe oder eines Elements | validate | `…/name` |
 | `object.distance_invalid` | Fehler | endlicher Objektabstand nicht endlich oder ≤ 0 mm | validate | `/object/distance` |
+| `object.medium_infinite` | Fehler | Medium im Objektraum bei einem Objekt im Unendlichen (ADR 0037) | validate | `/object/medium` |
 | `optim.evaluation_failed` | Warnung | Auswertungen der Merit-Funktion sind im Lauf gescheitert (Analysefehler oder nicht definierter Wert); diese Versuche galten als abgelehnt (ADR 0030, Punkt 10) | optim | `/optimization` |
 | `optim.jacobian_failed` | Fehler | eine Spalte der Jacobi-Matrix hat kein gültiges Auswertungspaar; der Lauf endet mit Status `failed` und dem letzten angenommenen Stand | optim | Pointer der Variablen (kleinster Index) |
 | `optim.no_operands` | Fehler | Optimierung ohne Operanden und ohne Generatoren (ADR 0030, Nachtrag #167) | optim | leer |

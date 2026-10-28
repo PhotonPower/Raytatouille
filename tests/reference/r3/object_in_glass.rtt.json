@@ -1,0 +1,63 @@
+{
+  "schema_version": "0.7.0",
+  "name": "Point source in glass (n = 1.53) behind a dome (n = 1.5), object medium",
+  "units": {"length": "mm", "wavelength": "um"},
+  "object": {"at_infinity": false, "distance": 0.5, "medium": "CONST:1.53"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "object_na", "value": 1.2},
+  "fields": {
+    "type": "object_height",
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 0.5}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "H",
+        "pose": {"position": [0.0, 0.0, 0.5]},
+        "material": "CONST:1.5",
+        "surfaces": [
+          {
+            "id": "H.S1",
+            "aperture": {"type": "circular", "radius": 2.4}
+          },
+          {
+            "id": "H.S2",
+            "pose": {"position": [0.0, 0.0, 2.5]},
+            "shape": {
+              "base": {"type": "conic", "radius": -2.5}
+            },
+            "aperture": {"type": "circular", "radius": 2.4}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 30.0]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}
