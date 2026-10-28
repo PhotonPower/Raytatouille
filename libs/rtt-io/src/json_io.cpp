@@ -616,6 +616,7 @@ struct Migration {
   bool before_0_4 = false;  ///< Params could carry a pickup; no 0.4 forms
   bool before_0_5 = false;  ///< no ideal lenses (ADR 0031)
   bool before_0_6 = false;  ///< no tolerance set (ADR 0035)
+  bool before_0_7 = false;  ///< no medium of the object space (ADR 0037)
 };
 
 /// Checks the schema version of `j` and tells which migrations to the current version it needs.
@@ -631,6 +632,7 @@ struct Migration {
 /// - 0.4 -> 0.5 (ADR 0031): content unchanged, only the interactions ideal_lens and
 ///   ideal_cylinder_lens are new.
 /// - 0.5 -> 0.6 (ADR 0035): content unchanged, only the section "tolerances" is new.
+/// - 0.6 -> 0.7 (ADR 0037): content unchanged, only "object.medium" is new.
 Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
   const std::string ours(kSchemaVersion);
   const std::string mm = major_minor(version);
@@ -639,13 +641,14 @@ Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
     if (const Json* root = find(j, "root")) {
       check_material_forms(*root, Ctx().at("root"), mm == "0.2");
     }
-    return {true, true, true, true};
+    return {true, true, true, true, true};
   }
-  if (mm == "0.3") return {false, true, true, true};
-  if (mm == "0.4") return {false, false, true, true};
-  if (mm == "0.5") return {false, false, false, true};
+  if (mm == "0.3") return {false, true, true, true, true};
+  if (mm == "0.4") return {false, false, true, true, true};
+  if (mm == "0.5") return {false, false, false, true, true};
+  if (mm == "0.6") return {false, false, false, false, true};
   c.fail("incompatible schema_version '" + version + "', this build reads " + ours +
-         " and migrates 0.1, 0.2, 0.3, 0.4 and 0.5");
+         " and migrates 0.1, 0.2, 0.3, 0.4, 0.5 and 0.6");
 }
 
 /// Files before 0.5 (ADR 0031): an ideal lens or ideal cylinder lens is an error at the type of
@@ -1107,6 +1110,15 @@ System read_system_tree(const Json& j, std::vector<Diagnostic>* warnings) {
   if (m.before_0_6 && find(j, "tolerances") != nullptr) {
     c.at("tolerances").fail("a tolerance set needs schema_version 0.6 or later (ADR 0035)");
   }
+  // Files before 0.7 (ADR 0037): a medium of the object space is an error at its pointer, so that
+  // a version is never silently upgraded.
+  if (m.before_0_7) {
+    const Json* object = find(j, "object");
+    if (object != nullptr && object->is_object() && find(*object, "medium") != nullptr) {
+      c.at("object").at("medium").fail(
+          "an object medium needs schema_version 0.7 or later (ADR 0037)");
+    }
+  }
   if (m.before_0_5) {
     if (const Json* root = find(j, "root")) check_0_5_forms(*root, c.at("root"));
   }
@@ -1150,9 +1162,10 @@ System read_migrated(const Json& j, const Migration& m) {
 
   if (const Json* o = find(j, "object")) {
     const Ctx oc = c.at("object");
-    expect_object(*o, oc, {"at_infinity", "distance"});
+    expect_object(*o, oc, {"at_infinity", "distance", "medium"});
     s.object.at_infinity = read_bool(require(*o, "at_infinity", oc), oc.at("at_infinity"));
     read_opt(*o, "distance", oc, s.object.distance, read_param);
+    read_opt(*o, "medium", oc, s.object.medium, read_string);
   }
 
   {
@@ -1280,6 +1293,7 @@ class Writer {
       OJson ob;
       ob["at_infinity"] = s.object.at_infinity;
       if (edit_ || s.object.distance != Param{}) ob["distance"] = param(s.object.distance);
+      if (s.object.medium) ob["medium"] = *s.object.medium;
       o["object"] = std::move(ob);
     }
 

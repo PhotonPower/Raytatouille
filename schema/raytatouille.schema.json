@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/PhotonPower/Raytatouille/schema/raytatouille.schema.json",
-  "title": "Raytatouille system file (.rtt.json), schema 0.6",
+  "title": "Raytatouille system file (.rtt.json), schema 0.7",
   "description": "Units: lengths mm, wavelengths um, angles in degree where the key ends in _deg. Parsing in rtt-io is the reference; this schema must accept exactly what rtt-io accepts structurally for the current schema version. rtt-io migrates older files (0.1 to 0.5); run rtt format before checking them against this schema. Semantic rules (names of parameter rows, one value per configuration, bounds, the targets and limits of tolerances) are checked by validate, not here.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "units", "wavelengths", "aperture", "fields", "root", "paths"],
   "properties": {
-    "schema_version": {"type": "string", "pattern": "^0\\.6\\.[0-9]+$"},
+    "schema_version": {"type": "string", "pattern": "^0\\.7\\.[0-9]+$"},
     "name": {"type": "string"},
     "units": {
       "type": "object",
@@ -28,7 +28,11 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["at_infinity"],
-      "properties": {"at_infinity": {"type": "boolean"}, "distance": {"$ref": "#/$defs/param"}}
+      "properties": {
+        "at_infinity": {"type": "boolean"},
+        "distance": {"$ref": "#/$defs/param"},
+        "medium": {"type": "string"}
+      }
     },
     "wavelengths": {
       "type": "array",

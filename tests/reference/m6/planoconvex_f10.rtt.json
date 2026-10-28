@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.6.0",
+  "schema_version": "0.7.0",
   "name": "M6 acceptance: plano-convex singlet f = 100 mm (n = 1.5168), D = 10 mm, VACUUM, image in the paraxial focus",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},
