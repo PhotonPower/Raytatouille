@@ -748,7 +748,10 @@ void bind_model_tree(nb::module_& m) {
       .def_ro("at_infinity", &model::ObjectSpace::at_infinity, "True for an object at infinity.")
       .def_ro("distance", &model::ObjectSpace::distance,
               "Distance from the object to the global origin along -z in mm; used only if not "
-              "at_infinity (Param).");
+              "at_infinity (Param).")
+      .def_ro("medium", &model::ObjectSpace::medium,
+              "Medium of the object space as a material reference (schema 0.7, ADR 0037); None "
+              "for the environment. Only for a finite object.");
 
   bind_optimization(m);
   bind_tolerances(m);

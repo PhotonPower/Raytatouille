@@ -109,8 +109,11 @@ class Validator {
     if (checked && !finite_positive(v.value)) {
       report("aperture.value_invalid", "/aperture/value", "aperture value must be finite and > 0");
     }
+    // The object space is the environment unless the object has a medium of its own (ADR 0037).
+    const std::string& object_medium =
+        system_.object.medium ? *system_.object.medium : system_.environment.medium;
     if (system_.aperture.type == SystemApertureType::ObjectSpaceNA && v.value >= 1.0 &&
-        system_.environment.medium == "AIR") {
+        object_medium == "AIR") {
       report("aperture.na_not_physical", "/aperture/value",
              "object-space NA >= 1 in air is not physical");
     }
@@ -136,6 +139,10 @@ class Validator {
     if (!system_.object.at_infinity && !d.is_bound() && !finite_positive(d.value)) {
       report("object.distance_invalid", "/object/distance",
              "finite object distance must be > 0 mm");
+    }
+    if (system_.object.at_infinity && system_.object.medium) {
+      report("object.medium_infinite", "/object/medium",
+             "a medium of the object space needs a finite object");
     }
     const Environment& e = system_.environment;
     if (!std::isfinite(e.temperature_c) || e.temperature_c <= -273.15) {

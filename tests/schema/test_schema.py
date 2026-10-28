@@ -464,3 +464,29 @@ def test_0_6_tolerance_forms_are_accepted(mutate):
 )
 def test_0_6_tolerance_errors_are_rejected(mutate):
     assert not VALIDATOR.is_valid(_tol(mutate))
+
+
+# ---- schema 0.7 (#282, ADR 0037): the medium of the object space ----
+
+def _obj(mutate):
+    doc = copy.deepcopy(load(ROOT / "tests" / "reference" / "m1" / "singlet_const.rtt.json"))
+    doc["object"] = {"at_infinity": False, "distance": 50.0}
+    mutate(doc)
+    return doc
+
+
+def test_0_7_object_medium_is_accepted():
+    assert VALIDATOR.is_valid(_obj(lambda d: d["object"].update(medium="CONST:1.53")))
+    assert VALIDATOR.is_valid(_obj(lambda d: None))
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [lambda d: d["object"].update(medium=1.53),
+     lambda d: d["object"].update(medium=None),
+     lambda d: d["object"].update(medium=["CONST:1.5"]),
+     lambda d: d["object"].update(unknown_key=1)],
+    ids=["number", "null", "list", "unknown-key"],
+)
+def test_0_7_object_medium_errors_are_rejected(mutate):
+    assert not VALIDATOR.is_valid(_obj(mutate))

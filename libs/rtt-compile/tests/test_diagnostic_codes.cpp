@@ -221,6 +221,14 @@ std::vector<Case> cases() {
          s.aperture = {SystemApertureType::ObjectSpaceNA, Param(1.2)};
          s.object = {false, Param(100.0)};
        }},
+      {"aperture.na_exceeds_index", "/aperture/value",
+       [](System& s) {
+         s.aperture = {SystemApertureType::ObjectSpaceNA, Param(1.6)};
+         s.object = {false, Param(100.0)};
+         s.object.medium = "CONST:1.5";
+       }},
+      {"object.medium_infinite", "/object/medium",
+       [](System& s) { s.object.medium = "CONST:1.5"; }},
       {"aperture.stop_missing", "/aperture/type",
        [](System& s) {
          s.aperture.type = SystemApertureType::StopSize;

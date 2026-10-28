@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.6.0",
+  "schema_version": "0.7.0",
   "name": "Ideal lens and ideal cylinder lens f = 50 mm: object at 75 mm, image at 150 mm (#178, ADR 0031)",
   "units": {"length": "mm", "wavelength": "um"},
   "object": {"at_infinity": false, "distance": 75.0},

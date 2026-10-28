@@ -11,7 +11,7 @@ if(RTT_BUILD_TESTS)
   rtt_add_test(rtt_compile_tests
     SOURCES tests/test_compile.cpp tests/test_media.cpp tests/test_coatings.cpp tests/test_layout.cpp
             tests/test_diagnostic_codes.cpp tests/test_errors.cpp tests/test_ghosts.cpp
-            tests/test_migration.cpp tests/test_crystal.cpp
+            tests/test_migration.cpp tests/test_crystal.cpp tests/test_object_medium.cpp
             tests/test_relative_placement.cpp tests/test_configurations.cpp
             tests/test_node_frames.cpp tests/test_ideal_lens.cpp tests/test_perturbation.cpp
     LIBS rtt::compile rtt::io rtt::model_test_support)
