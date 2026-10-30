@@ -299,8 +299,8 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
     {"tolerances.quantity_duplicate", Severity::Error, "validate",
      "two explicit tolerance items perturb the same quantity"},
     {"tolerances.rss_negative", Severity::Warning, "tolerance",
-     "the RSS sum Phi_0^2 + sum q_i of a quadratic criterion is negative; reported as 0 (ADR "
-     "0036, point 6)"},
+     "the RSS sum Phi_0^2 + sum q_i or the prediction Phi_0^2 + sum c_i^2 q_i of a quadratic "
+     "criterion is negative; reported as 0 (ADR 0036, point 6)"},
     {"tolerances.target_invalid", Severity::Error, "validate",
      "tolerance kind, anchor, param pointer or segment do not fit the target, a single value of "
      "a kind no class generates there, or a row the object distance or the system aperture "

@@ -696,6 +696,107 @@ TEST_CASE("sensitivity: the quadratic RSS of a negative sum is 0 with a warning"
   CHECK(zero.value == 0.0);
 }
 
+TEST_CASE("sensitivity: tolerances.rss_negative names the criterion, the sum and the part",
+          "[tolerance][sensitivity]") {
+  // ADR 0036, addendum #258: the warning at /tolerances/criteria/<k> (docs/diagnostics.md).
+  using rtt::tolerance::detail::NegativeSum;
+  using rtt::tolerance::detail::rss_warning;
+  Criterion c;
+  c.id = "spot";
+  const rtt::model::Diagnostic w = rss_warning(c, 3, "confirmation", NegativeSum::Prediction);
+  CHECK(w.code == "tolerances.rss_negative");
+  CHECK(w.severity == rtt::model::Severity::Warning);
+  CHECK(w.location == "/tolerances/criteria/3");
+  CHECK(w.message.find("'spot' (confirmation)") != std::string::npos);
+  CHECK(w.message.find("prediction") != std::string::npos);
+  const rtt::model::Diagnostic v = rss_warning(c, 0, "sensitivity", NegativeSum::Rss);
+  CHECK(v.location == "/tolerances/criteria/0");
+  CHECK(v.message.find("'spot' (sensitivity)") != std::string::npos);
+  CHECK(v.message.find("RSS") != std::string::npos);
+}
+
+TEST_CASE("sensitivity: the predicted mean square can be negative and is then 0",
+          "[tolerance][sensitivity]") {
+  // ADR 0036, addendum #258 (second review 8d, P3-2): Phi_0^2 = 0.1, q_1 = -0.5 (endpoint,
+  // c_1^2 = 1), q_2 = 1 (uniform, c_2^2 = 1/3): Phi_0^2 + sum q_i = 0.6 >= 0, but
+  // Phi_0^2 + sum c_i^2 q_i = 0.1 - 0.5 + 1/3 = -0.067 < 0.
+  using rtt::tolerance::detail::predicted_mean_square;
+  using rtt::tolerance::detail::quadratic_rss;
+  const double nominal = std::sqrt(0.1);
+  const std::vector<double> q = {-0.5, 1.0};
+  const std::vector<double> c = {1.0, 1.0 / std::sqrt(3.0)};
+  CHECK(!quadratic_rss(nominal, q).negative);
+  const auto predicted = predicted_mean_square(nominal, q, c);
+  CHECK(predicted.negative);
+  CHECK(predicted.value == 0.0);
+  // With q_2 = 2 the prediction is 0.1 - 0.5 + 2/3 = 0.267 > 0 and kept as it is.
+  const std::vector<double> more = {-0.5, 2.0};
+  const auto kept = predicted_mean_square(nominal, more, c);
+  CHECK(!kept.negative);
+  CHECK(std::abs(kept.value - (0.1 - 0.5 + 2.0 / 3.0)) <= 1e-15);
+}
+
+TEST_CASE("sensitivity: a criterion without a positive allowance is not distributed",
+          "[tolerance][sensitivity]") {
+  // ADR 0036, point 6 (second review 8d, P2-1). The 2 f system of the first test, chief ray_y
+  // with Phi_0 = 0 (within kEps):
+  //   max = 0: A = max - Phi_0 <= kEps, not positive after rounding either way; min = 0.01:
+  //   A = Phi_0 - min < 0. Both: A = 0 with the note, no share, no limits.
+  //   spot_rms with only min: a quadratic criterion without an upper bound is not distributed.
+  System s = lens_system(50.0, 100.0);
+  add_detector(s, 100.0);
+  s.tolerances.items = {item("lens.dy", "lens", ToleranceKind::DecenterY, 0.1)};
+  Criterion on_max = ray("on_max", RayCoordinate::Y, 0, 0.0, 0.5);
+  on_max.max_change.reset();
+  on_max.max = 0.0;
+  Criterion below_min = ray("below_min", RayCoordinate::Y, 0, 0.0, 0.5);
+  below_min.max_change.reset();
+  below_min.min = 0.01;
+  rtt::model::SpotRmsOperand spot;
+  spot.path = "main";
+  Criterion lower;
+  lower.id = "spot_min";
+  lower.operand = spot;
+  lower.min = 0.0;
+  s.tolerances.criteria = {on_max, below_min, lower};
+  const ToleranceSensitivity r = rtt::tolerance::sensitivity(context(s));
+  REQUIRE(r.status == SensitivityStatus::Completed);
+  REQUIRE(r.criteria.size() == 3);
+  REQUIRE(std::abs(r.criteria[0].nominal.value_or(1.0)) <= kEps);
+  for (std::size_t k = 0; k < 2; ++k) {
+    INFO("criterion " << k);
+    const rtt::tolerance::InverseSensitivity& inverse = r.criteria[k].inverse;
+    CHECK(inverse.allowance == std::optional<double>(0.0));
+    CHECK(inverse.note == "nominal value on or outside a bound");
+    CHECK(!inverse.share.has_value());
+    CHECK(inverse.limits.empty());
+    CHECK(inverse.unlimited.empty());
+    CHECK(r.criteria[k].rss.has_value());  // the sensitivity itself is still there
+  }
+  const rtt::tolerance::InverseSensitivity& quadratic = r.criteria[2].inverse;
+  CHECK(r.criteria[2].kind == CriterionKind::Quadratic);
+  CHECK(!quadratic.allowance.has_value());
+  CHECK(quadratic.note == "no upper bound");
+  CHECK(quadratic.limits.empty());
+  // No criterion limits the item: the confirmation keeps T.
+  REQUIRE(r.limits.size() == 1);
+  CHECK(!r.limits[0].has_value());
+  CHECK(required(r.confirmation).limits.at(0) == 0.1);
+
+  // Not reachable from a valid file (validate: tolerances.criterion_bounds) but defined: a linear
+  // criterion without any bound, and no items at all.
+  using rtt::tolerance::detail::distribute;
+  Criterion unbounded;
+  unbounded.id = "free";
+  rtt::tolerance::InverseSensitivity none;
+  CHECK(!distribute(unbounded, CriterionKind::Linear, 0.0, 2, none).has_value());
+  CHECK(none.note == "no bound");
+  CHECK(!none.allowance.has_value());
+  rtt::tolerance::InverseSensitivity empty;
+  CHECK(!distribute(on_max, CriterionKind::Linear, -1.0, 0, empty).has_value());
+  CHECK(empty.note == "no items");
+}
+
 TEST_CASE("sensitivity: the overload with a System expands and keeps the expansion",
           "[tolerance][sensitivity]") {
   // ADR 0036, addendum #260: expand, prepare, the run; bitwise the same as with the context of
@@ -956,8 +1057,11 @@ TEST_CASE("sensitivity: bitwise the same for 1, 4 and all threads", "[tolerance]
   // Content guard: a complete run with values, not only placeholders.
   REQUIRE(first.status == SensitivityStatus::Completed);
   REQUIRE(first.criteria.size() == 2);
+  CHECK(first.criteria[0].nominal.has_value());
   CHECK(first.criteria[0].rss.has_value());
   CHECK(first.criteria[1].rss.has_value());
+  REQUIRE(first.criteria[0].items.size() == 3);
+  CHECK(first.criteria[0].items[0].delta.value_or(0.0) != 0.0);  // lens.dy moves the chief ray
   CHECK(first.criteria[1].nominal.value_or(0.0) > 0.0);  // the spot of field 1 is not a point
   CHECK(first.confirmation.has_value());
   const std::vector<double> one = values(first);

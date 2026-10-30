@@ -122,27 +122,24 @@ ItemContribution contribution(CriterionKind kind,
   return c;
 }
 
-/// tolerances.rss_negative of criterion k; `stage` names the part of the run ("sensitivity" or
-/// "confirmation"), so that the warnings of both parts can be told apart.
+}  // namespace
+
+namespace detail {
+
 model::Diagnostic rss_warning(const model::Criterion& criterion,
                               std::size_t k,
-                              std::string_view stage) {
+                              std::string_view stage,
+                              NegativeSum sum) {
   const diagnostics::DiagnosticCode code("tolerances.rss_negative");
+  const std::string what = sum == NegativeSum::Rss
+                               ? "Phi_0^2 + sum q_i is negative; the RSS is reported as 0"
+                               : "the prediction Phi_0^2 + sum c_i^2 q_i is negative; the "
+                                 "predicted mean square is reported as 0";
   return {code.severity(), "/tolerances/criteria/" + std::to_string(k),
-          "criterion '" + criterion.id + "' (" + std::string(stage) +
-              "): Phi_0^2 + sum q_i is negative; the RSS is reported as 0",
+          "criterion '" + criterion.id + "' (" + std::string(stage) + "): " + what,
           std::string(code.str())};
 }
 
-/// A distributed allowance: A and the share of one item, units of the criterion (squared for a
-/// quadratic share).
-struct Distribution {
-  double allowance = 0.0;
-  double share = 0.0;
-};
-
-/// The allowance A and the share of one item (ADR 0036, point 6). Sets allowance, note and share
-/// of `inverse`; returns them if A > 0 is distributed.
 std::optional<Distribution> distribute(const model::Criterion& criterion,
                                        CriterionKind kind,
                                        double phi0,
@@ -197,6 +194,10 @@ std::optional<Distribution> distribute(const model::Criterion& criterion,
   return d;
 }
 
+}  // namespace detail
+
+namespace {
+
 /// The sensitivity of criterion k over all items: contributions, RSS, prediction and, with
 /// `with_inverse`, the inverse sensitivity (ADR 0036, point 6; addendum #258).
 CriterionSensitivity criterion_sensitivity(const TrialContext& context,
@@ -244,25 +245,31 @@ CriterionSensitivity criterion_sensitivity(const TrialContext& context,
     out.predicted_sigma = std::sqrt(predicted);
   } else {
     std::vector<double> q;
-    double predicted = phi0 * phi0;
+    std::vector<double> c_of_q;
     for (std::size_t i = 0; i < n; ++i) {
       const ItemContribution& c = out.items[i];
       if (!c.q) continue;
       q.push_back(*c.q);
-      predicted += ratios[i] * ratios[i] * *c.q;
+      c_of_q.push_back(ratios[i]);
     }
     const detail::QuadraticRss rss = detail::quadratic_rss(phi0, q);
     out.rss = rss.value;
-    if (rss.negative) warnings.push_back(rss_warning(criterion, k, stage));
-    out.predicted_mean_square = predicted;
+    if (rss.negative) {
+      warnings.push_back(detail::rss_warning(criterion, k, stage, detail::NegativeSum::Rss));
+    }
+    const detail::QuadraticRss predicted = detail::predicted_mean_square(phi0, q, c_of_q);
+    out.predicted_mean_square = predicted.value;
+    if (predicted.negative) {
+      warnings.push_back(detail::rss_warning(criterion, k, stage, detail::NegativeSum::Prediction));
+    }
   }
   if (!with_inverse) return out;
 
   // Inverse sensitivity: A distributed equally on all n items (addendum #258), T'_i per item.
+  const std::optional<detail::Distribution> distribution =
+      detail::distribute(criterion, out.kind, phi0, n, out.inverse);
+  if (!distribution) return out;  // not distributed: no limits
   out.inverse.limits.assign(n, std::nullopt);
-  const std::optional<Distribution> distribution =
-      distribute(criterion, out.kind, phi0, n, out.inverse);
-  if (!distribution) return out;
   const double share = distribution->share;
   const double a = distribution->allowance;
   constexpr double eps = optim::kMeritPrecision;

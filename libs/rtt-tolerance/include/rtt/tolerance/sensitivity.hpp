@@ -92,6 +92,7 @@ struct InverseSensitivity {
   std::optional<double> share;
   /// T'_i per item in the unit of the item: linear T_i share / |delta_i|, quadratic
   /// T_i sqrt(share / q_i); may exceed T_i. None: the item limits nothing or is excluded.
+  /// Empty if the criterion is not distributed (see `note`).
   std::vector<std::optional<double>> limits;
   /// Items that limit nothing, ascending (ADR 0036, addendum #258): linear
   /// |delta_i| <= eps_M max(|Phi_0|, |Phi(+T_i)|, |Phi(-T_i)|, A), quadratic
@@ -118,8 +119,10 @@ struct CriterionSensitivity {
   /// Linear only: sigma_RSS = sqrt(sum (c_i delta_i)^2), the predicted standard deviation, unit
   /// of the criterion. None for a quadratic criterion and as `rss`.
   std::optional<double> predicted_sigma;
-  /// Quadratic only: E[Phi^2]_RSS = Phi_0^2 + sum c_i^2 q_i, the predicted mean of Phi^2, in the
-  /// unit of the criterion squared (mm^2, waves^2). None for a linear criterion and as `rss`.
+  /// Quadratic only: E[Phi^2]_RSS = max(0, Phi_0^2 + sum c_i^2 q_i), the predicted mean of
+  /// Phi^2, in the unit of the criterion squared (mm^2, waves^2); a negative sum is reported as 0
+  /// with the warning tolerances.rss_negative (it can be negative although Phi_0^2 + sum q_i is
+  /// not). None for a linear criterion and as `rss`.
   std::optional<double> predicted_mean_square;
   InverseSensitivity inverse;  ///< empty if cancelled or Phi_0 is not defined
 };
@@ -127,7 +130,8 @@ struct CriterionSensitivity {
 /// Confirmation run at +-T'_i (ADR 0036, point 6).
 struct Confirmation {
   /// The limits used, per item: the smallest T'_i over the criteria that limit it (addendum
-  /// #258, F3), possibly larger than T_i; T_i for an item that no criterion limits.
+  /// #258, F3), possibly larger than T_i; T_i for an item that no criterion limits, also if it
+  /// is excluded in every criterion or its criteria are not distributed.
   std::vector<double> limits;
   std::vector<TrialResult> plus;   ///< per item, the trial at +limits[i]
   std::vector<TrialResult> minus;  ///< per item, the trial at -limits[i]
