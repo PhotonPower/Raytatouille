@@ -1,0 +1,106 @@
+{
+  "schema_version": "0.7.0",
+  "name": "M7 acceptance: ideal lens f = 50 mm, object at 150 mm (m = -0.5), sensitivity and RSS (cases 2, 6)",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "object": {"at_infinity": false, "distance": 150.0},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 10.0},
+  "fields": {
+    "type": "object_height",
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "pose": {"position": [0.0, 0.0, -1.0]},
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 10.0}
+          }
+        ]
+      },
+      {
+        "type": "thin_element",
+        "name": "lens",
+        "surfaces": [
+          {
+            "id": "IL",
+            "aperture": {"type": "circular", "radius": 30.0},
+            "interaction": {"type": "ideal_lens", "focal_length": 50.0, "object_distance": 150.0}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 75.0]},
+        "surfaces": [
+          {
+            "id": "IMG",
+            "aperture": {"type": "circular", "radius": 30.0}
+          }
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ],
+  "tolerances": {
+    "items": [
+      {
+        "id": "lens-dy",
+        "node": "lens",
+        "kind": "decenter_y",
+        "limit": 0.1,
+        "distribution": "uniform"
+      },
+      {"id": "image-dy", "node": "image", "kind": "decenter_y", "limit": 0.05},
+      {
+        "id": "image-dz",
+        "node": "image",
+        "kind": "shift_z",
+        "limit": 0.1,
+        "distribution": "uniform"
+      }
+    ],
+    "criteria": [
+      {
+        "id": "image-y",
+        "operand": {"type": "ray_y", "path": "main", "surface": "IMG"},
+        "max_change": 0.2
+      },
+      {
+        "id": "spot",
+        "operand": {"type": "spot_rms", "path": "main"},
+        "max": 0.01
+      },
+      {
+        "id": "rim-up",
+        "operand": {"type": "ray_y", "path": "main", "surface": "IMG", "py": 1.0},
+        "max_change": 1.0
+      },
+      {
+        "id": "rim-down",
+        "operand": {"type": "ray_y", "path": "main", "surface": "IMG", "py": -1.0},
+        "max_change": 1.0
+      },
+      {
+        "id": "efl",
+        "operand": {"type": "efl", "path": "main"},
+        "max_change": 0.5
+      }
+    ],
+    "monte_carlo": {"seed": 2620, "trials": 1000}
+  }
+}

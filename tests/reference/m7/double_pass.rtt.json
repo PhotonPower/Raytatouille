@@ -1,0 +1,112 @@
+{
+  "schema_version": "0.7.0",
+  "name": "M7 acceptance: plate passed twice via a flat mirror 100 mm behind it (case 10)",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 2.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "pose": {"position": [0.0, 0.0, -1.0]},
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 1.0}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 5.0]},
+        "surfaces": [
+          {
+            "id": "IMG",
+            "aperture": {"type": "circular", "radius": 20.0}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "plate",
+        "pose": {"position": [0.0, 0.0, 10.0]},
+        "material": "CONST:1.5",
+        "surfaces": [
+          {
+            "id": "P.S1",
+            "aperture": {"type": "circular", "radius": 20.0}
+          },
+          {
+            "id": "P.S2",
+            "pose": {"position": [0.0, 0.0, 2.0]},
+            "aperture": {"type": "circular", "radius": 20.0}
+          }
+        ]
+      },
+      {
+        "type": "mirror",
+        "name": "M",
+        "pose": {"position": [0.0, 0.0, 112.0]},
+        "surfaces": [
+          {
+            "id": "M",
+            "aperture": {"type": "circular", "radius": 20.0},
+            "interaction": {"type": "ideal_mirror"}
+          }
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {
+      "name": "main",
+      "events": [
+        {"surface": "STO"},
+        {"surface": "P.S1", "kind": "transmit"},
+        {"surface": "P.S2", "kind": "transmit"},
+        {"surface": "M", "kind": "reflect"},
+        {"surface": "P.S2", "kind": "transmit"},
+        {"surface": "P.S1", "kind": "transmit"},
+        {"surface": "IMG"}
+      ]
+    }
+  ],
+  "tolerances": {
+    "overrides": [
+      {"node": "M", "pivot": [0.0, 0.0, 0.0]}
+    ],
+    "items": [
+      {"id": "mirror-tilt", "node": "M", "kind": "tilt_x_deg", "limit": 0.5},
+      {"id": "plate-dy", "node": "plate", "kind": "decenter_y", "limit": 0.1}
+    ],
+    "criteria": [
+      {
+        "id": "return-y",
+        "operand": {"type": "ray_y", "path": "main", "surface": "P.S2", "occurrence": 1},
+        "max_change": 5.0
+      },
+      {
+        "id": "plate-in",
+        "operand": {"type": "ray_y", "path": "main", "surface": "P.S1", "occurrence": 0},
+        "max_change": 1.0
+      },
+      {
+        "id": "plate-out",
+        "operand": {"type": "ray_y", "path": "main", "surface": "P.S1", "occurrence": 1},
+        "max_change": 1.0
+      }
+    ]
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "schema_version": "0.7.0",
+  "name": "M7 acceptance: plane-parallel plate t = 10 mm, n = 1.5, tilted about its centre (case 3)",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 2.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "pose": {"position": [0.0, 0.0, -10.0]},
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 1.0}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "plate",
+        "material": "CONST:1.5",
+        "surfaces": [
+          {
+            "id": "P.S1",
+            "aperture": {"type": "circular", "radius": 20.0}
+          },
+          {
+            "id": "P.S2",
+            "pose": {"position": [0.0, 0.0, 10.0]},
+            "aperture": {"type": "circular", "radius": 20.0}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 30.0]},
+        "surfaces": [
+          {
+            "id": "IMG",
+            "aperture": {"type": "circular", "radius": 20.0}
+          }
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ],
+  "tolerances": {
+    "overrides": [
+      {"node": "plate", "pivot": [0.0, 0.0, 5.0]}
+    ],
+    "items": [
+      {
+        "id": "plate-tilt",
+        "node": "plate",
+        "kind": "tilt_x_deg",
+        "limit": 10.0
+      }
+    ],
+    "criteria": [
+      {
+        "id": "chief-y",
+        "operand": {"type": "ray_y", "path": "main", "surface": "IMG"},
+        "max_change": 1.0
+      }
+    ]
+  }
+}
