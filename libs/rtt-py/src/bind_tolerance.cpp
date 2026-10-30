@@ -7,9 +7,15 @@
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "bindings.hpp"
 #include "rtt/coating/catalog.hpp"
@@ -21,6 +27,7 @@
 #include "rtt/optim/optimize.hpp"
 #include "rtt/tolerance/classes.hpp"
 #include "rtt/tolerance/expand.hpp"
+#include "rtt/tolerance/monte_carlo.hpp"
 #include "rtt/tolerance/sensitivity.hpp"
 #include "rtt/tolerance/trial.hpp"
 #include "rtt/trace/run_control.hpp"
@@ -315,6 +322,246 @@ void bind_sensitivity(nb::module_& m) {
       .def_ro("status", &ToleranceSensitivity::status, "COMPLETED or CANCELLED.");
 }
 
+/// Read-only NumPy array of `shape` that owns `data` (row-major) and frees it with the array.
+template <typename T, std::size_t D>
+nb::ndarray<nb::numpy, const T, nb::ndim<D>, nb::c_contig> owned_array(
+    std::unique_ptr<T[]> data, const std::array<std::size_t, D>& shape) {
+  const T* values = data.get();
+  const nb::capsule owner(
+      values, [](void* p) noexcept { const std::unique_ptr<T[]> owned(static_cast<T*>(p)); });
+  static_cast<void>(data.release());  // the capsule frees it
+  return {values, D, shape.data(), owner};
+}
+
+/// The finished trials of a Monte Carlo run as columns (ADR 0036, point 10; plan F7): one row per
+/// trial in ascending trial number. A view of MonteCarloResult::trials for the binding only.
+struct TrialTable {
+  std::vector<tolerance::TrialRecord> rows;
+  std::size_t items = 0;
+  std::size_t criteria = 0;
+  std::size_t compensators = 0;
+};
+
+/// Column with one value per trial; get(record) gives the value.
+template <typename T, typename Get>
+nb::ndarray<nb::numpy, const T, nb::ndim<1>, nb::c_contig> trial_column(const TrialTable& t,
+                                                                        Get get) {
+  auto data = std::make_unique<T[]>(t.rows.size());
+  for (std::size_t i = 0; i < t.rows.size(); ++i) data[i] = get(t.rows[i]);
+  return owned_array<T, 1>(std::move(data), {t.rows.size()});
+}
+
+/// (trials, width) column; get(record, j) gives entry j of a row.
+template <typename T, typename Get>
+nb::ndarray<nb::numpy, const T, nb::ndim<2>, nb::c_contig> trial_matrix(const TrialTable& t,
+                                                                        std::size_t width,
+                                                                        Get get) {
+  auto data = std::make_unique<T[]>(t.rows.size() * width);
+  for (std::size_t i = 0; i < t.rows.size(); ++i) {
+    for (std::size_t j = 0; j < width; ++j) data[i * width + j] = get(t.rows[i], j);
+  }
+  return owned_array<T, 2>(std::move(data), {t.rows.size(), width});
+}
+
+void bind_monte_carlo(nb::module_& m) {
+  using tolerance::MonteCarloStatus;
+  nb::enum_<MonteCarloStatus>(m, "MonteCarloStatus", "Whether the Monte Carlo run finished.")
+      .value("COMPLETED", MonteCarloStatus::Completed)
+      .value("CANCELLED", MonteCarloStatus::Cancelled,
+             "only the trials that finished before the cancellation; not reproducible");
+
+  using tolerance::Yield;
+  result_class<Yield>(m, "Yield",
+                      "A yield with its Wilson interval (ADR 0036, point 7; NIST/SEMATECH "
+                      "e-Handbook, Sec. 7.2.4.1).")
+      .def_ro("good", &Yield::good, "Trials counted as good.")
+      .def_ro("total", &Yield::total, "N, the finished trials.")
+      .def_ro("fraction", &Yield::fraction, "good / total, in [0, 1]; None for total = 0.")
+      .def_ro("lower", &Yield::lower,
+              "Lower bound of the Wilson interval, in [0, 1]; exactly 0 for good = 0.")
+      .def_ro("upper", &Yield::upper,
+              "Upper bound of the Wilson interval, in [0, 1]; exactly 1 for good = total.");
+
+  using tolerance::Percentile;
+  result_class<Percentile>(m, "Percentile",
+                           "Q(p) = x_(r) of the ascending values, r = ceil(p n) (ADR 0036, "
+                           "point 7).")
+      .def_ro("p", &Percentile::p, "The requested p in (0, 1].")
+      .def_ro("rank", &Percentile::rank, "r in [1, n], 1-based as in the definition.")
+      .def_ro("value", &Percentile::value, "The value, in the unit of the criterion.");
+
+  using tolerance::CriterionStatistics;
+  result_class<CriterionStatistics>(m, "CriterionStatistics",
+                                    "The statistics of one criterion (ADR 0036, point 7).")
+      .def_ro("id", &CriterionStatistics::id, "The criterion's id.")
+      .def_ro("with_value", &CriterionStatistics::with_value,
+              "Finished trials in which the criterion has a value (also invalid ones).")
+      .def_ro("without_value", &CriterionStatistics::without_value,
+              "Finished trials in which it has none.")
+      .def_ro("count", &CriterionStatistics::count,
+              "n: the values in the statistics, those of the valid trials.")
+      .def_ro("mean", &CriterionStatistics::mean, "Mean, unit of the criterion; None for n = 0.")
+      .def_ro("standard_deviation", &CriterionStatistics::standard_deviation,
+              "Standard deviation (n - 1), unit of the criterion; None for n < 2.")
+      .def_ro("min", &CriterionStatistics::min, "Minimum; None for n = 0.")
+      .def_ro("max", &CriterionStatistics::max, "Maximum; None for n = 0.")
+      .def_ro("percentiles", &CriterionStatistics::percentiles,
+              "In the order of the requested percentiles; empty for n = 0.")
+      .def_ro("yield_", &CriterionStatistics::yield,
+              "Good: the criterion is satisfied; a trial without a value counts as bad. "
+              "Denominator N. (\"yield\" in the result format.)")
+      .def_ro("note", &CriterionStatistics::note, "\"no valid values\" for n = 0.");
+
+  nb::class_<TrialTable> table(
+      m, "TrialTable",
+      "The finished trials as NumPy columns, one row per trial in ascending trial number "
+      "(read-only copies; ADR 0036, point 10). Each access to MonteCarloResult.trials and to a "
+      "column "
+      "copies it, so bind a column once before a loop, e.g. lm = table.lm_status.");
+  table.attr("__hash__") = nb::none();
+  table.def("__len__", [](const TrialTable& t) { return t.rows.size(); });
+  using tolerance::TrialRecord;
+  const auto ref = nb::rv_policy::reference;
+  table
+      .def_prop_ro(
+          "trial",
+          [](const TrialTable& t) {
+            return trial_column<std::uint32_t>(t, [](const TrialRecord& r) { return r.trial; });
+          },
+          ref, "Trial number n, 0-based (the n of the perturbation draws).")
+      .def_prop_ro(
+          "values",
+          [](const TrialTable& t) {
+            return trial_matrix<double>(
+                t, t.items, [](const TrialRecord& r, std::size_t j) { return r.values[j]; });
+          },
+          ref, "(trials, items): the perturbation per item, in the unit of the item's kind.")
+      .def_prop_ro(
+          "status",
+          [](const TrialTable& t) {
+            return trial_column<std::uint8_t>(
+                t, [](const TrialRecord& r) { return static_cast<std::uint8_t>(r.result.status); });
+          },
+          ref, "The TrialStatus as its value (VALID 0, INVALID 1).")
+      .def_prop_ro(
+          "good",
+          [](const TrialTable& t) {
+            return trial_column<bool>(t, [](const TrialRecord& r) { return r.good; });
+          },
+          ref, "Valid and every criterion satisfied.")
+      .def_prop_ro(
+          "criteria",
+          [](const TrialTable& t) {
+            return trial_matrix<double>(t, t.criteria, [](const TrialRecord& r, std::size_t k) {
+              return r.result.criteria[k].value.value_or(kNan);
+            });
+          },
+          ref, "(trials, criteria): the value of each criterion in its unit, NaN without a value.")
+      .def_prop_ro(
+          "satisfied",
+          [](const TrialTable& t) {
+            return trial_matrix<std::int8_t>(
+                t, t.criteria, [](const TrialRecord& r, std::size_t k) -> std::int8_t {
+                  const std::optional<bool>& s = r.result.criteria[k].satisfied;
+                  if (!s.has_value()) return -1;
+                  return *s ? std::int8_t{1} : std::int8_t{0};
+                });
+          },
+          ref, "(trials, criteria): 1 satisfied, 0 not, -1 undecidable.")
+      .def_prop_ro(
+          "compensator_start",
+          [](const TrialTable& t) {
+            return trial_matrix<double>(t, t.compensators, [](const TrialRecord& r, std::size_t c) {
+              return r.result.compensators[c].start;
+            });
+          },
+          ref, "(trials, compensators): the perturbed value before the run, unit of the target.")
+      .def_prop_ro(
+          "compensator_end",
+          [](const TrialTable& t) {
+            return trial_matrix<double>(t, t.compensators, [](const TrialRecord& r, std::size_t c) {
+              return r.result.compensators[c].end;
+            });
+          },
+          ref, "(trials, compensators): the value after the run, unit of the target.")
+      .def_prop_ro(
+          "at_bound",
+          [](const TrialTable& t) {
+            return trial_matrix<bool>(t, t.compensators, [](const TrialRecord& r, std::size_t c) {
+              return r.result.compensators[c].at_bound;
+            });
+          },
+          ref, "(trials, compensators): the end lies at a bound.")
+      .def_prop_ro(
+          "infeasible",
+          [](const TrialTable& t) {
+            return trial_matrix<bool>(t, t.compensators, [](const TrialRecord& r, std::size_t c) {
+              return r.result.compensators[c].infeasible;
+            });
+          },
+          ref, "(trials, compensators): the start lay outside (min, max).")
+      .def_prop_ro(
+          "lm_status",
+          [](const TrialTable& t) {
+            return trial_column<std::int8_t>(t, [](const TrialRecord& r) -> std::int8_t {
+              const std::optional<optim::LmStatus>& s = r.result.lm_status;
+              if (!s.has_value()) return -1;
+              return static_cast<std::int8_t>(*s);
+            });
+          },
+          ref, "The OptimStatus of the compensator run as its value; -1 without a run.")
+      .def_prop_ro(
+          "mu",
+          [](const TrialTable& t) {
+            return trial_column<double>(
+                t, [](const TrialRecord& r) { return r.result.mu.value_or(kNan); });
+          },
+          ref, "Damping at the end of the compensator run; NaN without a run.")
+      .def_prop_ro(
+          "lm_iterations",
+          [](const TrialTable& t) {
+            return trial_column<std::int32_t>(
+                t, [](const TrialRecord& r) { return std::int32_t{r.result.lm_iterations}; });
+          },
+          ref, "Levenberg-Marquardt iterations of the compensator run, 0 without a run.")
+      .def_prop_ro(
+          "reason",
+          [](const TrialTable& t) {
+            std::vector<std::string> out;
+            out.reserve(t.rows.size());
+            for (const TrialRecord& r : t.rows) out.push_back(r.result.reason);
+            return out;
+          },
+          "Per trial why it is not valid; empty for a valid trial.");
+
+  using tolerance::MonteCarloResult;
+  result_class<MonteCarloResult>(m, "MonteCarloResult",
+                                 "Monte Carlo of a tolerance set (ADR 0036, points 7 and 10).")
+      .def_ro("seed", &MonteCarloResult::seed, "The seed used (option, file or 0).")
+      .def_ro("requested", &MonteCarloResult::requested, "The number of trials asked for.")
+      .def_ro("nominal", &MonteCarloResult::nominal, "The nominal trial (Phi_0).")
+      .def_ro("items", &MonteCarloResult::items, "The items, in the order of the values columns.")
+      .def_ro("criteria", &MonteCarloResult::criteria, "The statistics per criterion.")
+      .def_ro("yield_", &MonteCarloResult::yield,
+              "Good: valid and every criterion satisfied; an invalid trial counts as bad. "
+              "Denominator N. (\"yield\" in the result format.)")
+      .def_prop_ro(
+          "trials",
+          [](const MonteCarloResult& r) {
+            const std::size_t compensators = r.trials.empty()
+                                                 ? r.nominal.compensators.size()
+                                                 : r.trials.front().result.compensators.size();
+            return TrialTable{r.trials, r.items.size(), r.criteria.size(), compensators};
+          },
+          "The finished trials: all with keep_trials, otherwise those that are not valid.")
+      .def_ro("warnings", &MonteCarloResult::warnings,
+              "The warnings of the trials, one per code and location, with the number of trials "
+              "and the first trial in the message.")
+      .def_ro("expansion", &MonteCarloResult::expansion,
+              "The result of expand, whose items are those of items.")
+      .def_ro("status", &MonteCarloResult::status, "COMPLETED or CANCELLED.");
+}
+
 }  // namespace
 
 void bind_tolerance(nb::module_& m) {
@@ -322,6 +569,7 @@ void bind_tolerance(nb::module_& m) {
   bind_classes(m);
   bind_trial(m);
   bind_sensitivity(m);
+  bind_monte_carlo(m);
 
   m.def(
       "tolerance_expand",
@@ -355,6 +603,37 @@ void bind_tolerance(nb::module_& m) {
         "The share p of nu_d that limits abbe (SCHOTT TIE-29, steps 4, 3, 1).");
   m.def("tolerance_sigma_ratio", &tolerance::sigma_ratio, "distribution"_a,
         "c = sigma / T of a distribution (ADR 0036, points 5 and 6), dimensionless.");
+  m.def(
+      "tolerance_monte_carlo",
+      [](const model::System& system, const material::MaterialLibrary* materials,
+         const coating::CoatingLibrary* coatings, std::optional<std::uint64_t> trials,
+         std::optional<std::uint64_t> seed, const std::vector<double>& percentiles, double z,
+         bool keep_trials, const optim::OptimizeOptions& compensators, std::optional<int> threads,
+         const std::optional<trace::CancelToken>& cancel,
+         const std::optional<nb::callable>& progress) {
+        const trace::RunControl control = run_control(cancel, progress);
+        // A copy while the GIL is held, as for optimize (rt.System is mutable from Python).
+        // NOLINTNEXTLINE(performance-unnecessary-copy-initialization): the copy is the point
+        const model::System input = system;
+        const material::MaterialLibrary default_materials;
+        const material::MaterialLibrary& library =
+            materials != nullptr ? *materials : default_materials;
+        tolerance::MonteCarloOptions options;
+        options.trials = trials;
+        options.seed = seed;
+        options.percentiles = percentiles;
+        options.z = z;
+        options.keep_trials = keep_trials;
+        options.trial.compensators = compensators;
+        return released(threads, [&] {
+          return tolerance::monte_carlo(input, library, coatings, options, &control);
+        });
+      },
+      "system"_a, "materials"_a.none(), "coatings"_a.none(), "trials"_a.none(), "seed"_a.none(),
+      "percentiles"_a, "z"_a, "keep_trials"_a, "compensators"_a, "threads"_a.none(),
+      "cancel"_a.none(), "progress"_a.none(),
+      "Monte Carlo of system.tolerances (ADR 0036, point 7); `materials` and `coatings` must "
+      "not change during the run.");
   m.def(
       "tolerance_sensitivity",
       [](const model::System& system, const material::MaterialLibrary* materials,

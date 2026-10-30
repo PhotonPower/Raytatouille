@@ -2,7 +2,8 @@
 
 Run from the repository root with the Python package of a build on the path, e.g.:
 
-    PYTHONPATH=build/py/python python tools/result_examples.py ToleranceItems ToleranceSensitivity
+    PYTHONPATH=build/py/python python tools/result_examples.py ToleranceItems ToleranceSensitivity \
+        MonteCarloResult
 
 Each name writes <name>.result.json with to_json(indent=1) at the current SCHEMA_VERSION. Only
 the types listed here have a generator; the older examples were written by hand in their PRs
@@ -47,9 +48,24 @@ def tolerance_sensitivity() -> Any:
     return rt.tolerance.sensitivity(system, materials=lib)
 
 
+def monte_carlo_result() -> Any:
+    """Monte Carlo of the same three items, 8 trials with the seed of the file (#261)."""
+    import raytatouille as rt
+
+    lib = rt.MaterialLibrary()
+    lib.add_catalog(CATALOGS / "schott.agf")
+    system = rt.apply_patch(rt.load(REFERENCE / "m7" / "achromat_tolerances.rtt.json"), [
+        {"op": "replace", "path": "/tolerances/class", "value": "none"},
+        {"op": "remove", "path": "/tolerances/overrides/4"},
+        {"op": "remove", "path": "/tolerances/overrides/0"},
+    ])
+    return rt.tolerance.monte_carlo(system, materials=lib, trials=8)
+
+
 GENERATORS: dict[str, Callable[[], Any]] = {
     "ToleranceItems": tolerance_items,
     "ToleranceSensitivity": tolerance_sensitivity,
+    "MonteCarloResult": monte_carlo_result,
 }
 
 

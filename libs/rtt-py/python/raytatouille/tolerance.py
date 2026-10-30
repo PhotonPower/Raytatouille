@@ -24,7 +24,11 @@ nu_d of the glass (SCHOTT TIE-29, table 5-1), so ``class_limit`` rejects ABBE an
 
 from __future__ import annotations
 
+import operator
 import warnings
+from collections.abc import Sequence
+
+import numpy as np
 
 from . import _core
 from ._core import (
@@ -36,6 +40,7 @@ from ._core import (
     Confirmation,
     CriterionKind,
     CriterionSensitivity,
+    CriterionStatistics,
     CriterionValue,
     InverseSensitivity,
     ItemContribution,
@@ -43,9 +48,12 @@ from ._core import (
     ItemOriginSource,
     ItemTrials,
     MaterialLibrary,
+    MonteCarloResult,
+    MonteCarloStatus,
     OptimizeOptions,
     OverrideEffect,
     OverrideStatus,
+    Percentile,
     SensitivityStatus,
     Severity,
     System,
@@ -57,6 +65,8 @@ from ._core import (
     ToleranceSensitivity,
     TrialResult,
     TrialStatus,
+    TrialTable,
+    Yield,
 )
 from .errors import RaytatouilleWarning
 from .trace import CancelToken, ProgressCallback
@@ -69,23 +79,30 @@ __all__ = [
     "Confirmation",
     "CriterionKind",
     "CriterionSensitivity",
+    "CriterionStatistics",
     "CriterionValue",
     "InverseSensitivity",
     "ItemContribution",
     "ItemOrigin",
     "ItemOriginSource",
     "ItemTrials",
+    "MonteCarloResult",
+    "MonteCarloStatus",
     "OverrideEffect",
     "OverrideStatus",
+    "Percentile",
     "SensitivityStatus",
     "ToleranceItems",
     "ToleranceLevel",
     "ToleranceSensitivity",
     "TrialResult",
     "TrialStatus",
+    "TrialTable",
+    "Yield",
     "abbe_share",
     "class_limit",
     "expand",
+    "monte_carlo",
     "sensitivity",
     "sigma_ratio",
 ]
@@ -169,6 +186,78 @@ def sensitivity(
     """
     result = _core.tolerance_sensitivity(
         system, materials, coatings, confirm,
+        OptimizeOptions() if compensators is None else compensators, threads, cancel, progress)
+    for d in result.warnings:
+        if d.severity == Severity.WARNING:
+            warnings.warn(RaytatouilleWarning(d.message, d.code, d.location), stacklevel=2)
+    return result
+
+
+def _uint64(name: str, value: int | None) -> int | None:
+    """`value` as an int; ValueError for a seed or a number of trials that is not an integer in
+    [0, 2^64) (review of #261, F2), where nanobind would raise OverflowError or TypeError. NumPy
+    integers are accepted (operator.index), bool and numpy.bool_ are not. The range of the
+    number of trials, [1, 2^32], is checked in C++."""
+    if value is None:
+        return None
+    try:
+        if isinstance(value, (bool, np.bool_)):
+            raise TypeError
+        number = operator.index(value)
+    except TypeError:
+        raise ValueError(f"{name} must be an int, not {type(value).__name__}") from None
+    if not 0 <= number < 2**64:
+        raise ValueError(f"{name} must lie in [0, 2^64), got {number}")
+    return number
+
+
+def monte_carlo(
+    system: System,
+    *,
+    materials: MaterialLibrary | None = None,
+    coatings: CoatingLibrary | None = None,
+    trials: int | None = None,
+    seed: int | None = None,
+    percentiles: Sequence[float] = (0.5, 0.9, 0.95, 0.99),
+    z: float = 1.959963984540054,
+    keep_trials: bool = True,
+    compensators: OptimizeOptions | None = None,
+    threads: int | None = None,
+    cancel: CancelToken | None = None,
+    progress: ProgressCallback | None = None,
+) -> MonteCarloResult:
+    """Monte Carlo of ``system.tolerances`` (ADR 0036, point 7).
+
+    The items are those of ``expand(system, materials=materials)`` (kept as ``expansion``).
+    Trial n (0-based) perturbs every item with the draws of ``seed`` and n (ADR 0036, point 5)
+    and evaluates the criteria after the compensator run (``compensators``, None: the defaults
+    of OptimizeOptions). ``trials`` and ``seed`` default to tolerances.monte_carlo of the file
+    (the seed else 0; without a number of trials it is an error). ``percentiles`` are p in
+    (0, 1] (nearest rank, r = ceil(p n)); ``z`` sets the Wilson interval of the yields (default
+    95 %). With ``keep_trials`` every trial is kept in ``trials`` (a TrialTable of NumPy
+    columns, one row per trial in ascending number), otherwise only those that are not valid.
+
+    Values are in the unit of the criterion's operand, perturbations in the unit of the item's
+    kind. The yield is ``yield_`` (``yield`` is a Python keyword; "yield" in the result format).
+    The names are those of rtt/tolerance/monte_carlo.hpp.
+
+    The run is bitwise the same for every number of ``threads`` and every repetition with the
+    same seed. ``cancel`` does not raise: the result has status CANCELLED and holds the trials
+    that finished, which depends on the timing (not reproducible). Cancelled during Phi_0, no
+    trial runs. ``progress`` gets the stage "monte_carlo", one work item per trial.
+
+    The warnings of the trials, merged to one per code and location with the number of trials
+    and the first trial (``warnings``), are also issued as RaytatouilleWarning. The system is
+    copied; the libraries are used by reference and must not change during the run.
+
+    Raises ValueError for a seed or number of trials that is not an int in [0, 2^64), for a
+    number of trials neither given nor in the file or outside [1, 2^32], a percentile outside
+    (0, 1], a z that is not finite and positive, and as ``sensitivity`` (CompileError,
+    ValueError, OptimError) for the tolerance set; and whatever the progress callback raises.
+    """
+    result = _core.tolerance_monte_carlo(
+        system, materials, coatings, _uint64("trials", trials), _uint64("seed", seed),
+        [float(p) for p in percentiles], z, keep_trials,
         OptimizeOptions() if compensators is None else compensators, threads, cancel, progress)
     for d in result.warnings:
         if d.severity == Severity.WARNING:

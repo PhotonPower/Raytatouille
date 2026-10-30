@@ -1,0 +1,81 @@
+{
+  "schema_version": "0.7.0",
+  "name": "M7 acceptance: ideal lens f = 50 mm, object at infinity, decentre and Monte Carlo (cases 2, 8)",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 10.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "pose": {"position": [0.0, 0.0, -1.0]},
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 10.0}
+          }
+        ]
+      },
+      {
+        "type": "thin_element",
+        "name": "lens",
+        "surfaces": [
+          {
+            "id": "IL",
+            "aperture": {"type": "circular", "radius": 30.0},
+            "interaction": {"type": "ideal_lens", "focal_length": 50.0}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 50.0]},
+        "surfaces": [
+          {
+            "id": "IMG",
+            "aperture": {"type": "circular", "radius": 30.0}
+          }
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ],
+  "tolerances": {
+    "items": [
+      {
+        "id": "lens-dy",
+        "node": "lens",
+        "kind": "decenter_y",
+        "limit": 0.1,
+        "distribution": "uniform"
+      }
+    ],
+    "criteria": [
+      {
+        "id": "image-y",
+        "operand": {"type": "ray_y", "path": "main", "surface": "IMG"},
+        "max_change": 0.05
+      },
+      {
+        "id": "efl",
+        "operand": {"type": "efl", "path": "main"},
+        "max_change": 0.5
+      }
+    ],
+    "monte_carlo": {"seed": 262, "trials": 200}
+  }
+}
