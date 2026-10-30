@@ -92,12 +92,14 @@ void add_yield(std::vector<double>& f, std::vector<std::uint64_t>& u, const tole
 }
 
 /// Per trial (ascending): number, status, good, the perturbations, the criterion values (NaN for
-/// none) and the compensator ends; per criterion the statistics and the yield; the total yield.
+/// none), the compensator ends, mu and the LM iterations (a different LM path with the same end
+/// value shows there); per criterion the statistics and the yield; the total yield.
 void write_monte_carlo(const Writer& w, const tolerance::MonteCarloResult& r) {
   std::vector<std::uint64_t> trial_ints;
   std::vector<double> values;
   std::vector<double> criteria;
   std::vector<double> compensators;
+  std::vector<double> lm;
   for (const tolerance::TrialRecord& t : r.trials) {
     trial_ints.insert(trial_ints.end(), {t.trial, code(t.result.status), t.good ? 1U : 0U});
     values.insert(values.end(), t.values.begin(), t.values.end());
@@ -105,6 +107,7 @@ void write_monte_carlo(const Writer& w, const tolerance::MonteCarloResult& r) {
     for (const tolerance::CompensatorValue& c : t.result.compensators) {
       compensators.push_back(c.end);
     }
+    lm.insert(lm.end(), {value(t.result.mu), static_cast<double>(t.result.lm_iterations)});
   }
   std::vector<double> statistics;
   std::vector<std::uint64_t> counts;
@@ -125,6 +128,7 @@ void write_monte_carlo(const Writer& w, const tolerance::MonteCarloResult& r) {
   w.f8("values", values);
   w.f8("criteria", criteria);
   w.f8("compensators", compensators);
+  w.f8("lm", lm);
   w.f8("statistics", statistics);
   w.u8("counts", counts);
 }

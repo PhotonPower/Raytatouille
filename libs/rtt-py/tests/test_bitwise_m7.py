@@ -104,6 +104,7 @@ def flatten_monte_carlo(r: tolerance.MonteCarloResult) -> Arrays:
         "values": f8(t.values).reshape(-1),
         "criteria": f8(t.criteria).reshape(-1),
         "compensators": f8(t.compensator_end).reshape(-1),
+        "lm": np.stack([f8(t.mu), f8(t.lm_iterations)], axis=1).reshape(-1) if n else f8([]),
         "statistics": f8(statistics),
         "counts": u8(counts),
     }
@@ -185,12 +186,19 @@ def test_the_sensitivity_cases_have_content() -> None:
     assert nominal[0] < nominal[1] < nominal[2]  # type: ignore[operator]
     assert all(t is not None and t.status == tolerance.TrialStatus.VALID
                for i in bk7.items for t in (i.plus, i.minus))
+    # The overlay is in the values: delta of the index on efl-d is about -efl dn / (n - 1) =
+    # -0.19 mm, and the Abbe number moves efl-F and efl-C differently (an overlay that ignored
+    # the material would give Phi(+T) = Phi(-T) = Phi_0 on both sides and still agree).
+    index_d = bk7.criteria[1].items[0].delta
+    assert index_d is not None and index_d < -0.1
+    abbe_f, abbe_c = bk7.criteria[0].items[1].delta, bk7.criteria[2].items[1].delta
+    assert abbe_f is not None and abbe_c is not None and abbe_f != abbe_c
 
 
 def test_the_monte_carlo_cases_have_content() -> None:
     """Case 8: the yield of |y| <= T/2 lies strictly between 0 and N. Case 7: the compensator ran
-    in every trial, and another seed draws other values. Case 13: every item of the expansion
-    takes part."""
+    in every trial, and the file's seed + 1 draws other values. Case 13: every item of the
+    expansion is drawn, and each perturbs in at least one trial."""
     lens = mc_lens(1)
     assert lens.status == tolerance.MonteCarloStatus.COMPLETED
     image_y = next(c for c in lens.criteria if c.id == "image-y")
@@ -198,9 +206,17 @@ def test_the_monte_carlo_cases_have_content() -> None:
     comp = mc_compensator(1)
     assert len(comp.trials.trial) == 20
     assert bool(np.all(comp.trials.lm_status >= 0))  # -1: no run
-    other = mc_compensator(1, seed=26206)
+    moved = np.abs(comp.trials.compensator_end - comp.trials.compensator_start)
+    assert float(np.max(moved)) > 0.1  # and it moved (mirror shift uniform in +-0.2 mm)
+    seed = load("paraboloid_compensator.rtt.json").to_dict()["tolerances"]["monte_carlo"]["seed"]
+    other = mc_compensator(1, seed=seed + 1)  # another seed than the file's
     assert not np.array_equal(other.trials.values, comp.trials.values)
     classes = mc_classes(1)
     assert classes.expansion is not None
     assert len(classes.items) == len(classes.expansion.items) > 3
-    assert classes.trials.values.shape == (10, len(classes.items))
+    values = classes.trials.values
+    assert values.shape == (10, len(classes.items))
+    assert bool(np.all(np.any(values != 0.0, axis=0)))  # every item perturbs in some trial
+    valid = classes.trials.status == tolerance.TrialStatus.VALID.value
+    assert bool(np.any(valid))  # all invalid would give NaN on both sides and still agree
+    assert bool(np.all(np.isfinite(classes.trials.criteria[valid])))

@@ -546,8 +546,8 @@ Ein Feature ist erst fertig, wenn es mindestens einen Referenztest gegen eine un
   1. Baugruppen-Kippung bewegt alle Kinder: ray_y = +f tan θ im Rahmen der Baugruppe; gleich der Kippung jedes Kindes um denselben Pivot; ein Element hinter der Baugruppe bleibt stehen: `m7/assembly_motion`.
   2. Dezentrierung einer idealen Linse: y′ = δ (Objekt unendlich) und δ(1 − m), m = −0,5; efl des Prüflings 2/(k_x + k_y) ≈ f + 3δ²/(4f) aus den parabasalen Strahlen: `m7/decentred_lens`, `m7/decentred_lens_finite`.
   3. Gekippte planparallele Platte: Versatz −t sin θ [1 − cos θ/√(n² − sin² θ)]: `m7/tilted_plate`.
-  4. Δn_d und Δν_d durch `first_order`: plankonvexe Linse aus N-BK7, efl bei F, d und C nach ADR 0036, Punkt 1c, mit n_d, n_F, n_C aus `compile::fraunhofer_indices`; Linearisierung in D′/D − 1 mit exaktem Rest: `m7/planoconvex_bk7`.
-  5. Kompensator: Verschiebung eines Paraboloids, die Detektorlage folgt auf etwa 3·10⁻⁹ mm, der Spot ist danach nominal: `m7/paraboloid_compensator`.
+  4. Δn_d und Δν_d nach ADR 0036, Punkt 1c (n_d, n_F, n_C aus `compile::fraunhofer_indices`), durch `first_order`: efl bei F, d und C einer plankonvexen Linse aus N-BK7 gegen den realen parabasalen Strahl; Linearisierung in D′/D − 1 mit exaktem Rest: `m7/planoconvex_bk7`.
+  5. Kompensator: Verschiebung eines Paraboloids; die Detektorlage folgt innerhalb der Schranke aus dem Abbruchkriterium von LM (hier etwa 2,9·10⁻⁹ mm, zur Laufzeit mit μ berechnet), der Spot ist danach nominal: `m7/paraboloid_compensator`.
   6. Sensitivität und RSS: delta = (1 − m)T und −T, predicted_sigma gegen die Standardabweichung aus Monte Carlo (N = 1000); quadratisch predicted_mean_square gegen das Mittel von Φ² im Band 4√(4/45) q/√N: `m7/decentred_lens_finite`.
   7. Monte Carlo mit LM in jedem Prüfling bitgleich bei 1, 4 und allen Threads und bei Wiederholung; ein zusätzliches Item ändert die Ziehungen der übrigen nicht: `m7/paraboloid_compensator`.
   8. Statistik gegen die Verteilung: gleichverteilt (Mittel, Varianz mit μ₄ = 9/5 σ⁴, Ausbeute 0,5) und abgeschnitten normal (Varianz 0,773741 σ²): `m7/decentred_lens`.
@@ -556,10 +556,10 @@ Ein Feature ist erst fertig, wenn es mindestens einen Referenztest gegen eine un
   11. Vorzeichen der Baugruppen-Kippung: `m7/assembly_motion`.
   12. Eine Dicke verschiebt relativ platzierte Folgeelemente mit, eine starre Bewegung nicht: `m7/assembly_motion`.
   13. Toleranzklassen mit Überschreibung, Einzelwerten und expliziten Items; Monte Carlo über die erzeugten Items bitgleich: `m7/achromat_tolerances`.
-- **Reproduzierbar:** Sensitivität und Monte Carlo sind bei 1, 4 und allen Threads bitgleich, mit und ohne Kompensator. Python ist für die Abnahmesysteme bitgleich zu C++: `test_bitwise_m7.py` (Fälle 4, 6, 7, 8 und 13), mit Inhaltswachen. Dazu kommen die Bitvergleiche der Bausteine (`test_bitwise_tolerance.py`).
+- **Reproduzierbar:** Monte Carlo ist bei 1, 4 und allen Threads und bei Wiederholung bitgleich, auch mit LM in jedem Prüfling (Fall 7). Für die Sensitivität mit Kompensator zeigen es 1 und 4 Threads (`test_bitwise_tolerance.py`, Fall `achromat_sensitivity`). Python ist bitgleich zu C++ auf fünf Abnahmesystemen für Teile der Fälle 4, 6, 7, 8 und 13 (flache Größen: Werte, Statistik, Status; Fall 6 nur die lineare Sensitivität, Fall 8 nur die Gleichverteilung mit z = 1,96): `test_bitwise_m7.py`, mit Inhaltswachen. Dazu kommen die Bitvergleiche der Bausteine (`test_bitwise_tolerance.py`).
 - **Bekannte Grenzen:**
   - Ein Vorzeichenwechsel von R über eine Tabellenzeile oder einen Kompensator wird nicht erkannt; `radius_invalid` sieht nur Radius-Items (#293, geplant nach 0.9.0).
-  - Bitgleich nur auf derselben Plattform (libm, ADR 0036). Ein abgebrochener Monte-Carlo-Lauf ist nicht reproduzierbar: Welche Prüflinge fertig sind, hängt vom Zeitpunkt ab.
+  - Bitgleich innerhalb eines Builds (Compiler, Optionen, libm). Zwischen Plattformen sind nur die gleichverteilten und die Endpunkt-Ziehungen bitgleich, nicht die normalverteilten (Box–Muller mit log, cos und sin, die nicht korrekt gerundet sind; `rtt/tolerance/random.hpp`, ADR 0036) und nicht die Ergebnisse. Ein abgebrochener Monte-Carlo-Lauf ist nicht reproduzierbar: Welche Prüflinge fertig sind, hängt vom Zeitpunkt ab.
   - Keine korrelierten Toleranzen, keine Zernike-Flächenfehler (M8); Strehl und MTF sind keine Kriterien.
   - `LmStatus::Failed` eines Kompensators hat keinen eigenen Test (#278).
   - efl, bfl, image_fnumber und magnification eines Prüflings kommen aus parabasalen Strahlen bei h = 10⁻³ des Pupillenradius, nicht aus einem y-nu-Trace. Auch der Nennwert Φ₀ weicht deshalb vom paraxialen Wert ab, um die Aberration bei h (beim N-BK7-Fall etwa −4,3·10⁻⁷ mm).
