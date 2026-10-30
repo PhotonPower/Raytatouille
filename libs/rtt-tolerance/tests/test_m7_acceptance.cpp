@@ -745,19 +745,20 @@ TEST_CASE("m7 case 13: tolerance classes with overrides and explicit items", "[m
     if (c.tolerance_class == rtt::model::ToleranceClass::Precise) ++precise;
   }
   CHECK(single_values == 2);
+  CHECK(precise > 0);            // the override of the objective took effect
+  REQUIRE(a.items.size() >= 3);  // before the iterator arithmetic below
   // Explicit before class: the class entry L1.S1 conic is replaced by the explicit item
   // S1-conic (index 1 of the file's items), and no generated item perturbs the same quantity.
   const auto replaced =
       std::find_if(a.classes.items.begin(), a.classes.items.end(),
                    [](const rtt::model::ClassTolerance& c) { return c.replaced_by.has_value(); });
   REQUIRE(replaced != a.classes.items.end());
+  REQUIRE(*replaced->replaced_by < s.tolerances.items.size());
   CHECK(s.tolerances.items[*replaced->replaced_by].id == "S1-conic");
   CHECK(std::none_of(a.items.begin(), a.items.end() - 3, [&](const ToleranceItem& i) {
     return i.target == replaced->target && i.kind == replaced->kind;
   }));
-  CHECK(precise > 0);  // the override of the objective took effect
   // The explicit items follow the generated ones, in file order.
-  REQUIRE(a.items.size() >= 3);
   CHECK(a.items[a.items.size() - 3].id == "S3-wedge");
   CHECK(a.items[a.items.size() - 2].id == "S1-conic");
   CHECK(a.items[a.items.size() - 1].id == "R1");
