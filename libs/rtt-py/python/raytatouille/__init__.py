@@ -30,6 +30,7 @@ from . import (
     polar,
     reports,
     results,
+    tolerance,
     trace,
 )
 from ._core import (
@@ -123,6 +124,7 @@ __all__ = [
     "reports",
     "results",
     "save",
+    "tolerance",
     "trace",
     "validate",
 ]

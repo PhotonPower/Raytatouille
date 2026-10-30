@@ -224,6 +224,20 @@ TEST_CASE("classes: the values decided by the maintainer", "[tolerance][classes]
   }
 }
 
+TEST_CASE("classes: abbe_share is the abbe row of the table", "[tolerance][classes]") {
+  // #261 (P3-2 of the review of #275, decided by the maintainer): the share of nu_d under its
+  // own name; class_limit keeps giving the same number.
+  const std::array<double, 3> shares{0.008, 0.005, 0.002};  // TIE-29 steps 4, 3, 1
+  for (std::size_t c = 0; c < kClasses.size(); ++c) {
+    CHECK(same(rtt::tolerance::abbe_share(kClasses[c]), shares[c]));
+    CHECK(same(rtt::tolerance::abbe_share(kClasses[c]),
+               class_limit(kClasses[c], K::Abbe, L::Element)));
+  }
+  CHECK_THROWS_AS((void)rtt::tolerance::abbe_share(ToleranceClass::None), std::invalid_argument);
+  CHECK_THROWS_AS((void)rtt::tolerance::abbe_share(static_cast<ToleranceClass>(9)),
+                  std::invalid_argument);
+}
+
 TEST_CASE("classes: kinds no class generates at a level have no limit", "[tolerance][classes]") {
   const std::array<Combo, 9> invalid{{
       {K::Radius, L::Surface},
