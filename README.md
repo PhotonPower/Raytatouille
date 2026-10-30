@@ -4,20 +4,23 @@ Raytracing-Engine für Optikdesign: Linsen (sphärisch, asphärisch, Freiform), 
 Beschichtungen, Strahlteiler, Polarisatoren und Retarder; Polarisation von Anfang an.
 C++20 mit Python-API, Linux und Windows, MIT-Lizenz.
 
-**Stand:** Version 0.8.0, Beugung erreicht (M6): Pupillenfunktion mit Zernike-Fit (Noll) und
-Strehl, FFT-PSF (auch polychromatisch und durch den Fokus), MTF und Encircled Energy, zentral
-abgeschattete Systeme (Ringpupille), Jones-Pupille mit Diattenuations-, Retardance- und
-Stokes-Karten auch für gefaltete Pfade, Interferogramm zweier Pfade und die ideale Linse; alles
-auch aus Python. Davor: Optimierung mit Levenberg-Marquardt, Merit-Funktion und Parametertabelle
-mit Konfigurationen (M5; exakte Bedingungen wie eine feste Brennweite als Bindung in der
-Parametertabelle, #196); explizite Pfade durch Strahlteiler, Ghosts, Gitter und einachsige
+**Stand:** Version 0.9.0, Toleranzierung erreicht (M7): Toleranzsatz in der Systemdatei mit
+Toleranzklassen, Einzelwerten und expliziten Toleranzen auf Fläche, Element und Baugruppe (Kippung
+um den Pivot, starre Bewegung aller Kinder), auf Brechzahl, Abbe-Zahl und Konfigurationszeilen;
+Kompensatoren mit Levenberg-Marquardt; Sensitivität mit RSS und inverser Sensitivität; Monte
+Carlo mit Seed, bitgleich für jede Threadzahl, Statistik, Perzentile und Ausbeute mit
+Wilson-Intervall; alles auch aus Python. Davor: Beugung (M6) mit Pupillenfunktion, Zernike-Fit
+(Noll) und Strehl, FFT-PSF, MTF und Encircled Energy, Jones-Pupille mit Diattenuations-,
+Retardance- und Stokes-Karten, Interferogramm zweier Pfade und die ideale Linse; Optimierung mit
+Levenberg-Marquardt, Merit-Funktion und Parametertabelle mit Konfigurationen (M5; exakte
+Bedingungen wie eine feste Brennweite als Bindung in der Parametertabelle, #196); explizite Pfade durch Strahlteiler, Ghosts, Gitter und einachsige
 Kristalle (M4); sequenzielles Raytracing mit Ray Aiming und paraxialer Analyse (M1); Glaskataloge
 (AGF), Luft und dn/dT, Spot, Ray Fans, OPD, Verzeichnung, Seidel und Python-API (M2);
 Polarisations-Raytracing mit Fresnel (komplexer Index), Coatings (Transfermatrix, Kataloge), idealen
 Polarisatoren und Retardern (M3). Für eine GUI: Strahlpfade und Geometrie-Export, Modell lesen und
 ändern mit Undo (JSON Patch), Abbruch und Fortschritt, Prescription-Daten, durchsuchbare
 Materialbibliothek, stabile Diagnosecodes und ein JSON-Ergebnisformat, telezentrische Systeme
-(GUI-Grundlagen, 0.5.0). Als Nächstes: Toleranzierung (M7). Der Plan steht in
+(GUI-Grundlagen, 0.5.0). Als Nächstes: Release v1.0 (M8). Der Plan steht in
 [docs/architecture.md](docs/architecture.md).
 
 ## Bauen

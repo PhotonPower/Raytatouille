@@ -582,7 +582,7 @@ Nach M1 können bis zu drei Agenten parallel arbeiten. M4 und M6 brauchen M2 und
 | **M4 Multi-Path** ✅ (0.6.0) | explizite Pfade, Strahlteiler, einachsige Kristalle, Gitter, Ghost-Generator | Michelson-Bilanz, Calcit-Walk-off, Gittergleichung, Ghost-Ranking |
 | **M5 Optimierung** ✅ (0.7.0) | Parameter-Pfade, Operanden, Merit-Generatoren, LM, Grenzen, Bindungen (Parametertabelle), Konfigurationen | Singlet auf EFL + minimalen RMS-Spot; reproduzierbar |
 | **M6 Beugung** ✅ (0.8.0) | Zernike-Fit, FFT-PSF/MTF, Encircled Energy, Jones-Pupille, Retardance-Karten | Airy-Nullstelle, analytische MTF, Jones-Pupille eines Faltspiegels |
-| M7 Toleranzierung | Toleranzen auf allen Ebenen, Kompensatoren, Sensitivität, Monte Carlo | Baugruppen-Kippung bewegt alle Kinder; Monte Carlo reproduzierbar |
+| **M7 Toleranzierung** ✅ (0.9.0) | Toleranzen auf allen Ebenen, Kompensatoren, Sensitivität, Monte Carlo | Baugruppen-Kippung bewegt alle Kinder; Monte Carlo reproduzierbar |
 | M8 Release v1.0 | Forbes-, Zernike-, XY-, Grid-Flächen, ZMX-Import, CLI komplett, Doku, Beispiele | alle Referenzfälle grün; Benchmark-Ziel; ZMX-Testdateien korrekt importiert |
 | M9 Nicht-sequenziell | BVH, Quellen, Detektoren, Ray Splitting, Streumodelle, Strahlpfad-Reports | analytische NSC-Testfälle |
 | M10 Python-GUI | PySide6-Anwendung auf der öffentlichen API | – |
