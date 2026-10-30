@@ -52,6 +52,7 @@
         "MeritEvaluation",
         "ToleranceItems",
         "ToleranceSensitivity",
+        "MonteCarloResult",
         "FirstOrder",
         "Seidel",
         "Prescription",
@@ -1556,6 +1557,143 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "MonteCarloResult"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "seed",
+              "requested",
+              "nominal",
+              "items",
+              "criteria",
+              "yield",
+              "trials",
+              "warnings",
+              "expansion",
+              "status"
+            ],
+            "properties": {
+              "seed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "requested": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "nominal": {
+                "$ref": "#/$defs/trial_result"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/tolerance_item"
+                }
+              },
+              "criteria": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "with_value",
+                    "without_value",
+                    "count",
+                    "mean",
+                    "standard_deviation",
+                    "min",
+                    "max",
+                    "percentiles",
+                    "yield",
+                    "note"
+                  ],
+                  "properties": {
+                    "with_value": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "without_value": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "mean": {
+                      "$ref": "#/$defs/nullable_number"
+                    },
+                    "standard_deviation": {
+                      "$ref": "#/$defs/nullable_number"
+                    },
+                    "min": {
+                      "$ref": "#/$defs/nullable_number"
+                    },
+                    "max": {
+                      "$ref": "#/$defs/nullable_number"
+                    },
+                    "percentiles": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "p",
+                          "rank",
+                          "value"
+                        ],
+                        "properties": {
+                          "rank": {
+                            "type": "integer",
+                            "minimum": 1
+                          }
+                        }
+                      }
+                    },
+                    "yield": {
+                      "$ref": "#/$defs/yield"
+                    }
+                  }
+                }
+              },
+              "yield": {
+                "$ref": "#/$defs/yield"
+              },
+              "trials": {
+                "$ref": "#/$defs/trial_table"
+              },
+              "warnings": {
+                "type": "array"
+              },
+              "expansion": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/tolerance_items"
+                  }
+                ]
+              },
+              "status": {
+                "enum": [
+                  "COMPLETED",
+                  "CANCELLED"
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "$defs": {
@@ -2117,6 +2255,101 @@
                 "minimum": 0
               }
             }
+          }
+        }
+      }
+    },
+    "yield": {
+      "type": "object",
+      "required": [
+        "good",
+        "total",
+        "fraction",
+        "lower",
+        "upper"
+      ],
+      "properties": {
+        "good": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fraction": {
+          "$ref": "#/$defs/nullable_number"
+        },
+        "lower": {
+          "$ref": "#/$defs/nullable_number"
+        },
+        "upper": {
+          "$ref": "#/$defs/nullable_number"
+        }
+      }
+    },
+    "trial_table": {
+      "type": "object",
+      "required": [
+        "trial",
+        "values",
+        "status",
+        "good",
+        "criteria",
+        "satisfied",
+        "compensator_start",
+        "compensator_end",
+        "at_bound",
+        "infeasible",
+        "lm_status",
+        "mu",
+        "lm_iterations",
+        "reason"
+      ],
+      "properties": {
+        "trial": {
+          "$ref": "#/$defs/ndarray"
+        },
+        "values": {
+          "$ref": "#/$defs/ndarray"
+        },
+        "status": {
+          "$ref": "#/$defs/ndarray"
+        },
+        "good": {
+          "$ref": "#/$defs/ndarray"
+        },
+        "criteria": {
+          "$ref": "#/$defs/ndarray"
+        },
+        "satisfied": {
+          "$ref": "#/$defs/ndarray"
+        },
+        "compensator_start": {
+          "$ref": "#/$defs/ndarray"
+        },
+        "compensator_end": {
+          "$ref": "#/$defs/ndarray"
+        },
+        "at_bound": {
+          "$ref": "#/$defs/ndarray"
+        },
+        "infeasible": {
+          "$ref": "#/$defs/ndarray"
+        },
+        "lm_status": {
+          "$ref": "#/$defs/ndarray"
+        },
+        "mu": {
+          "$ref": "#/$defs/ndarray"
+        },
+        "lm_iterations": {
+          "$ref": "#/$defs/ndarray"
+        },
+        "reason": {
+          "type": "array",
+          "items": {
+            "type": "string"
           }
         }
       }

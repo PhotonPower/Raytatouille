@@ -54,7 +54,7 @@ __all__ = [
 ]
 
 FORMAT = "raytatouille-result"
-SCHEMA_VERSION = "0.1.15"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
+SCHEMA_VERSION = "0.1.16"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
 # 0.1.3: status Evanescent, status arrays one entry longer (#127); 0.1.4: PathTransmission,
 # PathOplDifference, GhostRanking (#133); 0.1.5: RayBatch wave_x/y/z, mode_index (#134);
 # 0.1.6: RaytraceReport, SystemReport, DimensionReport (#177);
@@ -68,10 +68,12 @@ SCHEMA_VERSION = "0.1.15"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84)
 # 0.1.13: StokesPupil (#211)
 # 0.1.14: PupilFunction mapping_limit (#286)
 # 0.1.15: ToleranceItems, ToleranceSensitivity (#261)
+# 0.1.16: MonteCarloResult (#261)
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a
-# method. Top-level types are listed in TYPES; the others only appear nested.
+# method, "name=attribute" writes another attribute under name (yield_ as "yield", #261).
+# Top-level types are listed in TYPES; the others only appear nested.
 _RAY_BATCH = ("pos_x", "pos_y", "pos_z", "dir_x", "dir_y", "dir_z", "wl", "opl", "weight",
               "field", "pupil_x", "pupil_y", "last_surface", "status", "prt=prt_matrices()",
               "q=q_matrices()", "wave_x", "wave_y", "wave_z", "mode_index")
@@ -241,6 +243,17 @@ _FIELDS: dict[str, tuple[str, ...]] = {
     "ItemTrials": ("item", "sigma_ratio", "plus", "minus"),
     "ToleranceSensitivity": ("nominal", "items", "criteria", "limits", "confirmation", "warnings",
                              "expansion", "status"),
+    # Monte Carlo (#261, T5 #259); names as in rtt/tolerance/monte_carlo.hpp, yield_ as "yield"
+    "Yield": ("good", "total", "fraction", "lower", "upper"),
+    "Percentile": ("p", "rank", "value"),
+    "CriterionStatistics": ("id", "with_value", "without_value", "count", "mean",
+                            "standard_deviation", "min", "max", "percentiles", "yield=yield_",
+                            "note"),
+    "TrialTable": ("trial", "values", "status", "good", "criteria", "satisfied",
+                   "compensator_start", "compensator_end", "at_bound", "infeasible", "lm_status",
+                   "mu", "lm_iterations", "reason"),
+    "MonteCarloResult": ("seed", "requested", "nominal", "items", "criteria", "yield=yield_",
+                         "trials", "warnings", "expansion", "status"),
 }
 
 #: Types that to_json writes and load_json accepts as "type".
@@ -252,6 +265,7 @@ TYPES: tuple[str, ...] = (
     "PathTransmission", "PathOplDifference", "Interferogram", "GhostRanking",
     "RaytraceReport", "SystemReport", "DimensionReport",
     "OptimResult", "MeritEvaluation", "ToleranceItems", "ToleranceSensitivity",
+    "MonteCarloResult",
     "FirstOrder", "Seidel", "Prescription", "TraceStats", "RayBatch", "RayPaths",
     "Diattenuation", "Diattenuations", "Retardance", "Retardances",
     "GlassInfo", "GlassMap", "SurfaceLayout", "CompiledElement", "Diagnostic", "LoadWarning",
@@ -296,7 +310,11 @@ def _value(v: Any) -> Any:
         out: dict[str, Any] = {}
         for spec in fields:
             key, _, method = spec.partition("=")
-            out[key] = _value(getattr(v, method[:-2])() if method else getattr(v, key))
+            if method.endswith("()"):  # "name=method()" calls a method
+                raw = getattr(v, method[:-2])()
+            else:  # "name=attribute" reads another attribute (e.g. yield_, a Python keyword)
+                raw = getattr(v, method or key)
+            out[key] = _value(raw)
         return out
     if isinstance(v, (list, tuple)):
         return [_value(x) for x in v]
