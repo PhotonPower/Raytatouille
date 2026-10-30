@@ -291,3 +291,40 @@ def test_older_pupil_files_read_without_mapping_limit(f10: rt.CompiledSystem) ->
     envelope["schema_version"] = "0.1.14"
     with pytest.raises(ValueError, match="misses mapping_limit"):
         rt.results.load_json(json.dumps(envelope))
+
+
+def test_encircled_energy_with_relative_radii(f10: rt.CompiledSystem) -> None:
+    # #267: the whole range up to radius_max in one run. An int k gives the relative radii
+    # i / (k - 1); both forms equal the run with the radii in mm (the two-call way) bit for bit.
+    probe = an.encircled_energy(f10, [0.0], grid=32)
+    r_max = probe.radius_max
+    curve = an.encircled_energy(f10, 5, grid=32)
+    t = [0.0, 0.25, 0.5, 0.75, 1.0]
+    assert curve.radius_max == r_max
+    assert curve.radii.tolist() == [x * r_max for x in t]
+    assert curve.radii[-1] == r_max
+    relative = an.encircled_energy(f10, t, grid=32, relative=True)
+    assert relative.radii.tolist() == curve.radii.tolist()
+    assert relative.energy.tolist() == curve.energy.tolist()
+    in_mm = an.encircled_energy(f10, curve.radii.tolist(), grid=32)
+    assert in_mm.energy.tolist() == curve.energy.tolist()
+    assert curve.energy[0] == 0.0 and bool(np.all(np.diff(curve.energy) > 0.0))  # content guard
+    assert curve.energy[-1] > 0.9
+    assert an.encircled_energy(f10, np.int64(3), grid=32).radii[-1] == r_max
+    # The pupil form.
+    pupil = an.pupil_function(f10, grid=32)
+    on_pupil = an.encircled_energy(pupil, 5)
+    assert on_pupil.radii.tolist() == curve.radii.tolist()
+    assert on_pupil.energy.tolist() == curve.energy.tolist()
+    assert an.encircled_energy(pupil, t, relative=True).energy.tolist() == curve.energy.tolist()
+    # Errors: a fraction above 1, fewer than 2 radii, bool.
+    with pytest.raises(ValueError, match="above 1"):
+        an.encircled_energy(f10, [0.5, math.nextafter(1.0, 2.0)], grid=32, relative=True)
+    with pytest.raises(ValueError, match="above 1"):
+        an.encircled_energy(pupil, [1.5], relative=True)
+    for k in (0, 1, -3):
+        with pytest.raises(ValueError, match=">= 2"):
+            an.encircled_energy(f10, k, grid=32)
+    for flag in (True, np.True_):
+        with pytest.raises(TypeError, match="bool"):
+            an.encircled_energy(f10, flag, grid=32)  # type: ignore[arg-type]
