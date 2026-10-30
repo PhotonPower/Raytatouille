@@ -111,10 +111,14 @@ if(WIN32)
             "$<TARGET_FILE:TBB::tbb>" "${RTT_PY_STUBGEN_DIR}/raytatouille")
 endif()
 
+# INCLUDE_PRIVATE: stubgen takes a name with one trailing underscore for private and leaves it
+# out, but yield_ (MonteCarloResult, CriterionStatistics) only avoids the keyword (PEP 8). The
+# stub then also lists MaterialLibrary._glass_records.
 nanobind_add_stub(rtt_py_stub
   MODULE raytatouille._core
   OUTPUT "${RTT_PY_PACKAGE_DIR}/_core.pyi"
   PYTHON_PATH "${RTT_PY_STUBGEN_DIR}"
+  INCLUDE_PRIVATE
   DEPENDS _core)
 
 # Installation into the wheel (scikit-build-core): the pure Python modules come from

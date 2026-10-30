@@ -135,6 +135,48 @@ def flatten_sensitivity(r: tolerance.ToleranceSensitivity) -> Arrays:
     }
 
 
+def add_yield(v: list[float], y: tolerance.Yield) -> None:
+    v += [float(y.good), float(y.total), value(y.fraction), value(y.lower), value(y.upper)]
+
+
+def flatten_monte_carlo(r: tolerance.MonteCarloResult) -> Arrays:
+    t = r.trials
+    ints = [r.seed, r.requested, r.status.value, len(t)]
+    statistics: list[float] = []
+    add_yield(statistics, r.yield_)
+    for c in r.criteria:
+        ints += [c.with_value, c.without_value, c.count, len(c.percentiles)]
+        statistics += [value(x) for x in (c.mean, c.standard_deviation, c.min, c.max)]
+        for p in c.percentiles:
+            ints.append(p.rank)
+            statistics += [p.p, p.value]
+        add_yield(statistics, c.yield_)
+    rows: list[float] = []
+    flags: list[int] = []
+    for i in range(len(t)):
+        lm = int(t.lm_status[i])
+        flags += [int(t.trial[i]), int(t.status[i]), int(t.good[i]), 0 if lm < 0 else lm + 1]
+        rows += t.values[i].tolist()
+        for k in range(t.criteria.shape[1]):
+            rows.append(float(t.criteria[i, k]))
+            flags.append(int(t.satisfied[i, k]) + 1)
+        for j in range(t.compensator_start.shape[1]):
+            rows += [float(t.compensator_start[i, j]), float(t.compensator_end[i, j])]
+            flags += [int(t.at_bound[i, j]), int(t.infeasible[i, j])]
+        rows += [float(t.mu[i]), float(t.lm_iterations[i])]
+    return {"ints": u8(ints), "statistics": f8(statistics), "rows": f8(rows), "flags": u8(flags)}
+
+
+@cache
+def monte_carlo_run(threads: int) -> tolerance.MonteCarloResult:
+    system = explicit_only(rt.load(REFERENCE_DIR / "m7" / "achromat_tolerances.rtt.json"))
+    return tolerance.monte_carlo(system, materials=schott_library(), trials=12, threads=threads)
+
+
+def achromat_monte_carlo(threads: int) -> Arrays:
+    return flatten_monte_carlo(monte_carlo_run(threads))
+
+
 def explicit_only(system: rt.System) -> rt.System:
     # As explicit_only() in tolerance_cases.cpp and test_tolerance_sensitivity.py.
     return rt.apply_patch(system, [
@@ -161,6 +203,7 @@ Case = Callable[[int], Arrays]
 CASES: dict[str, Case] = {
     "achromat_expand": achromat,
     "achromat_sensitivity": achromat_sensitivity,
+    "achromat_monte_carlo": achromat_monte_carlo,
 }
 
 
@@ -212,3 +255,17 @@ def schott_library() -> rt.MaterialLibrary:
     lib = rt.MaterialLibrary()
     lib.add_catalog(CATALOG_DIR / "schott.agf")
     return lib
+
+
+def test_the_monte_carlo_case_has_content() -> None:
+    """Completed, all 12 trials kept, each criterion with statistics, the perturbations of every
+    trial different, and the compensator run in every trial (without it both sides would show
+    lm_status -1 and still agree)."""
+    r = monte_carlo_run(1)
+    assert r.status == tolerance.MonteCarloStatus.COMPLETED
+    assert len(r.trials) == 12 and r.yield_.total == 12
+    assert all(c.count >= 2 and c.standard_deviation is not None for c in r.criteria)
+    assert len({tuple(row) for row in r.trials.values.tolist()}) == 12
+    t = r.trials
+    assert bool(np.all(t.lm_status >= 0)) and bool(np.all(t.lm_iterations > 0))
+    assert bool(np.all(t.compensator_end != t.compensator_start))
