@@ -1,0 +1,549 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.16",
+ "type": "MonteCarloResult",
+ "data": {
+  "seed": 20261012,
+  "requested": 8,
+  "nominal": {
+   "status": "VALID",
+   "reason": "",
+   "criteria": [
+    {
+     "value": 0.010743546396846765,
+     "reason": "",
+     "satisfied": true
+    },
+    {
+     "value": 0.0411166985151982,
+     "reason": "",
+     "satisfied": false
+    },
+    {
+     "value": 100.98572329049803,
+     "reason": "",
+     "satisfied": true
+    }
+   ],
+   "compensators": [
+    {
+     "start": 110.614,
+     "end": 110.96612182707311,
+     "at_bound": false,
+     "infeasible": false
+    }
+   ],
+   "lm_status": "CONVERGED_MERIT",
+   "mu": 0.8426507595592684,
+   "lm_iterations": 13,
+   "warnings": []
+  },
+  "items": [
+   {
+    "id": "S3-wedge",
+    "surface": "L1.S3",
+    "node": null,
+    "parameter": null,
+    "param": null,
+    "segment": null,
+    "kind": "TILT_X_DEG",
+    "limit": 0.02,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "S1-conic",
+    "surface": "L1.S1",
+    "node": null,
+    "parameter": null,
+    "param": "/shape/base/conic",
+    "segment": null,
+    "kind": "PARAM",
+    "limit": 0.01,
+    "distribution": "UNIFORM"
+   },
+   {
+    "id": "R1",
+    "surface": null,
+    "node": null,
+    "parameter": "R1",
+    "param": null,
+    "segment": null,
+    "kind": "PARAMETER",
+    "limit": 0.1,
+    "distribution": "ENDPOINT"
+   }
+  ],
+  "criteria": [
+   {
+    "id": "spot-axis",
+    "with_value": 8,
+    "without_value": 0,
+    "count": 8,
+    "mean": 0.01068160754821767,
+    "standard_deviation": 0.000185163007334347,
+    "min": 0.010461900769643482,
+    "max": 0.011014935075039312,
+    "percentiles": [
+     {
+      "p": 0.5,
+      "rank": 4,
+      "value": 0.010603784232526073
+     },
+     {
+      "p": 0.9,
+      "rank": 8,
+      "value": 0.011014935075039312
+     },
+     {
+      "p": 0.95,
+      "rank": 8,
+      "value": 0.011014935075039312
+     },
+     {
+      "p": 0.99,
+      "rank": 8,
+      "value": 0.011014935075039312
+     }
+    ],
+    "yield": {
+     "good": 8,
+     "total": 8,
+     "fraction": 1.0,
+     "lower": 0.6755924351161198,
+     "upper": 1.0
+    },
+    "note": ""
+   },
+   {
+    "id": "spot-zone",
+    "with_value": 8,
+    "without_value": 0,
+    "count": 8,
+    "mean": 0.041127109494235814,
+    "standard_deviation": 0.0001858117551580216,
+    "min": 0.040847988753074944,
+    "max": 0.041411384525320755,
+    "percentiles": [
+     {
+      "p": 0.5,
+      "rank": 4,
+      "value": 0.04107327480924129
+     },
+     {
+      "p": 0.9,
+      "rank": 8,
+      "value": 0.041411384525320755
+     },
+     {
+      "p": 0.95,
+      "rank": 8,
+      "value": 0.041411384525320755
+     },
+     {
+      "p": 0.99,
+      "rank": 8,
+      "value": 0.041411384525320755
+     }
+    ],
+    "yield": {
+     "good": 0,
+     "total": 8,
+     "fraction": 0.0,
+     "lower": 0.0,
+     "upper": 0.32440756488388023
+    },
+    "note": ""
+   },
+   {
+    "id": "efl",
+    "with_value": 8,
+    "without_value": 0,
+    "count": 8,
+    "mean": 100.98568368408975,
+    "standard_deviation": 0.14680436393431995,
+    "min": 100.84835736307866,
+    "max": 101.12300870081775,
+    "percentiles": [
+     {
+      "p": 0.5,
+      "rank": 4,
+      "value": 100.84836383616165
+     },
+     {
+      "p": 0.9,
+      "rank": 8,
+      "value": 101.12300870081775
+     },
+     {
+      "p": 0.95,
+      "rank": 8,
+      "value": 101.12300870081775
+     },
+     {
+      "p": 0.99,
+      "rank": 8,
+      "value": 101.12300870081775
+     }
+    ],
+    "yield": {
+     "good": 8,
+     "total": 8,
+     "fraction": 1.0,
+     "lower": 0.6755924351161198,
+     "upper": 1.0
+    },
+    "note": ""
+   }
+  ],
+  "yield": {
+   "good": 0,
+   "total": 8,
+   "fraction": 0.0,
+   "lower": 0.0,
+   "upper": 0.32440756488388023
+  },
+  "trials": {
+   "trial": {
+    "dtype": "uint32",
+    "shape": [
+     8
+    ],
+    "values": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   "values": {
+    "dtype": "float64",
+    "shape": [
+     8,
+     3
+    ],
+    "values": [
+     0.015683180219536474,
+     -0.009576553178212438,
+     -0.1,
+     -0.0006527497178473866,
+     0.009470598538691715,
+     0.1,
+     0.007426224508969127,
+     0.005005622772733345,
+     -0.1,
+     -0.005492667600397483,
+     0.002932472922036211,
+     -0.1,
+     0.003345032229970521,
+     -0.008210583714027402,
+     0.1,
+     0.014027289839280978,
+     0.008704863875260435,
+     -0.1,
+     -0.014510711244013777,
+     0.008859408487550291,
+     0.1,
+     -0.0077277577282487625,
+     0.004519898465375316,
+     0.1
+    ]
+   },
+   "status": {
+    "dtype": "uint8",
+    "shape": [
+     8
+    ],
+    "values": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   "good": {
+    "dtype": "bool",
+    "shape": [
+     8
+    ],
+    "values": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "criteria": {
+    "dtype": "float64",
+    "shape": [
+     8,
+     3
+    ],
+    "values": [
+     0.010890436840489869,
+     0.041411384525320755,
+     100.84835736307866,
+     0.010603784232526073,
+     0.04107327480924129,
+     101.12300870081775,
+     0.010546470343991313,
+     0.04119087531589624,
+     100.84836308292063,
+     0.010594649498712314,
+     0.040988443223946264,
+     100.84836383616165,
+     0.011014935075039312,
+     0.041240439062750774,
+     101.12300839552755,
+     0.010461900769643482,
+     0.041280344304032365,
+     100.84835882157431,
+     0.010620969124894271,
+     0.040847988753074944,
+     101.12300235659843,
+     0.010719714500444734,
+     0.04098412595962389,
+     101.12300691603899
+    ]
+   },
+   "satisfied": {
+    "dtype": "int8",
+    "shape": [
+     8,
+     3
+    ],
+    "values": [
+     1,
+     0,
+     1,
+     1,
+     0,
+     1,
+     1,
+     0,
+     1,
+     1,
+     0,
+     1,
+     1,
+     0,
+     1,
+     1,
+     0,
+     1,
+     1,
+     0,
+     1,
+     1,
+     0,
+     1
+    ]
+   },
+   "compensator_start": {
+    "dtype": "float64",
+    "shape": [
+     8,
+     1
+    ],
+    "values": [
+     110.614,
+     110.614,
+     110.614,
+     110.614,
+     110.614,
+     110.614,
+     110.614,
+     110.614
+    ]
+   },
+   "compensator_end": {
+    "dtype": "float64",
+    "shape": [
+     8,
+     1
+    ],
+    "values": [
+     110.83166744116676,
+     111.10061675757566,
+     110.81856548535593,
+     110.82043097677487,
+     111.1164463521508,
+     110.81523183138422,
+     111.10115369580168,
+     111.10504673814872
+    ]
+   },
+   "at_bound": {
+    "dtype": "bool",
+    "shape": [
+     8,
+     1
+    ],
+    "values": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "infeasible": {
+    "dtype": "bool",
+    "shape": [
+     8,
+     1
+    ],
+    "values": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "lm_status": {
+    "dtype": "int8",
+    "shape": [
+     8
+    ],
+    "values": [
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2
+    ]
+   },
+   "mu": {
+    "dtype": "float64",
+    "shape": [
+     8
+    ],
+    "values": [
+     1.1310862885180057,
+     0.7567069344242612,
+     1.155620608578467,
+     1.1518601703077622,
+     0.7182943433174758,
+     1.1626499492392375,
+     0.7546546061070241,
+     0.7451450125220742
+    ]
+   },
+   "lm_iterations": {
+    "dtype": "int32",
+    "shape": [
+     8
+    ],
+    "values": [
+     12,
+     11,
+     12,
+     12,
+     11,
+     12,
+     11,
+     11
+    ]
+   },
+   "reason": [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+   ]
+  },
+  "warnings": [],
+  "expansion": {
+   "items": [
+    {
+     "id": "S3-wedge",
+     "surface": "L1.S3",
+     "node": null,
+     "parameter": null,
+     "param": null,
+     "segment": null,
+     "kind": "TILT_X_DEG",
+     "limit": 0.02,
+     "distribution": "NORMAL"
+    },
+    {
+     "id": "S1-conic",
+     "surface": "L1.S1",
+     "node": null,
+     "parameter": null,
+     "param": "/shape/base/conic",
+     "segment": null,
+     "kind": "PARAM",
+     "limit": 0.01,
+     "distribution": "UNIFORM"
+    },
+    {
+     "id": "R1",
+     "surface": null,
+     "node": null,
+     "parameter": "R1",
+     "param": null,
+     "segment": null,
+     "kind": "PARAMETER",
+     "limit": 0.1,
+     "distribution": "ENDPOINT"
+    }
+   ],
+   "origins": [
+    {
+     "source": "EXPLICIT",
+     "index": 0
+    },
+    {
+     "source": "EXPLICIT",
+     "index": 1
+    },
+    {
+     "source": "EXPLICIT",
+     "index": 2
+    }
+   ],
+   "classes": {
+    "items": [],
+    "value_overrides": [
+     {
+      "index": 0,
+      "effect": "CLASS_NONE",
+      "skip": "NONE"
+     },
+     {
+      "index": 1,
+      "effect": "CLASS_NONE",
+      "skip": "NONE"
+     }
+    ]
+   }
+  },
+  "status": "COMPLETED"
+ }
+}
