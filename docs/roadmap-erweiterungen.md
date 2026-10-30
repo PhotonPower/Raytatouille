@@ -1,6 +1,6 @@
 # Roadmap-Erweiterungen
 
-> **Status: entschieden** (2026-10-09, Koordinator im Auftrag des Maintainers; siehe [Entscheidungen](#entscheidungen)). Stand nach 0.8.0 (M6 abgeschlossen; die Einträge sind gegen ADR 0028 bis 0034 und Schema 0.5.0 abgeglichen; neu ist der Abschnitt [Offene Punkte nach M6](#offene-punkte-nach-m6)). Verbindlich ist ein Eintrag erst, wenn er unter „Entscheidungen“ als freigegeben steht; Einträge mit „Ideenliste“ werden beim Planen des jeweiligen Meilensteins neu bewertet. Die Roadmap-Tabelle in [architecture.md](architecture.md) bleibt die Quelle für die Meilensteine.
+> **Status: entschieden** (2026-10-09, Koordinator im Auftrag des Maintainers; siehe [Entscheidungen](#entscheidungen)). Stand nach 0.9.0 (M7 abgeschlossen; die Einträge sind gegen ADR 0028 bis 0037 und Schema 0.7.0 abgeglichen; neu ist der Abschnitt [Offene Punkte nach M7](#offene-punkte-nach-m7)). Verbindlich ist ein Eintrag erst, wenn er unter „Entscheidungen“ als freigegeben steht; Einträge mit „Ideenliste“ werden beim Planen des jeweiligen Meilensteins neu bewertet. Die Roadmap-Tabelle in [architecture.md](architecture.md) bleibt die Quelle für die Meilensteine.
 
 ## Herkunft und Umgang mit der Quelle
 
@@ -107,6 +107,33 @@ Ideenliste aus der Umsetzung von M6 (0.8.0), gesammelt von den Agenten; neu zu b
   - MTF- und Strehl-Operanden für die Optimierung (ADR 0033, H9) und ein skaleninvarianter FD-Schritt bei kleinen Variablen (#196, Kommentar).
   - Aufzeichnender Trace mit Abbruch und Fortschritt; heute läuft die Feldamplitude der Jones-Pupille als ein Block (#208, B1).
 
+## Offene Punkte nach M7
+
+Ideenliste aus der Umsetzung von M7 (0.9.0), gesammelt von den Agenten; neu zu bewerten beim Planen. Herkunft in Klammern.
+
+- **Toleranzierung:**
+  - Vorzeichenwechsel eines Radius über eine Tabellenzeile oder einen Kompensator erkennen; heute wird er nicht bemerkt (#293, aus dem Review von #278).
+  - Korrelierte Toleranzen (K7); heute zieht jedes Item unabhängig.
+  - Flächenfehler als additive Zernike-Terme (T1, Rest); kommt mit den Zernike-Flächen in M8.
+  - Strehl und MTF als Toleranzkriterien; heute Kriterien aus den Operanden von ADR 0030 (erste Ordnung, Strahlkoordinaten, Spot, OPD, Tabellenwerte).
+  - Ein abgebrochener Monte-Carlo-Lauf ist nicht reproduzierbar, nur ein vollständiger (ADR 0036, Nachtrag #259).
+  - Bitgleichheit gilt innerhalb eines Builds (1, 4 und alle Threads, Wiederholung); zwischen Plattformen nur für die gleichverteilten und Endpunkt-Ziehungen, nicht für die normalverteilten (Box–Muller mit `log`, `cos`, `sin`) und nicht für die Ergebnisse (libm im Trace).
+  - `LmStatus::Failed` eines Kompensators hat keinen eigenen Test (#278).
+  - Die Warnung `tolerances.rss_negative` ist nur in C++ getestet, nicht aus Python (#302, P3-7).
+  - efl, bfl, image_fnumber und magnification eines Prüflings kommen aus parabasalen Strahlen bei 10⁻³ des Pupillenradius (5·10⁻³ mm in den M7-Systemen), also aus einem realen Strahl und nicht aus dem y-ν-Trace; wer mit einem paraxialen Wert vergleicht, sieht die Aberration dieses Strahls (#303).
+- **Optimierung:**
+  - Versuche mit neu verlorenen Strahlen ablehnen statt Residuum 0 (#289, Revision F7) und Spot/OPD-Operanden gleich behandeln (#299); was danach von #281 bleibt, wird dort neu bewertet.
+  - Differenzenschrittweite je Variable für steife Probleme (#290).
+  - Zielungsart als Lauf-Option von `optimize` (#291).
+  - Exakte Gleichheitsbedingungen statt Strafgewicht (#196).
+- **Modell, Trace, Analyse:**
+  - Bezug des Objektabstands `object.reference` (#288, braucht einen Schemasprung).
+  - Apertur als reale NA n sin U statt paraxial (#296, aus #287).
+  - `radius_max` der eingeschlossenen Energie vorab bestimmen (#267).
+  - Field Tracing (`rtt-field`): ADR und C++-Ersatz der Hilfsbibliotheken (#284, #285), nach 0.9.0.
+- **Tests und Doku:**
+  - Zwei Testkommentare: In `libs/rtt-optim/tests/test_parabasal.cpp:317` ist die Brennweite der dezentrierten idealen Linse f + 3δ²/(4f), nicht f + δ²/(2f) (Herleitung in #303), und in `libs/rtt-tolerance/tests/test_m7_acceptance.cpp:311` ist die Abweichung der parabasalen Brennweite etwa 4,3·10⁻⁷ mm, nicht 3·10⁻⁷ mm (#306). Beide Änderungen brauchen die Freigabe nach Regel 2.
+
 ## Bewusst nicht aufgenommen
 
 - **MATLAB-Schnittstelle:** Die Python-API ist die einzige Skriptschnittstelle (ADR 0012).
@@ -135,9 +162,9 @@ Getroffen am 2026-10-09 vom Koordinator; der Maintainer hat die Entscheidung üb
 | O1, O2 | **Nach 0.7.0**, je mit eigenem ADR (Solves hängen von Analysen ab und passen nicht in die reinen Tabellenausdrücke von ADR 0029: Reihenfolge, Zyklen, Ort der Auswertung; O2 braucht Namen für Analysegrößen in der Ausdrucksgrammatik). O1 zusammen mit G8. |
 | O3 | **Nach 0.7.0**, als erste Ergänzung der Optimierung (Randbedingungen auf Mittendicke, Randdicke, Baulänge). |
 | O4, O5 | **Nach 0.7.0**, Ideenliste bis zur Planung der Optimierungs-Ergänzungen. |
-| O6 | **Mit M7**, nur der Abschnitt für den Toleranzsatz; Analyse-Voreinstellungen werden nicht in die Systemdatei aufgenommen. |
+| O6 | **Mit M7**, nur der Abschnitt für den Toleranzsatz; Analyse-Voreinstellungen werden nicht in die Systemdatei aufgenommen. Stand nach 0.9.0: umgesetzt als Abschnitt `tolerances` (ADR 0035, Schema 0.6.0, #253). |
 | W1 bis W5 | **Mit M6.** Stand nach 0.8.0: W1 umgesetzt (#210), die Michelson-Abnahme ist offen; W3 nur die Polarisationskarte der Pupille (`stokes_pupil`, #211), Poincaré-Punkte und Transmissions-Fan offen; W4 nur die Gauß-Apodisation als Analyse-Option (#202), Gaußstrahl-Quelle und Apodisation im Format offen; W2 und W5 nicht begonnen. Die Reste werden neu bewertet (siehe „Offene Punkte nach M6“). |
-| T1 | **Mit M7.** |
+| T1 | **Mit M7.** Stand nach 0.9.0: Toleranzklassen als eigene Tabelle (#260), Toleranzen auf Brechzahl, Abbe-Zahl und Konfigurationszeilen umgesetzt; die Flächenfehler als Zernike-Terme kommen mit den Zernike-Flächen in M8 (siehe „Offene Punkte nach M7“). |
 | F1 bis F5 | **Mit M8.** F4 ohne CodeV-`.seq`, solange keine frei zugängliche Formatbeschreibung vorliegt. |
 | X1 | **ADR früh** (nach 0.7.0, vor M8), damit Ray Aiming, Paraxial und Analysen nicht die Annahme „Strahlen sind zwischen Flächen Geraden“ fest einbauen; die Umsetzung kommt in v1.x nach v1.0 und vor M10. |
 | X2, X3 | **v1.x**, Ideenliste. |

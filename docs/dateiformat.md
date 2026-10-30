@@ -1,7 +1,7 @@
 # Systemdateien `.rtt.json` erzeugen
 
 Kurzanleitung für das Dateiformat, das die Engine, die CLI (`rtt`) und der Raytatouille Explorer
-laden. Alle Beispiele hier wurden gegen Schema `0.7.x` geprüft (nach Bibliothek 0.8.0). Dateien mit
+laden. Alle Beispiele hier wurden gegen Schema `0.7.x` geprüft (nach Bibliothek 0.9.0). Dateien mit
 Schema 0.1 bis 0.6 liest `rtt` weiter und schreibt sie mit `rtt format` als 0.7; ein `pickup` aus
 einer Datei vor 0.4 fällt dabei weg, mit der Warnung `io.pickup_dropped` (siehe
 „Parametertabelle“).

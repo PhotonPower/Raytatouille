@@ -6,6 +6,110 @@ Neue Einträge stehen bis zum nächsten Release als Fragmente in [`changelog.d/`
 
 ## [Unreleased]
 
+## [0.9.0] – M7 Toleranzierung
+
+### Hinzugefügt
+- Dateiformat 0.6.0: optionaler Abschnitt `tolerances` (ADR 0035) mit Toleranzklasse
+  (`coarse`, `normal`, `precise`), Überschreibungen je Knoten oder Fläche (Klasse, Einzelwert,
+  Pivot), expliziten Items (Arten von `radius` bis `abbe`, Verteilungen `normal`, `uniform`,
+  `endpoint`), Kompensatoren mit Verstellweg, Kompensator-Merit, Kriterien und
+  Monte-Carlo-Vorgaben. Ziele über Anker (`surface`, `node`, `parameter`) plus angehängten
+  Pointer `param`, nie über Indizes. Modelltypen in `rtt/model/tolerance.hpp`
+  (`System::tolerances`), strenges Lesen, kanonisches Schreiben und Bearbeitungsform (Patch und
+  Undo); Migration von 0.5 ändert nur die Version, ein `tolerances`-Abschnitt in einer älteren
+  Datei ist ein Lesefehler. Python-Lesetypen `rt.model.ToleranceSet` (über
+  `System.tolerances`), `ToleranceItem`, `ToleranceClassOverride`, `ToleranceValueOverride`,
+  `TolerancePivotOverride`, `Compensator`, `Criterion`, `MonteCarloDefaults` und die Enums
+  `ToleranceKind`, `ToleranceDistribution`, `ToleranceClass`. Referenzdatei
+  `tests/reference/m7/achromat_tolerances.rtt.json` (#253).
+- Toleranzsatz prüfen (ADR 0035, Punkt 9): `validate` meldet 16 Codes `tolerances.*` (u. a.
+  unbekanntes oder unpassendes Ziel, gebundenes Param, Grenze, ids und Hash-Kollision, dieselbe
+  Größe doppelt, Material, Kompensatoren, Kriterien, Monte-Carlo-Vorgaben) und `merit.*` für
+  Kriterien und Kompensator-Merit. `rtt::model::class_tolerances` zählt die Items der
+  Toleranzklassen mit stabilen ids, wirksamer Klasse, Einzelwerten, Vorrang expliziter Items
+  und Gründen für übersprungene Arten auf; `tolerance_id_hash` ist FNV-1a 64 (RFC 9923)
+  (#253).
+- `rtt-compile`: Toleranz-Überlagerung `Perturbation` für `compile`. Sie enthält
+  Starrkörperbewegungen (Dezentrierung, Verschiebung, Kippung um den Pivot) je Baugruppe, Element
+  oder Fläche im Nennrahmen und Änderungen von n_d und ν_d je Element und Segment mit gleicher
+  relativer Teildispersion. Ohne Einträge ist das Ergebnis bitgleich (ADR 0036, Punkt 1; #254).
+- `rtt-trace`: Zielung mit dem Bezug eines anderen Systems. `aim_reference()` rechnet die paraxialen
+  Zieldaten eines Pfads und einer Wellenlänge einmal; `aim_ray`, `make_rays` und `stop_radius`
+  nehmen sie optional. Die reale Zielung konvergiert so auf eine gestörte Blende. Mit dem Bezug
+  desselben Systems sind die Strahlen bitgleich (ADR 0007, Nachtrag #252; #255).
+- `rtt-optim`: Merit-Funktion und Optimierung eines gestörten Toleranzprüflings. `nominal_basis()` rechnet die Daten des Nennsystems einmal; mit `TrialOverlay` übersetzen `MeritFunction` und `optimize` jede Auswertung mit der Störung, zielen mit den Daten des Nennsystems und rechnen efl, bfl, image_fnumber und magnification aus parabasalen Strahlen (ADR 0030, Nachtrag #256; #256).
+- `rtt-tolerance`: ein Toleranzprüfling. `prepare()` bereitet die Prüflinge eines Satzes vor (Ziele, Glasprüfung, nominale Basis, Φ₀); `evaluate()` wendet die Störwerte als Param-Offsets und Überlagerung an, lässt die Kompensatoren laufen und wertet die Kriterien mit dem nominalen Bezug aus; `satisfies()` und `apply()`. Neue Warnung `tolerances.compensator_infeasible` (ADR 0036, Nachtrag #257; #257).
+- `rtt-tolerance`: Sensitivität, RSS und inverse Sensitivität. `sensitivity()` wertet je Item die Prüflinge bei ±T aus (mit Kompensatoren und nominalem Bezug), bildet die symmetrischen Beiträge, die RSS (Burge) und die Vorhersage mit σ/T der Verteilung, verteilt den Spielraum jedes Kriteriums gleich auf die Items (T′) und bestätigt bei ±T′. Ungültige Seiten schließen das Item je Kriterium aus; eine Überladung nimmt das System und expandiert die Klassen. Neue Warnung `tolerances.rss_negative` (ADR 0036, Nachtrag #258; #258).
+- `rtt-tolerance` (neue Bibliothek): Ziehung der Störwerte eines Toleranzsatzes. Philox-4×32-10 mit
+  dem FNV-1a-Hash der Toleranz-id, 53-Bit-Gleichverteilung, Box–Muller und die Verteilungen
+  normal (abgeschnitten bei ±T), uniform und endpoint. Ein Wert hängt nur von Seed, Prüfling und
+  Item ab, nicht von Threads, Reihenfolge oder anderen Items (ADR 0036, Punkt 5; #259).
+- `rtt-tolerance`: Monte Carlo. `monte_carlo()` zieht je Prüfling die Störwerte aller Items,
+  wertet mit Kompensatoren und nominalem Bezug aus und fasst in Prüflingsreihenfolge zusammen:
+  je Kriterium Mittel, Standardabweichung, Minimum, Maximum und Perzentile über die gültigen
+  Prüflinge, Ausbeute gesamt und je Kriterium mit Wilson-Intervall. Ungültige Prüflinge stehen
+  immer mit Grund im Ergebnis, die übrigen mit `keep_trials`; eine Überladung nimmt das System
+  und expandiert die Klassen. Bitgleich bei jeder Thread-Zahl (ADR 0036, Nachtrag #259; #259).
+- Toleranzklassen (`rtt-tolerance`): `expand(system, materials)` erzeugt aus Klasse,
+  Überschreibungen und expliziten Items die vollständige Item-Liste mit Herkunft und
+  übersprungenen Zielen; `class_limit` gibt die Grenze je Klasse (coarse, normal, precise), Art
+  und Ebene, bei `abbe` als Anteil von ν_d des Glases (SCHOTT TIE-29). Ein ungültiger Satz wirft
+  `CompileError` (ADR 0035 und 0036, Nachträge #260; #260).
+- `compile::fraunhofer_indices`: n_d, n_F, n_C und ν_d eines Materials an den Linien d, F, C,
+  gemeinsam für die Materialüberlagerung und die Klassengrenzen von `abbe` (#260).
+- Python `rt.tolerance` (#261): `expand(system, materials=)` gibt die vollständige Item-Liste
+  eines Toleranzsatzes mit Herkunft und übersprungenen Zielen (`ToleranceItems`),
+  `class_limit` die Grenzen der Klassentabelle (ABBE wird abgelehnt) und `abbe_share` den
+  Anteil von ν_d für abbe (auch in C++, `rtt::tolerance::abbe_share`). `sensitivity(system,
+  materials=)` gibt Sensitivität, RSS, inverse Sensitivität und Bestätigungslauf
+  (`ToleranceSensitivity`), `sigma_ratio` das Verhältnis σ/T einer Verteilung. Ergebnisformat
+  0.1.15 mit den Typen `ToleranceItems` und `ToleranceSensitivity`. `monte_carlo(system,
+  materials=, trials=)` gibt Ausbeute, Statistik je Kriterium und die Prüflinge als
+  NumPy-Spalten (`MonteCarloResult`, Ergebnisformat 0.1.16). Beispiel
+  `examples/python/tolerance.py`.
+- Abnahme M7: 13 Fälle der Toleranzierung gegen analytische Sollwerte in
+  `test_m7_acceptance.cpp` (Baugruppen, Dezentrierung, Platte, Material, Kompensator, Sensitivität
+  und RSS, Monte Carlo, Tabellenzeile, Doppeldurchgang, Klassen) auf den neuen Referenzsystemen
+  unter `tests/reference/m7/`; Python bitgleich zu C++ für Teile der Fälle 4, 6, 7, 8 und 13 in
+  `test_bitwise_m7.py` (#262).
+- `rtt-analysis`: nominaler Bezug für Spot und OPD. `nominal_reference()` rechnet die Zieldaten
+  und die Austrittspupille eines Nennsystems einmal. Mit `SpotOptions::reference` bzw.
+  `OpdOptions::reference` laufen `spot`, `opd_points`, `opd_map` und `opd_fan` auch an gestörten,
+  nicht rotationssymmetrischen Prüflingen; mit dem Bezug desselben Systems bitgleich (ADR 0032,
+  Nachtrag #265; #265).
+- `rtt-model`, `rtt-io`, `rtt-compile`, `rtt-py`: Medium im Objektraum, `object.medium` (Schema 0.7, ADR 0037). Eine Punktquelle in Glas strahlt auch jenseits des Grenzwinkels Glas/Luft; die Datei liest 0.1 bis 0.6 weiter (Migration 0.6 → 0.7 ändert nur die Version). Neue Codes `object.medium_infinite` (validate) und `aperture.na_exceeds_index` (compile) (#282).
+
+### Geändert
+- Doku zur Optimierung: `function_precision` setzt nur die Differenzenschrittweite h = ε_f^(1/3)·max(|θ|, 1), keinen Konvergenztest; Schrittweite gegenüber der Schärfentiefe, `object_na` bzw. EPD als variable Apertur, Gleichheitsbedingungen wie `magnification` in die Parametertabelle (ADR 0030, Nachtrag #281; #281).
+- FFT-Beugung bei zu nichtlinearer Pupillenzuordnung (ADR 0033, Nachtrag #286): `psf`,
+  `through_focus`, `mtf`, `encircled_energy` und `psf_at` werfen über `mapping_limit`
+  (Standard 0,05; 1 schaltet ab) einen `AnalysisError` mit dem neuen Code
+  `pupil.mapping_too_nonlinear`, statt nur zu warnen. Betroffen sind Systeme, die die
+  Sinusbedingung verletzen, vor allem die ideale Linse hoher NA. `AnalysisError` trägt dafür
+  ein optionales `code`; Ergebnisformat 0.1.14 mit `PupilFunction.mapping_limit` (#286).
+
+### Behoben
+- `pip install .` und `pip install -e .` brechen nicht mehr beim Erzeugen von `_core.pyi` ab,
+  wenn im Ziel-venv schon eine editierbare Installation liegt (Meldung `ModuleNotFoundError`
+  numpy, ohne Build-Isolation `ImportError` mit einem Namen aus `_core`). Der Stub-Lauf startet
+  Python jetzt ohne `site` und ohne `PYTHONPATH` (`python -S -E`), sodass der Finder der alten
+  Installation das Paket nicht mehr auf den Quellbaum oder eine alte `_core` umlenkt. Wer eine
+  Version bis 0.8.0 baut, entfernt eine alte editierbare Installation vorher mit
+  `pip uninstall raytatouille` (#271).
+- Doku: `object.distance` wird vom globalen Ursprung gemessen (Objekt bei z = −`distance`); das steht jetzt in `docs/dateiformat.md` und als `description` im JSON-Schema. Das „wie `object.distance`“ bei `object_distance` der idealen Linse meint nur das Vorzeichen (ADR 0031, Nachtrag #279; #279).
+- `rtt-paraxial`: `first_order` hält lange Systeme weit vom Ursprung (z. B. ein Mikroskop mit
+  30 Flächen bei z ≈ 300 mm) nicht mehr für afokal oder objektseitig telezentrisch. Die
+  Rundungsschranke wuchs exponentiell mit der Flächenzahl; der Rundungsfehler der Koordinaten
+  läuft jetzt in einem eigenen Kanal und geht linear ein. Das gilt auch für Pupillen und Bild im
+  Unendlichen (#280).
+- `rtt-trace`: Die reale Zielung konvergiert auch bei starker Pupillenaberration (Blende tief im
+  System, hohe NA). Scheitert der Newton-Lauf vom paraxialen Startwert, folgt ein Rückfall per
+  Continuation vom realen Hauptstrahl aus. Strahlen, die bisher konvergierten, bleiben bitgleich
+  (#287).
+
+### Entfernt
+- `rtt-tolerance`: `fnv1a64` aus `random.hpp`; die Ziehung nimmt `model::tolerance_id_hash` von `validate` mit denselben Werten (#258).
+
 ## [0.8.0] – M6 Beugung
 
 ### Hinzugefügt

@@ -117,6 +117,14 @@ Fehlerquellen, die nur die CI sieht, vorab lokal prüfen:
 - **Plot-Tests brauchen matplotlib.** Fehlt matplotlib in der lokalen venv, überspringt pytest
   die Plot- und Beispieltests still; dann deckt sie nur die CI ab. Beim Ändern von Plot-Helfern
   matplotlib installieren oder die CI-Läufe gezielt ansehen.
+- **GitHub liest Schließ-Schlüsselwörter überall im PR-Text.** Auch ein zitiertes „Closes #N“ in
+  einem Satz über einen späteren PR verknüpft das Issue und schließt es beim Merge. Über andere
+  PRs deshalb ohne Schlüsselwort schreiben („schließt dann #N“) und vor dem Merge
+  `gh pr view <nr> --json closingIssuesReferences` prüfen (#303).
+- **Keine frische venv ohne NumPy unter MSYS2.** `pip install` in einer leeren MSYS2-venv baut
+  NumPy aus den Quellen (es gibt dort kein Wheel) und braucht mehrere GB Speicher. Die venv mit
+  `--system-site-packages` auf dem NumPy aus pacman anlegen oder mit `--no-deps` installieren;
+  parallele Builds mehrerer Sitzungen mit `-j 2` (#271).
 
 ## Aufbau
 
