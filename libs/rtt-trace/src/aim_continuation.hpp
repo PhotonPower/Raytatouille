@@ -51,11 +51,13 @@ struct ContinuationResult {
 /// the stop centre) to the target (tx, ty) (s = 1). Since dH/d(a, b) = J and dH/ds = -(tx, ty),
 /// the tangent is d(a, b)/ds = J^-1 (tx, ty); the Euler predictor (their Eq. (3.2)) steps along
 /// it with the Jacobian of the last corrector run, an approximation of H' as in their
-/// Algorithm 3.1. Corrector: the Newton run of aim() (their Eq. (3.1), here with a square J).
-/// Steplength: their Sec. 3.3 asks for an automatic rule; this one is ours: start at 1/16,
-/// double after a success, halve after a failure, give up below 1/1024 or after 64 accepted
-/// steps. For an object at infinity every accepted point must stay inside the bundle reserve
-/// kBundleReserve r_ep, for which make_field() places the start plane of the field.
+/// Algorithm 3.1. Their t(H'(u)) is the normalized tangent in R^(N+1) and h an arc length; here
+/// the same direction is parametrized by s. Corrector: the Newton run of aim() (their Eq. (3.1),
+/// here with a square J). Steplength: their Sec. 3.3 asks for an automatic rule; this one is ours:
+/// start at 1/16, double after a success, halve the step just tried after a failure (so a step cut
+/// to the rest 1 - s is not tried again), give up below 1/1024 or after 64 accepted steps. For an
+/// object at infinity every accepted point must stay inside the bundle reserve kBundleReserve r_ep,
+/// for which make_field() places the start plane of the field.
 /// @param newton      Newton run (u, v, gx, gy, NewtonRun&) -> bool of aim(): from (u, v) on the
 ///                    target (gx, gy), (u, v) hold the last iterate; true on convergence
 /// @param jacobian_at central-difference Jacobian (u, v, gx, gy) of aim()
@@ -106,7 +108,7 @@ std::optional<ContinuationResult> continuation(const Newton& newton,
       ds *= 2.0;
       jacobian = step.jacobian ? step.jacobian : jacobian_at(u, v, s * tx, s * ty);
     } else {
-      ds *= 0.5;
+      ds = 0.5 * (s_next - s);  // the step just tried, possibly cut to 1 - s
       if (ds < kAimContinuationMinStep) return std::nullopt;
     }
   }
