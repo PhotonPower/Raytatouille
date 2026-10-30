@@ -159,6 +159,12 @@ PRODUCERS: dict[str, Callable[[rt.CompiledSystem, rt.MaterialLibrary], Any]] = {
     # tolerance classes (#261)
     "ToleranceItems": lambda cs, lib: rt.tolerance.expand(
         rt.load(REFERENCE_DIR / "m7" / "achromat_tolerances.rtt.json"), materials=lib),
+    # sensitivity (#261): the explicit items of the achromat only, class none (3 items)
+    "ToleranceSensitivity": lambda cs, lib: rt.tolerance.sensitivity(rt.apply_patch(
+        rt.load(REFERENCE_DIR / "m7" / "achromat_tolerances.rtt.json"), [
+            {"op": "replace", "path": "/tolerances/class", "value": "none"},
+            {"op": "remove", "path": "/tolerances/overrides/4"},
+            {"op": "remove", "path": "/tolerances/overrides/0"}]), materials=lib),
 }
 
 

@@ -1,14 +1,16 @@
-"""Tolerance classes from Python are bitwise equal to C++ (#261).
+"""Tolerancing from Python is bitwise equal to C++ (#261).
 
 rtt_py_reference (tolerance_cases.cpp) expands the tolerance set of the M7 reference achromat
-with the SCHOTT catalogue; flatten_items below builds the same arrays from the Python result.
+with the SCHOTT catalogue and runs the sensitivity of its three explicit items (class none);
+flatten_items and flatten_sensitivity below build the same arrays from the Python results.
 The abbe limits (a share of nu_d of the glass) are only checked exactly here, because nu_d is
-not available in Python. expand runs on one thread; the cases are compared for both runs of
-the reference program (1 and 4 threads).
+not available in Python. expand runs on one thread, sensitivity on the given threads; the cases
+are compared for both runs of the reference program (1 and 4 threads).
 """
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -72,11 +74,88 @@ def achromat(threads: int) -> Arrays:
     return flatten_items(tolerance.expand(system, materials=lib))
 
 
+def value(x: float | None) -> float:
+    return math.nan if x is None else x
+
+
+def add_trial(v: list[float], t: tolerance.TrialResult | None) -> None:
+    if t is None:
+        return
+    v.extend(value(c.value) for c in t.criteria)
+    v.extend(c.end for c in t.compensators)
+    v.append(value(t.mu))
+    v.append(float(t.lm_iterations))
+
+
+def criterion_values(cs: list[tolerance.CriterionSensitivity]) -> list[float]:
+    v: list[float] = []
+    for c in cs:
+        v.extend(value(x) for x in (c.nominal, c.rss, c.predicted_sigma,
+                                    c.predicted_mean_square, c.inverse.allowance,
+                                    c.inverse.share))
+        for i in c.items:
+            v.extend(value(x) for x in (i.plus, i.minus, i.worst, i.delta, i.shift, i.q))
+        v.extend(value(x) for x in c.inverse.limits)
+    return v
+
+
+def criterion_ints(cs: list[tolerance.CriterionSensitivity]) -> list[int]:
+    v: list[int] = []
+    for c in cs:
+        v += [c.kind.value, int(c.complete), len(c.excluded), len(c.inverse.unlimited)]
+        v += c.excluded + c.inverse.unlimited
+    return v
+
+
+def flatten_sensitivity(r: tolerance.ToleranceSensitivity) -> Arrays:
+    trials: list[float] = []
+    add_trial(trials, r.nominal)
+    for i in r.items:
+        add_trial(trials, i.plus)
+        add_trial(trials, i.minus)
+    status = [r.status.value, r.nominal.status.value, int(r.confirmation is not None)]
+    status += [0 if t is None else t.status.value + 1 for i in r.items for t in (i.plus, i.minus)]
+    confirmation: list[float] = []
+    if r.confirmation is not None:
+        confirmation += r.confirmation.limits
+        for plus, minus in zip(r.confirmation.plus, r.confirmation.minus):
+            add_trial(confirmation, plus)
+            add_trial(confirmation, minus)
+        confirmation += criterion_values(r.confirmation.criteria)
+    return {
+        "ids": text([i.item.id for i in r.items]),
+        "sigma_ratio": f8([i.sigma_ratio for i in r.items]),
+        "trials": f8(trials),
+        "criteria": f8(criterion_values(r.criteria)),
+        "criterion_ints": u8(criterion_ints(r.criteria)),
+        "limits": f8([value(x) for x in r.limits]),
+        "status": u8(status),
+        "confirmation": f8(confirmation),
+    }
+
+
+def explicit_only(system: rt.System) -> rt.System:
+    # As explicit_only() in tolerance_cases.cpp and test_tolerance_sensitivity.py.
+    return rt.apply_patch(system, [
+        {"op": "replace", "path": "/tolerances/class", "value": "none"},
+        {"op": "remove", "path": "/tolerances/overrides/4"},
+        {"op": "remove", "path": "/tolerances/overrides/0"},
+    ])
+
+
+def achromat_sensitivity(threads: int) -> Arrays:
+    lib = rt.MaterialLibrary()
+    lib.add_catalog(CATALOG_DIR / "schott.agf")
+    system = explicit_only(rt.load(REFERENCE_DIR / "m7" / "achromat_tolerances.rtt.json"))
+    return flatten_sensitivity(tolerance.sensitivity(system, materials=lib, threads=threads))
+
+
 Case = Callable[[int], Arrays]
 
 # Same calls as run_tolerance_cases() in tolerance_cases.cpp.
 CASES: dict[str, Case] = {
     "achromat_expand": achromat,
+    "achromat_sensitivity": achromat_sensitivity,
 }
 
 
@@ -104,3 +183,29 @@ def test_the_cases_have_content() -> None:
     assert len(set(skips.tolist()) - {tolerance.ClassSkip.NONE.value}) >= 3
     applied = a["overrides"].reshape(-1, 3)[:, 1]
     assert applied.tolist() == [tolerance.OverrideEffect.APPLIED.value] * 2
+
+
+def test_the_sensitivity_case_has_content() -> None:
+    """Completed with confirmation; every criterion complete with an RSS > 0; some item limited;
+    the two sides differ; and a sign: efl grows with R1 (delta > 0). R1 = 61.5 mm is the convex
+    front surface of the crown, phi_1 = (n - 1) / R1, so d phi_1 / d R1 = -(n - 1) / R1^2 < 0:
+    a larger R1 lowers the power and raises efl = 1 / Phi; the image position (the compensator)
+    does not change efl. An equal sign error on both sides would pass the other checks."""
+    s = tolerance.sensitivity(
+        explicit_only(rt.load(REFERENCE_DIR / "m7" / "achromat_tolerances.rtt.json")),
+        materials=schott_library())
+    assert s.status == tolerance.SensitivityStatus.COMPLETED
+    assert s.confirmation is not None
+    assert all(c.complete and c.rss is not None and c.rss > 0.0 for c in s.criteria)
+    assert any(x is not None for x in s.limits)
+    assert any(c.items[i].plus != c.items[i].minus for c in s.criteria for i in range(3))
+    efl = next(c for c in s.criteria if c.id == "efl")
+    r1 = [t.item.id for t in s.items].index("R1")
+    delta = efl.items[r1].delta
+    assert delta is not None and delta > 0.0
+
+
+def schott_library() -> rt.MaterialLibrary:
+    lib = rt.MaterialLibrary()
+    lib.add_catalog(CATALOG_DIR / "schott.agf")
+    return lib
