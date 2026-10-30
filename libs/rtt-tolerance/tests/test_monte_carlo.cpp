@@ -242,8 +242,9 @@ TEST_CASE("monte carlo: nearest rank with the integer catch", "[tolerance][monte
   using rtt::tolerance::detail::nearest_rank;
   REQUIRE(0.07 * 100.0 > 7.0);  // the trap exists in this build
   CHECK(nearest_rank(0.07, 100) == 7);
-  REQUIRE(0.3 * 10.0 > 3.0);
-  CHECK(nearest_rank(0.3, 10) == 3);
+  REQUIRE(0.07 * 10000.0 > 700.0);
+  CHECK(nearest_rank(0.07, 10000) == 700);
+  CHECK(nearest_rank(0.3, 10) == 3);   // 0.3 * 10 is exactly 3 in double
   CHECK(nearest_rank(0.35, 10) == 4);  // 3.5: ceil
   CHECK(nearest_rank(0.5, 200) == 100);
   CHECK(nearest_rank(0.99, 200) == 198);
@@ -509,13 +510,56 @@ TEST_CASE("monte carlo: RSS against Monte Carlo, quadratic", "[tolerance][monte_
   CHECK(required(r.criteria[0].max) > 2.0 * required(r.criteria[0].min));
 }
 
-TEST_CASE("monte carlo: invalid trials, keep_trials and the warnings", "[tolerance][monte_carlo]") {
+namespace {
+
+/// Addendum #259, D7: the warnings of the result against those of the trials.
+void check_warnings(const MonteCarloResult& r, std::uint64_t trials) {
+  // D7: one warning per code and location, in the order of their first appearance (trial order,
+  // then the order within that trial), with the number of trials and the first trial.
+  struct Seen {
+    std::size_t count = 0;
+    std::uint32_t first = 0;
+    std::size_t order = 0;
+  };
+  using Key = std::pair<std::string, std::string>;
+  std::map<Key, Seen> seen;
+  for (const TrialRecord& t : r.trials) {
+    std::vector<Key> in_trial;
+    for (const rtt::model::Diagnostic& w : t.result.warnings) {
+      const Key key{w.code, w.location};
+      if (std::find(in_trial.begin(), in_trial.end(), key) == in_trial.end()) {
+        in_trial.push_back(key);
+      }
+    }
+    for (const Key& key : in_trial) {
+      const std::size_t order = seen.size();
+      ++seen.try_emplace(key, Seen{0, t.trial, order}).first->second.count;
+    }
+  }
+  REQUIRE(!seen.empty());  // content guard: the trials report warnings
+  REQUIRE(r.warnings.size() == seen.size());
+  for (std::size_t i = 0; i < r.warnings.size(); ++i) {
+    const rtt::model::Diagnostic& w = r.warnings[i];
+    INFO(w.code << " at " << w.location << ": " << w.message);
+    const auto it = seen.find({w.code, w.location});
+    REQUIRE(it != seen.end());
+    CHECK(it->second.order == i);
+    const std::string counted = "in " + std::to_string(it->second.count) + " of " +
+                                std::to_string(trials) + " trials, first trial " +
+                                std::to_string(it->second.first);
+    CHECK(w.message.find(counted) != std::string::npos);
+  }
+}
+
+}  // namespace
+
+TEST_CASE("monte carlo: invalid trials and keep_trials", "[tolerance][monte_carlo]") {
   // The 2 f system with a detector of radius 0.15 mm: the chief ray lands at Y = 2 X with X
   // uniform on [-0.1, 0.1], so it misses the detector for |X| > 0.075, in about a quarter of the
   // trials. ray_y on IMG is then not defined and the trial is Invalid (#257); ray_y on the stop
   // (in front of the lens) keeps its value. Addendum #259, D5: the statistics of both criteria
-  // count only the Valid trials, their yields all N trials; D7: the warnings of the trials once per
-  // code and location; keep_trials off keeps the trials that are not Valid.
+  // count only the Valid trials, their yields all N trials; keep_trials off keeps the trials that
+  // are not Valid.
   System s = lens_system(50.0, 100.0);
   add_detector(s, 100.0, 0.15);
   s.tolerances.items = {item("lens.dy", "lens", ToleranceKind::DecenterY, 0.1)};
@@ -571,41 +615,9 @@ TEST_CASE("monte carlo: invalid trials, keep_trials and the warnings", "[toleran
   CHECK(r.yield.good == good);
   CHECK(r.yield.total == trials);
 
-  // D7: one warning per code and location, in the order of their first appearance (trial order,
-  // then the order within that trial), with the number of trials and the first trial.
-  struct Seen {
-    std::size_t count = 0;
-    std::uint32_t first = 0;
-    std::size_t order = 0;
-  };
-  using Key = std::pair<std::string, std::string>;
-  std::map<Key, Seen> seen;
-  for (const TrialRecord& t : r.trials) {
-    std::vector<Key> in_trial;
-    for (const rtt::model::Diagnostic& w : t.result.warnings) {
-      const Key key{w.code, w.location};
-      if (std::find(in_trial.begin(), in_trial.end(), key) == in_trial.end()) {
-        in_trial.push_back(key);
-      }
-    }
-    for (const Key& key : in_trial) {
-      const std::size_t order = seen.size();
-      ++seen.try_emplace(key, Seen{0, t.trial, order}).first->second.count;
-    }
-  }
-  CHECK(!seen.empty());  // content guard: the lost rays are reported
-  REQUIRE(r.warnings.size() == seen.size());
-  for (std::size_t i = 0; i < r.warnings.size(); ++i) {
-    const rtt::model::Diagnostic& w = r.warnings[i];
-    INFO(w.code << " at " << w.location << ": " << w.message);
-    const auto it = seen.find({w.code, w.location});
-    REQUIRE(it != seen.end());
-    CHECK(it->second.order == i);
-    const std::string counted = "in " + std::to_string(it->second.count) + " of " +
-                                std::to_string(trials) + " trials, first trial " +
-                                std::to_string(it->second.first);
-    CHECK(w.message.find(counted) != std::string::npos);
-  }
+  // D7 (see the next case): a chief ray that misses the detector makes the trial Invalid with
+  // a reason (#257); it is not a warning.
+  CHECK(r.warnings.empty());
 
   // keep_trials off: only the trials that are not Valid, the same values; statistics unchanged.
   MonteCarloOptions lean = with(25903, trials);
@@ -625,6 +637,40 @@ TEST_CASE("monte carlo: invalid trials, keep_trials and the warnings", "[toleran
   CHECK(same(required(l.criteria[1].mean), required(stop.mean)));
   CHECK(l.yield.good == r.yield.good);
   CHECK(l.warnings.size() == r.warnings.size());
+}
+
+TEST_CASE("monte carlo: the warnings of the trials", "[tolerance][monte_carlo]") {
+  // Addendum #259, D7. The detector (radius 1.05 mm) stands 10 mm behind the focus of f = 50 mm
+  // with EPD 10 mm: the axial beam covers a disc of radius 5 * 10 / 50 = 1 mm. A decentre of the
+  // detector uniform on [-1, 1] keeps the chief ray on it (it would miss for |dy| > 1.05, and
+  // the spot is then not defined), so every trial is Valid. The spot warns "rays.lost" above half
+  // of the rays lost (SpotOptions::lost_warning_fraction). The part of the disc outside the
+  // detector (area of two overlapping circles) is 0.40 at |dy| = 0.7 and 0.55 at |dy| = 0.95, one
+  // half at about 0.87; the 127 rays of 6 hexapolar rings follow it to about 0.02. Some trials
+  // warn, some not.
+  System s = lens_system(50.0);
+  add_detector(s, 60.0, 1.05);
+  s.tolerances.items = {item("det.dy", "detector", ToleranceKind::DecenterY, 1.0)};
+  s.tolerances.criteria = {spot(1.0)};
+  const TrialContext ctx = context(s);
+  REQUIRE(ctx.nominal().status == TrialStatus::Valid);
+  REQUIRE(ctx.nominal().warnings.empty());  // the nominal beam lies inside the detector
+  const std::uint64_t trials = 50;
+  const MonteCarloResult r = rtt::tolerance::monte_carlo(ctx, with(25904, trials));
+  REQUIRE(r.status == MonteCarloStatus::Completed);
+  REQUIRE(r.trials.size() == trials);
+  std::size_t clipped = 0;
+  for (const TrialRecord& t : r.trials) {
+    INFO("trial " << t.trial << ", dy " << t.values[0]);
+    CHECK(t.result.status == TrialStatus::Valid);
+    CHECK(t.result.criteria[0].value.has_value());
+    if (std::abs(t.values[0]) < 0.7) CHECK(t.result.warnings.empty());
+    if (std::abs(t.values[0]) > 0.95) CHECK(!t.result.warnings.empty());
+    clipped += t.result.warnings.empty() ? 0 : 1;
+  }
+  REQUIRE(clipped > 0);       // content guard: some trials warn
+  REQUIRE(clipped < trials);  // and some do not, so the count in the message is not N
+  check_warnings(r, trials);
 }
 
 TEST_CASE("monte carlo: a criterion without valid values", "[tolerance][monte_carlo]") {
