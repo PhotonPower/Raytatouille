@@ -733,6 +733,161 @@ TEST_CASE("afocal threshold: depends on the absolute position of the surfaces",
   }
 }
 
+namespace {
+
+/// Element of the #280 microscope: vertex at global z, local surfaces (z, R; nullopt = plane),
+/// one CONST index per segment (none for stop and detector).
+struct Group {
+  std::string name;
+  ElementKind kind;
+  double z;
+  std::vector<std::string> indices;
+  std::vector<std::pair<double, std::optional<double>>> surfaces;
+};
+
+/// Microscope objective 100x/1.45 (US 6,504,653 B2) with tube lens, reversed (tube side first),
+/// 30 events up to the specimen at z = 313.69 mm, as in the reproduction file of #280 with CONST
+/// indices at 546 nm.
+std::vector<Group> microscope_280() {
+  using P = std::pair<double, std::optional<double>>;
+  const auto plane = std::optional<double>{};
+  return {
+      {"block", ElementKind::Lens, 0.0, {"1.51872"}, {P{0.0, plane}, P{161.2, plane}}},
+      {"tube", ElementKind::Lens, 163.13, {"1.58569"}, {P{0.0, 273.84}, P{6.0, -147.49}}},
+      {"L13-L14",
+       ElementKind::Lens,
+       265.549,
+       {"1.48794", "1.65222"},
+       {P{0.0, 8.1748}, P{0.73, 2.8175}, P{2.65, 3.1612}}},
+      {"L12", ElementKind::Lens, 270.106, {"1.53019"}, {P{0.0, -3.759}, P{4.85, -4.5281}}},
+      {"L10-L11",
+       ElementKind::Lens,
+       276.262,
+       {"1.61664", "1.53019"},
+       {P{0.0, -3.5485}, P{1.1, 93.056}, P{6.93, -6.7777}}},
+      {"L7-L9",
+       ElementKind::Lens,
+       283.397,
+       {"1.53019", "1.61664", "1.43494"},
+       {P{0.0, 51.958}, P{4.87, -9.8584}, P{6.03, 15.961}, P{10.9, -21.754}}},
+      {"STO", ElementKind::Stop, 294.347, {}, {P{0.0, plane}}},
+      {"L5-L6",
+       ElementKind::Lens,
+       294.397,
+       {"1.53019", "1.61664"},
+       {P{0.0, 13.925}, P{7.76, -12.23}, P{8.87, 139.25}}},
+      {"L4", ElementKind::Lens, 303.37, {"1.53019"}, {P{0.0, 11.14}, P{3.09, 44.666}}},
+      {"L3", ElementKind::Lens, 306.56, {"1.48794"}, {P{0.0, 4.9407}, P{3.64, 6.5423}}},
+      {"front",
+       ElementKind::Lens,
+       310.3,
+       {"1.88577", "1.51872", "1.51800", "1.52550"},
+       {P{0.0, 2.778}, P{2.5, 1.2579}, P{3.1, plane}, P{3.22, plane}, P{3.39, plane}}},
+      {"specimen", ElementKind::Detector, 313.690001, {}, {P{0.0, plane}}},
+  };
+}
+
+/// Independent y-nu trace over the table (no code of paraxial.cpp): transfer y' = y + (z' - z)
+/// nu / n, refraction nu' = nu - y c (n' - n) (Greivenkamp, OPTI-201/202 lecture notes, Sec. 9,
+/// p. 9-2), global z = element z + local z as composed by compile. Returns (z, y, nu, n) at the
+/// plane z_out after the events [first, last).
+struct YNu {
+  double z, y, nu, n;
+};
+
+YNu trace_table(const std::vector<Group>& groups,
+                std::size_t first,
+                std::size_t last,
+                YNu ray,
+                double z_out) {
+  std::size_t event = 0;
+  for (const Group& g : groups) {
+    for (std::size_t k = 0; k < g.surfaces.size(); ++k, ++event) {
+      if (event < first || event >= last) continue;
+      const double z = g.z + g.surfaces[k].first;
+      ray.y += (z - ray.z) * ray.nu / ray.n;
+      ray.z = z;
+      if (g.kind != ElementKind::Lens) continue;
+      const double n_after = k < g.indices.size() ? std::stod(g.indices[k]) : 1.0;
+      const double c = g.surfaces[k].second ? 1.0 / *g.surfaces[k].second : 0.0;
+      ray.nu -= ray.y * c * (n_after - ray.n);
+      ray.n = n_after;
+    }
+  }
+  ray.y += (z_out - ray.z) * ray.nu / ray.n;
+  ray.z = z_out;
+  return ray;
+}
+
+}  // namespace
+
+TEST_CASE("#280: a 30-surface microscope 300 mm from the origin is focal with finite pupils",
+          "[paraxial][afocal]") {
+  // The magnitude S of the afocal test grew exponentially with the number of surfaces while the
+  // transfers carried |z'| + |z| (threshold about 7e12 / mm here), so this system with
+  // Phi = 0.213 / mm counted as afocal and object-space telecentric (#280). Reference: the
+  // independent y-nu trace above. Tolerance fixed beforehand: the trace rounds Phi by at most
+  // 8 N u S = 8 * 30 * 1.1e-16 * 260 / mm (S from the magnitude trace with |z' - z|), relative
+  // 3e-11 of Phi; 1e-10 for all values.
+  const std::vector<Group> groups = microscope_280();
+  System s = base_system();
+  s.object = {false, Param(54.0)};  // object at z = -54
+  s.aperture = {rtt::model::SystemApertureType::ObjectSpaceNA, Param(0.0145)};
+  std::size_t events = 0;
+  std::size_t stop_event = 0;
+  double z_stop = 0.0;
+  for (const Group& g : groups) {
+    Element e{g.name, g.kind, Pose::along_z(g.z), std::nullopt, {}};
+    for (std::size_t k = 0; k < g.surfaces.size(); ++k) {
+      e.surfaces.push_back(
+          surface(g.name + ".S" + std::to_string(k), g.surfaces[k].first, g.surfaces[k].second));
+    }
+    if (g.kind == ElementKind::Stop) {
+      e.surfaces[0].aperture = rtt::model::CircularAperture{8.6, 0.0};
+      stop_event = events;
+      z_stop = g.z;
+    }
+    for (const std::string& n : g.indices) e.segment_materials.push_back("CONST:" + n);
+    events += g.surfaces.size();
+    add(s, e);
+  }
+  REQUIRE(events == 30);
+  const FirstOrder fo = first_order_of(s);
+
+  // Content guards: the values exist (all None before the fix) and match the numbers of the
+  // issue (EFL 4.696 mm, m = -0.01002, printed with four digits there, in AIR).
+  REQUIRE(fo.efl.has_value());
+  REQUIRE(fo.lateral_magnification.has_value());
+  REQUIRE(fo.image_z.has_value());
+  REQUIRE(entrance_pupil(fo).z.has_value());
+  REQUIRE(exit_pupil(fo).z.has_value());
+  REQUIRE_THAT(*fo.efl, WithinRel(4.696, 2e-3));
+  REQUIRE_THAT(*fo.lateral_magnification, WithinRel(-0.01002, 2e-3));
+
+  constexpr double kTol = 1e-10;
+  const double z1 = groups.front().z;
+  const double z_last = groups.back().z;
+  // Power and BFL: ray (y, nu) = (1, 0) from the first vertex (Greivenkamp p. 9-12).
+  const YNu inf = trace_table(groups, 0, events, {z1, 1.0, 0.0, 1.0}, z_last);
+  const double phi = -inf.nu;
+  REQUIRE_THAT(fo.power, WithinRel(phi, kTol));
+  REQUIRE_THAT(*fo.efl, WithinRel(1.0 / phi, kTol));
+  // Axial ray from the object point (z = -54, y = 0, nu = 1): m = n u / (n' u') = 1 / nu', image
+  // where it meets the axis.
+  const YNu axial = trace_table(groups, 0, events, {-54.0, 0.0, 1.0, 1.0}, z_last);
+  REQUIRE_THAT(*fo.lateral_magnification, WithinRel(1.0 / axial.nu, kTol));
+  REQUIRE_THAT(*fo.image_z, WithinRel(z_last - axial.y * axial.n / axial.nu, kTol));
+  // Entrance pupil: the axial point z_EP whose ray (y, nu) = ((z1 - z_EP) u, u) reaches the
+  // stop at y = 0, with the stop plane y = A y1 + B nu1: z_EP = z1 + B / A (n = 1).
+  const YNu fa = trace_table(groups, 0, stop_event, {z1, 1.0, 0.0, 1.0}, z_stop);
+  const YNu fb = trace_table(groups, 0, stop_event, {z1, 0.0, 1.0, 1.0}, z_stop);
+  REQUIRE_THAT(*entrance_pupil(fo).z, WithinRel(z1 + fb.y / fa.y, kTol));
+  // Exit pupil: the ray from the stop centre (y, nu) = (0, 1) leaves the last event with
+  // (B, D) and meets the axis at z_last - B n' / D.
+  const YNu back = trace_table(groups, stop_event + 1, events, {z_stop, 0.0, 1.0, 1.0}, z_last);
+  REQUIRE_THAT(*exit_pupil(fo).z, WithinRel(z_last - back.y * back.n / back.nu, kTol));
+}
+
 // ----------------------------- infinity thresholds of pupils and image (#35, rest of B9) -----
 // first_order decides three cases "at infinity" from one matrix element each: the entrance pupil
 // (front.a), the exit pupil (back.d) and the image of a finite object (nu_out). An element that
