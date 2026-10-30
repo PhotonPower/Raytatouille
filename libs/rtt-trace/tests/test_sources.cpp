@@ -1679,6 +1679,9 @@ System microscope() {
           surface(g.name + ".S" + std::to_string(k), g.surfaces[k].first, g.surfaces[k].second));
     }
     for (const std::string& n : g.indices) e.segment_materials.push_back("CONST:" + n);
+    // The stop's own radius as in the #280 test; the system aperture is object_na.
+    if (g.kind == ElementKind::Stop)
+      e.surfaces[0].aperture = rtt::model::CircularAperture{8.6, 0.0};
     s.root.children.push_back({std::move(e)});
   }
   return s;
@@ -1701,15 +1704,33 @@ std::optional<Vec3> reaches_stop(const CompiledSystem& cs, RayState ray) {
   return hit.point;
 }
 
-/// Status of the ray after all events of path 0 (sequential, without apertures on the stop).
-RayStatus status_at_image(const CompiledSystem& cs, RayState ray) {
-  for (const auto& e : cs.path(PathId{0}).events) {
+/// How far a ray gets along path 0 (sequential_step, with the apertures): its status right after
+/// the stop event (none if it ends before), and the event and status where it ends (the event
+/// count and Alive if it gets through).
+struct Passage {
+  std::optional<RayStatus> after_stop;
+  std::size_t end_event = 0;
+  RayStatus end = RayStatus::Alive;
+};
+
+Passage passage(const CompiledSystem& cs, RayState ray) {
+  const auto& events = cs.path(PathId{0}).events;
+  const std::size_t stop = stop_event(cs);
+  Passage out;
+  out.end_event = events.size();
+  for (std::size_t i = 0; i < events.size(); ++i) {
+    const auto& e = events[i];
     ray = rtt::trace::sequential_step(ray, cs.surfaces()[e.surface], e.surface, e.kind,
                                       cs.media()[e.medium_before].index[0].real(),
                                       cs.media()[e.medium_after].index[0].real());
-    if (ray.status != RayStatus::Alive) break;
+    if (i == stop) out.after_stop = ray.status;
+    if (ray.status != RayStatus::Alive) {
+      out.end_event = i;
+      break;
+    }
   }
-  return ray.status;
+  out.end = ray.status;
+  return out;
 }
 
 }  // namespace
@@ -1718,26 +1739,68 @@ TEST_CASE("#287: real aiming converges by continuation under strong pupil aberra
           "[sources][aiming]") {
   // The marginal ray at full aperture: the run from the paraxial solution ends with
   // NoConvergence (checked on main before the fix, #287); the continuation from the real chief
-  // ray reaches the target sigma p R_s. Content guards: the stop hit (own sequential trace) is
-  // on target within kAimTolerance, the paraxially aimed ray misses it by more than 0.1 mm or does
-  // not reach the stop at all (the pupil aberration is really there), and the ray reaches the
-  // specimen.
+  // ray reaches the target sigma p R_s. object_na 0.0155 (R_s = 8.35 mm, inside the stop radius
+  // 8.6) lies in the gap: field 0, p = (0, 1), was Alive on main only up to 0.0151 and is Alive
+  // with the fallback up to 0.0165, field 1 up to 0.0161 (scan in steps of 0.0002, #287). The
+  // cases are those that end with NoConvergence on main at 0.0155; field 1, p = (0, -1),
+  // converges there without the fallback and is left out. Not 0.0159: there three of the rays end
+  // Missed at L3.S0 (R = 4.94 mm) instead of Tir at the exit into vacuum.
+  // Content guards: the stop hit (own sequential trace) is on target within 1e-9 mm, the ray is
+  // still Alive after the stop event, the paraxially aimed ray misses the target by more than
+  // 0.1 mm or does not reach the stop (the pupil aberration is really there). The ray does not
+  // reach the specimen: behind the front group the model has vacuum, and every ray with
+  // n sin U > 1 there ends in total internal reflection. So it must end with Tir at that exit
+  // (front.S4), and with no other status.
   const MaterialLibrary lib;
-  const CompiledSystem cs = compile(microscope(), lib);
+  System system = microscope();
+  system.aperture.value = Param(0.0155);
+  const CompiledSystem cs = compile(system, lib);
   const double r_s = paraxial_stop_radius(cs);
-  for (std::uint16_t field = 0; field < 2; ++field) {
-    for (const auto& [px, py] : {std::pair{0.0, 1.0}, std::pair{0.0, -1.0}}) {
-      INFO("field " << field << ", p = (" << px << ", " << py << ")");
-      const auto real = rtt::trace::aim_ray(cs, PathId{0}, field, 0, px, py, Aiming::Real);
-      REQUIRE(real.ray.status == RayStatus::Alive);
-      REQUIRE(real.residual < rtt::trace::kAimTolerance);
-      const Vec3 hit = hit_on_stop(cs, real.ray);
-      // The target is +-R_s in y (label orientation sigma = +1: finite object, EP behind it).
-      REQUIRE(std::hypot(hit.x() - px * r_s, hit.y() - py * r_s) < 1e-9);
-      const auto paraxial = rtt::trace::aim_ray(cs, PathId{0}, field, 0, px, py, Aiming::Paraxial);
-      const auto miss = reaches_stop(cs, paraxial.ray);
-      if (miss) REQUIRE(std::hypot(miss->x() - px * r_s, miss->y() - py * r_s) > 0.1);
-      REQUIRE(status_at_image(cs, real.ray) == RayStatus::Alive);
-    }
+  REQUIRE(r_s < 8.6);
+  const auto& events = cs.path(PathId{0}).events;
+  struct Case {
+    std::uint16_t field;
+    double py;
+  };
+  for (const Case& c : {Case{0, 1.0}, Case{0, -1.0}, Case{1, 1.0}}) {
+    const double px = 0.0;
+    const double py = c.py;
+    INFO("field " << c.field << ", p = (" << px << ", " << py << ")");
+    const auto real = rtt::trace::aim_ray(cs, PathId{0}, c.field, 0, px, py, Aiming::Real);
+    REQUIRE(real.ray.status == RayStatus::Alive);
+    REQUIRE(real.residual < rtt::trace::kAimTolerance);
+    const Vec3 hit = hit_on_stop(cs, real.ray);
+    // The target is +-R_s in y (label orientation sigma = +1: finite object, EP behind it).
+    REQUIRE(std::hypot(hit.x() - px * r_s, hit.y() - py * r_s) < 1e-9);
+    const auto paraxial = rtt::trace::aim_ray(cs, PathId{0}, c.field, 0, px, py, Aiming::Paraxial);
+    const auto miss = reaches_stop(cs, paraxial.ray);
+    if (miss) REQUIRE(std::hypot(miss->x() - px * r_s, miss->y() - py * r_s) > 0.1);
+    const Passage run = passage(cs, real.ray);
+    REQUIRE(run.after_stop == std::optional<RayStatus>(RayStatus::Alive));
+    REQUIRE(run.end == RayStatus::Tir);
+    REQUIRE(run.end_event > stop_event(cs));
+    REQUIRE(run.end_event < events.size());
+    CHECK(cs.surfaces()[events[run.end_event].surface].id.str() == "front.S4");
   }
+}
+
+TEST_CASE("#287: without a converged real chief ray the fallback gives up as before",
+          "[sources][aiming]") {
+  // Stop behind the group, 30 deg (as in "target beyond the reachable stop heights"): even the
+  // real chief ray (target: stop centre) does not converge, so the continuation has no start and
+  // aim() keeps the last point of the primary run: NoConvergence, its residual (> 5 mm, finite)
+  // and its steps (at most kMaxAimIterations; the fallback adds none to a NoConvergence result).
+  const MaterialLibrary lib;
+  System s = two_lenses(StopPlace::After);
+  s.fields = {FieldType::AngleDeg, {{0.0, 0.0, 1.0}, {0.0, 30.0, 1.0}}};
+  const CompiledSystem cs = compile(s, lib);
+  const auto chief = rtt::trace::aim_ray(cs, PathId{0}, 1, 0, 0.0, 0.0, Aiming::Real);
+  REQUIRE(chief.ray.status == RayStatus::NoConvergence);
+  const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, 1, 0, 0.0, 1.0, Aiming::Real);
+  REQUIRE(aimed.ray.status == RayStatus::NoConvergence);
+  REQUIRE(aimed.iterations <= rtt::trace::kMaxAimIterations);
+  REQUIRE(std::isfinite(aimed.residual));
+  REQUIRE(aimed.residual > 5.0);
+  REQUIRE(aimed.ray.pos.allFinite());
+  REQUIRE(aimed.ray.dir.allFinite());
 }
