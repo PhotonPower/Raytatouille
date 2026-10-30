@@ -1,4 +1,5 @@
-add_library(rtt_tolerance src/classes.cpp src/expand.cpp src/random.cpp src/trial.cpp)
+add_library(rtt_tolerance src/classes.cpp src/expand.cpp src/random.cpp src/sensitivity.cpp
+  src/trial.cpp)
 add_library(rtt::tolerance ALIAS rtt_tolerance)
 target_include_directories(rtt_tolerance PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
@@ -6,18 +7,21 @@ target_include_directories(rtt_tolerance PUBLIC
 # tolerance items of rtt-model; expand (#260) validates the system and throws
 # compile::CompileError like optimize. The trial evaluation (#257) needs rtt-optim (merit
 # function and optimize with the trial overlay, #256) and rtt-trace (RunControl) in its header,
-# rtt-diagnostics for the warning codes.
+# rtt-diagnostics for the warning codes. The sensitivity (#258) runs its trials in parallel
+# with TBB.
 target_link_libraries(rtt_tolerance PUBLIC rtt::model rtt::compile rtt::optim rtt::trace
-  PRIVATE rtt::diagnostics)
+  PRIVATE rtt::diagnostics TBB::tbb)
 rtt_target_defaults(rtt_tolerance LIBRARY)
 
 if(RTT_BUILD_TESTS)
   # TBB runs the draws on several threads in the determinism tests; rtt-io reads the reference
   # files of the class tests.
   rtt_add_test(rtt_tolerance_tests
-    SOURCES tests/test_classes.cpp tests/test_random.cpp tests/test_trial.cpp
+    SOURCES tests/test_classes.cpp tests/test_random.cpp tests/test_sensitivity.cpp
+      tests/test_trial.cpp
     LIBS rtt::tolerance rtt::io TBB::tbb)
-  # src/: the kernels of the normal distribution (random_detail.hpp) are tested directly.
+  # src/: the kernels of the normal distribution (random_detail.hpp) and the RSS reduction
+  # (sensitivity_detail.hpp) are tested directly.
   target_include_directories(rtt_tolerance_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   # Glass catalogues of the reference systems: nu_d for the class limits of abbe (#260).
   target_compile_definitions(rtt_tolerance_tests PRIVATE
