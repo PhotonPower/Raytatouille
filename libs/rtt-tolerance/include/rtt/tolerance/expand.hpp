@@ -50,7 +50,9 @@ struct ToleranceItems {
 /// The limit of a generated abbe item is relative (ADR 0035, addendum #260): the share p of the
 /// class times nu_d of the glass of its segment, nu_d from compile::fraunhofer_indices at the
 /// temperature and pressure of the environment, as in the material overlay of compile. Only
-/// these items need `materials`.
+/// these items need `materials`. A single value for abbe gives an absolute limit and needs no
+/// nu_d, so its glass is not checked here; the compile of the nominal system with all items at
+/// 0 in the tolerance run reports it (#257), as for index.
 /// @throws compile::CompileError with all errors if model::validate reports errors (as
 ///         optimize), or for the glass of a generated abbe item: material.unknown, or
 ///         tolerances.material_unsupported if a line lies outside its range or its index is

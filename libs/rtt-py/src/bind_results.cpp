@@ -44,6 +44,8 @@ void bind_result_methods(nb::module_& m) {
                            "DimensionReport",
                            "OptimResult",
                            "MeritEvaluation",
+                           "ToleranceItems",
+                           "ToleranceSensitivity",
                            "FirstOrder",
                            "Seidel",
                            "Prescription",

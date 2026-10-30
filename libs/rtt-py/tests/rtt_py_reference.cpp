@@ -50,6 +50,7 @@
 #include "rtt/trace/ray_paths.hpp"
 #include "rtt/trace/sequential.hpp"
 #include "rtt/trace/sources.hpp"
+#include "tolerance_cases.hpp"
 
 namespace fs = std::filesystem;
 using rtt::py::reference::write_column;
@@ -343,6 +344,7 @@ int main(int argc, char** argv) {
     rtt::py::reference::run_jones_cases(args[0], args[2], threads);
     rtt::py::reference::run_psf_cases(args[0], args[2], threads);
     rtt::py::reference::run_m6_cases(args[0], args[2], threads);
+    rtt::py::reference::run_tolerance_cases(args[0], args[1], args[2], threads);
     return 0;
   } catch (const std::exception& e) {
     std::cerr << "rtt_py_reference: " << e.what() << '\n';

@@ -123,9 +123,9 @@ struct FraunhoferIndices {
   Status status = Status::Ok;
   std::size_t line = 0;        ///< the first line that failed: 0 = d, 1 = F, 2 = C
   double wavelength_um = 0.0;  ///< its vacuum wavelength in um
-  double nd = 0.0;             ///< real part at d (valid for Status::Ok)
-  double nf = 0.0;             ///< real part at F
-  double nc = 0.0;             ///< real part at C
+  double nd = 0.0;             ///< real part at d (valid for Status::Ok, else 0)
+  double nf = 0.0;             ///< real part at F (valid for Status::Ok, else 0)
+  double nc = 0.0;             ///< real part at C (valid for Status::Ok, else 0)
 
   /// D = n_F - n_C.
   [[nodiscard]] double dispersion() const noexcept { return nf - nc; }
