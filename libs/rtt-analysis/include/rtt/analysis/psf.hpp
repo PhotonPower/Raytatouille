@@ -116,7 +116,9 @@ struct Psf {
 ///         an empty wavelength list, aliasing_factor < 1 or undersampled_waves <= 0 (and as
 ///         pupil_function())
 /// @throws AnalysisError (location /paths/i) for an afocal image space (no mapping), a path with
-///         crystal modes or no arrived cell (and as pupil_function())
+///         crystal modes or no arrived cell (and as pupil_function()); with code
+///         "pupil.mapping_too_nonlinear" if the largest delta_max of the chosen wavelengths
+///         exceeds options.pupil.mapping_limit < 1 (ADR 0033, addendum #286)
 [[nodiscard]] Psf psf(const compile::CompiledSystem& system,
                       compile::PathId path,
                       std::uint16_t field,
@@ -137,7 +139,9 @@ struct Psf {
 /// sampled at its centroid (ADR 0032, point 1). The lattice values
 /// of psf() are these values times |sum f A|^2 / (L^2 E). lambda and lambda_ref are
 /// pupil.wavelength_um and pupil.reference_wavelength_um (vacuum, um), so no system is needed.
-/// @throws AnalysisError if the pupil function has no mapping (afocal) or no arrived cell
+/// @throws AnalysisError if the pupil function has no mapping (afocal) or no arrived cell, and
+///         with code "pupil.mapping_too_nonlinear" if its delta_max exceeds its mapping_limit < 1
+///         (ADR 0033, addendum #286)
 [[nodiscard]] std::vector<double> psf_at(const PupilFunction& pupil, std::span<const Point2> x);
 
 /// Strehl ratio through focus at one wavelength (ADR 0033, points 8 and 11).
@@ -163,7 +167,8 @@ struct ThroughFocus {
 /// @throws std::invalid_argument for a non-finite shift (before any ray), and as
 ///         pupil_function()
 /// @throws AnalysisError (location /paths/i) for an afocal image space, as psf(), a path with
-///         crystal modes, or no arrived cell at a shift
+///         crystal modes, or no arrived cell at a shift; with code "pupil.mapping_too_nonlinear"
+///         as psf()
 [[nodiscard]] ThroughFocus through_focus(const compile::CompiledSystem& system,
                                          compile::PathId path,
                                          std::uint16_t field,
@@ -264,7 +269,9 @@ struct Mtf {
 ///         undersampled_waves <= 0, outputs.map with more than one wavelength (and as
 ///         pupil_function())
 /// @throws AnalysisError (location /paths/i) for an afocal image space (no mapping), a path with
-///         crystal modes or no arrived cell (and as pupil_function())
+///         crystal modes or no arrived cell (and as pupil_function()); with code
+///         "pupil.mapping_too_nonlinear" if the largest delta_max of the chosen wavelengths
+///         exceeds options.pupil.mapping_limit < 1 (ADR 0033, addendum #286)
 [[nodiscard]] Mtf mtf(const compile::CompiledSystem& system,
                       compile::PathId path,
                       std::uint16_t field,
@@ -279,7 +286,9 @@ struct Mtf {
 
 /// MTF of one pupil function (monochromatic), e.g. after refocus(). Losses and warnings are
 /// copied from the pupil function; psf.pupil_undersampled is not checked.
-/// @throws AnalysisError if the pupil function has no mapping (afocal) or no arrived cell
+/// @throws AnalysisError if the pupil function has no mapping (afocal) or no arrived cell, and
+///         with code "pupil.mapping_too_nonlinear" if its delta_max exceeds its mapping_limit < 1
+///         (ADR 0033, addendum #286)
 [[nodiscard]] Mtf mtf(const PupilFunction& pupil, const MtfOutputs& outputs = {});
 
 /// Centre of the encircled-energy circle.
@@ -356,7 +365,9 @@ struct EncircledEnergy {
 /// Encircled energy of one pupil function (monochromatic), e.g. after refocus(). Losses and
 /// warnings are copied from the pupil function; psf.pupil_undersampled is not checked.
 /// @throws std::invalid_argument for a radius < 0, not finite or > radius_max
-/// @throws AnalysisError if the pupil function has no mapping (afocal) or no arrived cell
+/// @throws AnalysisError if the pupil function has no mapping (afocal) or no arrived cell, and
+///         with code "pupil.mapping_too_nonlinear" if its delta_max exceeds its mapping_limit < 1
+///         (ADR 0033, addendum #286)
 [[nodiscard]] EncircledEnergy encircled_energy(const PupilFunction& pupil,
                                                std::span<const double> radii,
                                                EeCentre centre = EeCentre::Reference);
