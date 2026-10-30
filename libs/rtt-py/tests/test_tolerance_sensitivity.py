@@ -116,10 +116,15 @@ def test_the_contributions_follow_from_the_two_sides() -> None:
 def test_the_inverse_and_the_confirmation_use_the_smallest_limit() -> None:
     s = full()
     for c in s.criteria:
-        assert len(c.inverse.limits) == 3
+        # Only a positive allowance is distributed: then one limit per item, else none and a note
+        # (spot-zone: Phi_0 = 0.041 mm lies above its max 0.03, so A = 0).
+        distributed = c.inverse.allowance is not None and c.inverse.allowance > 0.0
+        assert len(c.inverse.limits) == (3 if distributed else 0)
+        assert (c.inverse.note == "") == distributed
         assert all(0 <= i < 3 for i in c.inverse.unlimited)
+    assert [c.inverse.note == "" for c in s.criteria] == [True, False, True]  # content guard
     for i in range(3):
-        own = [x for c in s.criteria if (x := c.inverse.limits[i]) is not None]
+        own = [x for c in s.criteria if c.inverse.limits and (x := c.inverse.limits[i]) is not None]
         assert s.limits[i] == (min(own) if own else None)
     assert any(x is not None for x in s.limits)  # content guard: some criterion limits an item
     confirmation = s.confirmation
@@ -150,10 +155,9 @@ def test_sigma_ratio_of_the_three_distributions() -> None:
     assert tolerance.sigma_ratio(d.ENDPOINT) == 1.0
 
 
-def test_bitwise_the_same_for_one_and_four_threads() -> None:
+def test_bitwise_the_same_for_one_and_all_threads() -> None:
     one = tolerance.sensitivity(explicit_only(), materials=schott(), threads=1)
-    four = tolerance.sensitivity(explicit_only(), materials=schott(), threads=4)
-    assert one.to_json() == four.to_json()
+    assert one.to_json() == full().to_json()  # full(): all threads
 
 
 def test_progress_reports_both_stages() -> None:

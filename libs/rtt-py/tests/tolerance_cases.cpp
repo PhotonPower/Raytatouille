@@ -166,6 +166,7 @@ void write_sensitivity(const Writer& w, const tolerance::ToleranceSensitivity& r
     add_trial(trials, i.minus);
   }
   std::vector<double> limits;
+  limits.reserve(r.limits.size());
   for (const std::optional<double>& x : r.limits) limits.push_back(value(x));
   std::vector<std::uint64_t> status{code(r.status), code(r.nominal.status),
                                     r.confirmation ? 1U : 0U};

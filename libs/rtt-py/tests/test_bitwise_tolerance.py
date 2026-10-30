@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -143,11 +144,15 @@ def explicit_only(system: rt.System) -> rt.System:
     ])
 
 
-def achromat_sensitivity(threads: int) -> Arrays:
-    lib = rt.MaterialLibrary()
-    lib.add_catalog(CATALOG_DIR / "schott.agf")
+@cache
+def sensitivity_run(threads: int) -> tolerance.ToleranceSensitivity:
+    # Cached: each run takes seconds; the arrays are rebuilt from the same result.
     system = explicit_only(rt.load(REFERENCE_DIR / "m7" / "achromat_tolerances.rtt.json"))
-    return flatten_sensitivity(tolerance.sensitivity(system, materials=lib, threads=threads))
+    return tolerance.sensitivity(system, materials=schott_library(), threads=threads)
+
+
+def achromat_sensitivity(threads: int) -> Arrays:
+    return flatten_sensitivity(sensitivity_run(threads))
 
 
 Case = Callable[[int], Arrays]
@@ -191,9 +196,7 @@ def test_the_sensitivity_case_has_content() -> None:
     front surface of the crown, phi_1 = (n - 1) / R1, so d phi_1 / d R1 = -(n - 1) / R1^2 < 0:
     a larger R1 lowers the power and raises efl = 1 / Phi; the image position (the compensator)
     does not change efl. An equal sign error on both sides would pass the other checks."""
-    s = tolerance.sensitivity(
-        explicit_only(rt.load(REFERENCE_DIR / "m7" / "achromat_tolerances.rtt.json")),
-        materials=schott_library())
+    s = sensitivity_run(1)
     assert s.status == tolerance.SensitivityStatus.COMPLETED
     assert s.confirmation is not None
     assert all(c.complete and c.rss is not None and c.rss > 0.0 for c in s.criteria)
