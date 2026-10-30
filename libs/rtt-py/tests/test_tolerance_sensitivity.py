@@ -123,6 +123,12 @@ def test_the_inverse_and_the_confirmation_use_the_smallest_limit() -> None:
         assert (c.inverse.note == "") == distributed
         assert all(0 <= i < 3 for i in c.inverse.unlimited)
     assert [c.inverse.note == "" for c in s.criteria] == [True, False, True]  # content guard
+    # Its cause: spot-zone lies above its bound already at the nominal (max from the file).
+    spot_zone = s.criteria[1]
+    bound = next(c["max"] for c in json.loads(FILE.read_text(encoding="utf-8"))["tolerances"][
+        "criteria"] if c["id"] == "spot-zone")
+    assert spot_zone.nominal is not None and spot_zone.nominal > bound
+    assert spot_zone.inverse.allowance is None or spot_zone.inverse.allowance <= 0.0
     for i in range(3):
         own = [x for c in s.criteria if c.inverse.limits and (x := c.inverse.limits[i]) is not None]
         assert s.limits[i] == (min(own) if own else None)
@@ -177,6 +183,7 @@ def test_the_inverse_follows_from_the_allowance() -> None:
     qs = [x.q for x in spot.items if x.q is not None]
     assert spot.predicted_mean_square == pytest.approx(max(0.0, phi0 * phi0 + sum(
         t.sigma_ratio ** 2 * q for t, q in zip(s.items, qs))), rel=1e-12)
+
 
 def test_without_confirmation_the_first_part_is_the_same() -> None:
     s = tolerance.sensitivity(explicit_only(), materials=schott(), confirm=False)

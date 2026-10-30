@@ -161,3 +161,12 @@ def test_tolerance_items_need_exactly_one_anchor(where: str, values: dict):
     doc = _broken(lambda d: _set_anchors(d, where, values), "ToleranceItems.result.json")
     with pytest.raises(jsonschema.ValidationError):
         VALIDATOR.validate(doc)
+
+
+@pytest.mark.parametrize("value", [[], 5, {}], ids=["list", "number", "empty_object"])
+def test_the_sensitivity_expansion_is_null_or_tolerance_items(value: object):
+    # expansion is anyOf [null, $defs/tolerance_items]; the definition is an object with the
+    # required keys, so neither another type nor an empty object passes (review of #302).
+    doc = _broken(lambda d: d["data"].update(expansion=value), "ToleranceSensitivity.result.json")
+    with pytest.raises(jsonschema.ValidationError):
+        VALIDATOR.validate(doc)
