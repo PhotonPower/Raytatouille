@@ -51,6 +51,7 @@
         "OptimResult",
         "MeritEvaluation",
         "ToleranceItems",
+        "ToleranceSensitivity",
         "FirstOrder",
         "Seidel",
         "Prescription",
@@ -1402,115 +1403,149 @@
       "then": {
         "properties": {
           "data": {
+            "$ref": "#/$defs/tolerance_items"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ToleranceSensitivity"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
             "required": [
+              "nominal",
               "items",
-              "origins",
-              "classes"
+              "criteria",
+              "limits",
+              "confirmation",
+              "warnings",
+              "expansion",
+              "status"
             ],
             "properties": {
+              "nominal": {
+                "$ref": "#/$defs/trial_result"
+              },
               "items": {
                 "type": "array",
                 "items": {
                   "type": "object",
                   "required": [
-                    "id",
-                    "surface",
-                    "node",
-                    "parameter",
-                    "param",
-                    "segment",
-                    "kind",
-                    "limit",
-                    "distribution"
+                    "item",
+                    "sigma_ratio",
+                    "plus",
+                    "minus"
                   ],
-                  "oneOf": [
-                    {
-                      "properties": {
-                        "surface": {
-                          "type": "string"
-                        }
-                      }
+                  "properties": {
+                    "item": {
+                      "$ref": "#/$defs/tolerance_item"
                     },
-                    {
-                      "properties": {
-                        "node": {
-                          "type": "string"
-                        }
-                      }
+                    "sigma_ratio": {
+                      "type": "number"
                     },
-                    {
-                      "properties": {
-                        "parameter": {
-                          "type": "string"
-                        }
-                      }
-                    }
-                  ]
-                }
-              },
-              "origins": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "required": [
-                    "source",
-                    "index"
-                  ]
-                }
-              },
-              "classes": {
-                "type": "object",
-                "required": [
-                  "items",
-                  "value_overrides"
-                ],
-                "properties": {
-                  "items": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "required": [
-                        "id",
-                        "surface",
-                        "node",
-                        "segment",
-                        "kind",
-                        "level",
-                        "tolerance_class",
-                        "value_override",
-                        "replaced_by",
-                        "skip"
-                      ],
-                      "oneOf": [
+                    "plus": {
+                      "anyOf": [
                         {
-                          "properties": {
-                            "surface": {
-                              "type": "string"
-                            }
-                          }
+                          "type": "null"
                         },
                         {
-                          "properties": {
-                            "node": {
-                              "type": "string"
-                            }
-                          }
+                          "$ref": "#/$defs/trial_result"
                         }
                       ]
-                    }
-                  },
-                  "value_overrides": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "required": [
-                        "index",
-                        "effect",
-                        "skip"
+                    },
+                    "minus": {
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "$ref": "#/$defs/trial_result"
+                        }
                       ]
                     }
                   }
                 }
+              },
+              "criteria": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/criterion_sensitivity"
+                }
+              },
+              "limits": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/nullable_number"
+                }
+              },
+              "confirmation": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "limits",
+                      "plus",
+                      "minus",
+                      "criteria"
+                    ],
+                    "properties": {
+                      "limits": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        }
+                      },
+                      "plus": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/$defs/trial_result"
+                        }
+                      },
+                      "minus": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/$defs/trial_result"
+                        }
+                      },
+                      "criteria": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/$defs/criterion_sensitivity"
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              "warnings": {
+                "type": "array"
+              },
+              "expansion": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/tolerance_items"
+                  }
+                ]
+              },
+              "status": {
+                "enum": [
+                  "COMPLETED",
+                  "CANCELLED"
+                ]
               }
             }
           }
@@ -1766,6 +1801,320 @@
           }
         }
       ]
+    },
+    "tolerance_item": {
+      "type": "object",
+      "required": [
+        "id",
+        "surface",
+        "node",
+        "parameter",
+        "param",
+        "segment",
+        "kind",
+        "limit",
+        "distribution"
+      ],
+      "oneOf": [
+        {
+          "properties": {
+            "surface": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "properties": {
+            "node": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "properties": {
+            "parameter": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "tolerance_items": {
+      "required": [
+        "items",
+        "origins",
+        "classes"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/tolerance_item"
+          }
+        },
+        "origins": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "source",
+              "index"
+            ]
+          }
+        },
+        "classes": {
+          "type": "object",
+          "required": [
+            "items",
+            "value_overrides"
+          ],
+          "properties": {
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "surface",
+                  "node",
+                  "segment",
+                  "kind",
+                  "level",
+                  "tolerance_class",
+                  "value_override",
+                  "replaced_by",
+                  "skip"
+                ],
+                "oneOf": [
+                  {
+                    "properties": {
+                      "surface": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "node": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "value_overrides": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "index",
+                  "effect",
+                  "skip"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "type": "object"
+    },
+    "nullable_number": {
+      "description": "A number, a special float or null (a value that is not defined).",
+      "anyOf": [
+        {
+          "type": [
+            "null",
+            "number"
+          ]
+        },
+        {
+          "$ref": "#/$defs/special_float"
+        }
+      ]
+    },
+    "trial_result": {
+      "type": "object",
+      "required": [
+        "status",
+        "reason",
+        "criteria",
+        "compensators",
+        "lm_status",
+        "mu",
+        "lm_iterations",
+        "warnings"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "VALID",
+            "INVALID",
+            "CANCELLED"
+          ]
+        },
+        "criteria": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "value",
+              "reason",
+              "satisfied"
+            ],
+            "properties": {
+              "value": {
+                "$ref": "#/$defs/nullable_number"
+              },
+              "satisfied": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "compensators": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "start",
+              "end",
+              "at_bound",
+              "infeasible"
+            ]
+          }
+        },
+        "lm_status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mu": {
+          "$ref": "#/$defs/nullable_number"
+        },
+        "lm_iterations": {
+          "type": "integer"
+        },
+        "warnings": {
+          "type": "array"
+        }
+      }
+    },
+    "criterion_sensitivity": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "nominal",
+        "nominal_reason",
+        "items",
+        "excluded",
+        "complete",
+        "rss",
+        "predicted_sigma",
+        "predicted_mean_square",
+        "inverse"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "LINEAR",
+            "QUADRATIC"
+          ]
+        },
+        "nominal": {
+          "$ref": "#/$defs/nullable_number"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "plus",
+              "minus",
+              "excluded",
+              "worst",
+              "delta",
+              "shift",
+              "q"
+            ],
+            "properties": {
+              "plus": {
+                "$ref": "#/$defs/nullable_number"
+              },
+              "minus": {
+                "$ref": "#/$defs/nullable_number"
+              },
+              "worst": {
+                "$ref": "#/$defs/nullable_number"
+              },
+              "delta": {
+                "$ref": "#/$defs/nullable_number"
+              },
+              "shift": {
+                "$ref": "#/$defs/nullable_number"
+              },
+              "q": {
+                "$ref": "#/$defs/nullable_number"
+              }
+            }
+          }
+        },
+        "excluded": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "rss": {
+          "$ref": "#/$defs/nullable_number"
+        },
+        "predicted_sigma": {
+          "$ref": "#/$defs/nullable_number"
+        },
+        "predicted_mean_square": {
+          "$ref": "#/$defs/nullable_number"
+        },
+        "inverse": {
+          "type": "object",
+          "required": [
+            "allowance",
+            "note",
+            "share",
+            "limits",
+            "unlimited"
+          ],
+          "properties": {
+            "allowance": {
+              "$ref": "#/$defs/nullable_number"
+            },
+            "share": {
+              "$ref": "#/$defs/nullable_number"
+            },
+            "limits": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/nullable_number"
+              }
+            },
+            "unlimited": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

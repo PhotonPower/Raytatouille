@@ -67,7 +67,7 @@ SCHEMA_VERSION = "0.1.15"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84)
 # PupilFunction obscuration (#209 P1b, #229 C)
 # 0.1.13: StokesPupil (#211)
 # 0.1.14: PupilFunction mapping_limit (#286)
-# 0.1.15: ToleranceItems (#261)
+# 0.1.15: ToleranceItems, ToleranceSensitivity (#261)
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a
@@ -227,6 +227,20 @@ _FIELDS: dict[str, tuple[str, ...]] = {
     "OverrideStatus": ("index", "effect", "skip"),
     "ClassTolerances": ("items", "value_overrides"),
     "ToleranceItems": ("items", "origins", "classes"),
+    # sensitivity (#261, T4 #258); names and order as in rtt/tolerance/sensitivity.hpp
+    "CriterionValue": ("value", "reason", "satisfied"),
+    "CompensatorValue": ("start", "end", "at_bound", "infeasible"),
+    "TrialResult": ("status", "reason", "criteria", "compensators", "lm_status", "mu",
+                    "lm_iterations", "warnings"),
+    "ItemContribution": ("plus", "minus", "excluded", "worst", "delta", "shift", "q"),
+    "InverseSensitivity": ("allowance", "note", "share", "limits", "unlimited"),
+    "CriterionSensitivity": ("id", "kind", "nominal", "nominal_reason", "items", "excluded",
+                             "complete", "rss", "predicted_sigma", "predicted_mean_square",
+                             "inverse"),
+    "Confirmation": ("limits", "plus", "minus", "criteria"),
+    "ItemTrials": ("item", "sigma_ratio", "plus", "minus"),
+    "ToleranceSensitivity": ("nominal", "items", "criteria", "limits", "confirmation", "warnings",
+                             "expansion", "status"),
 }
 
 #: Types that to_json writes and load_json accepts as "type".
@@ -237,7 +251,7 @@ TYPES: tuple[str, ...] = (
     "DistortionSweep", "DistortionPoint", "FieldCurvatureSweep", "FieldCurvaturePoint",
     "PathTransmission", "PathOplDifference", "Interferogram", "GhostRanking",
     "RaytraceReport", "SystemReport", "DimensionReport",
-    "OptimResult", "MeritEvaluation", "ToleranceItems",
+    "OptimResult", "MeritEvaluation", "ToleranceItems", "ToleranceSensitivity",
     "FirstOrder", "Seidel", "Prescription", "TraceStats", "RayBatch", "RayPaths",
     "Diattenuation", "Diattenuations", "Retardance", "Retardances",
     "GlassInfo", "GlassMap", "SurfaceLayout", "CompiledElement", "Diagnostic", "LoadWarning",
