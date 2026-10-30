@@ -659,10 +659,11 @@ TEST_CASE("trial: a compensator does not win by clipping generator rays (#289)",
   CHECK(r.compensators[0].end > edge);
   CHECK(r.compensators[0].end < 8.0);  // content: the pull moved the baffle towards the edge
   // The clipping side was tried and refused, and nothing is lost at the end.
-  const auto has = [&](const std::string& code) {
-    return std::any_of(r.warnings.begin(), r.warnings.end(),
-                       [&](const rtt::model::Diagnostic& d) { return d.code == code; });
+  const auto has = [&](const std::string& code, const std::string& text) {
+    return std::any_of(r.warnings.begin(), r.warnings.end(), [&](const rtt::model::Diagnostic& d) {
+      return d.code == code && d.message.find(text) != std::string::npos;
+    });
   };
-  CHECK(has("optim.evaluation_failed"));
-  CHECK_FALSE(has("optim.rays_lost"));
+  CHECK(has("optim.evaluation_failed", "differed from the start"));  // the start-set rule fired
+  CHECK_FALSE(has("optim.rays_lost", ""));
 }

@@ -819,7 +819,8 @@ TEST_CASE("optimize #289: generator rays lost at the edge make the evaluation in
   CHECK(r.generators[0].rays_launched == 18);
   CHECK(r.generators[0].rays_lost == 0);
   CHECK(r.failed_evaluations >= 1);
-  CHECK(reported(r, "optim.evaluation_failed", "generator rays"));
+  // The suffix of the start-set rule (the base text also names generator rays).
+  CHECK(reported(r, "optim.evaluation_failed", "differed from the start"));
   CHECK_FALSE(reported(r, "optim.rays_lost", ""));
 }
 
@@ -844,6 +845,7 @@ TEST_CASE("optimize #289: generator rays that come back make the evaluation inva
   REQUIRE(r.generators.size() == 1);
   CHECK(r.generators[0].rays_lost == 6);
   CHECK(r.failed_evaluations >= 1);
-  CHECK(reported(r, "optim.evaluation_failed", "generator rays"));
+  // The suffix of the start-set rule (the base text also names generator rays).
+  CHECK(reported(r, "optim.evaluation_failed", "differed from the start"));
   CHECK(reported(r, "optim.rays_lost", "at the start"));
 }
