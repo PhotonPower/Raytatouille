@@ -161,13 +161,24 @@ MonteCarloResult run(const TrialContext& ctx, int threads, MonteCarloOptions opt
   return arena.execute([&] { return rtt::tolerance::monte_carlo(ctx, options); });
 }
 
-/// Bitwise equality of two Monte Carlo runs: draws, criterion values, compensators, statistics.
+/// Both empty or both equal bitwise.
+void check_same(const std::optional<double>& a, const std::optional<double>& b) {
+  REQUIRE(a.has_value() == b.has_value());
+  if (a) CHECK(same(*a, *b));
+}
+
+/// Bitwise equality of two Monte Carlo runs: per trial the status, LM status, draws, criterion
+/// values and compensators; per criterion mean, standard deviation and the yield with its
+/// bounds; the total yield.
 void check_bitwise(const MonteCarloResult& a, const MonteCarloResult& b) {
   REQUIRE(a.trials.size() == b.trials.size());
   for (std::size_t n = 0; n < a.trials.size(); ++n) {
     const auto& x = a.trials[n];
     const auto& y = b.trials[n];
     REQUIRE(x.trial == y.trial);
+    CHECK(x.result.status == y.result.status);
+    CHECK(x.result.lm_status == y.result.lm_status);
+    CHECK(x.good == y.good);
     REQUIRE(x.values.size() == y.values.size());
     for (std::size_t i = 0; i < x.values.size(); ++i) CHECK(same(x.values[i], y.values[i]));
     REQUIRE(x.result.criteria.size() == y.result.criteria.size());
@@ -184,9 +195,15 @@ void check_bitwise(const MonteCarloResult& a, const MonteCarloResult& b) {
   }
   REQUIRE(a.criteria.size() == b.criteria.size());
   for (std::size_t k = 0; k < a.criteria.size(); ++k) {
-    REQUIRE(a.criteria[k].mean.has_value() == b.criteria[k].mean.has_value());
-    if (a.criteria[k].mean) CHECK(same(*a.criteria[k].mean, *b.criteria[k].mean));
+    check_same(a.criteria[k].mean, b.criteria[k].mean);
+    check_same(a.criteria[k].standard_deviation, b.criteria[k].standard_deviation);
+    CHECK(a.criteria[k].yield.good == b.criteria[k].yield.good);
+    check_same(a.criteria[k].yield.lower, b.criteria[k].yield.lower);
+    check_same(a.criteria[k].yield.upper, b.criteria[k].yield.upper);
   }
+  CHECK(a.yield.good == b.yield.good);
+  check_same(a.yield.lower, b.yield.lower);
+  check_same(a.yield.upper, b.yield.upper);
 }
 
 }  // namespace
@@ -297,7 +314,7 @@ TEST_CASE("m7 case 4: index and Abbe number end to end through first_order", "[m
   // sin beta = n sin alpha. The thickness does not enter. Bound per value: the rounding term of
   // the Richardson bound, r = 20 eps / (delta u_m) |efl| with u_m = r_ep / |efl| (addendum #256,
   // as in rtt-optim/tests/test_parabasal.cpp), plus the aim tolerance of 1e-9 mm on h through the
-  // h^2 dependence of the aberration term (2 |efl - R/(n-1)| 1e-9 / h, below 1e-13 mm).
+  // h^2 dependence of the aberration term (2 |efl - R/(n-1)| 1e-9 / h, about 1.7e-13 mm).
   const System s = load("planoconvex_bk7.rtt.json");
   const TrialContext ctx = context(s, items(s, {"index", "abbe"}, schott()), schott());
   const double radius = 51.68;
@@ -446,7 +463,9 @@ TEST_CASE("m7 case 5: the compensator takes back a shift of the mirror", "[m7]")
   const double c0_prime = (hi - lo) / 2.0;
   const double c_prime = c0_prime * std::cos(theta);
   // |J_c|: each rim ray (height 5 at the mirror, sag 5^2 / (2 R) for the paraboloid) runs to the
-  // focus with slope 5 / (distance); d >= 0.99 |J_c| c'_0, since s_0 >= 1 - h^2/6 with h = 1e-3.
+  // focus with slope 5 / (distance); d >= 0.99 |J_c| c'_0, since s_0 >= 1 - h^2/6 with
+  // h = cbrt(function_precision) = cbrt(1e-9) = 1e-3 (OptimizeOptions default kMeritPrecision,
+  // which optimize.cpp passes to LmOptions; the compensator run uses TrialOptions::compensators).
   const double sag = 25.0 / (2.0 * -200.0);
   const double slope = 5.0 / ((sag + dz) - target);
   const double d = 0.99 * std::sqrt(2.0) * std::abs(slope) * c0_prime;
@@ -707,7 +726,7 @@ TEST_CASE("m7 case 13: tolerance classes with overrides and explicit items", "[m
   for (std::size_t i = 0; i < a.items.size(); ++i) CHECK(a.items[i] == b.items[i]);
 
   std::size_t precise = 0;
-  bool single_value = false;
+  std::size_t single_values = 0;
   for (std::size_t i = 0; i < a.items.size(); ++i) {
     const ToleranceItem& item = a.items[i];
     const rtt::tolerance::ItemOrigin& o = a.origins[i];
@@ -718,14 +737,24 @@ TEST_CASE("m7 case 13: tolerance classes with overrides and explicit items", "[m
       // curvature_relative 0.005 and L1 segment 1 index 0.001).
       CHECK(item.limit ==
             std::get<rtt::model::ToleranceValueOverride>(s.tolerances.overrides[*v]).limit);
-      single_value = true;
+      ++single_values;
       continue;
     }
     if (c.kind == rtt::model::ToleranceKind::Abbe) continue;  // relative to nu_d (#260)
     CHECK(item.limit == rtt::tolerance::class_limit(c.tolerance_class, c.kind, c.level));
     if (c.tolerance_class == rtt::model::ToleranceClass::Precise) ++precise;
   }
-  CHECK(single_value);
+  CHECK(single_values == 2);
+  // Explicit before class: the class entry L1.S1 conic is replaced by the explicit item
+  // S1-conic (index 1 of the file's items), and no generated item perturbs the same quantity.
+  const auto replaced =
+      std::find_if(a.classes.items.begin(), a.classes.items.end(),
+                   [](const rtt::model::ClassTolerance& c) { return c.replaced_by.has_value(); });
+  REQUIRE(replaced != a.classes.items.end());
+  CHECK(s.tolerances.items[*replaced->replaced_by].id == "S1-conic");
+  CHECK(std::none_of(a.items.begin(), a.items.end() - 3, [&](const ToleranceItem& i) {
+    return i.target == replaced->target && i.kind == replaced->kind;
+  }));
   CHECK(precise > 0);  // the override of the objective took effect
   // The explicit items follow the generated ones, in file order.
   REQUIRE(a.items.size() >= 3);
