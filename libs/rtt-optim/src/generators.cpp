@@ -225,6 +225,7 @@ void spot_residuals(const model::SpotGenerator& g,
       for (std::size_t k = 0; k < n; ++k) {
         const Point& h = hits[l * n + k];
         ++stats.rays_launched;
+        stats.arrived.push_back(h.arrived ? std::uint8_t{1} : std::uint8_t{0});
         if (!reference.arrived) {
           if (!h.arrived) ++stats.rays_lost;
           out[o++] = kNaN;
@@ -280,6 +281,7 @@ void wavefront_residuals(const compile::CompiledSystem& cs,
       for (std::size_t k = 0; k < n; ++k) {
         ++stats.rays_launched;
         const bool alive = p.points[k].status == trace::RayStatus::Alive;
+        stats.arrived.push_back(alive ? std::uint8_t{1} : std::uint8_t{0});
         if (!alive) ++stats.rays_lost;
         if (!defined) {
           out[o++] = kNaN;

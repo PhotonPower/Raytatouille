@@ -9,8 +9,8 @@
 /// damping update of H. B. Nielsen, IMM-REP-1999-05, eq. (2.5), the column scaling and the
 /// F-convergence test of MINPACK-1 (Moré, Garbow, Hillstrom, ANL-80-74, sections 2.5 and 2.3)
 /// and the bound transformations of MINUIT (bounds.hpp). The Jacobian is a central difference
-/// in theta, evaluated in parallel over the variables. Sources and conventions:
-/// docs/quellen.md.
+/// in theta, evaluated in parallel over the variables; one-sided with f(theta) if exactly one
+/// side is invalid (ADR 0030, addendum #289). Sources and conventions: docs/quellen.md.
 ///
 /// Results are bitwise reproducible: they do not depend on the number of threads, the
 /// partitioning or the RunControl (ADR 0004, ADR 0030 point 11).
@@ -53,7 +53,7 @@ enum class LmStatus : std::uint8_t {
   ConvergedMerit,     ///< small relative actual and predicted decrease of F
   MaxIterations,      ///< k >= k_max
   Cancelled,          ///< cancellation through the RunControl; last accepted state
-  Failed,             ///< a Jacobian column without valid evaluations; last accepted state
+  Failed,             ///< both sides of a Jacobian column invalid; last accepted state
 };
 
 /// One solve of the damped normal equations.
@@ -81,7 +81,8 @@ struct LmResult {
   int iterations = 0;                  ///< k, the number of solves
   std::size_t evaluations = 0;         ///< evaluations of f
   std::size_t failed_evaluations = 0;  ///< evaluations that returned false or threw
-  /// Status Failed: the smallest variable index whose Jacobian column had no valid evaluation.
+  /// Status Failed: the smallest variable index whose Jacobian column had no valid evaluation on
+  /// either side.
   std::optional<std::size_t> failed_variable;
   std::vector<LmIteration> history;  ///< one entry per solve, accepted or not
 };
