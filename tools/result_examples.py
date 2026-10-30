@@ -2,7 +2,7 @@
 
 Run from the repository root with the Python package of a build on the path, e.g.:
 
-    PYTHONPATH=build/py/python python tools/result_examples.py ToleranceItems
+    PYTHONPATH=build/py/python python tools/result_examples.py ToleranceItems ToleranceSensitivity
 
 Each name writes <name>.result.json with to_json(indent=1) at the current SCHEMA_VERSION. Only
 the types listed here have a generator; the older examples were written by hand in their PRs
@@ -32,8 +32,24 @@ def tolerance_items() -> Any:
     return rt.tolerance.expand(system, materials=lib)
 
 
+def tolerance_sensitivity() -> Any:
+    """sensitivity of the three explicit items of the M7 reference achromat (class none), with
+    the confirmation, so that the example holds TrialResult lists at both levels (#261)."""
+    import raytatouille as rt
+
+    lib = rt.MaterialLibrary()
+    lib.add_catalog(CATALOGS / "schott.agf")
+    system = rt.apply_patch(rt.load(REFERENCE / "m7" / "achromat_tolerances.rtt.json"), [
+        {"op": "replace", "path": "/tolerances/class", "value": "none"},
+        {"op": "remove", "path": "/tolerances/overrides/4"},
+        {"op": "remove", "path": "/tolerances/overrides/0"},
+    ])
+    return rt.tolerance.sensitivity(system, materials=lib)
+
+
 GENERATORS: dict[str, Callable[[], Any]] = {
     "ToleranceItems": tolerance_items,
+    "ToleranceSensitivity": tolerance_sensitivity,
 }
 
 
