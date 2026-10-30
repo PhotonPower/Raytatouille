@@ -30,7 +30,10 @@
       "required": ["at_infinity"],
       "properties": {
         "at_infinity": {"type": "boolean"},
-        "distance": {"$ref": "#/$defs/param"},
+        "distance": {
+          "$ref": "#/$defs/param",
+          "description": "mm from the object to the global origin along -z: the object lies at global z = -distance, wherever the first surface is; positive in front of the origin. Used only if at_infinity is false. A distance in front of a surface comes from the parameter table (an expression row)."
+        },
         "medium": {"type": "string"}
       }
     },

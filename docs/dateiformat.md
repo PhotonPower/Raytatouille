@@ -36,7 +36,7 @@ Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/a
 | `name` | nein | Anzeigename |
 | `units` | ja | genau `{"length": "mm", "wavelength": "um"}` |
 | `environment` | nein | `temperature_c`, `pressure_atm`, `medium` (Standard: Luft nach Ciddor, 20 °C, 1 atm) |
-| `object` | nein | `{"at_infinity": true}` ist der Standard; sonst `distance`. Optional `medium` (ab Schema 0.7, ADR 0037): Material des Objektraums als `KATALOG:NAME`, nur bei endlichem Objekt (sonst Fehler `object.medium_infinite`). Fehlt es, ist der Objektraum die Umgebung. Eine Quelle in Glas (n > 1) strahlt dann auch jenseits des Grenzwinkels Glas/Luft; `object_na` wird mit dem Index dieses Mediums gelesen (NA darf größer als 1 sein, aber nicht größer als n) |
+| `object` | nein | `{"at_infinity": true}` ist der Standard; sonst `distance` (mm, Param): Abstand vom Objekt zum **globalen Ursprung** längs −z. Das Objekt liegt also bei z = −`distance` im globalen System, unabhängig davon, wo die erste Fläche liegt; positiv heißt vor dem Ursprung. Soll der Abstand vor einer Fläche gelten, rechnet ihn die Parametertabelle um: Liegt der Scheitel global bei z = `Z1` und ist `Z1` eine Zeile der Tabelle (etwa die gebundene Lage eines Elements an der Wurzel, dessen erste Fläche lokal bei 0 liegt), gibt `{"name": "OBJ", "expression": "WD - Z1"}` mit `"distance": {"param": "OBJ"}` den Arbeitsabstand `WD` vor diesem Scheitel. Optional `medium` (ab Schema 0.7, ADR 0037): Material des Objektraums als `KATALOG:NAME`, nur bei endlichem Objekt (sonst Fehler `object.medium_infinite`). Fehlt es, ist der Objektraum die Umgebung. Eine Quelle in Glas (n > 1) strahlt dann auch jenseits des Grenzwinkels Glas/Luft; `object_na` wird mit dem Index dieses Mediums gelesen (NA darf größer als 1 sein, aber nicht größer als n) |
 | `wavelengths` | ja | Liste von `{"um": …, "weight": …, "reference": true}`. **Genau eine** Wellenlänge ist `reference`. `weight` ≥ 0. |
 | `aperture` | ja | `{"type": "epd" \| "image_fnumber" \| "object_na" \| "stop_size", "value": …}`. `epd`: Durchmesser der Eintrittspupille in mm. `image_fnumber`: F-Zahl bei unendlichen Konjugierten, EPD = |EFL| / F#, auch bei endlichem Objekt. `object_na`: objektseitige numerische Apertur, nur bei endlichem Objekt, **paraxial gelesen**: die paraxiale Randstrahlsteigung vom axialen Objektpunkt ist u = NA / n, n der Brechungsindex des Objektraums (Greivenkamp, OPTI-502, Abschn. 9, S. 9-34: NA = n sin U ≈ n u; ein realer Randstrahl mit n sin U = NA weicht bei großer NA ab). Bei paraxialer Zielung hat der Randstrahl tan U = NA / n; bei realer Zielung trifft er den paraxialen Blendenrand R_s, und sein tan U weicht um die Pupillenaberration davon ab. Bei objektseitiger Telezentrie legen nur `object_na` und `stop_size` das Bündel fest. `stop_size` braucht kein `value` (die Blendengröße kommt aus der Apertur der Blende) |
 | `fields` | ja | `{"type": "angle_deg" \| "object_height" \| "paraxial_image_height", "points": [{"x":…, "y":…, "weight":…}]}`. `{}` ist der Achspunkt. `weight` ≥ 0. |
@@ -122,8 +122,9 @@ Eine ideale Linse ohne Dicke ist eine Interaktion an der einzigen Planfläche ei
   umgebenden Medium, längs der Ausbreitung; f > 0 sammelt, f hängt nicht von der Wellenlänge ab.
   Variabel, mit Grenzen und an die Parametertabelle bindbar.
 - `object_distance` (optional, mm, Param): Auslegungs-Konjugierte für den optischen Weg,
-  positiv für ein reelles Objekt vor der Linse wie `object.distance`; fehlt das Feld, liegt das
-  Objekt im Unendlichen.
+  positiv für ein reelles Objekt vor der Linse; das Vorzeichen ist dasselbe wie bei
+  `object.distance`, gemessen wird aber von der Linse aus, nicht vom globalen Ursprung (ADR 0031,
+  Nachtrag #279). Fehlt das Feld, liegt das Objekt im Unendlichen.
 - `ideal_cylinder_lens` hat dazu `axis_deg` (Standard 0, im kanonischen Text bei 0 weggelassen):
   die Zylinderachse in lokalen Flächenkoordinaten von x nach y. Die Linse fokussiert nur in der
   Richtung (−sin ψ, cos ψ, 0); bei 0 also im yz-Schnitt, die Brennlinie liegt parallel zu x.
