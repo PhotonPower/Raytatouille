@@ -326,7 +326,7 @@ void bind_sensitivity(nb::module_& m) {
 template <typename T, std::size_t D>
 nb::ndarray<nb::numpy, const T, nb::ndim<D>, nb::c_contig> owned_array(
     std::unique_ptr<T[]> data, const std::array<std::size_t, D>& shape) {
-  T* values = data.get();
+  const T* values = data.get();
   const nb::capsule owner(
       values, [](void* p) noexcept { const std::unique_ptr<T[]> owned(static_cast<T*>(p)); });
   static_cast<void>(data.release());  // the capsule frees it
