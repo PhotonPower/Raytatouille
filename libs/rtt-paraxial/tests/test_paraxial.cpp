@@ -700,9 +700,10 @@ TEST_CASE("afocal threshold: a very weak lens stays focal", "[paraxial][afocal]"
 
 TEST_CASE("afocal threshold: a nearly afocal lens just above the threshold stays focal",
           "[paraxial][afocal]") {
-  // r = 1 mm at z = 10 mm, d = 6 - 6e-12 mm: Phi = 1e-12 / mm, about 50 times the threshold
-  // (1.9e-14 / mm), so the threshold is not too generous. Tolerance fixed beforehand: the
-  // computed Phi is off by at most 8 N u S = 9.5e-15 / mm, relative 1e-2 of Phi.
+  // r = 1 mm at z = 10 mm, d = 6 - 6e-12 mm: Phi = 1e-12 / mm, about 44 times the threshold
+  // (2.2e-14 / mm), so the threshold is not too generous. Tolerance fixed beforehand: the
+  // computed Phi is off by at most 8 N u S + u E = 4.0e-15 / mm (paraxial.cpp), relative 1e-2
+  // of Phi.
   System s = base_system();
   const double d = 6.0 - 6.0e-12;
   add(s, lens("L", 10.0, 1.5, 1.0, -1.0, d));
@@ -714,10 +715,11 @@ TEST_CASE("afocal threshold: a nearly afocal lens just above the threshold stays
 
 TEST_CASE("afocal threshold: depends on the absolute position of the surfaces",
           "[paraxial][afocal]") {
-  // S grows with |z|, because the coordinates carry a rounding of u |z| each. The same lens
-  // (r = 1 mm, Phi = 5e-13 / mm) is focal at z = 10 mm (threshold 1.9e-14 / mm) and afocal at
-  // z = 1000 mm (threshold 1.2e-12 / mm). The ordinary cases do not change: Phi = 1e-10 / mm
-  // is focal and the afocal lens r = 10 mm, d = 60 mm is afocal at both positions.
+  // S + E grows with |z| (through E), because the coordinates carry a rounding of u |z| each.
+  // The same lens (r = 1 mm, Phi = 5e-13 / mm) is focal at z = 10 mm (threshold 2.2e-14 / mm) and
+  // afocal at z = 1000 mm (threshold 1.2e-12 / mm). The ordinary cases do not change:
+  // Phi = 1e-10 / mm is focal and the afocal lens r = 10 mm, d = 60 mm is afocal at both
+  // positions.
   const auto first_order_at = [](double z, double r, double d) {
     System s = base_system();
     add(s, lens("L", z, 1.5, r, -r, d));
