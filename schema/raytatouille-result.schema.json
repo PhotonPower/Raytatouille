@@ -1403,6 +1403,11 @@
       "then": {
         "properties": {
           "data": {
+            "required": [
+              "items",
+              "origins",
+              "classes"
+            ],
             "$ref": "#/$defs/tolerance_items"
           }
         }

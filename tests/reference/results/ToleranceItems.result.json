@@ -1,0 +1,789 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.15",
+ "type": "ToleranceItems",
+ "data": {
+  "items": [
+   {
+    "id": "class:node:stop:thickness",
+    "surface": null,
+    "node": "stop",
+    "parameter": null,
+    "param": null,
+    "segment": null,
+    "kind": "THICKNESS",
+    "limit": 0.1,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "class:node:stop:decenter_x",
+    "surface": null,
+    "node": "stop",
+    "parameter": null,
+    "param": null,
+    "segment": null,
+    "kind": "DECENTER_X",
+    "limit": 0.1,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "class:node:stop:decenter_y",
+    "surface": null,
+    "node": "stop",
+    "parameter": null,
+    "param": null,
+    "segment": null,
+    "kind": "DECENTER_Y",
+    "limit": 0.1,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "class:node:stop:tilt_x_deg",
+    "surface": null,
+    "node": "stop",
+    "parameter": null,
+    "param": null,
+    "segment": null,
+    "kind": "TILT_X_DEG",
+    "limit": 0.1,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "class:node:stop:tilt_y_deg",
+    "surface": null,
+    "node": "stop",
+    "parameter": null,
+    "param": null,
+    "segment": null,
+    "kind": "TILT_Y_DEG",
+    "limit": 0.1,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "class:node:objective:decenter_x",
+    "surface": null,
+    "node": "objective",
+    "parameter": null,
+    "param": null,
+    "segment": null,
+    "kind": "DECENTER_X",
+    "limit": 0.05,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "class:node:objective:decenter_y",
+    "surface": null,
+    "node": "objective",
+    "parameter": null,
+    "param": null,
+    "segment": null,
+    "kind": "DECENTER_Y",
+    "limit": 0.05,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "class:node:objective:shift_z",
+    "surface": null,
+    "node": "objective",
+    "parameter": null,
+    "param": null,
+    "segment": null,
+    "kind": "SHIFT_Z",
+    "limit": 0.05,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "class:node:objective:tilt_x_deg",
+    "surface": null,
+    "node": "objective",
+    "parameter": null,
+    "param": null,
+    "segment": null,
+    "kind": "TILT_X_DEG",
+    "limit": 0.05,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "class:node:objective:tilt_y_deg",
+    "surface": null,
+    "node": "objective",
+    "parameter": null,
+    "param": null,
+    "segment": null,
+    "kind": "TILT_Y_DEG",
+    "limit": 0.05,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "class:node:L1:thickness",
+    "surface": null,
+    "node": "L1",
+    "parameter": null,
+    "param": null,
+    "segment": null,
+    "kind": "THICKNESS",
+    "limit": 0.05,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "class:node:L1:decenter_x",
+    "surface": null,
+    "node": "L1",
+    "parameter": null,
+    "param": null,
+    "segment": null,
+    "kind": "DECENTER_X",
+    "limit": 0.05,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "class:node:L1:decenter_y",
+    "surface": null,
+    "node": "L1",
+    "parameter": null,
+    "param": null,
+    "segment": null,
+    "kind": "DECENTER_Y",
+    "limit": 0.05,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "class:node:L1:tilt_x_deg",
+    "surface": null,
+    "node": "L1",
+    "parameter": null,
+    "param": null,
+    "segment": null,
+    "kind": "TILT_X_DEG",
+    "limit": 0.05,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "class:node:L1:tilt_y_deg",
+    "surface": null,
+    "node": "L1",
+    "parameter": null,
+    "param": null,
+    "segment": null,
+    "kind": "TILT_Y_DEG",
+    "limit": 0.05,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "class:node:L1:index:0",
+    "surface": null,
+    "node": "L1",
+    "parameter": null,
+    "param": null,
+    "segment": 0,
+    "kind": "INDEX",
+    "limit": 0.0002,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "class:node:L1:index:1",
+    "surface": null,
+    "node": "L1",
+    "parameter": null,
+    "param": null,
+    "segment": 1,
+    "kind": "INDEX",
+    "limit": 0.001,
+    "distribution": "UNIFORM"
+   },
+   {
+    "id": "class:node:L1:abbe:0",
+    "surface": null,
+    "node": "L1",
+    "parameter": null,
+    "param": null,
+    "segment": 0,
+    "kind": "ABBE",
+    "limit": 0.12832848439524375,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "class:node:L1:abbe:1",
+    "surface": null,
+    "node": "L1",
+    "parameter": null,
+    "param": null,
+    "segment": 1,
+    "kind": "ABBE",
+    "limit": 0.07274377187672694,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "class:surface:L1.S2:curvature_relative",
+    "surface": "L1.S2",
+    "node": null,
+    "parameter": null,
+    "param": null,
+    "segment": null,
+    "kind": "CURVATURE_RELATIVE",
+    "limit": 0.005,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "class:surface:L1.S2:thickness",
+    "surface": "L1.S2",
+    "node": null,
+    "parameter": null,
+    "param": null,
+    "segment": null,
+    "kind": "THICKNESS",
+    "limit": 0.025,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "class:surface:L1.S3:curvature_relative",
+    "surface": "L1.S3",
+    "node": null,
+    "parameter": null,
+    "param": null,
+    "segment": null,
+    "kind": "CURVATURE_RELATIVE",
+    "limit": 0.0005,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "class:surface:L1.S3:thickness",
+    "surface": "L1.S3",
+    "node": null,
+    "parameter": null,
+    "param": null,
+    "segment": null,
+    "kind": "THICKNESS",
+    "limit": 0.025,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "S3-wedge",
+    "surface": "L1.S3",
+    "node": null,
+    "parameter": null,
+    "param": null,
+    "segment": null,
+    "kind": "TILT_X_DEG",
+    "limit": 0.02,
+    "distribution": "NORMAL"
+   },
+   {
+    "id": "S1-conic",
+    "surface": "L1.S1",
+    "node": null,
+    "parameter": null,
+    "param": "/shape/base/conic",
+    "segment": null,
+    "kind": "PARAM",
+    "limit": 0.01,
+    "distribution": "UNIFORM"
+   },
+   {
+    "id": "R1",
+    "surface": null,
+    "node": null,
+    "parameter": "R1",
+    "param": null,
+    "segment": null,
+    "kind": "PARAMETER",
+    "limit": 0.1,
+    "distribution": "ENDPOINT"
+   }
+  ],
+  "origins": [
+   {
+    "source": "CLASS",
+    "index": 0
+   },
+   {
+    "source": "CLASS",
+    "index": 1
+   },
+   {
+    "source": "CLASS",
+    "index": 2
+   },
+   {
+    "source": "CLASS",
+    "index": 3
+   },
+   {
+    "source": "CLASS",
+    "index": 4
+   },
+   {
+    "source": "CLASS",
+    "index": 9
+   },
+   {
+    "source": "CLASS",
+    "index": 10
+   },
+   {
+    "source": "CLASS",
+    "index": 11
+   },
+   {
+    "source": "CLASS",
+    "index": 12
+   },
+   {
+    "source": "CLASS",
+    "index": 13
+   },
+   {
+    "source": "CLASS",
+    "index": 14
+   },
+   {
+    "source": "CLASS",
+    "index": 15
+   },
+   {
+    "source": "CLASS",
+    "index": 16
+   },
+   {
+    "source": "CLASS",
+    "index": 17
+   },
+   {
+    "source": "CLASS",
+    "index": 18
+   },
+   {
+    "source": "CLASS",
+    "index": 19
+   },
+   {
+    "source": "CLASS",
+    "index": 20
+   },
+   {
+    "source": "CLASS",
+    "index": 21
+   },
+   {
+    "source": "CLASS",
+    "index": 22
+   },
+   {
+    "source": "CLASS",
+    "index": 25
+   },
+   {
+    "source": "CLASS",
+    "index": 27
+   },
+   {
+    "source": "CLASS",
+    "index": 28
+   },
+   {
+    "source": "CLASS",
+    "index": 30
+   },
+   {
+    "source": "EXPLICIT",
+    "index": 0
+   },
+   {
+    "source": "EXPLICIT",
+    "index": 1
+   },
+   {
+    "source": "EXPLICIT",
+    "index": 2
+   }
+  ],
+  "classes": {
+   "items": [
+    {
+     "id": "class:node:stop:thickness",
+     "surface": null,
+     "node": "stop",
+     "segment": null,
+     "kind": "THICKNESS",
+     "level": "ELEMENT",
+     "tolerance_class": "NORMAL",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "NONE"
+    },
+    {
+     "id": "class:node:stop:decenter_x",
+     "surface": null,
+     "node": "stop",
+     "segment": null,
+     "kind": "DECENTER_X",
+     "level": "ELEMENT",
+     "tolerance_class": "NORMAL",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "NONE"
+    },
+    {
+     "id": "class:node:stop:decenter_y",
+     "surface": null,
+     "node": "stop",
+     "segment": null,
+     "kind": "DECENTER_Y",
+     "level": "ELEMENT",
+     "tolerance_class": "NORMAL",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "NONE"
+    },
+    {
+     "id": "class:node:stop:tilt_x_deg",
+     "surface": null,
+     "node": "stop",
+     "segment": null,
+     "kind": "TILT_X_DEG",
+     "level": "ELEMENT",
+     "tolerance_class": "NORMAL",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "NONE"
+    },
+    {
+     "id": "class:node:stop:tilt_y_deg",
+     "surface": null,
+     "node": "stop",
+     "segment": null,
+     "kind": "TILT_Y_DEG",
+     "level": "ELEMENT",
+     "tolerance_class": "NORMAL",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "NONE"
+    },
+    {
+     "id": "class:node:stop:index",
+     "surface": null,
+     "node": "stop",
+     "segment": null,
+     "kind": "INDEX",
+     "level": "ELEMENT",
+     "tolerance_class": "NORMAL",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "NO_MATERIAL_IN_BEAM"
+    },
+    {
+     "id": "class:node:stop:abbe",
+     "surface": null,
+     "node": "stop",
+     "segment": null,
+     "kind": "ABBE",
+     "level": "ELEMENT",
+     "tolerance_class": "NORMAL",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "NO_MATERIAL_IN_BEAM"
+    },
+    {
+     "id": "class:surface:STO:curvature_relative",
+     "surface": "STO",
+     "node": null,
+     "segment": null,
+     "kind": "CURVATURE_RELATIVE",
+     "level": "SURFACE",
+     "tolerance_class": "NORMAL",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "PLANE"
+    },
+    {
+     "id": "class:surface:STO:conic",
+     "surface": "STO",
+     "node": null,
+     "segment": null,
+     "kind": "CONIC",
+     "level": "SURFACE",
+     "tolerance_class": "NORMAL",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "PLANE"
+    },
+    {
+     "id": "class:node:objective:decenter_x",
+     "surface": null,
+     "node": "objective",
+     "segment": null,
+     "kind": "DECENTER_X",
+     "level": "ASSEMBLY",
+     "tolerance_class": "PRECISE",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "NONE"
+    },
+    {
+     "id": "class:node:objective:decenter_y",
+     "surface": null,
+     "node": "objective",
+     "segment": null,
+     "kind": "DECENTER_Y",
+     "level": "ASSEMBLY",
+     "tolerance_class": "PRECISE",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "NONE"
+    },
+    {
+     "id": "class:node:objective:shift_z",
+     "surface": null,
+     "node": "objective",
+     "segment": null,
+     "kind": "SHIFT_Z",
+     "level": "ASSEMBLY",
+     "tolerance_class": "PRECISE",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "NONE"
+    },
+    {
+     "id": "class:node:objective:tilt_x_deg",
+     "surface": null,
+     "node": "objective",
+     "segment": null,
+     "kind": "TILT_X_DEG",
+     "level": "ASSEMBLY",
+     "tolerance_class": "PRECISE",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "NONE"
+    },
+    {
+     "id": "class:node:objective:tilt_y_deg",
+     "surface": null,
+     "node": "objective",
+     "segment": null,
+     "kind": "TILT_Y_DEG",
+     "level": "ASSEMBLY",
+     "tolerance_class": "PRECISE",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "NONE"
+    },
+    {
+     "id": "class:node:L1:thickness",
+     "surface": null,
+     "node": "L1",
+     "segment": null,
+     "kind": "THICKNESS",
+     "level": "ELEMENT",
+     "tolerance_class": "PRECISE",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "NONE"
+    },
+    {
+     "id": "class:node:L1:decenter_x",
+     "surface": null,
+     "node": "L1",
+     "segment": null,
+     "kind": "DECENTER_X",
+     "level": "ELEMENT",
+     "tolerance_class": "PRECISE",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "NONE"
+    },
+    {
+     "id": "class:node:L1:decenter_y",
+     "surface": null,
+     "node": "L1",
+     "segment": null,
+     "kind": "DECENTER_Y",
+     "level": "ELEMENT",
+     "tolerance_class": "PRECISE",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "NONE"
+    },
+    {
+     "id": "class:node:L1:tilt_x_deg",
+     "surface": null,
+     "node": "L1",
+     "segment": null,
+     "kind": "TILT_X_DEG",
+     "level": "ELEMENT",
+     "tolerance_class": "PRECISE",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "NONE"
+    },
+    {
+     "id": "class:node:L1:tilt_y_deg",
+     "surface": null,
+     "node": "L1",
+     "segment": null,
+     "kind": "TILT_Y_DEG",
+     "level": "ELEMENT",
+     "tolerance_class": "PRECISE",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "NONE"
+    },
+    {
+     "id": "class:node:L1:index:0",
+     "surface": null,
+     "node": "L1",
+     "segment": 0,
+     "kind": "INDEX",
+     "level": "ELEMENT",
+     "tolerance_class": "PRECISE",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "NONE"
+    },
+    {
+     "id": "class:node:L1:index:1",
+     "surface": null,
+     "node": "L1",
+     "segment": 1,
+     "kind": "INDEX",
+     "level": "ELEMENT",
+     "tolerance_class": "PRECISE",
+     "value_override": 2,
+     "replaced_by": null,
+     "skip": "NONE"
+    },
+    {
+     "id": "class:node:L1:abbe:0",
+     "surface": null,
+     "node": "L1",
+     "segment": 0,
+     "kind": "ABBE",
+     "level": "ELEMENT",
+     "tolerance_class": "PRECISE",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "NONE"
+    },
+    {
+     "id": "class:node:L1:abbe:1",
+     "surface": null,
+     "node": "L1",
+     "segment": 1,
+     "kind": "ABBE",
+     "level": "ELEMENT",
+     "tolerance_class": "PRECISE",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "NONE"
+    },
+    {
+     "id": "class:surface:L1.S1:curvature_relative",
+     "surface": "L1.S1",
+     "node": null,
+     "segment": null,
+     "kind": "CURVATURE_RELATIVE",
+     "level": "SURFACE",
+     "tolerance_class": "PRECISE",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "BOUND"
+    },
+    {
+     "id": "class:surface:L1.S1:conic",
+     "surface": "L1.S1",
+     "node": null,
+     "segment": null,
+     "kind": "CONIC",
+     "level": "SURFACE",
+     "tolerance_class": "PRECISE",
+     "value_override": null,
+     "replaced_by": 1,
+     "skip": "SPHERE"
+    },
+    {
+     "id": "class:surface:L1.S2:curvature_relative",
+     "surface": "L1.S2",
+     "node": null,
+     "segment": null,
+     "kind": "CURVATURE_RELATIVE",
+     "level": "SURFACE",
+     "tolerance_class": "PRECISE",
+     "value_override": 1,
+     "replaced_by": null,
+     "skip": "NONE"
+    },
+    {
+     "id": "class:surface:L1.S2:conic",
+     "surface": "L1.S2",
+     "node": null,
+     "segment": null,
+     "kind": "CONIC",
+     "level": "SURFACE",
+     "tolerance_class": "PRECISE",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "SPHERE"
+    },
+    {
+     "id": "class:surface:L1.S2:thickness",
+     "surface": "L1.S2",
+     "node": null,
+     "segment": null,
+     "kind": "THICKNESS",
+     "level": "SURFACE",
+     "tolerance_class": "PRECISE",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "NONE"
+    },
+    {
+     "id": "class:surface:L1.S3:curvature_relative",
+     "surface": "L1.S3",
+     "node": null,
+     "segment": null,
+     "kind": "CURVATURE_RELATIVE",
+     "level": "SURFACE",
+     "tolerance_class": "PRECISE",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "NONE"
+    },
+    {
+     "id": "class:surface:L1.S3:conic",
+     "surface": "L1.S3",
+     "node": null,
+     "segment": null,
+     "kind": "CONIC",
+     "level": "SURFACE",
+     "tolerance_class": "PRECISE",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "SPHERE"
+    },
+    {
+     "id": "class:surface:L1.S3:thickness",
+     "surface": "L1.S3",
+     "node": null,
+     "segment": null,
+     "kind": "THICKNESS",
+     "level": "SURFACE",
+     "tolerance_class": "PRECISE",
+     "value_override": null,
+     "replaced_by": null,
+     "skip": "NONE"
+    }
+   ],
+   "value_overrides": [
+    {
+     "index": 1,
+     "effect": "APPLIED",
+     "skip": "NONE"
+    },
+    {
+     "index": 2,
+     "effect": "APPLIED",
+     "skip": "NONE"
+    }
+   ]
+  }
+ }
+}
