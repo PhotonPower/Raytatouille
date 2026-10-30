@@ -132,7 +132,7 @@ Ideenliste aus der Umsetzung von M7 (0.9.0), gesammelt von den Agenten; neu zu b
   - `radius_max` der eingeschlossenen Energie vorab bestimmen (#267).
   - Field Tracing (`rtt-field`): ADR und C++-Ersatz der Hilfsbibliotheken (#284, #285), nach 0.9.0.
 - **Tests und Doku:**
-  - Kommentar in `libs/rtt-optim/tests/test_parabasal.cpp:317`: Die Brennweite der dezentrierten idealen Linse ist f + 3δ²/(4f), nicht f + δ²/(2f) (Herleitung in #303; Änderung braucht die Freigabe nach Regel 2).
+  - Zwei Testkommentare: In `libs/rtt-optim/tests/test_parabasal.cpp:317` ist die Brennweite der dezentrierten idealen Linse f + 3δ²/(4f), nicht f + δ²/(2f) (Herleitung in #303), und in `libs/rtt-tolerance/tests/test_m7_acceptance.cpp:311` ist die Abweichung der parabasalen Brennweite etwa 4,3·10⁻⁷ mm, nicht 3·10⁻⁷ mm (#306). Beide Änderungen brauchen die Freigabe nach Regel 2.
 
 ## Bewusst nicht aufgenommen
 
