@@ -195,16 +195,20 @@ jobs:
           if [ "$RUNNER_OS" = "Windows" ]; then py="$RUNNER_TEMP/venv271/Scripts/python.exe"
           else py="$RUNNER_TEMP/venv271/bin/python"; fi
           "$py" -m pip install -q --upgrade pip
+          # Import from outside the source tree, and content guard: a complete stub (#271).
+          check_stub() {
+            (cd "$RUNNER_TEMP"
+             "$py" -c "import raytatouille as rt; from raytatouille._core import StokesPupil; print(rt.__version__, rt.__file__)"
+             stub="$("$py" -c "import raytatouille, pathlib; print(pathlib.Path(raytatouille._core.__file__).with_name('_core.pyi'))")"
+             grep -q 'class StokesPupil' "$stub")
+          }
           "$py" -m pip install -e .
           "$py" -m pip install -e . --force-reinstall --no-deps
+          check_stub
           # The same without build isolation (the workaround in #271), with the pinned build tools
           # from requirements.txt (ADR 0018).
           grep -E '^(nanobind|scikit-build-core|numpy)==' libs/rtt-py/tests/requirements.txt \
             > "$RUNNER_TEMP/build271.txt"
           "$py" -m pip install -q -r "$RUNNER_TEMP/build271.txt"
           "$py" -m pip install -e . --force-reinstall --no-deps --no-build-isolation
-          cd "$RUNNER_TEMP"
-          stub="$("$py" -c "import raytatouille, pathlib; print(pathlib.Path(raytatouille._core.__file__).with_name('_core.pyi'))")"
-          "$py" -c "import raytatouille as rt; from raytatouille._core import StokesPupil; print(rt.__version__, rt.__file__)"
-          # Content guard: a complete stub (#271).
-          grep -q 'class StokesPupil' "$stub"
+          check_stub

@@ -116,8 +116,12 @@ endif()
 # (scikit-build-core puts it at sys.meta_path[0], also under pip's build isolation) cannot
 # redirect raytatouille to the source tree or to an old _core; -E ignores PYTHONPATH. stubgen.py
 # and _core need only the standard library. The arguments are those of nanobind_add_stub (-q,
-# -i, -m, -o; -P for INCLUDE_PRIVATE, so that names like yield_ are kept); the path of
-# stubgen.py is found as there.
+# -i, -m, -o) and -P for INCLUDE_PRIVATE: stubgen takes a name with one trailing underscore for
+# private and leaves it out, but yield_ (MonteCarloResult, CriterionStatistics) only avoids the
+# keyword (PEP 8); the stub then also lists MaterialLibrary._glass_records. The paths of
+# stubgen.py and of the interpreter are found and normalized as there. Not taken over: the
+# sanitizer preload (LD_PRELOAD) of nanobind_add_stub, harmless since no preset combines the
+# sanitizers with RTT_BUILD_PYTHON.
 if(EXISTS "${NB_DIR}/src/stubgen.py")
   set(RTT_PY_STUBGEN "${NB_DIR}/src/stubgen.py")
 elseif(EXISTS "${NB_DIR}/stubgen.py")
@@ -125,9 +129,10 @@ elseif(EXISTS "${NB_DIR}/stubgen.py")
 else()
   message(FATAL_ERROR "stubgen.py of nanobind not found in ${NB_DIR}")
 endif()
+file(TO_CMAKE_PATH "${Python_EXECUTABLE}" RTT_PY_STUBGEN_PYTHON)
 add_custom_command(
   OUTPUT "${RTT_PY_PACKAGE_DIR}/_core.pyi"
-  COMMAND "${Python_EXECUTABLE}" -S -E "${RTT_PY_STUBGEN}" -q -P
+  COMMAND "${RTT_PY_STUBGEN_PYTHON}" -S -E "${RTT_PY_STUBGEN}" -q -P
           -i "${RTT_PY_STUBGEN_DIR}" -m raytatouille._core -o "${RTT_PY_PACKAGE_DIR}/_core.pyi"
   WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
   DEPENDS _core "${RTT_PY_STUBGEN}"
