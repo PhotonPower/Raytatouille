@@ -7,9 +7,9 @@
 //
 // Bounds:
 // - traced coordinates: kEps = 1e-12 mm, as in test_sensitivity.cpp and test_monte_carlo.cpp;
-// - paraxial values (efl): 1e-12 relative for a nominal paraxial trace (rounding of a few
-//   operations), the Richardson bound of ADR 0030, addendum #256 for the parabasal rays of a
-//   decentered trial, as in rtt-optim/tests/test_parabasal.cpp;
+// - paraxial values (efl): in a trial, also at the nominal values, they come from parabasal rays
+//   (ADR 0030, addendum #256), so the target is the real parabasal ray and the bound the
+//   rounding term of the Richardson bound, as in rtt-optim/tests/test_parabasal.cpp;
 // - statistics: the bands of test_monte_carlo.cpp (mean 4 sigma / sqrt(N), Var(s^2) =
 //   (mu_4 - (N - 3) / (N - 1) sigma^4) / N with MathWorld "Sample Variance Distribution", Wilson
 //   interval with z = 3.8906), each derived in its case.
@@ -29,6 +29,7 @@
 #include <numbers>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "rtt/coating/catalog.hpp"
@@ -200,11 +201,11 @@ TEST_CASE("m7 case 1: an assembly tilt moves all its children", "[m7]") {
   // the direction exactly onto f tan(theta) in its focal plane (case 11 for the sign).
   const System s = load("assembly_motion.rtt.json");
   const TrialContext module = context(s, items(s, {"module-tilt"}));
-  volatile double theta_in = 1.0;  // degree; volatile: no folding of tan (AGENTS.md, #218)
-  const double theta = theta_in;
-  const double expected = 50.0 * std::tan(rtt::math::deg_to_rad(theta));
+  volatile double theta_in = 1.0;  // volatile: no folding of tan (AGENTS.md, #218)
+  const double theta_deg = theta_in;
+  const double expected = 50.0 * std::tan(rtt::math::deg_to_rad(theta_deg));
   REQUIRE(nominal_value(module, "chief-y") == 0.0);
-  const double y = value(module, {theta}, "chief-y");
+  const double y = value(module, {theta_deg}, "chief-y");
   INFO("ray_y " << y << " against f tan(theta) " << expected);
   CHECK(std::abs(y - expected) <= kEps);
 
@@ -212,23 +213,24 @@ TEST_CASE("m7 case 1: an assembly tilt moves all its children", "[m7]") {
   // pivots of lens and detector are the lens centre in their own coordinates (file overrides).
   // The detector is not in the subtree of the lens, so tilting the lens alone does not carry it.
   const TrialContext parts = context(s, items(s, {"lens-tilt", "image-tilt"}));
-  CHECK(std::abs(value(parts, {theta, theta}, "chief-y") - y) <= kEps);
+  CHECK(std::abs(value(parts, {theta_deg, theta_deg}, "chief-y") - y) <= kEps);
   // Content guard: the lens alone moves the image less than both together.
-  CHECK(std::abs(value(parts, {theta, 0.0}, "chief-y") - y) > 1e3 * kEps);
+  CHECK(std::abs(value(parts, {theta_deg, 0.0}, "chief-y") - y) > 1e3 * kEps);
 
   // A node outside the assembly that is placed relative to its last surface stays at its
   // nominal place (ADR 0036, point 1b; compile::Perturbation).
-  const rtt::tolerance::Applied a = rtt::tolerance::apply(module, std::vector<double>{theta});
+  const rtt::tolerance::Applied a = rtt::tolerance::apply(module, std::vector<double>{theta_deg});
   const rtt::compile::Perturbation none;
-  CHECK(same(global_z(a.system, a.perturbation, "W.S1"), global_z(s, none, "W.S1")));
+  CHECK(std::abs(global_z(a.system, a.perturbation, "W.S1") - global_z(s, none, "W.S1")) <= kEps);
   CHECK(global_z(a.system, a.perturbation, "IMG") != global_z(s, none, "IMG"));  // content
 }
 
 TEST_CASE("m7 case 2: decenter of a thin lens moves the image by delta (1 - m)", "[m7]") {
   // Ideal lens f = 50 (ADR 0031), decenter delta along y. Object at infinity: the axial bundle
   // focuses on the lens axis, y' = +delta. Object at s = -150 (the lens's design conjugate):
-  // s' = 75, m = s'/s = -0.5; the object point lies at -delta from the lens axis, its image at
-  // m (-delta) from it, so y' = delta (1 - m) = 1.5 delta. The detector does not move.
+  // s' = 75, m = s'/s = -0.5 (docs/quellen.md, row "Pupillen, Winkel- und Lateralvergrößerung");
+  // the object point lies at -delta from the lens axis, its image at m (-delta) from it, so y' =
+  // delta (1 - m) = 1.5 delta. The detector does not move.
   volatile double delta_in = 0.1;
   const double delta = delta_in;
   const System inf = load("decentred_lens.rtt.json");
@@ -246,7 +248,8 @@ TEST_CASE("m7 case 2: decenter of a thin lens moves the image by delta (1 - m)",
   // the origin and runs to F = (0, delta, f), L = sqrt(f^2 + delta^2); the y pair (decenter
   // direction) gives k_y = f L^2 / (L^4 - delta^2 h^2) with h = 1e-3 * 5 mm (parabasal_step
   // times the pupil radius), the x pair k_x = 1/L; efl = 2 / (k_x + k_y), about
-  // f + delta^2 / (2 f). Bound: the Richardson rounding term of that test.
+  // f + 3 delta^2 / (4 f) (1/L = (1 - delta^2/(2 f^2))/f, f/L^2 = (1 - delta^2/f^2)/f). Bound: the
+  // Richardson rounding term of that test.
   const double f = 50.0;
   const double h = 1e-3 * 5.0;
   const double l = std::hypot(f, delta);
@@ -262,13 +265,14 @@ TEST_CASE("m7 case 2: decenter of a thin lens moves the image by delta (1 - m)",
 
 TEST_CASE("m7 case 3: a tilted plane-parallel plate offsets the axial ray", "[m7]") {
   // Plate t = 10 mm, n = 1.5 (CONST in VACUUM), tilted by theta = 10 degree about x through its
-  // centre. Snell's law at both faces (de Greve, docs/quellen.md) gives the lateral offset of
-  // the emerging parallel ray s = t sin(theta) [1 - cos(theta) / sqrt(n^2 - sin^2(theta))]. Sign:
-  // the normal z of the plate turns to R_x(theta) z = (0, -sin theta, cos theta); inside, the
-  // ray bends toward the normal, i.e. toward -y, so ray_y = -s on the detector.
+  // centre. Snell's law at both faces (docs/quellen.md, row "Versatz der planparallelen Platte")
+  // gives the lateral offset of the emerging parallel ray s = t sin(theta) [1 - cos(theta) /
+  // sqrt(n^2 - sin^2(theta))]. Sign: the normal z of the plate turns to R_x(theta) z = (0, -sin
+  // theta, cos theta); inside, the ray bends toward the normal, i.e. toward -y, so ray_y = -s on
+  // the detector.
   const System s = load("tilted_plate.rtt.json");
   const TrialContext ctx = context(s, items(s, {"plate-tilt"}));
-  volatile double theta_in = 10.0;
+  volatile double theta_in = 10.0;  // degree
   const double theta = rtt::math::deg_to_rad(theta_in);
   const double t = 10.0;
   const double n = 1.5;
@@ -282,19 +286,38 @@ TEST_CASE("m7 case 3: a tilted plane-parallel plate offsets the axial ray", "[m7
 }
 
 TEST_CASE("m7 case 4: index and Abbe number end to end through first_order", "[m7]") {
-  // Plano-convex N-BK7, curved face first, in VACUUM: phi = (n - 1) c_1 exactly, whatever the
-  // thickness (Greivenkamp, p. 7-4: phi = phi_1 + phi_2 - phi_1 phi_2 tau with phi_2 = 0), so
-  // efl(lambda) = R / (n(lambda) - 1) with the absolute index (medium index 1).
+  // Plano-convex N-BK7, curved face first, in VACUUM. In a trial efl comes from the parabasal
+  // rays around the chief ray (ADR 0030, addendum #256; rtt-optim parabasal.cpp): the parallel
+  // pair at the pupil offsets +-delta (delta = 1e-3 of the pupil radius 5 mm, h = 5e-3 mm) gives
+  // phi = n' u' / y_1 with u' the tangent of the image-side angle, so efl = h / tan(beta(h)) of
+  // the real ray at height h. That differs from the paraxial R / (n - 1) by the spherical
+  // aberration at h (about 3e-7 mm here), so the target is the real ray itself: refraction at the
+  // sphere and at the plane by Snell's law (docs/quellen.md, row "Brechung in Vektorform"): sin I =
+  // h / R, sin I' = sin I / n, the ray runs at alpha = I - I' to the axis, and leaves the plane at
+  // sin beta = n sin alpha. The thickness does not enter. Bound per value: the rounding term of
+  // the Richardson bound, r = 20 eps / (delta u_m) |efl| with u_m = r_ep / |efl| (addendum #256,
+  // as in rtt-optim/tests/test_parabasal.cpp), plus the aim tolerance of 1e-9 mm on h through the
+  // h^2 dependence of the aberration term (2 |efl - R/(n-1)| 1e-9 / h, below 1e-13 mm).
   const System s = load("planoconvex_bk7.rtt.json");
   const TrialContext ctx = context(s, items(s, {"index", "abbe"}, schott()), schott());
   const double radius = 51.68;
+  const double h = 1e-3 * 5.0;
+  const auto efl_of = [&](double n) {
+    const double sin_i = h / radius;
+    const double alpha = std::asin(sin_i) - std::asin(sin_i / n);
+    return h / std::tan(std::asin(n * std::sin(alpha)));
+  };
+  const auto bound = [&](double n) {
+    const double efl = efl_of(n);
+    const double r = 20.0 * std::numeric_limits<double>::epsilon() / (1e-3 * 5.0 / efl) * efl;
+    return r + 2.0 * std::abs(efl - radius / (n - 1.0)) * 1e-9 / h;
+  };
   const std::shared_ptr<const rtt::material::Material> glass = schott().resolve("SCHOTT:N-BK7");
   const double tc = s.environment.temperature_c;
   const double p = s.environment.pressure_atm;
   // The index at the wavelengths of the system, evaluated as compile does (compile.cpp). The
   // system's 0.5876 um is not the d line (air 0.5875618 um, in vacuum via
-  // line_vacuum_wavelength_um), so x_d = n(0.5876) - n_d != 0: efl-d changes slightly under
-  // Delta nu_d as well.
+  // line_vacuum_wavelength_um), so x_d = n(0.5876) - n_d != 0.
   std::vector<double> n;
   for (const auto& w : s.wavelengths) n.push_back(glass->index(w.um, tc, p).real());
   REQUIRE(n.size() == 3);
@@ -302,59 +325,79 @@ TEST_CASE("m7 case 4: index and Abbe number end to end through first_order", "[m
   // point 1c; AGENTS.md: the same function and input as the code).
   const rtt::compile::FraunhoferIndices fi = rtt::compile::fraunhofer_indices(*glass, tc, p);
   REQUIRE(fi.status == rtt::compile::FraunhoferIndices::Status::Ok);
+  // ADR 0036, point 1c: D = n_F - n_C, nu_d = (n_d - 1)/D, D' = (n_d + Delta n_d - 1) /
+  // (nu_d + Delta nu_d), n'(lambda) = n(lambda) + Delta n_d + (D'/D - 1)(n(lambda) - n_d).
+  const double d = fi.nf - fi.nc;
+  const double vd = (fi.nd - 1.0) / d;
+  const auto perturbed = [&](double nl, double dn, double dv) {
+    const double dp = (fi.nd + dn - 1.0) / (vd + dv);
+    return nl + dn + (dp / d - 1.0) * (nl - fi.nd);
+  };
   const char* ids[3] = {"efl-F", "efl-d", "efl-C"};
   for (std::size_t k = 0; k < 3; ++k) {
-    CHECK(std::abs(nominal_value(ctx, ids[k]) - radius / (n[k] - 1.0)) <= 1e-12 * 100.0);
+    const double v = nominal_value(ctx, ids[k]);
+    INFO(ids[k] << " " << v << " against " << efl_of(n[k]));
+    CHECK(std::abs(v - efl_of(n[k])) <= bound(n[k]));
+    // Content guard: the aberration term (about 4.3e-7 mm, 49 times the bound) is in the value.
+    CHECK(std::abs(v - radius / (n[k] - 1.0)) > 10.0 * bound(n[k]));
   }
 
   SECTION("Delta n_d") {
-    // efl'/efl = (n - 1) / (n + Delta n - 1) exactly, n at the system's d wavelength (with
-    // Delta nu_d = 0 the overlay is n' = n + Delta n_d at every wavelength, point 1c).
+    // With Delta nu_d = 0, D'/D = (n_d + Delta n_d - 1)/(n_d - 1) != 1, so n' = n + Delta n_d (1 +
+    // x / (n_d - 1)), x = n - n_d (not n + Delta n_d: x_d != 0 at the system's 0.5876 um).
     volatile double dn_in = 0.001;
     const double dn = dn_in;
+    for (std::size_t k = 0; k < 3; ++k) {
+      CHECK(std::abs(value(ctx, {dn, 0.0}, ids[k]) - efl_of(perturbed(n[k], dn, 0.0))) <=
+            bound(perturbed(n[k], dn, 0.0)));
+    }
+    // First order in the effective change x = Delta n' / (n - 1) of the paraxial efl ratio
+    // (n - 1)/(n' - 1) = 1/(1 + x): the series is alternating, the remainder at most x^2 (about
+    // 3.7e-6). The code's ratio differs from the paraxial one by the change of the aberration
+    // term (of the order 1e-11, from efl_of) and the rounding of both values.
+    const double n1 = perturbed(n[1], dn, 0.0);
     const double ratio = value(ctx, {dn, 0.0}, "efl-d") / nominal_value(ctx, "efl-d");
-    const double exact = (n[1] - 1.0) / (n[1] + dn - 1.0);
-    CHECK(std::abs(ratio - exact) <= 1e-12);
-    // First order -Delta n / (n - 1): the series of 1 / (1 + x), x = Delta n / (n - 1), is
-    // alternating, so the remainder is at most x^2 (about 3.7e-6 here).
-    const double x = dn / (n[1] - 1.0);
-    CHECK(std::abs((ratio - 1.0) + x) <= x * x);
+    const double x = (n1 - n[1]) / (n[1] - 1.0);
+    const double aberration = std::abs(efl_of(n1) / efl_of(n[1]) - (n[1] - 1.0) / (n1 - 1.0));
+    const double rounding = (bound(n1) + bound(n[1])) / efl_of(n[1]);
+    CHECK(std::abs((ratio - 1.0) + x) <= x * x + aberration + rounding);
     CHECK(std::abs((ratio - 1.0) + x) > 0.5 * x * x);  // content: the second order is there
   }
 
   SECTION("Delta nu_d") {
-    // ADR 0036, point 1c: D = n_F - n_C, nu_d = (n_d - 1)/D, D' = (n_d - 1)/(nu_d + Delta nu),
-    // n'(lambda) = n(lambda) + (D'/D - 1)(n(lambda) - n_d) with Delta n_d = 0.
     volatile double dv_in = 1.0;
     const double dv = dv_in;
-    const double d = fi.nf - fi.nc;
-    const double vd = (fi.nd - 1.0) / d;
-    const double a = ((fi.nd - 1.0) / (vd + dv)) / d;
-    std::vector<double> f(3);
-    std::vector<double> f0(3);
+    std::vector<double> v(3);
+    std::vector<double> v0(3);
     for (std::size_t k = 0; k < 3; ++k) {
-      f0[k] = radius / (n[k] - 1.0);
-      f[k] = radius / (n[k] + (a - 1.0) * (n[k] - fi.nd) - 1.0);
-      CHECK(std::abs(value(ctx, {0.0, dv}, ids[k]) - f[k]) <= 1e-12 * 100.0);
+      const double nk = perturbed(n[k], 0.0, dv);
+      v[k] = value(ctx, {0.0, dv}, ids[k]);
+      v0[k] = nominal_value(ctx, ids[k]);
+      CHECK(std::abs(v[k] - efl_of(nk)) <= bound(nk));
     }
-    // Linear in eps = a - 1 (n' is exactly linear in eps): d f = -f^2 / R * eps x with
-    // x = n - n_d, so the change of f_F - f_C is lin = -eps (f_F^2 x_F - f_C^2 x_C) / R. The
-    // remainder per wavelength is exactly f t^2 / (1 + t), t = eps x / (n - 1) (f / (1 + t) =
-    // f (1 - t + t^2 / (1 + t))). Sign: a larger nu_d is less dispersion, f_F - f_C (< 0)
-    // grows.
-    const double eps = a - 1.0;
-    const double change = (f[0] - f[2]) - (f0[0] - f0[2]);
+    // Linear in eps = D'/D - 1 (n' is exactly linear in eps): for the paraxial f = R / (n - 1),
+    // d f = -f^2 / R * eps x with x = n - n_d, so the change of f_F - f_C is lin = -eps (f_F^2 x_F
+    // - f_C^2 x_C) / R. The remainder per wavelength is exactly f t^2 / (1 + t), t = eps x / (n -
+    // 1) (f / (1 + t) = f (1 - t + t^2 / (1 + t))). The code's values add the change of the
+    // aberration term (from efl_of) and their rounding. Sign: a larger nu_d is less dispersion,
+    // f_F - f_C (< 0) grows.
+    const double eps = ((fi.nd - 1.0) / (vd + dv)) / d - 1.0;
+    const double change = (v[0] - v[2]) - (v0[0] - v0[2]);
     double lin = 0.0;
     double remainder = 0.0;
     for (const std::size_t k : {std::size_t{0}, std::size_t{2}}) {
+      const double f0 = radius / (n[k] - 1.0);
       const double x = n[k] - fi.nd;
-      const double tk = eps * x / (n[k] - 1.0);
-      lin += (k == 0 ? -1.0 : 1.0) * eps * f0[k] * f0[k] * x / radius;
-      remainder += f0[k] * tk * tk / (1.0 - std::abs(tk));
+      const double t = eps * x / (n[k] - 1.0);
+      const double nk = perturbed(n[k], 0.0, dv);
+      lin += (k == 0 ? -1.0 : 1.0) * eps * f0 * f0 * x / radius;
+      remainder += f0 * t * t / (1.0 - std::abs(t));
+      remainder += std::abs((efl_of(nk) - radius / (nk - 1.0)) - (efl_of(n[k]) - f0));
+      remainder += bound(nk) + bound(n[k]);
     }
-    INFO("change " << change << ", linear " << lin << ", remainder bound " << remainder);
+    INFO("change " << change << ", linear " << lin << ", bound " << remainder);
     CHECK(change > 0.0);
-    CHECK(std::abs(change - lin) <= remainder + 1e-12 * 100.0);
+    CHECK(std::abs(change - lin) <= remainder);
   }
 }
 
@@ -593,8 +636,8 @@ TEST_CASE("m7 case 9: a tolerance on a row of the parameter table", "[m7]") {
 TEST_CASE("m7 case 10: double pass, a mirror tilt deviates by 2 theta", "[m7]") {
   // double_pass: the axial ray passes the plate, meets the flat mirror 100 mm behind P.S2 and
   // returns. Mirror tilt theta about x at its vertex: the normal -z turns to (0, sin theta,
-  // -cos theta), d' = d - 2 (d.n) n = (0, sin 2theta, -cos 2theta); after 100 mm back along -z
-  // the ray is at y = 100 tan(2 theta) on P.S2 (second pass).
+  // -cos theta), d' = d - 2 (d.n) n (de Greve, Eq. (13); docs/quellen.md) = (0, sin 2theta, -cos
+  // 2theta); after 100 mm back along -z the ray is at y = 100 tan(2 theta) on P.S2 (second pass).
   const System s = load("double_pass.rtt.json");
   const TrialContext tilt = context(s, items(s, {"mirror-tilt"}));
   volatile double theta_in = 0.5;
@@ -617,11 +660,11 @@ TEST_CASE("m7 case 11: the sign of the assembly tilt", "[m7]") {
   const System s = load("assembly_motion.rtt.json");
   const TrialContext module = context(s, items(s, {"module-tilt"}));
   volatile double theta_in = 1.0;
-  const double theta = theta_in;
-  const double plus = value(module, {theta}, "chief-y");
-  const double minus = value(module, {-theta}, "chief-y");
+  const double theta_deg = theta_in;
+  const double plus = value(module, {theta_deg}, "chief-y");
+  const double minus = value(module, {-theta_deg}, "chief-y");
   CHECK(plus > 0.0);
-  CHECK(std::abs(plus - 50.0 * std::tan(rtt::math::deg_to_rad(theta))) <= kEps);
+  CHECK(std::abs(plus - 50.0 * std::tan(rtt::math::deg_to_rad(theta_deg))) <= kEps);
   CHECK(std::abs(minus + plus) <= kEps);
 }
 
@@ -649,7 +692,7 @@ TEST_CASE("m7 case 12: relative placement follows a thickness, not a rigid motio
   const rtt::tolerance::Applied b = rtt::tolerance::apply(shift, std::vector<double>{dz});
   CHECK(std::abs(global_z(b.system, b.perturbation, "IL") - il - dz) <= kEps);
   CHECK(std::abs(global_z(b.system, b.perturbation, "IMG") - img - dz) <= kEps);
-  CHECK(same(global_z(b.system, b.perturbation, "W.S1"), w));
+  CHECK(std::abs(global_z(b.system, b.perturbation, "W.S1") - w) <= kEps);
 }
 
 TEST_CASE("m7 case 13: tolerance classes with overrides and explicit items", "[m7]") {
@@ -670,9 +713,11 @@ TEST_CASE("m7 case 13: tolerance classes with overrides and explicit items", "[m
     const rtt::tolerance::ItemOrigin& o = a.origins[i];
     if (o.source != rtt::tolerance::ItemOrigin::Source::Class) continue;
     const auto& c = a.classes.items[o.index];
-    if (c.value_override) {
-      // The single value replaces the class limit.
-      CHECK(item.limit == 0.005);
+    if (const std::optional<std::size_t> v = c.value_override) {
+      // The single value of the file replaces the class limit (two here: L1.S2
+      // curvature_relative 0.005 and L1 segment 1 index 0.001).
+      CHECK(item.limit ==
+            std::get<rtt::model::ToleranceValueOverride>(s.tolerances.overrides[*v]).limit);
       single_value = true;
       continue;
     }
