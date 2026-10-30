@@ -669,8 +669,9 @@ TEST_CASE("invalid path id or wavelength index is an error", "[paraxial]") {
 // A thick biconvex lens R1 = r, R2 = -r, n = 1.5 has phi1 = phi2 = 0.5 / r and the power
 // Phi = phi1 + phi2 - (d / n) phi1 phi2 (lensmaker formula, as in check_thick_lens), so it is
 // afocal for d = 6 r and has Phi = (6 - d) / (6 r^2) near it. The threshold is relative:
-// afocal iff |Phi| <= 16 N u S with S the power of the same y-nu trace in magnitudes, the
-// transfers with (|z'| + |z|) / |n| (derivation in paraxial.cpp).
+// afocal iff |Phi| <= 16 N u (S + E) with S the power of the same y-nu trace in magnitudes, the
+// transfers with |z' - z| / |n|, and E its coordinate channel, fed with (|z'| + |z|) |nu| / |n|
+// at each transfer (derivation in paraxial.cpp, #280).
 
 TEST_CASE("afocal threshold: a micro lens is afocal despite rounding of its coordinates",
           "[paraxial][afocal]") {
@@ -893,8 +894,9 @@ TEST_CASE("#280: a 30-surface microscope 300 mm from the origin is focal with fi
 // (front.a), the exit pupil (back.d) and the image of a finite object (nu_out). An element that
 // is zero in exact arithmetic comes out as a rounding remainder of about N u S, which would put
 // the pupil or the image some 1e16 mm away instead of at infinity. The thresholds are relative,
-// as for the afocal test: |element| <= T = 16 (N + 1) u S with S the magnitude of the same
-// element from the y-nu trace in magnitudes, N the number of events traced (paraxial.cpp).
+// as for the afocal test: |element| <= T = 16 (N + 1) u (S + E) with S + E the magnitude of the
+// same element from the y-nu trace in magnitudes and its coordinate channel, N the number of
+// events traced (paraxial.cpp, #280).
 //
 // The test lens: plano-convex, n = 1.5, |R| = 64 mm, d = 3 mm, in VACUUM, f = 128 mm. With the
 // curved side first the rear focal point lies 126 mm behind S2 (z = 129, telecentric_singlet);
@@ -902,16 +904,16 @@ TEST_CASE("#280: a 30-surface microscope 300 mm from the origin is focal with fi
 // an object there sees the other side at infinity. Moving it by delta changes the element by
 // |delta| / 128 exactly (front.a = 1 - 1/64 - (z_stop - 3)/128, back.d and the image's d =
 // 1 - (128 -+ delta)/128). Thresholds, derived from the magnitude trace with u = 2^-53:
-// - entrance pupil: N = 2 (S1, S2), S = y of (1, 0): 1 + 3 (1/128)/1.5 + (129 + 3)/128 =
-//   2.046875, so T = 48 u S = 1.09e-14 and the shift at the threshold is 128 T = 1.40e-12 mm =
-//   49 ulp(129) (ulp(129) = 2^-45);
-// - exit pupil and image: N = 2, S = nu of (0, 1): 1 + (126 + 2)/128 = 2, T = 1.07e-14, shift
-//   1.36e-12 mm = 96 ulp(126) (ulp(126) = 2^-46).
-// The computed element differs from the exact one by at most 8 (N + 1) u S = T/2. The cases
-// therefore hold with a margin on both sides: |k| <= 16 ulp gives at most 0.33 T (entrance)
-// and 0.17 T (exit, image), at most 0.83 T computed, so infinity; 148 ulp(129) and 290 ulp(126)
-// give 3.0 T, at least 2.5 T computed, so finite. A threshold ten times too large or too small
-// fails one of them.
+// - entrance pupil: N = 2 (S1, S2), y of (1, 0): S = 1 + 3 (1/128)/1.5 + (129 - 3)/128 = 2 and
+//   E = 3 (1/128)/1.5 + (129 + 3)/128 = 1.046875, so T = 48 u (S + E) = 1.62e-14 and the shift at
+//   the threshold is 128 T = 2.08e-12 mm = 73 ulp(129) (ulp(129) = 2^-45);
+// - exit pupil and image: N = 2, nu of (0, 1): S = 1 + (126 + 2)/128 = 2 and E = (126 + 2)/128 =
+//   1, T = 1.60e-14, shift 2.05e-12 mm = 144 ulp(126) (ulp(126) = 2^-46).
+// The computed element differs from the exact one by at most 8 (N + 1) u (S + E) = T/2. The
+// cases therefore hold with a margin on both sides: |k| <= 16 ulp gives at most 0.22 T
+// (entrance) and 0.11 T (exit, image), at most 0.72 T computed, so infinity; 148 ulp(129) and
+// 290 ulp(126) give 2.0 T, at least 1.5 T computed, so finite. A threshold ten times too large
+// or too small fails one of them.
 
 namespace {
 
