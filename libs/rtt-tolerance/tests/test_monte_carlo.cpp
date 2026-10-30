@@ -5,8 +5,8 @@
 //
 // Bands of the statistics (docs/quellen.md):
 // - mean: |mean - mu| <= 4 sigma / sqrt(N) (NIST e-Handbook, Sec. 1.3.5.2, with the known sigma);
-// - variance: |s^2 - sigma^2| <= 4 sqrt(Var(s^2)), Var(s^2) = (mu_4 - (N - 3) / (N - 1) sigma^4) /
-// N
+// - variance: |s^2 - sigma^2| <= 4 sqrt(Var(s^2)) with
+//   Var(s^2) = (mu_4 - (N - 3) / (N - 1) sigma^4) / N
 //   (MathWorld, "Sample Variance Distribution", Eq. (22), for the estimator with N - 1). This
 //   assumes a nearly normal s^2; it is not a Chebyshev band;
 // - yield: the true fraction lies in the Wilson interval with z = z_{1 - 1e-4 / 2} = 3.8906,
@@ -490,7 +490,13 @@ TEST_CASE("monte carlo: RSS against Monte Carlo, linear with a truncated normal"
   const rtt::tolerance::ToleranceSensitivity rss = rtt::tolerance::sensitivity(ctx);
   REQUIRE(rss.criteria.size() == 1);
   const double predicted = required(rss.criteria[0].predicted_sigma);
-  CHECK(std::abs(predicted * predicted - variance) <= 1e-15);
+  // predicted = c |delta| with delta = (Phi_+ - Phi_-) / 2 from two traced coordinates, each to
+  // kEps: |predicted - sigma_t| <= c kEps, so |predicted^2 - sigma_t^2| <= 2 sigma_t c kEps (to
+  // first order), plus 8 ulp of the variance for exp and erf of another libm.
+  const double c = rtt::tolerance::sigma_ratio(ToleranceDistribution::Normal);
+  const double bound = 2.0 * std::sqrt(variance) * c * kEps +
+                       8.0 * std::numeric_limits<double>::epsilon() * variance;
+  CHECK(std::abs(predicted * predicted - variance) <= bound);
 
   const MonteCarloResult r = rtt::tolerance::monte_carlo(ctx, with(25901, 200));
   REQUIRE(r.criteria.size() == 1);
@@ -504,9 +510,10 @@ TEST_CASE("monte carlo: RSS against Monte Carlo, linear with a truncated normal"
 TEST_CASE("monte carlo: RSS against Monte Carlo, quadratic", "[tolerance][monte_carlo]") {
   // test_sensitivity.cpp, "q = k^2 T^2": a detector shift x gives the spot Phi = k |x| with
   // Phi_0 = 0, so Phi^2 = k^2 x^2. For x uniform on [-T, T]: E[Phi^2] = k^2 T^2 / 3, which is the
-  // prediction E[Phi^2]_RSS = Phi_0^2 + c^2 q with c^2 = 1/3 and q = k^2 T^2 (#258). The mean of
-  // Phi^2 over N trials lies within 4 s(Phi^2) / sqrt(N) of it (NIST 1.3.5.2, with the sample
-  // standard deviation of Phi^2 in place of the unknown sigma).
+  // prediction E[Phi^2]_RSS = Phi_0^2 + c^2 q with c^2 = 1/3 and q = k^2 T^2 (#258). With
+  // E[x^4] = 9/5 sigma^4 = T^4 / 5 (kurtosis 9/5, NIST 1.3.6.6.2) Var(Phi^2) = k^4 (T^4/5 - T^4/9)
+  // = (4/45) q^2, q = 3 E[Phi^2]_RSS; the mean of Phi^2 over N trials lies within
+  // 4 sqrt(Var(Phi^2) / N) of the prediction (NIST 1.3.5.2, with the known sigma).
   System s = lens_system(100.0);
   add_detector(s, 100.0);
   s.tolerances.items = {item("det.dz", "detector", ToleranceKind::ShiftZ, 0.5)};
@@ -524,9 +531,10 @@ TEST_CASE("monte carlo: RSS against Monte Carlo, quadratic", "[tolerance][monte_
   for (double& x : squares) x *= x;
   const rtt::tolerance::detail::Moments m = rtt::tolerance::detail::moments(squares);
   const double mean = required(m.mean);
-  const double s2 = required(m.standard_deviation);
+  const double q = 3.0 * predicted;
+  const double sigma = std::sqrt(4.0 / 45.0) * q;
   INFO("mean of Phi^2 " << mean << " against " << predicted);
-  CHECK(std::abs(mean - predicted) <= 4.0 * s2 / std::sqrt(200.0));
+  CHECK(std::abs(mean - predicted) <= 4.0 * sigma / std::sqrt(200.0));
   // Content guard: the spot varies.
   CHECK(required(r.criteria[0].max) > 2.0 * required(r.criteria[0].min));
 }

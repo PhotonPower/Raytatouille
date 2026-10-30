@@ -112,6 +112,15 @@ Resolved resolve(const std::optional<model::MonteCarloDefaults>& file,
   return r;
 }
 
+/// D6: the items' limits and distributions before any trial, not inside the parallel loop
+/// (Rule 3); perturbation() throws for them, and prepare() does not check them.
+/// @throws std::invalid_argument as perturbation()
+void check_items(std::uint64_t seed, std::span<const model::ToleranceItem> items) {
+  for (const model::ToleranceItem& item : items) {
+    [[maybe_unused]] const double draw = perturbation(seed, 0, item);
+  }
+}
+
 /// The trials in parallel, each in its own slot (ADR 0004; ADR 0036, point 4): bitwise the same
 /// for every number of threads. A cancellation leaves the remaining slots empty.
 /// @throws whatever the progress callback throws (RunMonitor::finish)
@@ -244,11 +253,7 @@ MonteCarloResult monte_carlo(const TrialContext& context,
                              const MonteCarloOptions& options,
                              const trace::RunControl* control) {
   const Resolved resolved = resolve(context.monte_carlo_defaults(), options);
-  // D6: the items' limits and distributions before any trial, not inside the parallel loop
-  // (Rule 3); perturbation() throws for them, and prepare() does not check them.
-  for (const model::ToleranceItem& item : context.items()) {
-    [[maybe_unused]] const double draw = perturbation(resolved.seed, 0, item);
-  }
+  check_items(resolved.seed, context.items());
   const trace::RunControl none;
   const trace::RunControl& run = control != nullptr ? *control : none;
   MonteCarloResult out;
@@ -291,8 +296,11 @@ MonteCarloResult monte_carlo(const model::System& system,
                              const coating::CoatingLibrary* coatings,
                              const MonteCarloOptions& options,
                              const trace::RunControl* control) {
-  resolve(system.tolerances.monte_carlo, options);  // throws before the expensive part
+  // Throws before the expensive part: the options, then the items before prepare() runs the
+  // compensators for Phi_0.
+  const Resolved resolved = resolve(system.tolerances.monte_carlo, options);
   ToleranceItems expansion = expand(system, materials);
+  check_items(resolved.seed, expansion.items);
   const TrialContext context =
       prepare(system, materials, coatings, expansion.items, options.trial, control);
   MonteCarloResult out = monte_carlo(context, options, control);
