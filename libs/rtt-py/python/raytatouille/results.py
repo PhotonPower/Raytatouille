@@ -54,7 +54,7 @@ __all__ = [
 ]
 
 FORMAT = "raytatouille-result"
-SCHEMA_VERSION = "0.1.13"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
+SCHEMA_VERSION = "0.1.14"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
 # 0.1.3: status Evanescent, status arrays one entry longer (#127); 0.1.4: PathTransmission,
 # PathOplDifference, GhostRanking (#133); 0.1.5: RayBatch wave_x/y/z, mode_index (#134);
 # 0.1.6: RaytraceReport, SystemReport, DimensionReport (#177);
@@ -66,6 +66,7 @@ SCHEMA_VERSION = "0.1.13"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84)
 # 0.1.12: Psf, ThroughFocus, Mtf, EncircledEnergy; PupilCells obscuration, inner_rim,
 # PupilFunction obscuration (#209 P1b, #229 C)
 # 0.1.13: StokesPupil (#211)
+# 0.1.14: PupilFunction mapping_limit (#286)
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a
@@ -81,7 +82,8 @@ _ADDED: dict[str, tuple[tuple[int, tuple[str, ...]], ...]] = {
                  (9, ("q",))),  # 0.1.9 (#207)
     "RayPaths": ((9, ("polarization", "prt", "q")),),  # 0.1.9 (#207)
     "PupilCells": ((12, ("obscuration", "inner_rim")),),  # 0.1.12 (#229 C, Python #209 P1b)
-    "PupilFunction": ((12, ("obscuration",)),),  # 0.1.12 (#229 C, Python #209 P1b)
+    "PupilFunction": ((12, ("obscuration",)),  # 0.1.12 (#229 C, Python #209 P1b)
+                      (14, ("mapping_limit",))),  # 0.1.14 (#286)
 }
 _FIELDS: dict[str, tuple[str, ...]] = {
     # analysis
@@ -109,7 +111,7 @@ _FIELDS: dict[str, tuple[str, ...]] = {
                       "grid", "focus_shift", "apodization", "lost_warning_fraction",
                       "mapping_warning", "sphere", "fraction", "px", "py", "amplitude", "w",
                       "status", "prt", "mapping", "arrived_fraction", "losses", "warnings",
-                      "obscuration"),
+                      "obscuration", "mapping_limit"),
     "ZernikeFit": ("path", "field", "wavelength", "wavelength_um", "reference_wavelength_um",
                    "coefficients", "residual_rms", "sigma", "sigma_bf", "strehl", "cells",
                    "arrived_fraction", "warnings"),
@@ -505,6 +507,7 @@ def _upgrade(type_name: str, data: dict[str, Any], absent: list[str]) -> dict[st
         added = {"obscuration": 0.0,
                  "inner_rim": np.zeros(np.shape(data["fraction"]), dtype=np.uint8)}
     elif type_name == "PupilFunction":
-        added = {"obscuration": 0.0}
+        # Files before 0.1.14 were computed without the limit: 1 = off (ADR 0032, addendum #286).
+        added = {"obscuration": 0.0, "mapping_limit": 1.0}
     data = {**data, **{k: v for k, v in added.items() if k in absent and k not in data}}
     return {k: data[k] for k in _required(type_name)}

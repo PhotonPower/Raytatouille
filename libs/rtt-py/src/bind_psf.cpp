@@ -92,7 +92,9 @@ analysis::PupilFunctionOptions pupil_options(int grid,
                                              double focus_shift,
                                              trace::Aiming aiming,
                                              double lost_warning_fraction,
-                                             double mapping_warning) {
+                                             double mapping_warning,
+                                             double mapping_limit,
+                                             double mapping_limit) {
   analysis::PupilFunctionOptions o;
   o.grid = grid;
   o.apodization = apodization;
@@ -100,6 +102,7 @@ analysis::PupilFunctionOptions pupil_options(int grid,
   o.aiming = aiming;
   o.lost_warning_fraction = lost_warning_fraction;
   o.mapping_warning = mapping_warning;
+  o.mapping_limit = mapping_limit;
   return o;
 }
 
@@ -315,12 +318,13 @@ void bind_psf(nb::module_& m) {
          const Wavelengths& wavelengths, int grid, int padding, double apodization,
          double focus_shift, trace::Aiming aiming, double aliasing_factor,
          double undersampled_waves, double lost_warning_fraction, double mapping_warning,
-         std::optional<int> threads, const std::optional<trace::CancelToken>& cancel,
+         double mapping_limit, std::optional<int> threads,
+         const std::optional<trace::CancelToken>& cancel,
          const std::optional<nb::callable>& progress) {
         const trace::RunControl control = run_control(cancel, progress);
         analysis::PsfOptions o;
         o.pupil = pupil_options(grid, apodization, focus_shift, aiming, lost_warning_fraction,
-                                mapping_warning);
+                                mapping_warning, mapping_limit);
         o.padding = padding;
         o.wavelengths = wavelengths;
         o.aliasing_factor = aliasing_factor;
@@ -330,8 +334,8 @@ void bind_psf(nb::module_& m) {
       },
       "system"_a, "path"_a, "field"_a, "wavelengths"_a.none(), "grid"_a, "padding"_a,
       "apodization"_a, "focus_shift"_a, "aiming"_a, "aliasing_factor"_a, "undersampled_waves"_a,
-      "lost_warning_fraction"_a, "mapping_warning"_a, "threads"_a.none(), "cancel"_a.none(),
-      "progress"_a.none(),
+      "lost_warning_fraction"_a, "mapping_warning"_a, "mapping_limit"_a, "threads"_a.none(),
+      "cancel"_a.none(), "progress"_a.none(),
       "Diffraction PSF of `field`; wavelengths None means all with their model weights.");
   m.def(
       "psf_at",
@@ -354,33 +358,33 @@ void bind_psf(nb::module_& m) {
       [](const compile::CompiledSystem& s, const PathArg& path, std::uint16_t field,
          std::optional<std::uint16_t> wavelength, const std::vector<double>& shifts, int grid,
          double apodization, trace::Aiming aiming, double lost_warning_fraction,
-         double mapping_warning, std::optional<int> threads,
+         double mapping_warning, double mapping_limit, std::optional<int> threads,
          const std::optional<trace::CancelToken>& cancel,
          const std::optional<nb::callable>& progress) {
         const trace::RunControl control = run_control(cancel, progress);
-        const analysis::PupilFunctionOptions o =
-            pupil_options(grid, apodization, 0.0, aiming, lost_warning_fraction, mapping_warning);
+        const analysis::PupilFunctionOptions o = pupil_options(
+            grid, apodization, 0.0, aiming, lost_warning_fraction, mapping_warning, mapping_limit);
         const compile::PathId id = path_id(s, path);
         const std::uint16_t wl = wavelength_index(s, wavelength);
         return released(
             threads, [&] { return analysis::through_focus(s, id, field, wl, shifts, o, control); });
       },
       "system"_a, "path"_a, "field"_a, "wavelength"_a.none(), "shifts"_a, "grid"_a, "apodization"_a,
-      "aiming"_a, "lost_warning_fraction"_a, "mapping_warning"_a, "threads"_a.none(),
-      "cancel"_a.none(), "progress"_a.none(),
+      "aiming"_a, "lost_warning_fraction"_a, "mapping_warning"_a, "mapping_limit"_a,
+      "threads"_a.none(), "cancel"_a.none(), "progress"_a.none(),
       "Strehl ratio per focus shift; wavelength None means the reference.");
   m.def(
       "mtf",
       [](const compile::CompiledSystem& s, const PathArg& path, std::uint16_t field,
          const Wavelengths& wavelengths, int grid, double apodization, double focus_shift,
          trace::Aiming aiming, bool map, bool complex_otf, double undersampled_waves,
-         double lost_warning_fraction, double mapping_warning, std::optional<int> threads,
-         const std::optional<trace::CancelToken>& cancel,
+         double lost_warning_fraction, double mapping_warning, double mapping_limit,
+         std::optional<int> threads, const std::optional<trace::CancelToken>& cancel,
          const std::optional<nb::callable>& progress) {
         const trace::RunControl control = run_control(cancel, progress);
         analysis::MtfOptions o;
         o.pupil = pupil_options(grid, apodization, focus_shift, aiming, lost_warning_fraction,
-                                mapping_warning);
+                                mapping_warning, mapping_limit);
         o.wavelengths = wavelengths;
         o.outputs.map = map;
         o.outputs.complex_otf = complex_otf;
@@ -390,8 +394,8 @@ void bind_psf(nb::module_& m) {
       },
       "system"_a, "path"_a, "field"_a, "wavelengths"_a.none(), "grid"_a, "apodization"_a,
       "focus_shift"_a, "aiming"_a, "map"_a, "complex_otf"_a, "undersampled_waves"_a,
-      "lost_warning_fraction"_a, "mapping_warning"_a, "threads"_a.none(), "cancel"_a.none(),
-      "progress"_a.none(),
+      "lost_warning_fraction"_a, "mapping_warning"_a, "mapping_limit"_a, "threads"_a.none(),
+      "cancel"_a.none(), "progress"_a.none(),
       "Diffraction MTF of `field`; wavelengths None means all with their model weights.");
   m.def(
       "mtf_of_pupil",
@@ -409,12 +413,13 @@ void bind_psf(nb::module_& m) {
          const std::vector<double>& radii, EeCentre centre, const Wavelengths& wavelengths,
          int grid, double apodization, double focus_shift, trace::Aiming aiming,
          double undersampled_waves, double lost_warning_fraction, double mapping_warning,
-         std::optional<int> threads, const std::optional<trace::CancelToken>& cancel,
+         double mapping_limit, std::optional<int> threads,
+         const std::optional<trace::CancelToken>& cancel,
          const std::optional<nb::callable>& progress) {
         const trace::RunControl control = run_control(cancel, progress);
         analysis::EncircledEnergyOptions o;
         o.pupil = pupil_options(grid, apodization, focus_shift, aiming, lost_warning_fraction,
-                                mapping_warning);
+                                mapping_warning, mapping_limit);
         o.wavelengths = wavelengths;
         o.centre = centre;
         o.undersampled_waves = undersampled_waves;
@@ -424,8 +429,8 @@ void bind_psf(nb::module_& m) {
       },
       "system"_a, "path"_a, "field"_a, "radii"_a, "centre"_a, "wavelengths"_a.none(), "grid"_a,
       "apodization"_a, "focus_shift"_a, "aiming"_a, "undersampled_waves"_a,
-      "lost_warning_fraction"_a, "mapping_warning"_a, "threads"_a.none(), "cancel"_a.none(),
-      "progress"_a.none(),
+      "lost_warning_fraction"_a, "mapping_warning"_a, "mapping_limit"_a, "threads"_a.none(),
+      "cancel"_a.none(), "progress"_a.none(),
       "Encircled energy of `field` at `radii` (mm); wavelengths None means all.");
   m.def(
       "encircled_energy_of_pupil",

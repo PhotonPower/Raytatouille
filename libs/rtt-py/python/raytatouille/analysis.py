@@ -457,6 +457,7 @@ def pupil_function(
     threads: int | None = None,
     lost_warning_fraction: float = 0.5,
     mapping_warning: float = 0.01,
+    mapping_limit: float = 0.05,
     cancel: CancelToken | None = None,
     progress: ProgressCallback | None = None,
 ) -> PupilFunction:
@@ -468,6 +469,8 @@ def pupil_function(
 
     ``mapping`` is the affine mapping of the pupil onto the direction sines (None for an afocal
     image space); above ``mapping_warning`` its delta_max warns with pupil.mapping_nonlinear.
+    ``mapping_limit`` is kept for the FFT analyses of the pupil function (psf_at, mtf,
+    encircled_energy); pupil_function itself never rejects.
 
     Raises AnalysisError (location /paths/i) for a path with crystal modes, ValueError for
     options out of range. Warnings stay in ``warnings`` and are also issued as
@@ -475,7 +478,8 @@ def pupil_function(
     """
     return _warn(_core.pupil_function(
         compiled(system, materials), path, field, wavelength, grid, apodization, focus_shift,
-        aiming, with_prt, lost_warning_fraction, mapping_warning, threads, cancel, progress
+        aiming, with_prt, lost_warning_fraction, mapping_warning, mapping_limit, threads, cancel,
+        progress,
     ))
 
 
@@ -543,6 +547,7 @@ def psf(
     threads: int | None = None,
     lost_warning_fraction: float = 0.5,
     mapping_warning: float = 0.01,
+    mapping_limit: float = 0.05,
     cancel: CancelToken | None = None,
     progress: ProgressCallback | None = None,
 ) -> Psf:
@@ -555,6 +560,12 @@ def psf(
     the Strehl ratio at C'. ``wavelengths``: indices, or None for all system wavelengths with
     their model weights (each wavelength on its own lattice, weighted with w_i E_i).
 
+    Above ``mapping_limit`` (default 0.05; 1 switches the check off) delta_max of the pupil
+    mapping makes the FFT PSF wrong: the system does not meet the sine condition, e.g. the ideal
+    lens at a high NA, whose FFT PSF would be up to tan theta / sin theta too narrow. Then psf(),
+    through_focus(), mtf(), encircled_energy() and psf_at() raise AnalysisError with ``code``
+    pupil.mapping_too_nonlinear (ADR 0033, addendum #286).
+
     Raises AnalysisError (location /paths/i) for an afocal image space or a path with crystal
     modes, ValueError for options out of range. Warnings (rays.lost, stop.clips_beam,
     pupil.mapping_nonlinear, psf.aliasing, psf.pupil_undersampled) are issued as
@@ -564,7 +575,7 @@ def psf(
         compiled(system, materials), path, field,
         None if wavelengths is None else list(wavelengths), grid, padding, apodization,
         focus_shift, aiming, aliasing_factor, undersampled_waves, lost_warning_fraction,
-        mapping_warning, threads, cancel, progress,
+        mapping_warning, mapping_limit, threads, cancel, progress,
     ))
 
 
@@ -610,6 +621,7 @@ def through_focus(
     threads: int | None = None,
     lost_warning_fraction: float = 0.5,
     mapping_warning: float = 0.01,
+    mapping_limit: float = 0.05,
     cancel: CancelToken | None = None,
     progress: ProgressCallback | None = None,
 ) -> ThroughFocus:
@@ -621,7 +633,8 @@ def through_focus(
     Raises ValueError for a non-finite shift, AnalysisError as psf()."""
     return _warn(_core.through_focus(
         compiled(system, materials), path, field, wavelength, [float(x) for x in shifts], grid,
-        apodization, aiming, lost_warning_fraction, mapping_warning, threads, cancel, progress,
+        apodization, aiming, lost_warning_fraction, mapping_warning, mapping_limit, threads, cancel,
+        progress,
     ))
 
 
@@ -650,6 +663,7 @@ def mtf(
     threads: int | None = None,
     lost_warning_fraction: float | None = None,
     mapping_warning: float | None = None,
+    mapping_limit: float | None = None,
     cancel: CancelToken | None = None,
     progress: ProgressCallback | None = None,
 ) -> Mtf:
@@ -664,8 +678,9 @@ def mtf(
     pupil_function() unless given), or a PupilFunction (e.g. from refocus()): then only ``map``
     and ``complex_otf`` apply, the others raise ValueError.
 
-    Raises AnalysisError (location /paths/i) for an afocal image space or a path with crystal
-    modes, ValueError for options out of range. Warnings are issued as RaytatouilleWarning.
+    Raises AnalysisError (location /paths/i) for an afocal image space, a path with crystal
+    modes or delta_max above ``mapping_limit`` (code pupil.mapping_too_nonlinear, as psf()),
+    ValueError for options out of range. Warnings are issued as RaytatouilleWarning.
     """
     if isinstance(system, PupilFunction):
         _pupil_form("mtf", {"path": path, "field": field, "wavelengths": wavelengths,
@@ -673,8 +688,8 @@ def mtf(
                             "focus_shift": focus_shift, "aiming": aiming,
                             "undersampled_waves": undersampled_waves, "materials": materials,
                             "threads": threads, "lost_warning_fraction": lost_warning_fraction,
-                            "mapping_warning": mapping_warning, "cancel": cancel,
-                            "progress": progress})
+                            "mapping_warning": mapping_warning, "mapping_limit": mapping_limit,
+                            "cancel": cancel, "progress": progress})
         return _warn(_core.mtf_of_pupil(system, map, complex_otf))
     return _warn(_core.mtf(
         compiled(system, materials), 0 if path is None else path, 0 if field is None else field,
@@ -683,7 +698,8 @@ def mtf(
         Aiming.REAL if aiming is None else aiming, map, complex_otf,
         0.5 if undersampled_waves is None else undersampled_waves,
         0.5 if lost_warning_fraction is None else lost_warning_fraction,
-        0.01 if mapping_warning is None else mapping_warning, threads, cancel, progress,
+        0.01 if mapping_warning is None else mapping_warning,
+        0.05 if mapping_limit is None else mapping_limit, threads, cancel, progress,
     ))
 
 
@@ -704,6 +720,7 @@ def encircled_energy(
     threads: int | None = None,
     lost_warning_fraction: float | None = None,
     mapping_warning: float | None = None,
+    mapping_limit: float | None = None,
     cancel: CancelToken | None = None,
     progress: ProgressCallback | None = None,
 ) -> EncircledEnergy:
@@ -724,7 +741,8 @@ def encircled_energy(
             "apodization": apodization, "focus_shift": focus_shift, "aiming": aiming,
             "undersampled_waves": undersampled_waves, "materials": materials,
             "threads": threads, "lost_warning_fraction": lost_warning_fraction,
-            "mapping_warning": mapping_warning, "cancel": cancel, "progress": progress})
+            "mapping_warning": mapping_warning, "mapping_limit": mapping_limit, "cancel": cancel,
+            "progress": progress})
         return _warn(_core.encircled_energy_of_pupil(system, values, centre))
     return _warn(_core.encircled_energy(
         compiled(system, materials), 0 if path is None else path, 0 if field is None else field,
@@ -733,7 +751,8 @@ def encircled_energy(
         0.0 if focus_shift is None else focus_shift, Aiming.REAL if aiming is None else aiming,
         0.5 if undersampled_waves is None else undersampled_waves,
         0.5 if lost_warning_fraction is None else lost_warning_fraction,
-        0.01 if mapping_warning is None else mapping_warning, threads, cancel, progress,
+        0.01 if mapping_warning is None else mapping_warning,
+        0.05 if mapping_limit is None else mapping_limit, threads, cancel, progress,
     ))
 
 

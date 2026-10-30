@@ -154,6 +154,8 @@ void bind_pupil(nb::module_& m) {
       .def_ro("apodization", &PupilFunction::apodization, "Gaussian factor G.")
       .def_ro("lost_warning_fraction", &PupilFunction::lost_warning_fraction)
       .def_ro("mapping_warning", &PupilFunction::mapping_warning)
+      .def_ro("mapping_limit", &PupilFunction::mapping_limit,
+              "Limit of the FFT analyses (pupil.mapping_too_nonlinear); 1 = off (#286).")
       .def_ro("sphere", &PupilFunction::sphere, "Reference sphere after focus_shift.")
       .def_ro("obscuration", &PupilFunction::obscuration,
               "Radius epsilon of the stop's central obscuration in pupil units (the inner radius "
@@ -198,7 +200,8 @@ void bind_pupil(nb::module_& m) {
       [](const compile::CompiledSystem& s, const PathArg& path, std::uint16_t field,
          std::optional<std::uint16_t> wavelength, int grid, double apodization, double focus_shift,
          trace::Aiming aiming, bool with_prt, double lost_warning_fraction, double mapping_warning,
-         std::optional<int> threads, const std::optional<trace::CancelToken>& cancel,
+         double mapping_limit, std::optional<int> threads,
+         const std::optional<trace::CancelToken>& cancel,
          const std::optional<nb::callable>& progress) {
         const trace::RunControl control = run_control(cancel, progress);
         analysis::PupilFunctionOptions options;
@@ -209,6 +212,7 @@ void bind_pupil(nb::module_& m) {
         options.with_prt = with_prt;
         options.lost_warning_fraction = lost_warning_fraction;
         options.mapping_warning = mapping_warning;
+        options.mapping_limit = mapping_limit;
         return released(threads, [&] {
           return analysis::pupil_function(s, path_id(s, path), field,
                                           wavelength_index(s, wavelength), options, control);
@@ -216,7 +220,7 @@ void bind_pupil(nb::module_& m) {
       },
       "system"_a, "path"_a, "field"_a, "wavelength"_a.none(), "grid"_a, "apodization"_a,
       "focus_shift"_a, "aiming"_a, "with_prt"_a, "lost_warning_fraction"_a, "mapping_warning"_a,
-      "threads"_a.none(), "cancel"_a.none(), "progress"_a.none(),
+      "mapping_limit"_a, "threads"_a.none(), "cancel"_a.none(), "progress"_a.none(),
       "Pupil function of `field`; wavelength None means the reference.");
   m.def(
       "refocus",

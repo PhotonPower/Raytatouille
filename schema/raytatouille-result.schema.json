@@ -1334,6 +1334,29 @@
       "if": {
         "properties": {
           "type": {
+            "const": "PupilFunction"
+          },
+          "schema_version": {
+            "not": {
+              "pattern": "^0\\.1\\.([0-9]|1[0-3])$"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "mapping_limit"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
             "const": "StokesPupil"
           }
         }

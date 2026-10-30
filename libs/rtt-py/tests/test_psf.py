@@ -231,3 +231,53 @@ def test_older_pupil_files_read_without_obscuration(f10: rt.CompiledSystem) -> N
         envelope["schema_version"] = "0.1.12"
         with pytest.raises(ValueError, match="misses"):
             rt.results.load_json(json.dumps(envelope))
+
+
+@pytest.mark.filterwarnings(
+    r"ignore:warning \[pupil\.mapping_nonlinear\]:raytatouille.errors.RaytatouilleWarning")
+def test_mapping_limit_rejects_the_fft_analyses() -> None:
+    """ADR 0033, addendum #286: the paraboloid at F/1.7 has delta_max about 0.0225; above
+    mapping_limit the FFT analyses raise AnalysisError with code pupil.mapping_too_nonlinear at
+    /paths/0; the default 0.05 and 1 (off) do not. The tolerances and the ideal lens at NA 0.5
+    are in libs/rtt-analysis/tests/test_mapping_limit.cpp."""
+    cs = rt.compile(rt.load(REFERENCE_DIR / "m2" / "paraboloid_stop.rtt.json"))
+    pupil = an.pupil_function(cs, grid=16, mapping_limit=0.02)  # never rejects itself
+    assert pupil.mapping_limit == 0.02
+    assert pupil.mapping is not None
+    assert 0.02 < pupil.mapping.delta_max < 0.03
+    calls = (lambda: an.psf(cs, grid=16, mapping_limit=0.02),
+             lambda: an.through_focus(cs, shifts=[0.0], grid=16, mapping_limit=0.02),
+             lambda: an.mtf(cs, grid=16, mapping_limit=0.02),
+             lambda: an.encircled_energy(cs, [0.001], grid=16, mapping_limit=0.02),
+             lambda: an.psf_at(pupil, [[0.0, 0.0]]),
+             lambda: an.mtf(pupil),
+             lambda: an.encircled_energy(pupil, [0.001]))
+    for call in calls:
+        with pytest.raises(rt.AnalysisError) as info:
+            call()
+        assert info.value.code == "pupil.mapping_too_nonlinear"
+        assert info.value.location == "/paths/0"
+        assert "delta_max" in str(info.value)
+    assert an.psf(cs, grid=16).strehl > 0.0  # default 0.05
+    assert an.psf(cs, grid=16, mapping_limit=1.0).strehl > 0.0
+    assert an.pupil_function(cs, grid=16).mapping_limit == 0.05
+    with pytest.raises(ValueError, match="mapping_limit"):
+        an.psf(cs, grid=16, mapping_limit=1.5)
+    with pytest.raises(ValueError, match="mapping_limit"):
+        an.mtf(pupil, mapping_limit=0.5)  # an option of the system form
+
+
+def test_older_pupil_files_read_without_mapping_limit(f10: rt.CompiledSystem) -> None:
+    # PupilFunction gained mapping_limit in 0.1.14 (ADR 0032, addendum #286): an older file was
+    # computed without the limit and reads with 1 (off); a newer one must have it.
+    obj = an.pupil_function(f10, grid=8)
+    envelope = json.loads(obj.to_json())
+    assert envelope["schema_version"] == "0.1.14"
+    del envelope["data"]["mapping_limit"]
+    envelope["schema_version"] = "0.1.13"
+    loaded = rt.results.load_json(json.dumps(envelope))
+    assert loaded.data["mapping_limit"] == 1.0
+    assert list(loaded.data) == list(obj.to_dict())
+    envelope["schema_version"] = "0.1.14"
+    with pytest.raises(ValueError, match="misses mapping_limit"):
+        rt.results.load_json(json.dumps(envelope))
