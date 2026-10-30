@@ -1,5 +1,5 @@
-"""Tolerancing (rtt-tolerance, ADR 0035 and 0036): the items of a tolerance set and the class
-table.
+"""Tolerancing (rtt-tolerance, ADR 0035 and 0036): the items of a tolerance set, the class
+table, the sensitivity run and the ratio sigma / T of a distribution.
 
 The tolerance set is part of the system (``System.tolerances``: class, overrides, explicit
 items, compensators, criteria; edited by patch like the rest of the model). ``expand`` turns it
@@ -163,8 +163,9 @@ def sensitivity(
     are used by reference and must not change during the run.
 
     Raises CompileError for an invalid tolerance set or system (as expand), ValueError for an
-    item whose target does not exist or does not fit its kind, OptimError for a criterion or
-    compensator operand the merit function does not support.
+    item whose target does not exist or does not fit its kind, OptimError for an operand of a
+    criterion or of the compensator merit (compensator_merit, else optimization) that the merit
+    function does not support, and whatever the progress callback raises.
     """
     result = _core.tolerance_sensitivity(
         system, materials, coatings, confirm,

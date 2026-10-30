@@ -138,6 +138,46 @@ def test_the_inverse_and_the_confirmation_use_the_smallest_limit() -> None:
         assert c.inverse.limits == [] and c.inverse.allowance is None
 
 
+def test_the_inverse_follows_from_the_allowance() -> None:
+    """ADR 0036, point 6 (Burge, slide 6), from the fields themselves and the bounds of the file:
+    efl is linear with max_change 0.5, so A = 0.5, share = A / sqrt(n) and
+    T'_i = T_i share / |delta_i|; spot-axis is quadratic with max 0.02, so
+    A^2 = 0.02^2 - Phi_0^2, share = A^2 / n and T'_i = T_i sqrt(share / q_i); its predicted mean
+    square is max(0, Phi_0^2 + sum c_i^2 q_i)."""
+    s = full()
+    n = len(s.items)
+    limits = [t.item.limit for t in s.items]
+    by_id = {c.id: c for c in s.criteria}
+    efl = by_id["efl"]
+    assert efl.inverse.allowance == pytest.approx(0.5, rel=1e-14)
+    share = efl.inverse.share
+    assert share is not None and share == pytest.approx(0.5 / math.sqrt(n), rel=1e-14)
+    for i, contribution in enumerate(efl.items):
+        delta = contribution.delta
+        assert delta is not None
+        expected = None if i in efl.inverse.unlimited else limits[i] * share / abs(delta)
+        assert efl.inverse.limits[i] == (None if expected is None else pytest.approx(
+            expected, rel=1e-14))
+    spot = by_id["spot-axis"]
+    phi0 = spot.nominal
+    assert phi0 is not None
+    allowance = spot.inverse.allowance
+    assert allowance is not None
+    assert allowance * allowance == pytest.approx(0.02 ** 2 - phi0 * phi0, rel=1e-12)
+    share = spot.inverse.share
+    assert share is not None and share == pytest.approx(allowance * allowance / n, rel=1e-14)
+    for i, contribution in enumerate(spot.items):
+        q = contribution.q
+        assert q is not None
+        if i in spot.inverse.unlimited:
+            assert spot.inverse.limits[i] is None
+        else:
+            assert spot.inverse.limits[i] == pytest.approx(limits[i] * math.sqrt(share / q),
+                                                           rel=1e-14)
+    qs = [x.q for x in spot.items if x.q is not None]
+    assert spot.predicted_mean_square == pytest.approx(max(0.0, phi0 * phi0 + sum(
+        t.sigma_ratio ** 2 * q for t, q in zip(s.items, qs))), rel=1e-12)
+
 def test_without_confirmation_the_first_part_is_the_same() -> None:
     s = tolerance.sensitivity(explicit_only(), materials=schott(), confirm=False)
     assert s.confirmation is None

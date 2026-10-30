@@ -223,8 +223,10 @@ void bind_sensitivity(nb::module_& m) {
   using tolerance::ItemContribution;
   result_class<ItemContribution>(
       m, "ItemContribution",
-      "One item for one criterion; all values in the unit of the criterion, None if not "
-      "defined (then excluded says why).")
+      "One item for one criterion. plus, minus, worst, delta and shift are in the unit of the "
+      "criterion, q in its square; delta and shift only for a linear criterion, q only for a "
+      "quadratic one (None otherwise). If the item is excluded, the derived values are None and "
+      "excluded gives the reason.")
       .def_ro("plus", &ItemContribution::plus, "Phi(+T_i).")
       .def_ro("minus", &ItemContribution::minus, "Phi(-T_i).")
       .def_ro("excluded", &ItemContribution::excluded,
@@ -268,10 +270,13 @@ void bind_sensitivity(nb::module_& m) {
               "Linear sqrt(sum delta_i^2); quadratic sqrt(max(0, Phi_0^2 + sum q_i)); None if "
               "cancelled or nominal is None.")
       .def_ro("predicted_sigma", &CriterionSensitivity::predicted_sigma,
-              "Linear only: sqrt(sum (c_i delta_i)^2), the predicted standard deviation.")
-      .def_ro("predicted_mean_square", &CriterionSensitivity::predicted_mean_square,
-              "Quadratic only: Phi_0^2 + sum c_i^2 q_i, the predicted mean of Phi^2, in the unit "
-              "squared.")
+              "Linear only: sqrt(sum (c_i delta_i)^2), the predicted standard deviation, unit of "
+              "the criterion. None for a quadratic criterion and as rss.")
+      .def_ro(
+          "predicted_mean_square", &CriterionSensitivity::predicted_mean_square,
+          "Quadratic only: max(0, Phi_0^2 + sum c_i^2 q_i), the predicted mean of Phi^2, in the "
+          "unit squared; a negative sum is reported as 0 with the warning "
+          "tolerances.rss_negative. None for a linear criterion and as rss.")
       .def_ro("inverse", &CriterionSensitivity::inverse, "The inverse sensitivity.");
 
   using tolerance::Confirmation;
@@ -301,7 +306,7 @@ void bind_sensitivity(nb::module_& m) {
       .def_ro("limits", &ToleranceSensitivity::limits,
               "Per item the smallest T'_i over the criteria; None if no criterion limits it.")
       .def_ro("confirmation", &ToleranceSensitivity::confirmation,
-              "The confirmation run; None without confirm or if cancelled before it.")
+              "The confirmation run; None without confirm or if cancelled before or during it.")
       .def_ro("warnings", &ToleranceSensitivity::warnings,
               "Warnings of the run itself (tolerances.rss_negative); those of the trials are in "
               "their TrialResult.")
