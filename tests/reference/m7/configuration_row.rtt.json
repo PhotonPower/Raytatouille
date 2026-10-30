@@ -1,6 +1,6 @@
 {
   "schema_version": "0.7.0",
-  "name": "M7 acceptance: ideal lens f = 50 mm at z = 0, detector at z = T from a table row, two configurations (case 9)",
+  "name": "M7 acceptance: ideal lens f = 50 mm, distance to the detector from a table row, two configurations (case 9)",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},
   "wavelengths": [
@@ -49,6 +49,7 @@
         "type": "detector",
         "name": "image",
         "pose": {
+          "reference": "relative_to_preceding",
           "position": [
             0.0,
             0.0,
