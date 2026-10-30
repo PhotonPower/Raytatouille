@@ -740,15 +740,16 @@ TEST_CASE("sensitivity: a criterion without a positive allowance is not distribu
           "[tolerance][sensitivity]") {
   // ADR 0036, point 6 (second review 8d, P2-1). The 2 f system of the first test, chief ray_y
   // with Phi_0 = 0 (within kEps):
-  //   max = 0: A = max - Phi_0 <= kEps, not positive after rounding either way; min = 0.01:
-  //   A = Phi_0 - min < 0. Both: A = 0 with the note, no share, no limits.
+  //   max = -0.01: A = max - Phi_0 <= -0.01 + kEps < 0; min = 0.01: A = Phi_0 - min < 0. Both
+  //   lie outside a bound by far more than the rounding of Phi_0: A = 0 with the note, no share,
+  //   no limits.
   //   spot_rms with only min: a quadratic criterion without an upper bound is not distributed.
   System s = lens_system(50.0, 100.0);
   add_detector(s, 100.0);
   s.tolerances.items = {item("lens.dy", "lens", ToleranceKind::DecenterY, 0.1)};
   Criterion on_max = ray("on_max", RayCoordinate::Y, 0, 0.0, 0.5);
   on_max.max_change.reset();
-  on_max.max = 0.0;
+  on_max.max = -0.01;
   Criterion below_min = ray("below_min", RayCoordinate::Y, 0, 0.0, 0.5);
   below_min.max_change.reset();
   below_min.min = 0.01;
@@ -1010,8 +1011,15 @@ TEST_CASE("sensitivity: the compensator takes back a lens shift", "[tolerance][s
   REQUIRE(minus.compensators.size() == 1);
   CHECK(std::abs(plus.compensators[0].end - plus.compensators[0].start - 0.3) <= 1e-6);
   CHECK(std::abs(minus.compensators[0].end - minus.compensators[0].start + 0.3) <= 1e-6);
-  // The compensated item limits nothing for this criterion (delta is noise).
-  CHECK(r.criteria[0].inverse.unlimited == std::vector<std::size_t>{0});
+  // The compensated item hardly limits this criterion. Whether |delta| (noise of about 3e-10:
+  // the #257 bound on e_p times the chief ray slope) falls below the threshold eps_M max(|Phi_0|,
+  // A) = 8.7e-10 depends on the platform, so either the item limits nothing or its T' is large:
+  // with |delta| <= 1e-8 (checked above) and share = A = 0.01 (n = 1), T' = T share / |delta|
+  // >= 0.3 * 0.01 / 1e-8 = 3e5 mm, far above 100 T.
+  const rtt::tolerance::InverseSensitivity& inverse = r.criteria[0].inverse;
+  const bool unlimited = inverse.unlimited == std::vector<std::size_t>{0};
+  REQUIRE(inverse.limits.size() == 1);
+  CHECK((unlimited || inverse.limits[0].value_or(0.0) >= 100.0 * 0.3));
 }
 
 TEST_CASE("sensitivity: bitwise the same for 1, 4 and all threads", "[tolerance][sensitivity]") {
