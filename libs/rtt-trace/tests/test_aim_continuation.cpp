@@ -106,7 +106,8 @@ TEST_CASE("#287 continuation: a linear model is followed in the documented steps
   // is cut to end exactly at s = 1. For a linear H with the exact Jacobian the Euler predictor
   // J^-1 (s_next - s) (tx, ty) lands on the solution, so every run after the chief ray starts on
   // its target and takes no step: one Newton step in all, and the Jacobian comes from
-  // jacobian_at() after each of the five accepted steps.
+  // jacobian_at() after each of the first four accepted steps; after the step to s = 1 no predictor
+  // follows, so none is computed there.
   Linear m;
   m.put_chief_at(0.3 * kREp, -0.1 * kREp);
   m.put_target_at(1.2 * kREp, 0.8 * kREp);
@@ -125,7 +126,7 @@ TEST_CASE("#287 continuation: a linear model is followed in the documented steps
     CHECK(std::abs(m.starts[i].second - y) < 1e-12);
   }
   CHECK(result.steps == 1);
-  CHECK(m.jacobian_calls == 5);
+  CHECK(m.jacobian_calls == 4);
   const auto [x1, y1] = m.solve(m.tx, m.ty);
   CHECK(std::abs(result.a - x1) < 1e-12);
   CHECK(std::abs(result.b - y1) < 1e-12);
@@ -176,6 +177,7 @@ TEST_CASE("#287 continuation: at most 64 accepted steps", "[sources][aiming][con
   CHECK(m.converged == 1 + rtt::trace::detail::kMaxAimContinuationSteps);  // with the chief ray
   CHECK(m.last_ok == 64.0 / 1024);
 }
+
 TEST_CASE("#287 continuation: the bundle reserve 3 r_ep, on both sides",
           "[sources][aiming][continuation]") {
   REQUIRE(kBundleReserve == 3.0);
@@ -202,10 +204,13 @@ TEST_CASE("#287 continuation: the bundle reserve 3 r_ep, on both sides",
     CHECK(std::abs(std::hypot(result.a, result.b) - 2.9 * kREp) < 1e-12);
   }
   SECTION("solution at s = 1 at 3.1 r_ep: none") {
+    // The points beyond 3 r_ep are rejected; the step shrinks towards the reserve boundary until it
+    // falls below the smallest step, which ends the fallback (not the 64-step limit).
     Linear m;
     const double d = 3.1 * kREp / std::sqrt(2.0);
     m.put_target_at(d, d);
     CHECK_FALSE(run(m, true).has_value());
+    CHECK(m.converged < 1 + rtt::trace::detail::kMaxAimContinuationSteps);
   }
   SECTION("finite object: no reserve, 3.1 r_ep is accepted") {
     Linear m;

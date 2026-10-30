@@ -106,7 +106,8 @@ std::optional<ContinuationResult> continuation(const Newton& newton,
       s = s_next;
       ++accepted;
       ds *= 2.0;
-      jacobian = step.jacobian ? step.jacobian : jacobian_at(u, v, s * tx, s * ty);
+      // No predictor follows the step to s = 1, so no Jacobian is needed there.
+      if (s < 1.0) jacobian = step.jacobian ? step.jacobian : jacobian_at(u, v, s * tx, s * ty);
     } else {
       ds = 0.5 * (s_next - s);  // the step just tried, possibly cut to 1 - s
       if (ds < kAimContinuationMinStep) return std::nullopt;
