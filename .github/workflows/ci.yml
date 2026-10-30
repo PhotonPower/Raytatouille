@@ -200,7 +200,8 @@ jobs:
             (cd "$RUNNER_TEMP"
              "$py" -c "import raytatouille as rt; from raytatouille._core import StokesPupil; print(rt.__version__, rt.__file__)"
              stub="$("$py" -c "import raytatouille, pathlib; print(pathlib.Path(raytatouille._core.__file__).with_name('_core.pyi'))")"
-             grep -q 'class StokesPupil' "$stub")
+             grep -q 'class StokesPupil' "$stub"
+             grep -q 'def yield_' "$stub")
           }
           "$py" -m pip install -e .
           "$py" -m pip install -e . --force-reinstall --no-deps
