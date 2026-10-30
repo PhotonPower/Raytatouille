@@ -90,6 +90,11 @@ struct PupilFunctionOptions {
   double lost_warning_fraction = 0.5;
   /// Warning "pupil.mapping_nonlinear" if delta_max of the mapping exceeds this; in [0, 1].
   double mapping_warning = 1e-2;
+  /// The FFT analyses of the pupil function (psf, psf_at, through_focus, mtf, encircled_energy)
+  /// reject it with AnalysisError "pupil.mapping_too_nonlinear" if delta_max exceeds this; in
+  /// [0, 1]. 1 switches the check off: nothing is rejected, whatever delta_max (ADR 0033,
+  /// addendum #286). pupil_function() itself does not reject. Independent of mapping_warning.
+  double mapping_limit = 0.05;
 };
 
 /// Affine mapping of the pupil coordinates to the direction sines, s ~ s0 + M p (ADR 0032,
@@ -161,7 +166,9 @@ struct PupilFunction {
   double obscuration = 0.0;
   double lost_warning_fraction = 0.5;  ///< threshold of "rays.lost" (options, for refocus)
   double mapping_warning = 1e-2;       ///< threshold of "pupil.mapping_nonlinear" (options)
-  ReferenceSphere sphere;              ///< after focus_shift
+  /// Limit of the FFT analyses, "pupil.mapping_too_nonlinear" (options; 1 = off; #286).
+  double mapping_limit = 0.05;
+  ReferenceSphere sphere;  ///< after focus_shift
   // Per cell, N * N entries in the order of PupilCells:
   std::vector<double> fraction;  ///< f
   std::vector<double> px, py;    ///< sample point (centre or centroid)
@@ -191,7 +198,8 @@ struct PupilFunction {
 /// opd_points() with that list and the same options; bit for bit at every thread count.
 /// @throws std::invalid_argument for an invalid path or wavelength, options out of range (grid,
 ///         apodization G < 0 or not finite, focus_shift not finite, lost_warning_fraction or
-///         mapping_warning outside [0, 1]) and as trace::make_rays (e.g. an invalid field)
+///         mapping_warning or mapping_limit outside [0, 1]) and as trace::make_rays (e.g. an
+///         invalid field)
 /// @throws AnalysisError with location /paths/i for a path with an ordinary or extraordinary
 ///         event (crystal modes, #35), before any ray is traced; with the location of the image
 ///         surface if the chief ray grazes it (|x_B x d_c| <= 1e-6, no frame of the PSF plane);

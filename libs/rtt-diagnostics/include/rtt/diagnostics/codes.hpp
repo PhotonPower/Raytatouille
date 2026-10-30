@@ -229,6 +229,8 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "Jones pupil with field amplitudes: points across an absorbing interface get J = NaN"},
     {"pupil.mapping_nonlinear", Severity::Warning, "analysis",
      "pupil coordinates map nonlinearly onto the direction sines (delta_max above the threshold)"},
+    {"pupil.mapping_too_nonlinear", Severity::Error, "analysis",
+     "FFT analysis rejected: delta_max of the pupil mapping above mapping_limit (AnalysisError)"},
     {"rays.lost", Severity::Warning, "analysis",
      "more rays lost than the threshold of the analysis (default 50 %)"},
     {"report.paraxial_unavailable", Severity::Warning, "analysis",

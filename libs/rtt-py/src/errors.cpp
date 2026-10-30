@@ -76,7 +76,8 @@ void register_errors(nb::module_& /*m*/) {
       raise("AgfError", e.what(), e.file(), e.line());
     } catch (const analysis::AnalysisError& e) {
       raise("AnalysisError", e.what(), optional(e.surface()), optional(e.location()),
-            optional(e.ray_status()), optional(e.field()), optional(e.wavelength()));
+            optional(e.ray_status()), optional(e.field()), optional(e.wavelength()),
+            optional(e.code()));
     } catch (const coating::CoatingCatalogError& e) {
       raise("CoatingCatalogError", e.what(), e.file(), e.pointer());
     } catch (const trace::Cancelled& e) {

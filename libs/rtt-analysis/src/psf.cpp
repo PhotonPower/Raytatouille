@@ -129,6 +129,36 @@ const PupilMapping& mapping_of(const PupilFunction& p) {
   return *p.mapping;
 }
 
+/// The FFT analyses need the affine mapping s ~ s0 + M p (ADR 0032, point 4; ADR 0033, addendum
+/// #286): the largest delta_max of `pupils` above their mapping_limit rejects them, unless the
+/// limit is 1 (off, whatever delta_max). The pupils passed require_evaluable().
+void require_affine_mapping(std::span<const PupilFunction* const> pupils) {
+  const PupilFunction* worst = nullptr;
+  for (const PupilFunction* p : pupils) {
+    const double delta = mapping_of(*p).delta_max;
+    if (p->mapping_limit < 1.0 && delta > p->mapping_limit &&
+        (worst == nullptr || delta > mapping_of(*worst).delta_max)) {
+      worst = p;
+    }
+  }
+  if (worst == nullptr) return;
+  constexpr diagnostics::DiagnosticCode kCode = "pupil.mapping_too_nonlinear";
+  throw AnalysisError(
+      "analysis: the pupil coordinates map too nonlinearly onto the direction sines for the FFT "
+      "analyses: delta_max = " +
+          std::to_string(mapping_of(*worst).delta_max) +
+          " pupil units above mapping_limit = " + std::to_string(worst->mapping_limit) +
+          " at wavelength " + std::to_string(worst->wavelength) +
+          "; the system does not meet the sine condition (e.g. the ideal lens at a high NA, "
+          "tan theta = h / f); mapping_limit = 1 switches the check off (ADR 0033, addendum #286)",
+      path_pointer(worst->path), std::string(kCode.str()));
+}
+
+void require_affine_mapping(const PupilFunction& pupil) {
+  const std::array<const PupilFunction*, 1> one{&pupil};
+  require_affine_mapping(one);
+}
+
 /// sum_j u_j in cell order: U at x = 0 up to the factor |det M| a^2 (ADR 0033, point 2).
 Complex sum_of_cells(const PupilFunction& p) {
   Complex sum{0.0, 0.0};
@@ -277,6 +307,12 @@ Psf psf(const compile::CompiledSystem& system,
     part.sums = require_evaluable(part.pupil);
     part.weight = weight;
     parts.push_back(std::move(part));
+  }
+  {
+    std::vector<const PupilFunction*> pupils;
+    pupils.reserve(parts.size());
+    for (const Part& part : parts) pupils.push_back(&part.pupil);
+    require_affine_mapping(pupils);
   }
   // The lattice of the reference: the system reference wavelength if chosen,
   // else the first.
@@ -468,6 +504,7 @@ Psf psf(const compile::CompiledSystem& system,
 
 std::vector<double> psf_at(const PupilFunction& pupil, std::span<const Point2> x) {
   const PupilSums s = require_evaluable(pupil);
+  require_affine_mapping(pupil);
   const auto& m = mapping_of(pupil).m;
   const double lambda_mm = pupil.wavelength_um * 1e-3;
   const int n = pupil.grid;
@@ -527,6 +564,7 @@ ThroughFocus through_focus(const compile::CompiledSystem& system,
   const PupilFunction p0 = pupil_function(system, path, field, wavelength, base, control);
   // Afocal as in psf() (review of #233): the reference of an afocal image space is not settled.
   static_cast<void>(require_evaluable(p0));
+  require_affine_mapping(p0);  // delta does not depend on the focus shift
   ThroughFocus result;
   result.field = field;
   result.wavelength = wavelength;
@@ -668,9 +706,13 @@ std::vector<Spectral> spectral_parts(const CompiledSystem& system,
     part.pupil = pupil_function(system, path, field, w, pupil_options, control);
     part.sums = require_evaluable(part.pupil);
     part.weight = weight;
-    part.c = Autocorrelation(part.pupil);
     parts.push_back(std::move(part));
   }
+  std::vector<const PupilFunction*> pupils;
+  pupils.reserve(parts.size());
+  for (const Spectral& part : parts) pupils.push_back(&part.pupil);
+  require_affine_mapping(pupils);
+  for (Spectral& part : parts) part.c = Autocorrelation(part.pupil);
   return parts;
 }
 
@@ -923,6 +965,7 @@ std::vector<Spectral> single_part(const PupilFunction& pupil) {
   std::vector<Spectral> parts(1);
   parts[0].pupil = pupil;
   parts[0].sums = require_evaluable(parts[0].pupil);
+  require_affine_mapping(parts[0].pupil);
   parts[0].weight = 1.0;
   parts[0].c = Autocorrelation(parts[0].pupil);
   return parts;

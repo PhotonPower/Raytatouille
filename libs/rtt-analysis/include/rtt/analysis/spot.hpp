@@ -69,6 +69,11 @@ class AnalysisError : public std::runtime_error {
   AnalysisError(const std::string& message, std::string location)
       : std::runtime_error(message), location_(std::move(location)) {}
 
+  /// Error at a place without a lost ray with a stable diagnostic code (ADR 0022, addendum #286):
+  /// so far only "pupil.mapping_too_nonlinear".
+  AnalysisError(const std::string& message, std::string location, std::string code)
+      : std::runtime_error(message), location_(std::move(location)), code_(std::move(code)) {}
+
   [[nodiscard]] std::optional<model::SurfaceId> surface() const {
     return ray_ ? ray_->surface : std::nullopt;
   }
@@ -85,10 +90,14 @@ class AnalysisError : public std::runtime_error {
   [[nodiscard]] std::optional<std::uint16_t> wavelength() const {
     return ray_ ? std::optional(ray_->wavelength) : std::nullopt;
   }
+  /// The diagnostic code (rtt/diagnostics/codes.hpp); none for the errors without a code, that
+  /// is every error except "pupil.mapping_too_nonlinear" (ADR 0022, addendum #286).
+  [[nodiscard]] const std::optional<std::string>& code() const noexcept { return code_; }
 
  private:
   std::optional<LostRay> ray_;
   std::optional<std::string> location_;  ///< place without a lost ray
+  std::optional<std::string> code_;
 };
 
 /// Where the rays of an analysis went (ADR 0023): the rays of its pupil sampling (not the

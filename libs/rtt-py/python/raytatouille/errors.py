@@ -114,18 +114,21 @@ class AnalysisError(RaytatouilleError):
     for a field given as value) and ``wavelength`` the wavelength index. A cause without a lost
     ray may carry a ``location`` of its own (ADR 0032 point 9, ADR 0034: /paths/i for a path with
     crystal modes, the image surface for a grazing chief ray); the other fields are None then.
-    All None otherwise.
+    All None otherwise. ``code`` is the diagnostic code; None except for
+    pupil.mapping_too_nonlinear (the FFT analyses above ``mapping_limit``; ADR 0022, addendum
+    #286).
     """
 
     def __init__(self, message: str, surface: str | None = None, location: str | None = None,
                  ray_status: RayStatus | None = None, field: int | None = None,
-                 wavelength: int | None = None) -> None:
+                 wavelength: int | None = None, code: str | None = None) -> None:
         super().__init__(message)
         self.surface = surface
         self.location = location
         self.ray_status = ray_status
         self.field = field
         self.wavelength = wavelength
+        self.code = code
 
 
 class NoStopError(ParaxialError, AnalysisError, ValueError):
@@ -144,6 +147,7 @@ class NoStopError(ParaxialError, AnalysisError, ValueError):
         self.ray_status = None
         self.field = None
         self.wavelength = None
+        self.code = None  # as AnalysisError: no code (ADR 0022, addendum #286)
 
 
 class RaytatouilleWarning(UserWarning):

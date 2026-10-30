@@ -47,6 +47,7 @@ if(RTT_BUILD_TESTS)
       tests/test_m3_acceptance.cpp
       tests/test_m4_acceptance.cpp
       tests/test_m6_acceptance.cpp
+      tests/test_mapping_limit.cpp
       tests/test_mtf_ee.cpp
       tests/test_no_stop.cpp
       tests/test_nominal_reference.cpp

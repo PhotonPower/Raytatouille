@@ -312,6 +312,9 @@ void check_options(const PupilFunctionOptions& o) {
   if (!(o.mapping_warning >= 0.0 && o.mapping_warning <= 1.0)) {
     throw std::invalid_argument("analysis: mapping_warning must lie in [0, 1]");
   }
+  if (!(o.mapping_limit >= 0.0 && o.mapping_limit <= 1.0)) {
+    throw std::invalid_argument("analysis: mapping_limit must lie in [0, 1]");
+  }
   if (!(o.lost_warning_fraction >= 0.0 && o.lost_warning_fraction <= 1.0)) {
     throw std::invalid_argument("analysis: lost_warning_fraction must lie in [0, 1]");
   }
@@ -527,6 +530,7 @@ PupilFunction pupil_function(const compile::CompiledSystem& system,
   pf.obscuration = cells.obscuration;
   pf.lost_warning_fraction = options.lost_warning_fraction;
   pf.mapping_warning = options.mapping_warning;
+  pf.mapping_limit = options.mapping_limit;
   const std::size_t size = cells.fraction.size();
   pf.fraction = std::move(cells.fraction);
   pf.px = std::move(cells.px);
