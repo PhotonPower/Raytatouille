@@ -17,7 +17,7 @@ using model::EventKind;
 /// z axis that still count as rotationally symmetric (decided for #7).
 constexpr double kSymmetryTolerance = 1e-12;
 
-/// Factor k of the afocal threshold |Phi| <= k N u S (power_scale(), #35 B9).
+/// Factor k of the afocal threshold |Phi| <= k N u (S + E) (power_scale(), #35 B9, #280).
 constexpr double kAfocalFactor = 16.0;
 
 /// One event of the path reduced to what the y-nu trace needs.
@@ -237,9 +237,12 @@ Magnitudes magnitude_trace(const std::vector<Step>& steps,
 /// surfaces (7e12 / mm as threshold for a 30-surface microscope 300 mm from the origin).
 /// One factor 8 N for S and E instead of 8 N u S + u E: a coordinate from nested poses is
 /// rounded more than once, so the factor of u E is not 1 and grows with the nesting; a separate
-/// weighting would leave the lens of Phi = 5e-13 / mm at z = 1000 mm (test_paraxial.cpp) only a
-/// factor 1.2 below the threshold; and one scale keeps the form of the threshold. The threshold
-/// k = 16 is twice the bound. Measured with the same operations for 1999 nearly afocal thick
+/// weighting 16 u (N S + E) would leave the lens of Phi = 5e-13 / mm at z = 1000 mm
+/// (test_paraxial.cpp) only a factor 1.2 below the threshold, and twice the sharp bound,
+/// 2 (8 N u S + u E), would make it focal; and one scale keeps the form of the threshold. So the
+/// common factor N is a choice, not a consequence of the rounding alone: it keeps the
+/// position dependence of #35 B9 as it was for small systems. The threshold k = 16 is twice the
+/// bound. Measured with the same operations for 1999 nearly afocal thick
 /// lenses (R = +-r, n = 1.5, d = 6 r, r from 0.7 um to 1.4 mm, at z = 0, 10 and 1000 mm): at
 /// most |Phi| = 0.40 N u (S + E), so the threshold lies 40 times above the rounding (until #280,
 /// with S alone: 0.60 N u S, not the 0.30 stated here before).
@@ -248,8 +251,9 @@ double power_scale(const std::vector<Step>& steps, double z_in, double n_in) {
 }
 
 /// True if `value`, an element of a matrix traced through `steps` events, is zero up to the
-/// rounding of the trace: |value| <= 16 (N + 1) u S with the magnitude S of magnitude_trace(),
-/// twice the bound of its rounding model, as the afocal threshold (#35, rest of B9).
+/// rounding of the trace: |value| <= 16 (N + 1) u (S + E) with the magnitude S + E returned by
+/// magnitude_trace(), twice the bound of its rounding model, as the afocal threshold (#35, rest
+/// of B9; #280).
 bool zero_up_to_rounding(double value, std::size_t steps, double scale) {
   return std::abs(value) <= kAfocalFactor * static_cast<double>(steps + 1) *
                                 std::numeric_limits<double>::epsilon() / 2.0 * scale;

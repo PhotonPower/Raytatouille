@@ -824,9 +824,12 @@ TEST_CASE("#280: a 30-surface microscope 300 mm from the origin is focal with fi
   // The magnitude S of the afocal test grew exponentially with the number of surfaces while the
   // transfers carried |z'| + |z| (threshold about 7e12 / mm here), so this system with
   // Phi = 0.213 / mm counted as afocal and object-space telecentric (#280). Reference: the
-  // independent y-nu trace above. Tolerance fixed beforehand: the trace rounds Phi by at most
-  // 8 N u S = 8 * 30 * 1.1e-16 * 260 / mm (S from the magnitude trace with |z' - z|), relative
-  // 3e-11 of Phi; 1e-10 for all values.
+  // independent y-nu trace above. Tolerance fixed beforehand: the arithmetic rounds Phi by at
+  // most 8 N u S = 8 * 30 * 1.1e-16 * 260 / mm (S from the magnitude trace with |z' - z|),
+  // relative 3e-11 of Phi; the coordinates could add u E, relative 1e-10 (E about 2e5), but the
+  // reference composes z exactly as compile does (element z + local z, no rotation), so the
+  // coordinates are the same doubles in both. 1e-10 for all values, also for the quotients of m,
+  // EP and XP, each a few more roundings.
   const std::vector<Group> groups = microscope_280();
   System s = base_system();
   s.object = {false, Param(54.0)};  // object at z = -54
