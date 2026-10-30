@@ -19,6 +19,20 @@ Results are bitwise the same for every number of ``threads``. ``cancel`` (a Canc
 the run with status CANCELLED and the last accepted state, not with an exception;
 ``progress(done, total, stage)`` is called with the stages "jacobian" and "optimize" (as in
 raytatouille.trace). Units of the values: those of the field or row (mm, um, degree, ...).
+
+Notes for use (ADR 0030, addendum #281):
+
+- ``OptimizeOptions.function_precision`` (eps_f) sets only the step of the central differences,
+  h = eps_f**(1/3) * max(|theta|, 1) in internal values; it is not a convergence test. The
+  default 1e-9 gives h >= 1e-3, i.e. 1 um or more for a length in mm, and wide bounds widen the
+  external step. A merit function that changes over less than h (a working distance against a
+  depth of focus below 1 um) is seen only on average. A smaller eps_f shrinks h but must stay
+  above the noise of the real aiming.
+- The system aperture value (``object_na``, ``epd``) can be variable; the radius of a surface
+  aperture cannot (it is not a Param). Vary the aperture through ``aperture.value``.
+- An equality such as a fixed ``magnification`` or EFL as an operand with a large weight makes a
+  narrow valley in which Levenberg-Marquardt creeps; put it into the parameter table instead (an
+  expression row, "solve", ADR 0029). Exact equality constraints in the solver are issue #196.
 """
 
 from __future__ import annotations

@@ -38,7 +38,7 @@ Präzisierungen und Ergänzungen einer angenommenen Entscheidung kommen als dati
 | [0027](0027.md) | Ghost-Generator (Zweifachreflexions-Pfade als erzeugte explizite Pfade) | angenommen |
 | [0028](0028.md) | Relative Platzierung (Pose.reference, Pose.order; Nachtrag #252: Starrkörper-Überlagerung für Toleranzen) | angenommen |
 | [0029](0029.md) | Parametertabelle und Konfigurationen | angenommen |
-| [0030](0030.md) | Optimierung (Merit-Funktion, Operanden, Levenberg-Marquardt; Nachtrag #256: Merit-Funktion eines gestörten Prüflings) | angenommen |
+| [0030](0030.md) | Optimierung (Merit-Funktion, Operanden, Levenberg-Marquardt; Nachtrag #256: Merit-Funktion eines gestörten Prüflings; Nachtrag #281: Hinweise zur Anwendung) | angenommen |
 | [0031](0031.md) | Ideale Linse und ideale Zylinderlinse | angenommen |
 | [0032](0032.md) | Pupillenfunktion und Wellenfront-Auswertung (Zernike-Fit, Strehl, Through-Focus; Nachtrag #265: nominaler Bezug für Spot und OPD) | angenommen |
 | [0033](0033.md) | FFT-Beugung: PSF, MTF, Encircled Energy | angenommen |
