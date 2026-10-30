@@ -34,12 +34,21 @@ inline constexpr double kMeritPrecision = 1e-9;
 /// Settings of the solver (ADR 0030, point 2: run parameters, not part of the file); as
 /// LmOptions, with the measured precision of a merit evaluation as default.
 struct OptimizeOptions {
-  int max_iterations = 100;                     ///< k_max, number of solves (point 8)
-  double ftol = 1.4901161193847656e-8;          ///< merit test, sqrt(eps_M) (point 8)
-  double xtol = 1.4901161193847656e-8;          ///< step test, sqrt(eps_M) (point 8)
-  double gtol = 0.0;                            ///< scaled gradient test, off (point 8)
-  double tau = 1e-3;                            ///< mu_0 = tau max diag(J^T J) (point 7)
-  double function_precision = kMeritPrecision;  ///< eps_f for the difference step (point 9)
+  int max_iterations = 100;             ///< k_max, number of solves (point 8)
+  double ftol = 1.4901161193847656e-8;  ///< merit test, sqrt(eps_M) (point 8)
+  double xtol = 1.4901161193847656e-8;  ///< step test, sqrt(eps_M) (point 8)
+  double gtol = 0.0;                    ///< scaled gradient test, off (point 8)
+  double tau = 1e-3;                    ///< mu_0 = tau max diag(J^T J) (point 7)
+  /// eps_f, the relative noise of a merit evaluation (point 9). It sets only the step of the
+  /// central differences, h = eps_f^(1/3) max(|theta|, 1) in internal values theta; it is not a
+  /// convergence test (those are ftol, xtol and gtol). The default 1e-9 gives h = 1e-3
+  /// max(|theta|, 1): 1 um or more for a length in mm without bounds. With two bounds a, b the
+  /// external step is about (b - a)/2 cos(theta) h, so wide bounds widen it; with one bound it is
+  /// at most h. If the merit function changes over less than h (e.g. a working distance against
+  /// a depth of focus of 0.6 um at NA 0.95), the Jacobian sees only the average; a smaller eps_f
+  /// makes h smaller, but must stay above the noise of the evaluation (real aiming), else the
+  /// noise dominates the Jacobian (ADR 0030, addendum #281).
+  double function_precision = kMeritPrecision;
 };
 
 /// One solve of the run (ADR 0030, point 12).
