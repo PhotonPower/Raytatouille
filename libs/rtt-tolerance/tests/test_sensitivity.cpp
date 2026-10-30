@@ -272,8 +272,8 @@ TEST_CASE("sensitivity: a tilted plane-parallel plate shifts the chief ray",
           "[tolerance][sensitivity]") {
   // Plate t = 10 mm in CONST:1.5 behind the ideal lens (f = 100, object at infinity), tilted
   // about x by theta. The lateral shift of a ray at incidence theta is t sin(theta - theta') /
-  // cos(theta') (docs/quellen.md, "Versatz der planparallelen Platte", from de Greve's law of
-  // refraction). With sin theta' = sin theta / n, cos theta' = sqrt(n^2 - sin^2 theta) / n:
+  // cos(theta') (docs/quellen.md, "Versatz der planparallelen Platte", from de Greve, Eq. (22), law
+  // of refraction). With sin theta' = sin theta / n, cos theta' = sqrt(n^2 - sin^2 theta) / n:
   //   t (sin theta cos theta' - cos theta sin theta') / cos theta'
   //   = t sin theta [1 - cos theta / sqrt(n^2 - sin^2 theta)] =: s(theta).
   // Sign: a positive tilt about x turns +y towards +z (ADR 0036, point 1b), so the plate normal
@@ -311,7 +311,7 @@ TEST_CASE("sensitivity: double pass", "[tolerance][sensitivity]") {
     // back; path STO, IL, M, BIMG. The chief ray of field 0 runs along the axis to the mirror
     // vertex. Mirror tilted about x through its vertex (the pivot of its pose, ADR 0035, point 2)
     // by theta: normal n = (0, -sin theta, cos theta) (ADR 0036, point 1b). Reflection of
-    // d = (0, 0, 1), d' = d - 2 (d . n) n (de Greve, law of reflection; docs/quellen.md), gives
+    // d = (0, 0, 1), d' = d - 2 (d . n) n (de Greve, Eq. (13); docs/quellen.md), gives
     // d' = (0, sin 2 theta, -cos 2 theta): deflected by 2 theta. After L = 25 mm back along -z
     // the ray is at y = L tan 2 theta (BIMG is not rotated, so its local y is the global y).
     // Odd in theta: delta_i = L tan 2T, shift 0.
@@ -527,7 +527,8 @@ TEST_CASE("sensitivity: items that limit nothing, and the smallest limit over th
   // Criteria: chief ray_y (max_change 0.04), chief ray_x (0.01), ray_y of the ray at py = 0.5
   // (0.02; it meets the focus, so the same slope 1).
   // A decenter along y moves nothing out of the meridional plane, and a decenter along x leaves
-  // the y coordinates alone: for those pairs Phi(+T) = Phi(-T) = Phi_0 bitwise and delta = 0,
+  // the y coordinates alone: for those pairs Phi(+T) = Phi(-T) bitwise (mirror symmetry) and
+  // delta = 0,
   // so the item limits nothing for that criterion (ADR 0036, point 6).
   //   y item: T' = share = A / sqrt(2) for both y criteria, the smallest is 0.02 / sqrt(2);
   //   x item: limited only by ray_x, T' = 0.01 / sqrt(2).
@@ -763,6 +764,8 @@ TEST_CASE("sensitivity: cancelled runs give a partial result", "[tolerance][sens
   const TrialContext ctx = context(s);
   const auto check_partial = [](const ToleranceSensitivity& r) {
     REQUIRE(r.criteria.size() == 1);
+    REQUIRE(r.limits.size() == r.items.size());
+    for (const auto& limit : r.limits) CHECK(!limit.has_value());
     CHECK(r.status == SensitivityStatus::Cancelled);
     CHECK(!r.confirmation.has_value());
     for (std::size_t i = 0; i < r.items.size(); ++i) {
@@ -797,9 +800,44 @@ TEST_CASE("sensitivity: cancelled runs give a partial result", "[tolerance][sens
     // No control for the run itself: it must stop because of nominal() alone.
     const ToleranceSensitivity r = rtt::tolerance::sensitivity(cancelled);
     check_partial(r);
+    // The cause is the cancellation, not an undefined nominal value.
+    CHECK(at(r, 0, 0).excluded == "cancelled");
+    CHECK(r.criteria[0].inverse.note.empty());
     for (const auto& i : r.items) {
       CHECK(!i.plus.has_value());
       CHECK(!i.minus.has_value());
+    }
+  }
+  SECTION("in the confirmation: the first part stays complete") {
+    // Addendum #258, F2: only the confirmation is dropped. lens.dx limits nothing for ray_y
+    // (decenter along x), so only the first two items get a T'.
+    rtt::trace::RunControl control;
+    control.cancel = rtt::trace::CancelToken{};
+    control.min_interval = std::chrono::milliseconds{0};
+    std::atomic<int> confirmation_reports{0};
+    control.progress = [&](const rtt::trace::Progress& p) {
+      if (p.stage != "confirmation") return;
+      ++confirmation_reports;
+      control.cancel->request_cancel();
+    };
+    const ToleranceSensitivity r = rtt::tolerance::sensitivity(ctx, {}, &control);
+    CHECK(confirmation_reports >= 1);
+    CHECK(r.status == SensitivityStatus::Cancelled);
+    CHECK(!r.confirmation.has_value());
+    REQUIRE(r.criteria.size() == 1);
+    const CriterionSensitivity& c = r.criteria[0];
+    CHECK(c.complete);
+    CHECK(c.rss.has_value());
+    CHECK(c.predicted_sigma.has_value());
+    CHECK(c.inverse.share.has_value());
+    REQUIRE(c.inverse.limits.size() == 3);
+    REQUIRE(r.limits.size() == 3);
+    CHECK(r.limits[0].has_value());
+    CHECK(r.limits[1].has_value());
+    CHECK(!r.limits[2].has_value());
+    for (const auto& i : r.items) {
+      CHECK(i.plus.has_value());
+      CHECK(i.minus.has_value());
     }
   }
   SECTION("after the first progress report") {
@@ -814,6 +852,65 @@ TEST_CASE("sensitivity: cancelled runs give a partial result", "[tolerance][sens
     check_partial(r);
     CHECK(reports >= 1);
   }
+}
+
+TEST_CASE("sensitivity: the compensator takes back a lens shift", "[tolerance][sensitivity]") {
+  // #258: +-T with compensators. Ideal lens f = 100, object at infinity, stop at z = -1,
+  // detector in the focal plane. Item: lens shift_z by x (T = 0.3). Criterion: ray_y of the chief
+  // ray of field 1 (u = tan 0.5 deg) on the detector. The ideal lens maps the slope t of a ray
+  // at height h to t - h / f (ADR 0031, collinear); the chief ray passes the stop centre, so it
+  // meets the lens at h = u (1 + x).
+  // - Without compensator the detector stays at 100:
+  //     Phi(x) = h + (100 - x)(u - h / f) = u [1 + x + (100 - x)(99 - x) / 100]
+  //            = 100 u - 0.99 u x + u x^2 / 100,
+  //   so delta = (Phi(T) - Phi(-T)) / 2 = -0.99 u T and shift = (Phi(T) + Phi(-T)) / 2 - Phi_0 =
+  //   u T^2 / 100, both exact up to the trace rounding kEps.
+  // - With the detector position as compensator (travel +-2, merit: rms spot of field 0 about
+  //   the chief ray) the detector moves to the focus 100 + x, and Phi = h + 100 (u - h / f) =
+  //   100 u for every x: delta = 0 up to the compensator error e_p times the slope of the chief
+  //   ray after the lens, below 0.01 (#257: |e_p| about 3e-8, bound there; here 1e-8 mm in
+  //   total is generous). The compensator moves by +-T within 1e-6.
+  System s = lens_system(100.0);
+  add_detector(s, 100.0);
+  s.tolerances.items = {item("lens.dz", "lens", ToleranceKind::ShiftZ, 0.3)};
+  s.tolerances.criteria = {ray("chief", RayCoordinate::Y, 1, 0.0, 0.01)};
+  const double u = std::tan(0.5 * std::numbers::pi / 180.0);
+
+  const ToleranceSensitivity open = rtt::tolerance::sensitivity(context(s));
+  REQUIRE(open.criteria.size() == 1);
+  const ItemContribution& o = at(open, 0, 0);
+  CHECK(o.excluded.empty());
+  CHECK(within(open.criteria[0].nominal, 100.0 * u));
+  CHECK(within(o.delta, -0.99 * u * 0.3));
+  CHECK(within(o.shift, u * 0.3 * 0.3 / 100.0, 2.0 * kEps));
+
+  rtt::model::SpotGenerator focus;
+  focus.path = "main";
+  focus.fields = std::vector<std::uint16_t>{0};
+  focus.reference = rtt::model::SpotReference::Chief;
+  s.tolerances.compensator_merit = rtt::model::Optimization{{}, {focus}};
+  rtt::model::ToleranceTarget detector;
+  detector.anchor = rtt::model::ToleranceAnchor::Node;
+  detector.name = "detector";
+  detector.param = "/pose/position/2";
+  s.tolerances.compensators = {{detector, -2.0, 2.0}};
+  const ToleranceSensitivity r = rtt::tolerance::sensitivity(context(s));
+  REQUIRE(r.status == SensitivityStatus::Completed);
+  REQUIRE(r.criteria.size() == 1);
+  const ItemContribution& c = at(r, 0, 0);
+  CHECK(c.excluded.empty());
+  CHECK(std::abs(c.delta.value_or(1.0)) <= 1e-8);
+  CHECK(within(r.criteria[0].nominal, 100.0 * u, 1e-8));
+  REQUIRE(r.items.size() == 1);
+  const rtt::tolerance::TrialResult& plus = required(r.items[0].plus);
+  const rtt::tolerance::TrialResult& minus = required(r.items[0].minus);
+  CHECK(plus.lm_status.has_value());
+  REQUIRE(plus.compensators.size() == 1);
+  REQUIRE(minus.compensators.size() == 1);
+  CHECK(std::abs(plus.compensators[0].end - plus.compensators[0].start - 0.3) <= 1e-6);
+  CHECK(std::abs(minus.compensators[0].end - minus.compensators[0].start + 0.3) <= 1e-6);
+  // The compensated item limits nothing for this criterion (delta is noise).
+  CHECK(r.criteria[0].inverse.unlimited == std::vector<std::size_t>{0});
 }
 
 TEST_CASE("sensitivity: bitwise the same for 1, 4 and all threads", "[tolerance][sensitivity]") {
@@ -855,7 +952,15 @@ TEST_CASE("sensitivity: bitwise the same for 1, 4 and all threads", "[tolerance]
     }
     return v;
   };
-  const std::vector<double> one = values(run(1));
+  const ToleranceSensitivity first = run(1);
+  // Content guard: a complete run with values, not only placeholders.
+  REQUIRE(first.status == SensitivityStatus::Completed);
+  REQUIRE(first.criteria.size() == 2);
+  CHECK(first.criteria[0].rss.has_value());
+  CHECK(first.criteria[1].rss.has_value());
+  CHECK(first.criteria[1].nominal.value_or(0.0) > 0.0);  // the spot of field 1 is not a point
+  CHECK(first.confirmation.has_value());
+  const std::vector<double> one = values(first);
   REQUIRE(one.size() > 20);
   for (const int threads : {4, oneapi::tbb::task_arena::automatic}) {
     INFO(threads << " threads");

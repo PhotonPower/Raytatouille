@@ -84,10 +84,11 @@ struct InverseSensitivity {
   /// defined. Only a positive A is distributed (`share`, `limits`).
   std::optional<double> allowance;
   /// Why the criterion is not distributed: "no upper bound" (quadratic), "no bound" (linear),
-  /// "nominal value on or outside a bound" (A = 0), "nominal value not defined".
+  /// "nominal value on or outside a bound" (A = 0), "nominal value not defined",
+  /// "no items".
   std::string note;
-  /// Share of one item: linear A / sqrt(n), quadratic A^2 / n, n the number of items of the
-  /// context (excluded items count, addendum #258).
+  /// Share of one item: linear A / sqrt(n) in the unit of the criterion, quadratic A^2 / n in its
+  /// square; n the number of items of the context (excluded items count, addendum #258).
   std::optional<double> share;
   /// T'_i per item in the unit of the item: linear T_i share / |delta_i|, quadratic
   /// T_i sqrt(share / q_i); may exceed T_i. None: the item limits nothing or is excluded.
@@ -147,11 +148,13 @@ struct ToleranceSensitivity {
   TrialResult nominal;                         ///< Phi_0 (TrialContext::nominal())
   std::vector<ItemTrials> items;               ///< per item, order of the context
   std::vector<CriterionSensitivity> criteria;  ///< per criterion, order of the context
-  /// Per item the smallest T'_i over the criteria (F3); none if no criterion limits the item.
+  /// Per item the smallest T'_i over the criteria (F3); none if no criterion limits the item,
+  /// and none for every item if cancelled.
   std::vector<std::optional<double>> limits;
   std::optional<Confirmation> confirmation;  ///< with SensitivityOptions::confirm, not cancelled
   /// Warnings of the run itself: tolerances.rss_negative at /tolerances/criteria/<k> (of the
-  /// first part, then of the confirmation). The warnings of each trial are in its TrialResult.
+  /// first part, then of the confirmation; the message names the part). The warnings of each trial
+  /// are in its TrialResult.
   std::vector<model::Diagnostic> warnings;
   /// Only from the overload with a System: the result of expand(), whose items are those of
   /// `items` (ADR 0036, addendum #260).
@@ -176,7 +179,7 @@ struct ToleranceSensitivity {
 /// @param materials material library (also for the Abbe limits of expand)
 /// @param coatings  coating library, or nullptr
 /// @throws compile::CompileError, std::invalid_argument, optim::OptimError as expand() and
-///         prepare()
+///         prepare(); whatever the progress callback throws (rtt::trace::RunControl)
 [[nodiscard]] ToleranceSensitivity sensitivity(const model::System& system,
                                                const material::MaterialLibrary& materials,
                                                const coating::CoatingLibrary* coatings,

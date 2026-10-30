@@ -8,7 +8,6 @@
 #include <atomic>
 #include <cmath>
 #include <cstddef>
-#include <limits>
 #include <numbers>
 #include <optional>
 #include <span>
@@ -85,6 +84,7 @@ Slots run_trials(const TrialContext& context,
 /// The contribution of one item to criterion k (ADR 0036, point 6; addendum #258, F1).
 ItemContribution contribution(CriterionKind kind,
                               const std::optional<double>& phi0,
+                              bool nominal_cancelled,
                               const std::optional<TrialResult>& plus,
                               const std::optional<TrialResult>& minus,
                               std::size_t k) {
@@ -92,7 +92,7 @@ ItemContribution contribution(CriterionKind kind,
   if (plus) c.plus = plus->criteria[k].value;
   if (minus) c.minus = minus->criteria[k].value;
   if (!phi0) {
-    c.excluded = "nominal value not defined";
+    c.excluded = nominal_cancelled ? "cancelled" : "nominal value not defined";
     return c;
   }
   if (!plus || !minus) {
@@ -122,12 +122,16 @@ ItemContribution contribution(CriterionKind kind,
   return c;
 }
 
-model::Diagnostic rss_warning(const model::Criterion& criterion, std::size_t k) {
+/// tolerances.rss_negative of criterion k; `stage` names the part of the run ("sensitivity" or
+/// "confirmation"), so that the warnings of both parts can be told apart.
+model::Diagnostic rss_warning(const model::Criterion& criterion,
+                              std::size_t k,
+                              std::string_view stage) {
   const diagnostics::DiagnosticCode code("tolerances.rss_negative");
-  return {
-      code.severity(), "/tolerances/criteria/" + std::to_string(k),
-      "criterion '" + criterion.id + "': Phi_0^2 + sum q_i is negative; the RSS is reported as 0",
-      std::string(code.str())};
+  return {code.severity(), "/tolerances/criteria/" + std::to_string(k),
+          "criterion '" + criterion.id + "' (" + std::string(stage) +
+              "): Phi_0^2 + sum q_i is negative; the RSS is reported as 0",
+          std::string(code.str())};
 }
 
 /// A distributed allowance: A and the share of one item, units of the criterion (squared for a
@@ -144,6 +148,10 @@ std::optional<Distribution> distribute(const model::Criterion& criterion,
                                        double phi0,
                                        std::size_t n,
                                        InverseSensitivity& inverse) {
+  if (n == 0) {
+    inverse.note = "no items";
+    return std::nullopt;
+  }
   const auto items = static_cast<double>(n);
   if (kind == CriterionKind::Linear) {
     std::optional<double> a;
@@ -197,9 +205,11 @@ CriterionSensitivity criterion_sensitivity(const TrialContext& context,
                                            std::span<const double> ratios,
                                            const Slots& slots,
                                            bool with_inverse,
+                                           std::string_view stage,
                                            std::vector<model::Diagnostic>& warnings) {
   const model::Criterion& criterion = context.criteria()[k];
   const CriterionValue& nominal = context.nominal().criteria[k];
+  const bool nominal_cancelled = context.nominal().status == TrialStatus::Cancelled;
   CriterionSensitivity out;
   out.id = criterion.id;
   out.kind = criterion_kind(criterion.operand);
@@ -207,13 +217,13 @@ CriterionSensitivity criterion_sensitivity(const TrialContext& context,
   if (!nominal.value) out.nominal_reason = nominal.reason;
   const std::size_t n = limits.size();
   for (std::size_t i = 0; i < n; ++i) {
-    out.items.push_back(
-        contribution(out.kind, nominal.value, slots.trials[2 * i], slots.trials[2 * i + 1], k));
+    out.items.push_back(contribution(out.kind, nominal.value, nominal_cancelled,
+                                     slots.trials[2 * i], slots.trials[2 * i + 1], k));
     if (!out.items.back().excluded.empty()) out.excluded.push_back(i);
   }
   out.complete = out.excluded.empty();
   if (!nominal.value) {
-    if (with_inverse) out.inverse.note = "nominal value not defined";
+    if (with_inverse && !nominal_cancelled) out.inverse.note = "nominal value not defined";
     return out;
   }
   if (slots.cancelled) return out;
@@ -243,7 +253,7 @@ CriterionSensitivity criterion_sensitivity(const TrialContext& context,
     }
     const detail::QuadraticRss rss = detail::quadratic_rss(phi0, q);
     out.rss = rss.value;
-    if (rss.negative) warnings.push_back(rss_warning(criterion, k));
+    if (rss.negative) warnings.push_back(rss_warning(criterion, k, stage));
     out.predicted_mean_square = predicted;
   }
   if (!with_inverse) return out;
@@ -343,16 +353,16 @@ ToleranceSensitivity sensitivity(const TrialContext& context,
     out.items[i].minus = slots.trials[2 * i + 1];
   }
   for (std::size_t k = 0; k < criteria; ++k) {
-    out.criteria.push_back(
-        criterion_sensitivity(context, k, limits, ratios, slots, true, out.warnings));
+    out.criteria.push_back(criterion_sensitivity(context, k, limits, ratios, slots, true,
+                                                 "sensitivity", out.warnings));
   }
+  out.limits.assign(n, std::nullopt);
   if (slots.cancelled) {
     out.status = SensitivityStatus::Cancelled;
     return out;
   }
 
   // Per item the smallest T'_i over the criteria that limit it (addendum #258, F3).
-  out.limits.assign(n, std::nullopt);
   for (const CriterionSensitivity& c : out.criteria) {
     for (std::size_t i = 0; i < c.inverse.limits.size(); ++i) {
       const std::optional<double>& t = c.inverse.limits[i];
@@ -383,8 +393,8 @@ ToleranceSensitivity sensitivity(const TrialContext& context,
     confirmation.minus.push_back(*minus);
   }
   for (std::size_t k = 0; k < criteria; ++k) {
-    confirmation.criteria.push_back(criterion_sensitivity(context, k, confirmation.limits, ratios,
-                                                          second, false, out.warnings));
+    confirmation.criteria.push_back(criterion_sensitivity(
+        context, k, confirmation.limits, ratios, second, false, "confirmation", out.warnings));
   }
   out.confirmation = std::move(confirmation);
   return out;
