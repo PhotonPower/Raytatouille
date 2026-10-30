@@ -115,14 +115,14 @@ Ideenliste aus der Umsetzung von M7 (0.9.0), gesammelt von den Agenten; neu zu b
   - Vorzeichenwechsel eines Radius über eine Tabellenzeile oder einen Kompensator erkennen; heute wird er nicht bemerkt (#293, aus dem Review von #278).
   - Korrelierte Toleranzen (K7); heute zieht jedes Item unabhängig.
   - Flächenfehler als additive Zernike-Terme (T1, Rest); kommt mit den Zernike-Flächen in M8.
-  - Strehl und MTF als Toleranzkriterien; heute nur Kriterien aus `first_order`, Spot und OPD.
+  - Strehl und MTF als Toleranzkriterien; heute Kriterien aus den Operanden von ADR 0030 (erste Ordnung, Strahlkoordinaten, Spot, OPD, Tabellenwerte).
   - Ein abgebrochener Monte-Carlo-Lauf ist nicht reproduzierbar, nur ein vollständiger (ADR 0036, Nachtrag #259).
-  - Bitgleichheit gilt für 1, 4 und alle Threads auf einer Plattform; zwischen Plattformen nicht, weil `exp`, `erf` und `erfc` aus der jeweiligen libm kommen.
+  - Bitgleichheit gilt innerhalb eines Builds (1, 4 und alle Threads, Wiederholung); zwischen Plattformen nur für die gleichverteilten und Endpunkt-Ziehungen, nicht für die normalverteilten (Box–Muller mit `log`, `cos`, `sin`) und nicht für die Ergebnisse (libm im Trace).
   - `LmStatus::Failed` eines Kompensators hat keinen eigenen Test (#278).
   - Die Warnung `tolerances.rss_negative` ist nur in C++ getestet, nicht aus Python (#302, P3-7).
-  - efl und bfl eines Prüflings kommen aus parabasalen Strahlen bei h = 5·10⁻³ mm, also aus einem realen Strahl und nicht aus dem y-ν-Trace; wer mit einem paraxialen Wert vergleicht, sieht die Aberration dieses Strahls (#303).
+  - efl, bfl, image_fnumber und magnification eines Prüflings kommen aus parabasalen Strahlen bei 10⁻³ des Pupillenradius (5·10⁻³ mm in den M7-Systemen), also aus einem realen Strahl und nicht aus dem y-ν-Trace; wer mit einem paraxialen Wert vergleicht, sieht die Aberration dieses Strahls (#303).
 - **Optimierung:**
-  - Versuche mit neu verlorenen Strahlen ablehnen statt Residuum 0 (#289, Revision F7) und Spot/OPD-Operanden gleich behandeln (#299).
+  - Versuche mit neu verlorenen Strahlen ablehnen statt Residuum 0 (#289, Revision F7) und Spot/OPD-Operanden gleich behandeln (#299); was danach von #281 bleibt, wird dort neu bewertet.
   - Differenzenschrittweite je Variable für steife Probleme (#290).
   - Zielungsart als Lauf-Option von `optimize` (#291).
   - Exakte Gleichheitsbedingungen statt Strafgewicht (#196).
