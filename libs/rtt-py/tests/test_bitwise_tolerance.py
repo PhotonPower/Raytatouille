@@ -258,10 +258,14 @@ def schott_library() -> rt.MaterialLibrary:
 
 
 def test_the_monte_carlo_case_has_content() -> None:
-    """Completed, all 12 trials kept, each criterion with statistics, and the perturbations of
-    every trial different."""
+    """Completed, all 12 trials kept, each criterion with statistics, the perturbations of every
+    trial different, and the compensator run in every trial (without it both sides would show
+    lm_status -1 and still agree)."""
     r = monte_carlo_run(1)
     assert r.status == tolerance.MonteCarloStatus.COMPLETED
     assert len(r.trials) == 12 and r.yield_.total == 12
     assert all(c.count >= 2 and c.standard_deviation is not None for c in r.criteria)
     assert len({tuple(row) for row in r.trials.values.tolist()}) == 12
+    t = r.trials
+    assert bool(np.all(t.lm_status >= 0)) and bool(np.all(t.lm_iterations > 0))
+    assert bool(np.all(t.compensator_end != t.compensator_start))

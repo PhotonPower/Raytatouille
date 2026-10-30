@@ -28,6 +28,8 @@ import operator
 import warnings
 from collections.abc import Sequence
 
+import numpy as np
+
 from . import _core
 from ._core import (
     ClassSkip,
@@ -194,12 +196,12 @@ def sensitivity(
 def _uint64(name: str, value: int | None) -> int | None:
     """`value` as an int; ValueError for a seed or a number of trials that is not an integer in
     [0, 2^64) (review of #261, F2), where nanobind would raise OverflowError or TypeError. NumPy
-    integers are accepted (operator.index), bool is not. The range of the number of trials,
-    [1, 2^32], is checked in C++."""
+    integers are accepted (operator.index), bool and numpy.bool_ are not. The range of the
+    number of trials, [1, 2^32], is checked in C++."""
     if value is None:
         return None
     try:
-        if isinstance(value, bool):
+        if isinstance(value, (bool, np.bool_)):
             raise TypeError
         number = operator.index(value)
     except TypeError:
@@ -254,9 +256,9 @@ def monte_carlo(
     ValueError, OptimError) for the tolerance set; and whatever the progress callback raises.
     """
     result = _core.tolerance_monte_carlo(
-        system, materials, coatings, _uint64("trials", trials), _uint64("seed", seed), [float(p) for p in percentiles], z,
-        keep_trials, OptimizeOptions() if compensators is None else compensators, threads,
-        cancel, progress)
+        system, materials, coatings, _uint64("trials", trials), _uint64("seed", seed),
+        [float(p) for p in percentiles], z, keep_trials,
+        OptimizeOptions() if compensators is None else compensators, threads, cancel, progress)
     for d in result.warnings:
         if d.severity == Severity.WARNING:
             warnings.warn(RaytatouilleWarning(d.message, d.code, d.location), stacklevel=2)

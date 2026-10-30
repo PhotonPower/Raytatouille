@@ -202,7 +202,10 @@ def test_invalid_trials_are_nan_and_minus_one_in_the_columns() -> None:
     assert bool(np.all(np.isnan(t.criteria[invalid])))
     assert bool(np.all(t.satisfied[invalid] == -1))
     assert bool(np.all(t.lm_status[invalid] == -1)) and bool(np.all(np.isnan(t.mu[invalid])))
-    assert bool(np.all(t.lm_iterations[invalid] == 0)) and not bool(np.any(t.good))
+    assert bool(np.all(t.lm_iterations[invalid] == 0))
+    # No trial is good only because spot-zone (max 0.03 mm) already fails at the nominal
+    # (0.041 mm), not because of the invalid rows; good trials are tested separately.
+    assert not bool(np.any(t.good))
     assert not bool(np.any(np.isnan(t.criteria[~invalid])))
     assert bool(np.all(t.lm_status[~invalid] >= 0)) and not bool(np.any(np.isnan(t.mu[~invalid])))
     for c in r.criteria:
@@ -295,6 +298,11 @@ def test_a_seed_or_number_of_trials_must_be_an_int() -> None:
     with pytest.raises(ValueError, match="trials must be an int"):
         tolerance.monte_carlo(explicit_only(), materials=schott(),
                               trials=True)  # bool is an int to mypy, not to monte_carlo
+    numpy_true: Any = np.True_
+    for name in ("seed", "trials"):
+        with pytest.raises(ValueError, match=f"{name} must be an int"):
+            tolerance.monte_carlo(explicit_only(), materials=schott(),
+                                  **{"trials": N, name: numpy_true})
 
 
 def test_without_a_number_of_trials_it_is_an_error() -> None:
