@@ -44,7 +44,7 @@ Präzisierungen und Ergänzungen einer angenommenen Entscheidung kommen als dati
 | [0033](0033.md) | FFT-Beugung: PSF, MTF, Encircled Energy | angenommen |
 | [0034](0034.md) | Polarisation in der Pupille (P je Ereignis, akkumuliertes Q, Jones-Pupille) | angenommen |
 | [0035](0035.md) | Toleranzsatz im Systemfile (Abschnitt `tolerances`, Klassen, Kompensatoren, Kriterien; Nachtrag #254: einheitliche Segmentliste ist ein Material) | angenommen |
-| [0036](0036.md) | Toleranzanalyse (Störungsmodell, nominaler Bezug, Kompensatoren, Zufall, Statistik; Nachtrag #254: Linien in Normalluft, Prüfungen in compile; Nachtrag #257: ein Prüfling; Nachtrag #258: Sensitivität bei ungültigen Seiten, Abbruch, mehreren Kriterien) | angenommen |
+| [0036](0036.md) | Toleranzanalyse (Störungsmodell, nominaler Bezug, Kompensatoren, Zufall, Statistik; Nachtrag #254: Linien in Normalluft, Prüfungen in compile; Nachtrag #257: ein Prüfling; Nachtrag #258: Sensitivität bei ungültigen Seiten, Abbruch, mehreren Kriterien; Nachtrag #259: Monte Carlo, ungültige Prüflinge, Seed und Warnungen) | angenommen |
 | [0037](0037.md) | Medium im Objektraum (`object.medium`, Schema 0.7; Startmedium aller Pfade, nur endliches Objekt, NA-Prüfung in validate und compile) | angenommen |
 
 ## Vorlage

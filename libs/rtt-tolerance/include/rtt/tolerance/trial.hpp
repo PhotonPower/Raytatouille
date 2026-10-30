@@ -100,6 +100,11 @@ class TrialContext {
   [[nodiscard]] std::span<const model::Criterion> criteria() const noexcept;
   /// The compensators of the nominal system's tolerance set.
   [[nodiscard]] std::span<const model::Compensator> compensators() const noexcept;
+  /// The Monte Carlo defaults seed and trials (ADR 0035, point 8): the value from
+  /// nominal.tolerances; none if the file has no monte_carlo section. monte_carlo() takes an
+  /// option before this value (ADR 0036, addendum #259).
+  [[nodiscard]] const std::optional<model::MonteCarloDefaults>& monte_carlo_defaults()
+      const noexcept;
   /// Phi_0: the trial with all values 0, computed once by prepare() with the same procedure
   /// (compensators included; ADR 0036, points 2 and 6). Status Cancelled if prepare() was
   /// cancelled.

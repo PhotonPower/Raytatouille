@@ -595,6 +595,11 @@ std::span<const model::Compensator> TrialContext::compensators() const noexcept 
   return data_->nominal.tolerances.compensators;
 }
 
+const std::optional<model::MonteCarloDefaults>& TrialContext::monte_carlo_defaults()
+    const noexcept {
+  return data_->nominal.tolerances.monte_carlo;
+}
+
 const TrialResult& TrialContext::nominal() const noexcept {
   return data_->nominal_result;
 }
