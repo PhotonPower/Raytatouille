@@ -17,7 +17,7 @@ using model::EventKind;
 /// z axis that still count as rotationally symmetric (decided for #7).
 constexpr double kSymmetryTolerance = 1e-12;
 
-/// Factor k of the afocal threshold |Phi| <= k N u S (power_scale(), #35 B9).
+/// Factor k of the afocal threshold |Phi| <= k N u (S + E) (power_scale(), #35 B9, #280).
 constexpr double kAfocalFactor = 16.0;
 
 /// One event of the path reduced to what the y-nu trace needs.
@@ -164,10 +164,11 @@ Matrix propagate(const std::vector<Step>& steps,
 /// Magnitudes (y, nu) of a y-nu trace for the infinity tests of first_order (#35, rest of B9):
 /// the trace of propagate() for the start ray (y0, nu0) from the plane z_in (index n_in, signed)
 /// through steps [first, last) to the plane z_out, with every term by its magnitude as in
-/// power_scale(): |y| += (|z'| + |z|) |nu| / |n|, |nu| += |y| |phi|. The rounding model of
-/// power_scale() applies unchanged: each step rounds y and nu at most 8 times relative to these
-/// magnitudes, the final transfer y 4 more times, so an element of the matrix that is zero in
-/// exact arithmetic comes out with at most 8 (N + 1) u times its magnitude for N steps.
+/// power_scale(), plus its coordinate channel (e_y, e_nu); returned as the sums y + e_y and
+/// nu + e_nu. The rounding model of power_scale() applies unchanged: each step rounds y and nu at
+/// most 8 times relative to the magnitudes, the final transfer y 4 more times, and the
+/// coordinates add at most u (e_y, e_nu), so an element of the matrix that is zero in exact
+/// arithmetic comes out with at most 8 (N + 1) u times the returned magnitude for N steps.
 struct Magnitudes {
   double y = 0.0;
   double nu = 0.0;
@@ -183,50 +184,76 @@ Magnitudes magnitude_trace(const std::vector<Step>& steps,
                            double nu0) {
   double y = std::abs(y0);
   double nu = std::abs(nu0);
+  double e_y = 0.0;
+  double e_nu = 0.0;
   double z = z_in;
   double n = n_in;
   for (std::size_t i = first; i < last; ++i) {
     const Step& step = steps[i];
-    y += (std::abs(step.z) + std::abs(z)) * nu / std::abs(n);
+    // The coordinate rounding enters once per transfer, with nu before the transfer (#280).
+    e_y += (std::abs(step.z - z) * e_nu + (std::abs(step.z) + std::abs(z)) * nu) / std::abs(n);
+    y += std::abs(step.z - z) * nu / std::abs(n);
     z = step.z;
     const double direction = n > 0.0 ? 1.0 : -1.0;
     const double n_after = step.kind == EventKind::Reflect ? -n : direction * step.n_after;
-    nu += y * (std::abs(step.c * (n_after - n)) + std::abs(n * step.inverse_focal_length));
+    const double phi = std::abs(step.c * (n_after - n)) + std::abs(n * step.inverse_focal_length);
+    e_nu += e_y * phi;
+    nu += y * phi;
     n = n_after;
   }
-  y += (std::abs(z_out) + std::abs(z)) * nu / std::abs(n);
-  return {y, nu};
+  e_y += (std::abs(z_out - z) * e_nu + (std::abs(z_out) + std::abs(z)) * nu) / std::abs(n);
+  y += std::abs(z_out - z) * nu / std::abs(n);
+  return {y + e_y, nu + e_nu};
 }
 
-/// Scale S of the power for the afocal test (#35, item B9): the y-nu trace of the ray
-/// (y, nu) = (1, 0) of propagate() with every term by its magnitude, |y| += (|z'| + |z|) |nu| / |n|
-/// and |nu| += |y| |phi|, so S is the sum of the magnitudes of the terms that make up Phi.
+/// Scale S + E of the power for the afocal test (#35, item B9; #280): S is the y-nu trace of the
+/// ray (y, nu) = (1, 0) of propagate() with every term by its magnitude, |y| += |z' - z| |nu| / |n|
+/// and |nu| += |y| |phi|, so S is the sum of the magnitudes of the terms that make up Phi; E is
+/// the bound of the error from the coordinates, the nu of a second channel fed with
+/// (|z'| + |z|) |nu| / |n| at each transfer and traced with the same magnitudes.
 ///
-/// Derivation (no literature source; docs/quellen.md): in the rounding model of IEEE double,
-/// fl(a op b) = (a op b)(1 + delta) with |delta| <= u = 2^-53, apply() rounds four times for y
-/// (difference z' - z, division by n, product, sum) and four times for nu (difference n' - n,
-/// two products, difference); the inputs z and c are themselves known only to relative u
-/// (z comes from composed poses, so its error is about u |z|, not u |z' - z|, hence |z'| + |z|).
-/// The index n counts as exact: its value from the dispersion formula defines the system. Then
-/// n' - n is exact for 1/2 <= n'/n <= 2 (Sterbenz: both operands lie within a factor 2, so the
-/// difference is a multiple of the last place of the smaller one and no larger than it, hence
-/// representable), and -2 n at a mirror is exact. Counting n with an error u |n| instead would
-/// put u |n| into |n' - n|, which S does not hold for nearly index-matched cemented surfaces.
-/// To first order every term of the computed Phi then carries a relative error of at most 8 u
-/// per step, so |fl(Phi) - Phi| <= 8 N u S for N steps. The threshold k = 16 is twice that
-/// bound. Measured with the same operations for 1999 nearly afocal thick lenses
-/// (R = +-r, n = 1.5, d = 6 r, r from 0.7 um to 1.4 mm, at z = 0, 10 and 1000 mm): at most
-/// |Phi| = 0.30 N u S, so the threshold lies more than 50 times above the rounding.
-/// Computed as the nu of magnitude_trace() for (1, 0) through all steps: the same operations in
-/// the same order as before magnitude_trace() existed, so the afocal threshold is bitwise
-/// unchanged; the final transfer (z_out) only touches y.
+/// Derivation (no literature source; docs/quellen.md): Phi is a polynomial in the transfers
+/// t = (z' - z) / n and the surface powers phi; t and phi enter each of its terms at most once,
+/// because the y-nu trace is a product of elementary matrices.
+/// (a) Arithmetic. In the rounding model of IEEE double, fl(a op b) = (a op b)(1 + delta) with
+/// |delta| <= u = 2^-53, apply() rounds four times for y (difference z' - z, division by n,
+/// product, sum) and four times for nu (difference n' - n, two products, difference); c is
+/// itself known only to relative u. The index n counts as exact: its value from the dispersion
+/// formula defines the system. Then n' - n is exact for 1/2 <= n'/n <= 2 (Sterbenz: both
+/// operands lie within a factor 2, so the difference is a multiple of the last place of the
+/// smaller one and no larger than it, hence representable), and -2 n at a mirror is exact.
+/// Counting n with an error u |n| instead would put u |n| into |n' - n|, which S does not hold
+/// for nearly index-matched cemented surfaces. To first order every term of the computed Phi
+/// then carries a relative error of at most 8 u per step, so the arithmetic adds at most
+/// 8 N u S for N steps.
+/// (b) Coordinates. z comes from composed poses and is known only to about u |z|, so t carries
+/// an absolute error of up to u (|z'| + |z|) / |n|, which can be far more than u |t|. Phi is
+/// affine in each t, so to first order this adds sum_i |dPhi/dt_i| u (|z_i| + |z_i-1|) / |n|,
+/// and |dPhi/dt_i| is at most |nu| before transfer i carried by the magnitudes of the rest of
+/// the trace: that is the second channel, so the coordinates add at most u E.
+/// Together |fl(Phi) - Phi| <= 8 N u S + u E <= 8 N u (S + E). The coordinates enter E only
+/// linearly; until #280 they stood in the transfers of S themselves (|z'| + |z| in place of
+/// |z' - z|) and were multiplied at every surface, so S grew exponentially with the number of
+/// surfaces (7e12 / mm as threshold for a 30-surface microscope 300 mm from the origin).
+/// One factor 8 N for S and E instead of 8 N u S + u E: a coordinate from nested poses is
+/// rounded more than once, so the factor of u E is not 1 and grows with the nesting; a separate
+/// weighting 16 u (N S + E) would leave the lens of Phi = 5e-13 / mm at z = 1000 mm
+/// (test_paraxial.cpp) only a factor 1.2 below the threshold, and twice the sharp bound,
+/// 2 (8 N u S + u E), would make it focal; and one scale keeps the form of the threshold. So the
+/// common factor N is a choice, not a consequence of the rounding alone: it keeps the
+/// position dependence of #35 B9 as it was for small systems. The threshold k = 16 is twice the
+/// bound. Measured with the same operations for 1999 nearly afocal thick
+/// lenses (R = +-r, n = 1.5, d = 6 r, r from 0.7 um to 1.4 mm, at z = 0, 10 and 1000 mm): at
+/// most |Phi| = 0.40 N u (S + E), so the threshold lies 40 times above the rounding (until #280,
+/// with S alone: 0.60 N u S, not the 0.30 stated here before).
 double power_scale(const std::vector<Step>& steps, double z_in, double n_in) {
   return magnitude_trace(steps, 0, steps.size(), z_in, n_in, z_in, 1.0, 0.0).nu;
 }
 
 /// True if `value`, an element of a matrix traced through `steps` events, is zero up to the
-/// rounding of the trace: |value| <= 16 (N + 1) u S with the magnitude S of magnitude_trace(),
-/// twice the bound of its rounding model, as the afocal threshold (#35, rest of B9).
+/// rounding of the trace: |value| <= 16 (N + 1) u (S + E) with the magnitude S + E returned by
+/// magnitude_trace(), twice the bound of its rounding model, as the afocal threshold (#35, rest
+/// of B9; #280).
 bool zero_up_to_rounding(double value, std::size_t steps, double scale) {
   return std::abs(value) <= kAfocalFactor * static_cast<double>(steps + 1) *
                                 std::numeric_limits<double>::epsilon() / 2.0 * scale;
@@ -311,7 +338,7 @@ FirstOrder first_order(const compile::CompiledSystem& system,
   //   and H' -> F' along the propagation direction: z_H = z_F + n1/Phi, z_H' = z_F' - n'/Phi.
   fo.power = -m.c;
   // Afocal if Phi is zero up to the rounding of the trace and of the coordinates (#35, B9):
-  // |Phi| <= 16 N u S, see power_scale().
+  // |Phi| <= 16 N u (S + E), see power_scale().
   const double afocal_threshold = kAfocalFactor * static_cast<double>(steps.size()) *
                                   std::numeric_limits<double>::epsilon() / 2.0 *
                                   power_scale(steps, z_v1, n1);
