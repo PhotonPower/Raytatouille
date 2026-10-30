@@ -115,7 +115,8 @@ jobs:
   python:
     # Python package raytatouille (libs/rtt-py, ADR 0002, ADR 0018): build in the CMake tree,
     # pytest incl. the bitwise comparison with C++ and mypy --strict via ctest; one smoke test
-    # with pip install . per OS.
+    # with pip install . per OS, and the editable install over an editable install (#271) in every
+    # job, also with Python 3.10 (stubgen needs typing_extensions there).
     name: Python ${{ matrix.python }} ${{ matrix.preset }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
@@ -123,9 +124,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-24.04, preset: ci-linux-python, python: "3.10", cache: ci-linux-gcc, triplet: x64-linux, smoke: false }
-          - { os: ubuntu-24.04, preset: ci-linux-python, python: "3.13", cache: ci-linux-gcc, triplet: x64-linux, smoke: true }
-          - { os: windows-2022, preset: ci-windows-python, python: "3.13", cache: msvc, triplet: x64-windows, smoke: true }
+          - { os: ubuntu-24.04, preset: ci-linux-python, python: "3.10", cache: ci-linux-gcc, triplet: x64-linux, smoke: false, editable: true }
+          - { os: ubuntu-24.04, preset: ci-linux-python, python: "3.13", cache: ci-linux-gcc, triplet: x64-linux, smoke: true, editable: true }
+          - { os: windows-2022, preset: ci-windows-python, python: "3.13", cache: msvc, triplet: x64-windows, smoke: true, editable: true }
     env:
       VCPKG_ROOT: ${{ github.workspace }}/../vcpkg
       VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/../vcpkg-cache
@@ -180,3 +181,36 @@ jobs:
           cd "$RUNNER_TEMP"
           python -c "import raytatouille as rt; print(rt.__version__, rt.__file__)"
           python -m pytest -q -p no:cacheprovider "$GITHUB_WORKSPACE/libs/rtt-py/tests"
+      - name: Editable install over an editable install (#271)
+        if: matrix.editable
+        shell: bash
+        run: |
+          # An editable install leaves a meta path finder in the environment (a .pth file loads it
+          # at every interpreter start, also under pip's build isolation). The second build must
+          # not import raytatouille through it while it writes _core.pyi (#271); before the fix it
+          # failed there with ModuleNotFoundError numpy. The builds reuse build/skbuild.
+          toolchain="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          if [ "$RUNNER_OS" = "Windows" ]; then toolchain="$(cygpath -m "$toolchain")"; fi
+          export CMAKE_ARGS="-DCMAKE_TOOLCHAIN_FILE=$toolchain -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}"
+          python -m venv "$RUNNER_TEMP/venv271"
+          if [ "$RUNNER_OS" = "Windows" ]; then py="$RUNNER_TEMP/venv271/Scripts/python.exe"
+          else py="$RUNNER_TEMP/venv271/bin/python"; fi
+          "$py" -m pip install -q --upgrade pip
+          # Import from outside the source tree, and content guard: a complete stub (#271).
+          check_stub() {
+            (cd "$RUNNER_TEMP"
+             "$py" -c "import raytatouille as rt; from raytatouille._core import StokesPupil; print(rt.__version__, rt.__file__)"
+             stub="$("$py" -c "import raytatouille, pathlib; print(pathlib.Path(raytatouille._core.__file__).with_name('_core.pyi'))")"
+             grep -q 'class StokesPupil' "$stub"
+             grep -q 'def yield_' "$stub")
+          }
+          "$py" -m pip install -e .
+          "$py" -m pip install -e . --force-reinstall --no-deps
+          check_stub
+          # The same without build isolation (the workaround in #271), with the pinned build tools
+          # from requirements.txt (ADR 0018).
+          grep -E '^(nanobind|scikit-build-core|numpy)==' libs/rtt-py/tests/requirements.txt \
+            > "$RUNNER_TEMP/build271.txt"
+          "$py" -m pip install -q -r "$RUNNER_TEMP/build271.txt"
+          "$py" -m pip install -e . --force-reinstall --no-deps --no-build-isolation
+          check_stub

@@ -97,8 +97,8 @@ endif()
 
 # The stubs depend on _core only: stubgen imports raytatouille._core from a staging package
 # that holds nothing but _core (and the TBB DLL) and an empty __init__.py, so the package's
-# own __init__ with its runtime imports (numpy, ...) is not loaded. The build environment of
-# pip install . has no numpy (a runtime dependency only).
+# own __init__ with its runtime imports (numpy, ...) is not loaded from the build tree. The
+# build environment of pip install . has no numpy (a runtime dependency only).
 set(RTT_PY_STUBGEN_DIR "${CMAKE_BINARY_DIR}/stubgen")
 add_custom_command(TARGET _core POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E make_directory "${RTT_PY_STUBGEN_DIR}/raytatouille"
@@ -111,15 +111,75 @@ if(WIN32)
             "$<TARGET_FILE:TBB::tbb>" "${RTT_PY_STUBGEN_DIR}/raytatouille")
 endif()
 
-# INCLUDE_PRIVATE: stubgen takes a name with one trailing underscore for private and leaves it
-# out, but yield_ (MonteCarloResult, CriterionStatistics) only avoids the keyword (PEP 8). The
-# stub then also lists MaterialLibrary._glass_records.
-nanobind_add_stub(rtt_py_stub
-  MODULE raytatouille._core
+# stubgen runs with -S -E instead of through nanobind_add_stub (#271): without site, no .pth
+# file of the target environment runs, so a meta path finder of an earlier editable install
+# (scikit-build-core puts it at sys.meta_path[0], also under pip's build isolation) cannot
+# redirect raytatouille to the source tree or to an old _core; -E ignores PYTHONPATH. Everything
+# the run imports therefore has to sit in the staging directory, which is also where stubgen.py
+# runs from: Python puts the directory of the script at sys.path[0], and stubgen.py imports
+# typing_extensions at module level on Python < 3.11, before main() handles -i. A copy of
+# stubgen.py in the staging directory makes that directory visible from the start (one code
+# path for all versions). stubgen.py imports only the standard library otherwise (no imports
+# from the nanobind package; nanobind 2.13.0), as does _core. typing_extensions is copied there
+# on Python < 3.11 only (below). The staging directory is not installed (install() below takes
+# _core.pyi from RTT_PY_PACKAGE_DIR), so neither copy reaches the wheel.
+#
+# The arguments are those of nanobind_add_stub (-q, -i, -m, -o) and -P for INCLUDE_PRIVATE:
+# stubgen takes a name with one trailing underscore for private and leaves it out, but yield_
+# (MonteCarloResult, CriterionStatistics) only avoids the keyword (PEP 8); the stub then also
+# lists MaterialLibrary._glass_records. The paths of stubgen.py and of the interpreter are found
+# and normalized as there. Not taken over: the sanitizer preload (LD_PRELOAD) of
+# nanobind_add_stub, harmless since no preset combines the sanitizers with RTT_BUILD_PYTHON.
+if(EXISTS "${NB_DIR}/src/stubgen.py")
+  set(rtt_nanobind_stubgen "${NB_DIR}/src/stubgen.py")
+elseif(EXISTS "${NB_DIR}/stubgen.py")
+  set(rtt_nanobind_stubgen "${NB_DIR}/stubgen.py")
+else()
+  message(FATAL_ERROR "stubgen.py of nanobind not found in ${NB_DIR}")
+endif()
+set(RTT_PY_STUBGEN "${RTT_PY_STUBGEN_DIR}/stubgen.py")
+add_custom_command(
+  OUTPUT "${RTT_PY_STUBGEN}"
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${RTT_PY_STUBGEN_DIR}"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different "${rtt_nanobind_stubgen}" "${RTT_PY_STUBGEN}"
+  DEPENDS "${rtt_nanobind_stubgen}"
+  VERBATIM)
+set(RTT_PY_STUBGEN_DEPENDS _core "${RTT_PY_STUBGEN}")
+if(Python_VERSION VERSION_LESS 3.11)
+  # typing_extensions is there in every build environment: scikit-build-core, pinned in
+  # pyproject.toml and requirements.txt, declares "Requires-Dist: typing-extensions>=4;
+  # python_version < '3.11'" (METADATA of 1.1.1). Only this one module is copied, not the whole
+  # site-packages: nothing else becomes importable, and the stub does not depend on what else is
+  # installed.
+  execute_process(
+    COMMAND "${Python_EXECUTABLE}" -c "import typing_extensions; print(typing_extensions.__file__)"
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    OUTPUT_VARIABLE rtt_typing_extensions
+    RESULT_VARIABLE rtt_typing_extensions_result)
+  if(NOT rtt_typing_extensions_result EQUAL 0)
+    message(FATAL_ERROR "typing_extensions not found for ${Python_EXECUTABLE} "
+                        "(needed by nanobind's stubgen on Python < 3.11); "
+                        "pip install -r libs/rtt-py/tests/requirements.txt")
+  endif()
+  file(TO_CMAKE_PATH "${rtt_typing_extensions}" rtt_typing_extensions)
+  add_custom_command(
+    OUTPUT "${RTT_PY_STUBGEN_DIR}/typing_extensions.py"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${RTT_PY_STUBGEN_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${rtt_typing_extensions}" "${RTT_PY_STUBGEN_DIR}/typing_extensions.py"
+    DEPENDS "${rtt_typing_extensions}"
+    VERBATIM)
+  list(APPEND RTT_PY_STUBGEN_DEPENDS "${RTT_PY_STUBGEN_DIR}/typing_extensions.py")
+endif()
+file(TO_CMAKE_PATH "${Python_EXECUTABLE}" RTT_PY_STUBGEN_PYTHON)
+add_custom_command(
   OUTPUT "${RTT_PY_PACKAGE_DIR}/_core.pyi"
-  PYTHON_PATH "${RTT_PY_STUBGEN_DIR}"
-  INCLUDE_PRIVATE
-  DEPENDS _core)
+  COMMAND "${RTT_PY_STUBGEN_PYTHON}" -S -E "${RTT_PY_STUBGEN}" -q -P
+          -i "${RTT_PY_STUBGEN_DIR}" -m raytatouille._core -o "${RTT_PY_PACKAGE_DIR}/_core.pyi"
+  WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+  DEPENDS ${RTT_PY_STUBGEN_DEPENDS}
+  VERBATIM)
+add_custom_target(rtt_py_stub ALL DEPENDS "${RTT_PY_PACKAGE_DIR}/_core.pyi")
 
 # Installation into the wheel (scikit-build-core): the pure Python modules come from
 # wheel.packages in pyproject.toml.
