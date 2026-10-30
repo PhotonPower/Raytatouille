@@ -180,3 +180,31 @@ jobs:
           cd "$RUNNER_TEMP"
           python -c "import raytatouille as rt; print(rt.__version__, rt.__file__)"
           python -m pytest -q -p no:cacheprovider "$GITHUB_WORKSPACE/libs/rtt-py/tests"
+      - name: Editable install over an editable install (#271)
+        if: matrix.smoke
+        shell: bash
+        run: |
+          # An editable install leaves a meta path finder in the environment (a .pth file loads it
+          # at every interpreter start, also under pip's build isolation). The second build must
+          # not import raytatouille through it while it writes _core.pyi (#271); before the fix it
+          # failed there with ModuleNotFoundError numpy. The builds reuse build/skbuild.
+          toolchain="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          if [ "$RUNNER_OS" = "Windows" ]; then toolchain="$(cygpath -m "$toolchain")"; fi
+          export CMAKE_ARGS="-DCMAKE_TOOLCHAIN_FILE=$toolchain -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}"
+          python -m venv "$RUNNER_TEMP/venv271"
+          if [ "$RUNNER_OS" = "Windows" ]; then py="$RUNNER_TEMP/venv271/Scripts/python.exe"
+          else py="$RUNNER_TEMP/venv271/bin/python"; fi
+          "$py" -m pip install -q --upgrade pip
+          "$py" -m pip install -e .
+          "$py" -m pip install -e . --force-reinstall --no-deps
+          # The same without build isolation (the workaround in #271), with the pinned build tools
+          # from requirements.txt (ADR 0018).
+          grep -E '^(nanobind|scikit-build-core|numpy)==' libs/rtt-py/tests/requirements.txt \
+            > "$RUNNER_TEMP/build271.txt"
+          "$py" -m pip install -q -r "$RUNNER_TEMP/build271.txt"
+          "$py" -m pip install -e . --force-reinstall --no-deps --no-build-isolation
+          cd "$RUNNER_TEMP"
+          stub="$("$py" -c "import raytatouille, pathlib; print(pathlib.Path(raytatouille._core.__file__).with_name('_core.pyi'))")"
+          "$py" -c "import raytatouille as rt; from raytatouille._core import StokesPupil; print(rt.__version__, rt.__file__)"
+          # Content guard: a complete stub (#271).
+          grep -q 'class StokesPupil' "$stub"
