@@ -60,6 +60,14 @@ struct CompensatorTarget {
   std::string pointer;    ///< optim::Variable::pointer of the variable it becomes
 };
 
+/// A base radius of the nominal system in one configuration (ADR 0036, addendum #293).
+struct NominalRadius {
+  std::string pointer;             ///< .../shape/base/radius (edit form, ADR 0024)
+  std::string surface;             ///< its SurfaceId
+  std::optional<std::string> row;  ///< the row it is bound to, if any
+  double value = 0.0;              ///< mm, finite and non-zero (model::Conic)
+};
+
 struct ContextData {
   model::System nominal;
   const material::MaterialLibrary* materials = nullptr;
@@ -74,6 +82,8 @@ struct ContextData {
   TrialOptions options;
   std::optional<optim::NominalBasis> basis;
   TrialResult nominal_result;
+  /// Per configuration the nominal base radii (ADR 0036, addendum #293).
+  std::vector<std::vector<NominalRadius>> radii;
 };
 
 struct ContextAccess {
@@ -424,6 +434,76 @@ std::optional<std::string> radius_invalid(const ContextData& d, model::System& t
   return std::nullopt;
 }
 
+constexpr std::string_view kRadiusSuffix = "/shape/base/radius";
+
+/// The base radii of `system` by pointer (edit form).
+std::map<std::string, double, std::less<>> base_radii(const model::System& system) {
+  std::map<std::string, double, std::less<>> out;
+  model::for_each_param(system, [&](std::string_view pointer, const model::Param& p) {
+    if (pointer.ends_with(kRadiusSuffix)) out.emplace(std::string(pointer), p.value);
+  });
+  return out;
+}
+
+/// The nominal base radii per configuration, with surface and row (ADR 0036, addendum #293).
+std::vector<std::vector<detail::NominalRadius>> nominal_radii(const model::System& nominal,
+                                                              const Anchors& anchors) {
+  std::unordered_map<std::string, std::string> surfaces;  // pointer -> SurfaceId
+  for (const auto& [name, pointer] : anchors.surfaces) surfaces.emplace(pointer, name);
+  std::unordered_map<std::string, std::string> rows;  // radius pointer -> row
+  model::for_each_param(nominal, [&](std::string_view pointer, const model::Param& p) {
+    if (pointer.ends_with(kRadiusSuffix) && p.param) rows.emplace(std::string(pointer), *p.param);
+  });
+  std::vector<std::vector<detail::NominalRadius>> out(model::configuration_count(nominal));
+  for (std::size_t c = 0; c < out.size(); ++c) {
+    const model::System resolved = model::resolve_parameters(nominal, c);
+    for (const auto& [pointer, value] : base_radii(resolved)) {
+      detail::NominalRadius r;
+      r.pointer = pointer;
+      const std::string owner = pointer.substr(0, pointer.size() - kRadiusSuffix.size());
+      if (const auto it = surfaces.find(owner); it != surfaces.end()) r.surface = it->second;
+      if (const auto it = rows.find(pointer); it != rows.end()) r.row = it->second;
+      r.value = value;
+      out[c].push_back(std::move(r));
+    }
+  }
+  return out;
+}
+
+/// Why a base radius of `system` makes no valid trial, or none (ADR 0036, addendum #293): in
+/// any configuration, after resolving the parameter table, a base radius that is 0, not finite
+/// or of the other sign than its nominal value. This covers what radius_invalid does not see:
+/// rows (also through expression rows and per configuration) and compensators. A table that
+/// does not resolve is left to compile, which reports it with the criteria.
+std::optional<std::string> radius_sign_invalid(const ContextData& d,
+                                               const model::System& system,
+                                               std::string_view stage) {
+  for (std::size_t c = 0; c < d.radii.size(); ++c) {
+    std::map<std::string, double, std::less<>> radii;
+    try {
+      // Without a table the system is its own resolved form (no copy).
+      radii = system.parameters.empty() ? base_radii(system)
+                                        : base_radii(model::resolve_parameters(system, c));
+    } catch (const std::invalid_argument&) {
+      return std::nullopt;
+    }
+    for (const detail::NominalRadius& n : d.radii[c]) {
+      const auto it = radii.find(n.pointer);
+      if (it == radii.end()) continue;
+      const double r = it->second;
+      if (std::isfinite(r) && r != 0.0 && std::signbit(r) == std::signbit(n.value)) continue;
+      std::ostringstream why;
+      why << stage << "surface '" << n.surface << "'";
+      if (d.radii.size() > 1) why << ", configuration '" << system.configurations[c].name << "'";
+      why << ": the radius " << r << " mm (nominal " << n.value << " mm";
+      if (n.row) why << ", row '" << *n.row << "'";
+      why << ") is zero, infinite or of the other sign";
+      return why.str();
+    }
+  }
+  return std::nullopt;
+}
+
 /// The value of every criterion of `system` with the overlay (ADR 0036, point 2). One merit
 /// function for all; if it throws (an analysis error of one criterion), each criterion alone, so
 /// that the others keep their values.
@@ -482,6 +562,9 @@ TrialResult run(const ContextData& d,
   if (cancelled(control)) return cancelled_result(d);
   if (!d.basis.has_value()) throw std::logic_error("tolerance: the context has no nominal basis");
   if (const std::optional<std::string> why = radius_invalid(d, a.system)) {
+    return invalid_result(d, {}, *why);
+  }
+  if (const std::optional<std::string> why = radius_sign_invalid(d, a.system, "")) {
     return invalid_result(d, {}, *why);
   }
   const optim::TrialOverlay overlay{std::move(a.perturbation), d.basis.value()};
@@ -562,6 +645,11 @@ TrialResult run(const ContextData& d,
                               "the compensator run failed (Levenberg-Marquardt status failed)");
       }
       trial = std::move(result.system);
+      // Only the end of the run counts: LM-internal states do not reach the result.
+      if (const std::optional<std::string> why =
+              radius_sign_invalid(d, trial, "after the compensator run: ")) {
+        return invalid_result(d, std::move(r), *why);
+      }
     }
   }
 
@@ -638,6 +726,7 @@ TrialContext prepare(const model::System& nominal,
     }
   }
   check_materials(*d, anchors);
+  d->radii = nominal_radii(nominal, anchors);
   // Pivots of the targets (ADR 0035, point 2): one per target, for explicit and generated items.
   for (const model::ToleranceOverride& o : set.overrides) {
     const auto* p = std::get_if<model::TolerancePivotOverride>(&o);
