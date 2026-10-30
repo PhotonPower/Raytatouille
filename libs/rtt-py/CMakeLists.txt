@@ -97,8 +97,8 @@ endif()
 
 # The stubs depend on _core only: stubgen imports raytatouille._core from a staging package
 # that holds nothing but _core (and the TBB DLL) and an empty __init__.py, so the package's
-# own __init__ with its runtime imports (numpy, ...) is not loaded. The build environment of
-# pip install . has no numpy (a runtime dependency only).
+# own __init__ with its runtime imports (numpy, ...) is not loaded from the build tree. The
+# build environment of pip install . has no numpy (a runtime dependency only).
 set(RTT_PY_STUBGEN_DIR "${CMAKE_BINARY_DIR}/stubgen")
 add_custom_command(TARGET _core POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E make_directory "${RTT_PY_STUBGEN_DIR}/raytatouille"
@@ -111,11 +111,28 @@ if(WIN32)
             "$<TARGET_FILE:TBB::tbb>" "${RTT_PY_STUBGEN_DIR}/raytatouille")
 endif()
 
-nanobind_add_stub(rtt_py_stub
-  MODULE raytatouille._core
+# stubgen runs with -S -E instead of through nanobind_add_stub (#271): without site, no .pth
+# file of the target environment runs, so a meta path finder of an earlier editable install
+# (scikit-build-core puts it at sys.meta_path[0], also under pip's build isolation) cannot
+# redirect raytatouille to the source tree or to an old _core; -E ignores PYTHONPATH. stubgen.py
+# and _core need only the standard library. The arguments are those of nanobind_add_stub (-q,
+# -i, -m, -o; -P for INCLUDE_PRIVATE, so that names like yield_ are kept); the path of
+# stubgen.py is found as there.
+if(EXISTS "${NB_DIR}/src/stubgen.py")
+  set(RTT_PY_STUBGEN "${NB_DIR}/src/stubgen.py")
+elseif(EXISTS "${NB_DIR}/stubgen.py")
+  set(RTT_PY_STUBGEN "${NB_DIR}/stubgen.py")
+else()
+  message(FATAL_ERROR "stubgen.py of nanobind not found in ${NB_DIR}")
+endif()
+add_custom_command(
   OUTPUT "${RTT_PY_PACKAGE_DIR}/_core.pyi"
-  PYTHON_PATH "${RTT_PY_STUBGEN_DIR}"
-  DEPENDS _core)
+  COMMAND "${Python_EXECUTABLE}" -S -E "${RTT_PY_STUBGEN}" -q -P
+          -i "${RTT_PY_STUBGEN_DIR}" -m raytatouille._core -o "${RTT_PY_PACKAGE_DIR}/_core.pyi"
+  WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+  DEPENDS _core "${RTT_PY_STUBGEN}"
+  VERBATIM)
+add_custom_target(rtt_py_stub ALL DEPENDS "${RTT_PY_PACKAGE_DIR}/_core.pyi")
 
 # Installation into the wheel (scikit-build-core): the pure Python modules come from
 # wheel.packages in pyproject.toml.
