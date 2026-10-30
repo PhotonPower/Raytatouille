@@ -404,6 +404,108 @@ TEST_CASE("trial: a compensator without inner start stays and warns", "[toleranc
   CHECK(r.warnings[0].location == "/tolerances/compensators/0");
 }
 
+TEST_CASE("trial: a radius of zero, infinity or the other sign invalidates the trial",
+          "[tolerance][trial]") {
+  // ADR 0036, addendum #257: the sensitivity confirms at T' > T (point 6), so the values can
+  // reach curvature_relative <= -1 or radius >= |R|. Then the trial is Invalid with a reason, no
+  // criterion is evaluated, nothing throws; apply() keeps the values as they are.
+  const System s = singlet();
+  const std::vector<ToleranceItem> items = {
+      item("r1", at(ToleranceAnchor::Surface, "L.S1"), ToleranceKind::CurvatureRelative, 0.01),
+      item("r2", at(ToleranceAnchor::Surface, "L.S2"), ToleranceKind::Radius, 1.0)};
+  const TrialContext ctx = context(s, items);
+  REQUIRE(ctx.nominal().status == TrialStatus::Valid);
+  const auto radius = [&](const std::vector<double>& values, std::size_t k) {
+    const rtt::tolerance::Applied a = rtt::tolerance::apply(ctx, values);
+    const auto& lens = std::get<Element>(a.system.root.children[1].value);
+    return std::get<rtt::model::Conic>(lens.surfaces[k].shape.base).radius.value;
+  };
+  const auto invalid = [&](const std::vector<double>& values, const std::string& id) {
+    INFO(values[0] << ", " << values[1]);
+    const TrialResult r = rtt::tolerance::evaluate(ctx, values);
+    CHECK(r.status == TrialStatus::Invalid);
+    CHECK(r.reason.find("item '" + id + "'") != std::string::npos);
+    REQUIRE(r.criteria.size() == 1);
+    CHECK(!r.criteria[0].value.has_value());
+    CHECK(r.criteria[0].reason == r.reason);
+    CHECK(r.compensators.empty());
+    CHECK(!r.lm_status.has_value());
+  };
+  invalid({-1.5, 0.0}, "r1");  // R' = 50 / (1 - 1.5) = -100
+  CHECK(radius({-1.5, 0.0}, 0) == -100.0);
+  invalid({-1.0, 0.0}, "r1");  // R' = 50 / 0
+  CHECK(std::isinf(radius({-1.0, 0.0}, 0)));
+  invalid({0.0, 60.0}, "r2");  // R' = -50 + 60 = 10
+  CHECK(radius({0.0, 60.0}, 1) == 10.0);
+  invalid({0.0, 50.0}, "r2");  // R' = 0
+  // Content guard: the same items within their limits give a valid trial.
+  const TrialResult ok = rtt::tolerance::evaluate(ctx, std::vector<double>{0.004, -0.5});
+  CHECK(ok.status == TrialStatus::Valid);
+  CHECK(ok.criteria.at(0).value.has_value());
+}
+
+TEST_CASE("trial: a material item's segment follows the rules of compile", "[tolerance][trial]") {
+  // ADR 0035, point 2 (compile.cpp, the material changes): the shorthand takes no segment, a list
+  // needs one below its size, a list of equal entries is one material and takes only segment 0.
+  // prepare() throws for them before any trial, as its header says.
+  const auto index = [](std::optional<std::uint32_t> segment) {
+    ToleranceItem i = item("n", at(ToleranceAnchor::Node, "L"), ToleranceKind::Index, 1e-3);
+    i.target.segment = segment;
+    return std::vector<ToleranceItem>{i};
+  };
+  const System shorthand = singlet();
+  CHECK_NOTHROW(context(shorthand, index(std::nullopt)));
+  CHECK_THROWS_AS(context(shorthand, index(0)), std::invalid_argument);
+
+  // A cemented doublet N-BK7 / F2 (list) and the same with N-BK7 twice (one material).
+  const auto doublet = [](const std::string& second) {
+    System s = singlet();
+    auto& lens = std::get<Element>(s.root.children[1].value);
+    lens.material.reset();
+    lens.surfaces = {plane("L.S1", 0.0, 50.0), plane("L.S2", 5.0, -40.0),
+                     plane("L.S3", 7.0, -150.0)};
+    lens.segment_materials = {"SCHOTT:N-BK7", second};
+    return s;
+  };
+  const System two = doublet("SCHOTT:F2");
+  CHECK_NOTHROW(context(two, index(0)));
+  CHECK_NOTHROW(context(two, index(1)));
+  CHECK_THROWS_AS(context(two, index(std::nullopt)), std::invalid_argument);
+  CHECK_THROWS_AS(context(two, index(2)), std::invalid_argument);
+  const System one = doublet("SCHOTT:N-BK7");
+  CHECK_NOTHROW(context(one, index(0)));
+  CHECK_THROWS_AS(context(one, index(1)), std::invalid_argument);
+}
+
+TEST_CASE("trial: a compensator at a parameter row", "[tolerance][trial]") {
+  // ADR 0035, point 6: the detector position bound to the row "IMGZ" (form value); the
+  // compensator is the row. Same bound as for the Param compensator above.
+  const double dz = 0.2;
+  System s = ideal_lens();
+  rtt::model::ParameterRow row;
+  row.name = "IMGZ";
+  row.form = 100.0;
+  s.parameters = {row};
+  std::get<Element>(s.root.children[2].value).pose.position[2] = Param::bound("IMGZ");
+  s.tolerances.compensators = {{at(ToleranceAnchor::Parameter, "IMGZ"), -2.0, 2.0}};
+  const std::vector<ToleranceItem> items = {
+      item("D.shift", at(ToleranceAnchor::Node, "D"), ToleranceKind::ShiftZ, 0.5)};
+  const TrialResult r = rtt::tolerance::evaluate(context(s, items), std::vector<double>{dz});
+  REQUIRE(r.status == TrialStatus::Valid);
+  REQUIRE(r.compensators.size() == 1);
+  REQUIRE(r.mu.has_value());
+  const rtt::optim::Bounds bounds{98.0, 102.0};
+  const double theta = rtt::optim::to_internal(r.compensators[0].end, bounds);
+  const double c2 = std::cos(theta) * std::cos(theta);
+  const double xtol = rtt::tolerance::TrialOptions{}.compensators.xtol;
+  const double bound = 2.0 * xtol * (std::abs(theta) + 1.0) * (1.0 + *r.mu / c2);
+  CHECK(r.compensators[0].start == 100.0);
+  CHECK(r.compensators[0].end != r.compensators[0].start);  // content guard: the row moved
+  CHECK(std::abs((r.compensators[0].end - r.compensators[0].start) + dz) <= bound);
+  REQUIRE(r.criteria.at(0).value.has_value());
+  CHECK(*r.criteria[0].value <= bound);
+}
+
 TEST_CASE("trial: bitwise the same for 1, 4 and all threads and in parallel",
           "[tolerance][trial]") {
   const System s = ideal_lens();

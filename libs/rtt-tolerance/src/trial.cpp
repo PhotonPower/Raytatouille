@@ -5,10 +5,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <functional>
 #include <map>
 #include <memory>
 #include <numbers>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -46,6 +48,9 @@ struct ItemAction {
   int component = 0;  ///< Rigid: 0..2 translation x, y, z; 3..5 rotation x, y, z
   compile::MaterialTarget material;
   bool abbe = false;  ///< Material: Delta nu_d, else Delta n_d
+  /// ParamAdd, ParamScale: the Param is the base radius of a surface (radius,
+  /// curvature_relative, param at /shape/base/radius); its nominal value in mm.
+  std::optional<double> radius_mm;
 };
 
 /// The target of a compensator: a Param or a row of the form value.
@@ -189,6 +194,7 @@ ItemAction action_of(const model::ToleranceItem& item,
       a.kind = item.kind == K::CurvatureRelative ? ItemAction::Kind::ParamScale
                                                  : ItemAction::Kind::ParamAdd;
       a.index = param_index(params, s, anchors.of(item.target) + field, what);
+      if (item.kind != K::Conic) a.radius_mm = 0.0;  // the nominal value: prepare()
       return a;
     }
     case K::Thickness:
@@ -197,6 +203,10 @@ ItemAction action_of(const model::ToleranceItem& item,
     case K::Param:
       if (!item.target.param) throw std::invalid_argument("tolerance: " + what + " needs param");
       a.index = param_index(params, s, anchors.of(item.target) + *item.target.param, what);
+      if (item.target.anchor == model::ToleranceAnchor::Surface &&
+          *item.target.param == "/shape/base/radius") {
+        a.radius_mm = 0.0;  // the nominal value: prepare()
+      }
       return a;
     case K::Parameter:
       if (item.target.anchor != model::ToleranceAnchor::Parameter) {
@@ -253,26 +263,42 @@ void check_materials(const ContextData& d, const Anchors& anchors) {
     if (a.kind != ItemAction::Kind::Material) continue;
     const model::Element& e = *anchors.elements.at(a.material.element);
     std::string location = anchors.nodes.at(a.material.element) + "/material";
-    std::optional<std::string> reference;
-    if (!e.segment_materials.empty()) {
-      const std::size_t segment = a.material.segment.value_or(0);
-      if (segment >= e.segment_materials.size()) {
-        throw std::invalid_argument("tolerance: item '" + d.items[i].id + "' has no segment " +
-                                    std::to_string(segment));
-      }
-      reference = e.segment_materials[segment];
-      location += "/" + std::to_string(segment);
-    } else if (!e.crystal) {
-      reference = e.material;
-    }
-    if (!reference) {
+    const std::string* shorthand = e.material ? &*e.material : nullptr;
+    if (e.crystal || (shorthand == nullptr && e.segment_materials.empty())) {
       errors.push_back(diagnostic("tolerances.material_unsupported", location,
                                   "element '" + e.name + "' has no isotropic material"));
       continue;
     }
+    // The segment rules of compile (ADR 0035, point 2), here before any trial: the shorthand
+    // takes no segment, a list needs one, a list of equal entries is one material (segment 0).
+    const std::string what = "tolerance: item '" + d.items[i].id + "': element '" + e.name + "'";
+    const std::vector<std::string>& list = e.segment_materials;
+    std::string reference;
+    if (list.empty()) {
+      if (a.material.segment.has_value()) {
+        throw std::invalid_argument(what + " has one material and takes no segment");
+      }
+      reference = *shorthand;
+    } else {
+      if (!a.material.segment.has_value()) {
+        throw std::invalid_argument(what + " needs a segment");
+      }
+      const std::size_t k = *a.material.segment;
+      const bool one_material =
+          std::adjacent_find(list.begin(), list.end(), std::not_equal_to<>()) == list.end();
+      if (one_material && k != 0) {
+        throw std::invalid_argument(what +
+                                    " has one material in all segments and takes only segment 0");
+      }
+      if (k >= list.size()) {
+        throw std::invalid_argument(what + " needs a segment below " + std::to_string(list.size()));
+      }
+      reference = list[k];
+      location += "/" + std::to_string(k);
+    }
     std::shared_ptr<const material::Material> material;
     try {
-      material = d.materials->resolve(*reference);
+      material = d.materials->resolve(reference);
     } catch (const material::UnknownMaterial& x) {
       errors.push_back(diagnostic("material.unknown", location, x.what()));
       continue;
@@ -281,13 +307,13 @@ void check_materials(const ContextData& d, const Anchors& anchors) {
         *material, d.nominal.environment.temperature_c, d.nominal.environment.pressure_atm);
     if (lines.status != compile::FraunhoferIndices::Status::Ok) {
       errors.push_back(diagnostic("tolerances.material_unsupported", location,
-                                  "material '" + *reference +
+                                  "material '" + reference +
                                       "' has no real index at the lines d, F and C (item '" +
                                       d.items[i].id + "')"));
     } else if (a.abbe && !lines.abbe_number()) {
       errors.push_back(
           diagnostic("tolerances.abbe_on_const", location,
-                     "material '" + *reference + "' has n_F = n_C (item '" + d.items[i].id + "')"));
+                     "material '" + reference + "' has n_F = n_C (item '" + d.items[i].id + "')"));
     }
   }
   if (!errors.empty()) throw compile::CompileError(std::move(errors));
@@ -312,8 +338,10 @@ Applied applied(const ContextData& d, std::span<const double> values) {
         params[a.index]->value += v;
         break;
       case ItemAction::Kind::ParamScale:
-        // C' = C (1 + delta), R' = R / (1 + delta) (ADR 0035, point 2); 1 + delta > 0 since
-        // |delta| <= T < 1 (tolerances.limit_invalid).
+        // C' = C (1 + delta), R' = R / (1 + delta) (ADR 0035, point 2), for any finite delta:
+        // R' is infinite for delta = -1 and of the other sign for delta < -1. T < 1 does not
+        // exclude that, since the sensitivity confirms at T' > T (ADR 0036, point 6); run()
+        // makes such a trial Invalid (radius_invalid, ADR 0036, addendum #257).
         params[a.index]->value /= 1.0 + v;
         break;
       case ItemAction::Kind::RowAdd: {
@@ -369,6 +397,33 @@ TrialResult cancelled_result(const ContextData& d) {
   return r;
 }
 
+/// A trial that is Invalid before its criteria: every criterion without value, with `reason`.
+TrialResult invalid_result(const ContextData& d, TrialResult r, const std::string& reason) {
+  r.status = TrialStatus::Invalid;
+  r.reason = reason;
+  r.criteria.assign(d.criteria.operands.size(), CriterionValue{std::nullopt, reason, std::nullopt});
+  return r;
+}
+
+/// Why the radii of `trial` make no valid trial, or none (ADR 0036, addendum #257): the Param of
+/// a radius item that ends at 0, at +-infinity or with the other sign than its nominal value
+/// describes another lens (a plane is the shape Plane, a change of sign another bending).
+std::optional<std::string> radius_invalid(const ContextData& d, model::System& trial) {
+  std::vector<model::Param*> params;
+  for (std::size_t i = 0; i < d.actions.size(); ++i) {
+    const ItemAction& a = d.actions[i];
+    if (!a.radius_mm) continue;
+    if (params.empty()) params = params_of(trial);
+    const double r = params[a.index]->value;
+    if (std::isfinite(r) && r != 0.0 && std::signbit(r) == std::signbit(*a.radius_mm)) continue;
+    std::ostringstream why;
+    why << "item '" << d.items[i].id << "': the radius " << r << " mm (nominal " << *a.radius_mm
+        << " mm) is zero, infinite or of the other sign";
+    return why.str();
+  }
+  return std::nullopt;
+}
+
 /// The value of every criterion of `system` with the overlay (ADR 0036, point 2). One merit
 /// function for all; if it throws (an analysis error of one criterion), each criterion alone, so
 /// that the others keep their values.
@@ -392,9 +447,10 @@ std::vector<CriterionValue> criteria_values(const ContextData& d,
   try {
     const optim::MeritFunction merit(s, *d.materials, d.coatings, &overlay);
     all = merit.evaluate(merit.start());
-  } catch (const std::exception& x) {
-    all.reset();  // an analysis error of a criterion: below, criterion by criterion
-    static_cast<void>(x);
+  } catch (const std::exception&) {
+    // Any error of one criterion (OptimError, CompileError, an analysis error): below, criterion
+    // by criterion, each with its own reason.
+    all.reset();
   }
   if (all.has_value()) {
     const optim::MeritEvaluation& e = all.value();
@@ -425,7 +481,10 @@ TrialResult run(const ContextData& d,
   Applied a = applied(d, values);
   if (cancelled(control)) return cancelled_result(d);
   if (!d.basis.has_value()) throw std::logic_error("tolerance: the context has no nominal basis");
-  const optim::TrialOverlay overlay{std::move(a.perturbation), d.basis.value(), 1e-3};
+  if (const std::optional<std::string> why = radius_invalid(d, a.system)) {
+    return invalid_result(d, {}, *why);
+  }
+  const optim::TrialOverlay overlay{std::move(a.perturbation), d.basis.value()};
   TrialResult r;
   model::System trial = std::move(a.system);
 
@@ -483,11 +542,8 @@ TrialResult run(const ContextData& d,
         result = optim::optimize(trial, *d.materials, d.coatings, d.options.compensators,
                                  cancel_only, overlay);
       } catch (const std::exception& x) {
-        r.status = TrialStatus::Invalid;
-        r.reason = std::string("the compensator run is not possible: ") + x.what();
-        r.criteria.resize(d.criteria.operands.size());
-        for (CriterionValue& c : r.criteria) c.reason = r.reason;
-        return r;
+        return invalid_result(d, std::move(r),
+                              std::string("the compensator run is not possible: ") + x.what());
       }
       if (result.status == optim::LmStatus::Cancelled) return cancelled_result(d);
       r.lm_status = result.status;
@@ -502,11 +558,8 @@ TrialResult run(const ContextData& d,
       }
       r.warnings.insert(r.warnings.end(), result.diagnostics.begin(), result.diagnostics.end());
       if (result.status == optim::LmStatus::Failed) {
-        r.status = TrialStatus::Invalid;
-        r.reason = "the compensator run failed (Levenberg-Marquardt status failed)";
-        r.criteria.resize(d.criteria.operands.size());
-        for (CriterionValue& c : r.criteria) c.reason = r.reason;
-        return r;
+        return invalid_result(d, std::move(r),
+                              "the compensator run failed (Levenberg-Marquardt status failed)");
       }
       trial = std::move(result.system);
     }
@@ -570,6 +623,15 @@ TrialContext prepare(const model::System& nominal,
   for (const model::ToleranceItem& item : d->items) {
     d->actions.push_back(action_of(item, nominal, anchors, params));
   }
+  {
+    std::vector<double> nominal_values;
+    model::for_each_param(nominal, [&](std::string_view /*pointer*/, const model::Param& p) {
+      nominal_values.push_back(p.value);
+    });
+    for (ItemAction& a : d->actions) {
+      if (a.radius_mm) a.radius_mm = nominal_values[a.index];
+    }
+  }
   check_materials(*d, anchors);
   // Pivots of the targets (ADR 0035, point 2): one per target, for explicit and generated items.
   for (const model::ToleranceOverride& o : set.overrides) {
@@ -610,7 +672,7 @@ TrialContext prepare(const model::System& nominal,
   // Start checks with the nominal basis (ADR 0030, addendum #256): an operand the nominal system
   // does not support is an input error of the run, before any trial.
   {
-    const optim::TrialOverlay overlay{{}, d->basis.value(), 1e-3};
+    const optim::TrialOverlay overlay{{}, d->basis.value()};
     model::System s = nominal;
     s.optimization = d->criteria;
     if (!s.optimization.empty()) {

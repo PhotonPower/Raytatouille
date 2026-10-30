@@ -64,9 +64,12 @@ struct CompensatorValue {
 /// The result of one trial.
 ///
 /// criteria[k].value is what counts; status Invalid only means that Monte Carlo counts the
-/// trial as invalid. It is set for an invalid compensator run (LM failed, an analysis error or an
-/// undefined value of the compensator merit), then no criterion is evaluated and every value is
-/// none, and for a single criterion without value, then the other criteria keep their values.
+/// trial as invalid. It is set
+/// - for a radius item whose value makes the radius 0, infinite or of the other sign (ADR 0036,
+///   addendum #257) and for an invalid compensator run (LM failed, an analysis error or an
+///   undefined value of the compensator merit): then no criterion is evaluated and every value
+///   is none;
+/// - for a single criterion without value: then the other criteria keep their values.
 struct TrialResult {
   TrialStatus status = TrialStatus::Valid;
   std::string reason;                          ///< for Invalid and Cancelled: the first reason
@@ -76,7 +79,8 @@ struct TrialResult {
   std::optional<double> mu;                    ///< damping at the end of the run (last history)
   int lm_iterations = 0;
   /// tolerances.compensator_infeasible (one per compensator), then the warnings of the
-  /// compensator run and of the criteria (rays.lost, stop.clips_beam, ...).
+  /// compensator run and of the criteria (rays.lost, stop.clips_beam, ...), as each reports
+  /// them: the same code can appear several times (rays.lost of the run and of the criteria).
   std::vector<model::Diagnostic> warnings;
 };
 
@@ -127,7 +131,9 @@ class TrialContext {
 ///         or the glass of a material item gives no index or Abbe number at the lines d, F, C
 ///         (tolerances.material_unsupported, material.unknown, tolerances.abbe_on_const)
 /// @throws std::invalid_argument for an item whose target does not exist or does not fit its
-///         kind
+///         kind, or a material item whose segment does not fit the element (as compile: the
+///         shorthand takes none, a list needs one below its size, a list of equal entries only
+///         0; ADR 0035, point 2)
 /// @throws optim::OptimError with merit.operand_unsupported for a criterion or an operand of
 ///         the compensator merit that the nominal system does not support
 [[nodiscard]] TrialContext prepare(const model::System& nominal,
