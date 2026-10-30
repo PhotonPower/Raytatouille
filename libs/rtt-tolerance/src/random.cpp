@@ -42,17 +42,6 @@ std::array<std::uint32_t, 4> philox4x32_10(const PhiloxCounter& counter,
   return c;
 }
 
-std::uint64_t fnv1a64(std::string_view bytes) noexcept {
-  constexpr std::uint64_t kOffsetBasis = 0xCBF29CE484222325ULL;
-  constexpr std::uint64_t kPrime = 0x00000100000001B3ULL;
-  std::uint64_t hash = kOffsetBasis;
-  for (const char ch : bytes) {
-    hash ^= static_cast<unsigned char>(ch);
-    hash *= kPrime;  // modulo 2^64 by unsigned overflow
-  }
-  return hash;
-}
-
 double uniform53(std::uint32_t w0, std::uint32_t w1) noexcept {
   const std::uint64_t bits = (std::uint64_t{w0} << 21) | (w1 >> 11);
   return std::ldexp(static_cast<double>(bits), -53);
@@ -65,7 +54,8 @@ double perturbation(std::uint64_t seed, std::uint32_t trial, const model::Tolera
                                 "' must be finite and > 0");
   }
   const PhiloxKey key{static_cast<std::uint32_t>(seed), static_cast<std::uint32_t>(seed >> 32)};
-  const std::uint64_t hash = fnv1a64(item.id);
+  // The hash of validate's collision check (ADR 0035, point 9), not a second copy of it.
+  const std::uint64_t hash = model::tolerance_id_hash(item.id);
   const auto uniform_a = [&](std::uint32_t call) {
     const auto w = draw_call(key, trial, hash, call);
     return uniform53(w[0], w[1]);

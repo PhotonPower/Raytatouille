@@ -7,7 +7,8 @@
 ///
 /// - Key (k0, k1) = (lower, upper 32 bits of the seed).
 /// - Counter (c0, c1, c2, c3) = (trial, lower and upper 32 bits of h, call j) with
-///   h = fnv1a64(item id).
+///   h = model::tolerance_id_hash(item id), the FNV-1a 64 hash that validate also uses
+///   for the collision check (ADR 0035, point 9).
 /// - One call gives four words (w0, w1, w2, w3) and so two uniform numbers in [0, 1):
 ///   u_a = uniform53(w0, w1) and u_b = uniform53(w2, w3).
 ///
@@ -26,7 +27,6 @@
 #include <array>
 #include <cstdint>
 #include <span>
-#include <string_view>
 #include <vector>
 
 #include "rtt/model/tolerance.hpp"
@@ -50,11 +50,6 @@ inline constexpr int kMaxNormalDraws = 64;
 /// (tests/kat_vectors, ADR 0036, point 5).
 [[nodiscard]] std::array<std::uint32_t, 4> philox4x32_10(const PhiloxCounter& counter,
                                                          const PhiloxKey& key) noexcept;
-
-/// FNV-1a with 64 bits over the bytes of `bytes` (draft-eastlake-fnv-35, Sec. 2; offset_basis
-/// 0xCBF29CE484222325 and FNV_prime 0x00000100000001B3, Sec. 5). For an item id these are its
-/// UTF-8 bytes.
-[[nodiscard]] std::uint64_t fnv1a64(std::string_view bytes) noexcept;
 
 /// Uniform number in [0, 1) with 53 bits from two words: (w0 << 21 | w1 >> 11) * 2^-53, with w0
 /// widened to 64 bits before the shift (32 + 21 bits). 0 for w0 = w1 = 0, 1 - 2^-53 for all bits
