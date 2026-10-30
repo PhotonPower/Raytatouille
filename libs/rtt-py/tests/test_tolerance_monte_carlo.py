@@ -158,6 +158,42 @@ def test_without_keep_trials_only_the_invalid_trials_stay() -> None:
                                                                      default=str)
 
 
+def test_invalid_trials_are_nan_and_minus_one_in_the_columns() -> None:
+    """The reference case has no invalid trial, so the empty values of the columns (NaN, -1) are
+    checked here: a wedge of up to 60 degrees on L1.S3 makes the chief ray miss the image in some
+    trials, so that the compensator cannot run (review of #302, note c)."""
+    system = rt.apply_patch(explicit_only(), [
+        {"op": "replace", "path": "/tolerances/items/0/limit", "value": 60.0},
+        {"op": "add", "path": "/tolerances/items/0/distribution", "value": "uniform"},
+    ])
+    with pytest.warns(rt.RaytatouilleWarning):
+        r = tolerance.monte_carlo(system, materials=schott(), trials=6)
+    t = r.trials
+    invalid = t.status != VALID
+    assert 0 < int(np.sum(invalid)) < len(t)  # content guard: both kinds of rows
+    assert all(reason != "" for reason in np.array(t.reason)[invalid])
+    assert bool(np.all(np.isnan(t.criteria[invalid])))
+    assert bool(np.all(t.satisfied[invalid] == -1))
+    assert bool(np.all(t.lm_status[invalid] == -1)) and bool(np.all(np.isnan(t.mu[invalid])))
+    assert bool(np.all(t.lm_iterations[invalid] == 0)) and not bool(np.any(t.good))
+    assert not bool(np.any(np.isnan(t.criteria[~invalid])))
+    assert bool(np.all(t.lm_status[~invalid] >= 0)) and not bool(np.any(np.isnan(t.mu[~invalid])))
+    for c in r.criteria:
+        assert (c.with_value, c.without_value) == (int(np.sum(~invalid)), int(np.sum(invalid)))
+    with pytest.warns(rt.RaytatouilleWarning):
+        lean = tolerance.monte_carlo(system, materials=schott(), trials=6, keep_trials=False)
+    assert lean.trials.trial.tolist() == t.trial[invalid].tolist()
+    loaded = rt.results.load_json(r.to_json())
+    assert np.array_equal(loaded.data["trials"]["criteria"], t.criteria, equal_nan=True)
+    assert np.array_equal(loaded.data["trials"]["mu"], t.mu, equal_nan=True)
+    assert np.array_equal(loaded.data["trials"]["satisfied"], t.satisfied)
+    assert np.array_equal(loaded.data["trials"]["lm_status"], t.lm_status)
+    jsonschema = pytest.importorskip("jsonschema")
+    schema = json.loads((REFERENCE_DIR.parent.parent / "schema"
+                         / "raytatouille-result.schema.json").read_text(encoding="utf-8"))
+    jsonschema.validate(json.loads(r.to_json()), schema)
+
+
 def test_percentiles_and_z_are_options() -> None:
     r = run(percentiles=[0.25, 1.0], z=1.0)
     for c in r.criteria:
