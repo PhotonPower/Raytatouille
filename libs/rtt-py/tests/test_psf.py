@@ -282,7 +282,7 @@ def test_older_pupil_files_read_without_mapping_limit(f10: rt.CompiledSystem) ->
     # computed without the limit and reads with 1 (off); a newer one must have it.
     obj = an.pupil_function(f10, grid=8)
     envelope = json.loads(obj.to_json())
-    assert envelope["schema_version"] == "0.1.14"
+    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION
     del envelope["data"]["mapping_limit"]
     envelope["schema_version"] = "0.1.13"
     loaded = rt.results.load_json(json.dumps(envelope))
