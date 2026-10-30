@@ -291,7 +291,10 @@ TEST_CASE("m7 case 4: index and Abbe number end to end through first_order", "[m
   const std::shared_ptr<const rtt::material::Material> glass = schott().resolve("SCHOTT:N-BK7");
   const double tc = s.environment.temperature_c;
   const double p = s.environment.pressure_atm;
-  // The index at the wavelengths of the system, evaluated as compile does (compile.cpp).
+  // The index at the wavelengths of the system, evaluated as compile does (compile.cpp). The
+  // system's 0.5876 um is not the d line (air 0.5875618 um, in vacuum via
+  // line_vacuum_wavelength_um), so x_d = n(0.5876) - n_d != 0: efl-d changes slightly under
+  // Delta nu_d as well.
   std::vector<double> n;
   for (const auto& w : s.wavelengths) n.push_back(glass->index(w.um, tc, p).real());
   REQUIRE(n.size() == 3);
