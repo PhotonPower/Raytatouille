@@ -267,6 +267,16 @@ def test_mapping_limit_rejects_the_fft_analyses() -> None:
         an.mtf(pupil, mapping_limit=0.5)  # an option of the system form
 
 
+def test_analysis_errors_without_a_code_carry_none() -> None:
+    """ADR 0022, addendum #286: AnalysisError.code is None except for
+    pupil.mapping_too_nonlinear, also for its subclass NoStopError (a path without a stop)."""
+    cs = rt.compile(rt.load(REFERENCE_DIR / "m1" / "paraboloid_mirror.rtt.json"))
+    with pytest.raises(rt.AnalysisError) as info:
+        an.psf(cs, grid=16)
+    assert isinstance(info.value, rt.NoStopError)
+    assert info.value.code is None
+
+
 def test_older_pupil_files_read_without_mapping_limit(f10: rt.CompiledSystem) -> None:
     # PupilFunction gained mapping_limit in 0.1.14 (ADR 0032, addendum #286): an older file was
     # computed without the limit and reads with 1 (off); a newer one must have it.

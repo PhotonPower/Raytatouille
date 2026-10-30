@@ -147,6 +147,7 @@ class NoStopError(ParaxialError, AnalysisError, ValueError):
         self.ray_status = None
         self.field = None
         self.wavelength = None
+        self.code = None  # as AnalysisError: no code (ADR 0022, addendum #286)
 
 
 class RaytatouilleWarning(UserWarning):
