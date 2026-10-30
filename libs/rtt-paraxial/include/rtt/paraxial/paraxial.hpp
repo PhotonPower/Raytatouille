@@ -127,9 +127,10 @@ struct FirstOrder {
 ///
 /// - Vertices: the first and last events that change the ray (reflection or change of index);
 ///   transmit events (stop, detector, thin elements) do not count.
-/// - Afocal: |Phi| <= 16 N u S with u = 2^-53, N the number of events and S the power of the
-///   same y-nu trace with every term by its magnitude and the coordinates |z| in place of the
-///   distances (#35): Phi is zero up to the rounding of the trace and of the coordinates.
+/// - Afocal: |Phi| <= 16 N u (S + E) with u = 2^-53, N the number of events, S the power of the
+///   same y-nu trace with every term by its magnitude and E the bound of the error from the
+///   coordinates, traced alongside with the same magnitudes (#35, #280): Phi is zero up to the
+///   rounding of the trace and of the coordinates. E grows linearly with the coordinates.
 ///   The threshold depends on the absolute position of the path, because a coordinate z carries
 ///   a rounding of about u |z|: a lens with Phi = 5e-13 / mm (R = +-1 mm) is focal at
 ///   z = 10 mm and afocal at z = 1000 mm. It is cautious for very small systems: a lens of
