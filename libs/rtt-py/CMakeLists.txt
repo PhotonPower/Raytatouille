@@ -114,8 +114,9 @@ endif()
 # stubgen runs with -S -E instead of through nanobind_add_stub (#271): without site, no .pth
 # file of the target environment runs, so a meta path finder of an earlier editable install
 # (scikit-build-core puts it at sys.meta_path[0], also under pip's build isolation) cannot
-# redirect raytatouille to the source tree or to an old _core; -E ignores PYTHONPATH. stubgen.py
-# and _core need only the standard library. The arguments are those of nanobind_add_stub (-q,
+# redirect raytatouille to the source tree or to an old _core; -E ignores PYTHONPATH. _core needs
+# only the standard library, stubgen.py too from Python 3.11 on; before that it needs
+# typing_extensions (below). The arguments are those of nanobind_add_stub (-q,
 # -i, -m, -o) and -P for INCLUDE_PRIVATE: stubgen takes a name with one trailing underscore for
 # private and leaves it out, but yield_ (MonteCarloResult, CriterionStatistics) only avoids the
 # keyword (PEP 8); the stub then also lists MaterialLibrary._glass_records. The paths of
@@ -129,13 +130,42 @@ elseif(EXISTS "${NB_DIR}/stubgen.py")
 else()
   message(FATAL_ERROR "stubgen.py of nanobind not found in ${NB_DIR}")
 endif()
+set(RTT_PY_STUBGEN_DEPENDS _core "${RTT_PY_STUBGEN}")
+if(Python_VERSION VERSION_LESS 3.11)
+  # stubgen.py imports typing_extensions on Python < 3.11. It is there in every build
+  # environment: scikit-build-core, pinned in pyproject.toml and requirements.txt, declares
+  # "Requires-Dist: typing-extensions>=4; python_version < '3.11'" (METADATA of 1.1.1). Only this
+  # one module is copied next to the staging package, not the whole site-packages: nothing else
+  # becomes importable, and the stub does not depend on what else is installed (#271). The staging
+  # directory is not installed (install() below takes _core.pyi from RTT_PY_PACKAGE_DIR), so the
+  # copy does not reach the wheel.
+  execute_process(
+    COMMAND "${Python_EXECUTABLE}" -c "import typing_extensions; print(typing_extensions.__file__)"
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    OUTPUT_VARIABLE rtt_typing_extensions
+    RESULT_VARIABLE rtt_typing_extensions_result)
+  if(NOT rtt_typing_extensions_result EQUAL 0)
+    message(FATAL_ERROR "typing_extensions not found for ${Python_EXECUTABLE} "
+                        "(needed by nanobind's stubgen on Python < 3.11); "
+                        "pip install -r libs/rtt-py/tests/requirements.txt")
+  endif()
+  file(TO_CMAKE_PATH "${rtt_typing_extensions}" rtt_typing_extensions)
+  add_custom_command(
+    OUTPUT "${RTT_PY_STUBGEN_DIR}/typing_extensions.py"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${RTT_PY_STUBGEN_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${rtt_typing_extensions}" "${RTT_PY_STUBGEN_DIR}/typing_extensions.py"
+    DEPENDS "${rtt_typing_extensions}"
+    VERBATIM)
+  list(APPEND RTT_PY_STUBGEN_DEPENDS "${RTT_PY_STUBGEN_DIR}/typing_extensions.py")
+endif()
 file(TO_CMAKE_PATH "${Python_EXECUTABLE}" RTT_PY_STUBGEN_PYTHON)
 add_custom_command(
   OUTPUT "${RTT_PY_PACKAGE_DIR}/_core.pyi"
   COMMAND "${RTT_PY_STUBGEN_PYTHON}" -S -E "${RTT_PY_STUBGEN}" -q -P
           -i "${RTT_PY_STUBGEN_DIR}" -m raytatouille._core -o "${RTT_PY_PACKAGE_DIR}/_core.pyi"
   WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-  DEPENDS _core "${RTT_PY_STUBGEN}"
+  DEPENDS ${RTT_PY_STUBGEN_DEPENDS}
   VERBATIM)
 add_custom_target(rtt_py_stub ALL DEPENDS "${RTT_PY_PACKAGE_DIR}/_core.pyi")
 

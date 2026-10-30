@@ -115,7 +115,8 @@ jobs:
   python:
     # Python package raytatouille (libs/rtt-py, ADR 0002, ADR 0018): build in the CMake tree,
     # pytest incl. the bitwise comparison with C++ and mypy --strict via ctest; one smoke test
-    # with pip install . per OS.
+    # with pip install . per OS, and the editable install over an editable install (#271) in every
+    # job, also with Python 3.10 (stubgen needs typing_extensions there).
     name: Python ${{ matrix.python }} ${{ matrix.preset }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
@@ -123,9 +124,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-24.04, preset: ci-linux-python, python: "3.10", cache: ci-linux-gcc, triplet: x64-linux, smoke: false }
-          - { os: ubuntu-24.04, preset: ci-linux-python, python: "3.13", cache: ci-linux-gcc, triplet: x64-linux, smoke: true }
-          - { os: windows-2022, preset: ci-windows-python, python: "3.13", cache: msvc, triplet: x64-windows, smoke: true }
+          - { os: ubuntu-24.04, preset: ci-linux-python, python: "3.10", cache: ci-linux-gcc, triplet: x64-linux, smoke: false, editable: true }
+          - { os: ubuntu-24.04, preset: ci-linux-python, python: "3.13", cache: ci-linux-gcc, triplet: x64-linux, smoke: true, editable: true }
+          - { os: windows-2022, preset: ci-windows-python, python: "3.13", cache: msvc, triplet: x64-windows, smoke: true, editable: true }
     env:
       VCPKG_ROOT: ${{ github.workspace }}/../vcpkg
       VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/../vcpkg-cache
@@ -181,7 +182,7 @@ jobs:
           python -c "import raytatouille as rt; print(rt.__version__, rt.__file__)"
           python -m pytest -q -p no:cacheprovider "$GITHUB_WORKSPACE/libs/rtt-py/tests"
       - name: Editable install over an editable install (#271)
-        if: matrix.smoke
+        if: matrix.editable
         shell: bash
         run: |
           # An editable install leaves a meta path finder in the environment (a .pth file loads it
