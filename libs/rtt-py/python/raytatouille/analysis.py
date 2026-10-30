@@ -38,6 +38,7 @@ Pupil samplings for spot() are objects of raytatouille.trace or a shorthand stri
 from __future__ import annotations
 
 import math
+import operator
 import re
 import warnings
 from collections.abc import Sequence
@@ -703,12 +704,27 @@ def mtf(
     ))
 
 
+def _ee_radii(radii: Sequence[float] | int, relative: bool) -> tuple[list[float], bool]:
+    """The radii of encircled_energy() and whether they are relative: an int k >= 2 gives the k
+    relative radii i / (k - 1), i = 0 ... k - 1 (the last exactly 1; #267). NumPy integers are
+    accepted, bool and numpy.bool_ are not."""
+    if isinstance(radii, (bool, np.bool_)):
+        raise TypeError("radii must be a sequence of radii or an int, not bool")
+    if not isinstance(radii, (int, np.integer)):
+        return [float(r) for r in radii], relative
+    count = operator.index(radii)
+    if count < 2:
+        raise ValueError(f"radii as a number of radii must be >= 2, got {count}")
+    return [i / (count - 1) for i in range(count)], True
+
+
 def encircled_energy(
     system: SystemLike | PupilFunction,
-    radii: Sequence[float],
+    radii: Sequence[float] | int,
     path: int | str | None = None,
     field: int | None = None,
     *,
+    relative: bool = False,
     centre: EeCentre = EeCentre.REFERENCE,
     wavelengths: Sequence[int] | None = None,
     grid: int | None = None,
@@ -730,11 +746,17 @@ def encircled_energy(
     not the centroid). Radii up to ``radius_max`` (a quarter of the shortest period of the
     periodic PSF); larger, negative or non-finite radii raise ValueError.
 
+    radius_max is known only after the run (it comes from the traced pupil mapping), so the
+    whole allowed range takes ``relative=True``: the radii are fractions t in [0, 1] of
+    radius_max (ValueError above 1), and the result has r = t * radius_max in mm. An int k >= 2
+    as ``radii`` is short for the k relative radii 0, 1/(k-1), ..., 1 (ADR 0033, addendum #267),
+    e.g. encircled_energy(system, 101, path, field) for a curve over the whole range.
+
     ``system`` as in mtf(): a System or CompiledSystem, or a PupilFunction (then only
-    ``centre`` applies besides ``radii``). Unlike psf() and mtf(), ``radii`` is the second
-    positional argument in both forms: encircled_energy(system, radii, path, field) and
-    encircled_energy(pupil, radii)."""
-    values = [float(r) for r in radii]
+    ``relative`` and ``centre`` apply besides ``radii``). Unlike psf() and mtf(), ``radii`` is
+    the second positional argument in both forms: encircled_energy(system, radii, path, field)
+    and encircled_energy(pupil, radii)."""
+    values, relative = _ee_radii(radii, relative)
     if isinstance(system, PupilFunction):
         _pupil_form("encircled_energy", {
             "path": path, "field": field, "wavelengths": wavelengths, "grid": grid,
@@ -743,10 +765,10 @@ def encircled_energy(
             "threads": threads, "lost_warning_fraction": lost_warning_fraction,
             "mapping_warning": mapping_warning, "mapping_limit": mapping_limit, "cancel": cancel,
             "progress": progress})
-        return _warn(_core.encircled_energy_of_pupil(system, values, centre))
+        return _warn(_core.encircled_energy_of_pupil(system, values, relative, centre))
     return _warn(_core.encircled_energy(
         compiled(system, materials), 0 if path is None else path, 0 if field is None else field,
-        values, centre, None if wavelengths is None else list(wavelengths),
+        values, relative, centre, None if wavelengths is None else list(wavelengths),
         64 if grid is None else grid, 0.0 if apodization is None else apodization,
         0.0 if focus_shift is None else focus_shift, Aiming.REAL if aiming is None else aiming,
         0.5 if undersampled_waves is None else undersampled_waves,

@@ -902,18 +902,28 @@ std::vector<double> energy_of(const Spectral& part,
   return sums;
 }
 
-void check_radii(std::span<const double> radii) {
+/// Radii in mm: finite and >= 0; relative radii (fractions of radius_max) also <= 1 (ADR 0033,
+/// addendum #267). Checked before the trace.
+void check_radii(std::span<const double> radii, bool relative) {
   for (const double r : radii) {
     if (!std::isfinite(r) || r < 0.0) {
       throw std::invalid_argument("analysis: encircled-energy radii must be finite and >= 0");
     }
+    if (relative && r > 1.0) {
+      throw std::invalid_argument(
+          "analysis: a relative encircled-energy radius is above 1 (the fractions of radius_max "
+          "must lie in [0, 1])");
+    }
   }
 }
 
-/// EE of the parts about EeCentre `centre` (one common centre for all wavelengths).
+/// EE of the parts about EeCentre `centre` (one common centre for all wavelengths). Relative
+/// radii t become t * radius_max; t <= 1 never exceeds radius_max, since rounding is monotone
+/// and 1 * radius_max is exact.
 EncircledEnergy energy_of_parts(const std::vector<Spectral>& parts,
                                 std::size_t ref,
                                 std::span<const double> radii,
+                                bool relative,
                                 EeCentre centre) {
   const PupilFunction& pr = parts[ref].pupil;
   EncircledEnergy result;
@@ -921,14 +931,17 @@ EncircledEnergy energy_of_parts(const std::vector<Spectral>& parts,
   result.grid = pr.grid;
   result.e_x = mapping_of(pr).e_x;
   result.e_y = mapping_of(pr).e_y;
-  result.radii.assign(radii.begin(), radii.end());
   double sum_we = 0.0;
   for (const Spectral& part : parts) sum_we += part.weight * part.sums.fa2;
   result.radius_max = std::numeric_limits<double>::infinity();
   for (const Spectral& part : parts) {
     result.radius_max = std::min(result.radius_max, radius_max_of(part.pupil));
   }
-  for (const double r : radii) {
+  result.radii.assign(radii.begin(), radii.end());
+  if (relative) {
+    for (double& r : result.radii) r *= result.radius_max;
+  }
+  for (const double r : result.radii) {
     if (r > result.radius_max) {
       throw std::invalid_argument("analysis: encircled-energy radius " + std::to_string(r) +
                                   " mm above radius_max " + std::to_string(result.radius_max) +
@@ -947,11 +960,11 @@ EncircledEnergy energy_of_parts(const std::vector<Spectral>& parts,
   }
   result.centre =
       mapping_of(pr).centre + result.offset.x * result.e_x + result.offset.y * result.e_y;
-  result.energy.assign(radii.size(), 0.0);
+  result.energy.assign(result.radii.size(), 0.0);
   for (const Spectral& part : parts) {
     const double we = part.weight * part.sums.fa2;
-    const std::vector<double> e = energy_of(part, result.offset, radii);
-    for (std::size_t i = 0; i < radii.size(); ++i) result.energy[i] += we * e[i];
+    const std::vector<double> e = energy_of(part, result.offset, result.radii);
+    for (std::size_t i = 0; i < result.radii.size(); ++i) result.energy[i] += we * e[i];
     result.edge_energy_deficit += we / sum_we * (1.0 - part.sums.f2a2 / part.sums.fa2);
     result.wavelengths.push_back(
         {part.pupil.wavelength, part.weight, part.sums.fa2, 2 * part.pupil.grid, 0.0});
@@ -1026,11 +1039,11 @@ EncircledEnergy encircled_energy(const compile::CompiledSystem& system,
                                  const trace::RunControl& control) {
   detail::check_path(system, path);
   check_undersampled(options.undersampled_waves);
-  check_radii(radii);
+  check_radii(radii, options.relative_radii);
   const std::vector<Spectral> parts =
       spectral_parts(system, path, field, options.wavelengths, options.pupil, control);
-  EncircledEnergy result =
-      energy_of_parts(parts, reference_part(system, parts), radii, options.centre);
+  EncircledEnergy result = energy_of_parts(parts, reference_part(system, parts), radii,
+                                           options.relative_radii, options.centre);
   losses_and_warnings(system, path, parts, options.pupil.lost_warning_fraction,
                       options.undersampled_waves, result.losses, result.warnings);
   return result;
@@ -1038,10 +1051,11 @@ EncircledEnergy encircled_energy(const compile::CompiledSystem& system,
 
 EncircledEnergy encircled_energy(const PupilFunction& pupil,
                                  std::span<const double> radii,
-                                 EeCentre centre) {
-  check_radii(radii);
+                                 EeCentre centre,
+                                 bool relative_radii) {
+  check_radii(radii, relative_radii);
   const std::vector<Spectral> parts = single_part(pupil);
-  EncircledEnergy result = energy_of_parts(parts, 0, radii, centre);
+  EncircledEnergy result = energy_of_parts(parts, 0, radii, relative_radii, centre);
   result.losses = pupil.losses;
   result.warnings = pupil.warnings;
   return result;

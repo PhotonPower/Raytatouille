@@ -293,7 +293,7 @@ void bind_psf(nb::module_& m) {
               "Centre relative to C' in the PSF plane, mm; 0 for REFERENCE.")
       .def_prop_ro(
           "radii", [](const EncircledEnergy& e) { return copy(e.radii); }, nb::rv_policy::reference,
-          "Radii, mm, as given (copy).")
+          "Radii, mm: as given, or t * radius_max for relative radii (copy).")
       .def_prop_ro(
           "energy", [](const EncircledEnergy& e) { return copy(e.energy); },
           nb::rv_policy::reference, "EE(r), fraction of the pupil energy (copy).")
@@ -409,10 +409,10 @@ void bind_psf(nb::module_& m) {
   m.def(
       "encircled_energy",
       [](const compile::CompiledSystem& s, const PathArg& path, std::uint16_t field,
-         const std::vector<double>& radii, EeCentre centre, const Wavelengths& wavelengths,
-         int grid, double apodization, double focus_shift, trace::Aiming aiming,
-         double undersampled_waves, double lost_warning_fraction, double mapping_warning,
-         double mapping_limit, std::optional<int> threads,
+         const std::vector<double>& radii, bool relative, EeCentre centre,
+         const Wavelengths& wavelengths, int grid, double apodization, double focus_shift,
+         trace::Aiming aiming, double undersampled_waves, double lost_warning_fraction,
+         double mapping_warning, double mapping_limit, std::optional<int> threads,
          const std::optional<trace::CancelToken>& cancel,
          const std::optional<nb::callable>& progress) {
         const trace::RunControl control = run_control(cancel, progress);
@@ -422,22 +422,24 @@ void bind_psf(nb::module_& m) {
         o.wavelengths = wavelengths;
         o.centre = centre;
         o.undersampled_waves = undersampled_waves;
+        o.relative_radii = relative;
         const compile::PathId id = path_id(s, path);
         return released(
             threads, [&] { return analysis::encircled_energy(s, id, field, radii, o, control); });
       },
-      "system"_a, "path"_a, "field"_a, "radii"_a, "centre"_a, "wavelengths"_a.none(), "grid"_a,
-      "apodization"_a, "focus_shift"_a, "aiming"_a, "undersampled_waves"_a,
+      "system"_a, "path"_a, "field"_a, "radii"_a, "relative"_a, "centre"_a, "wavelengths"_a.none(),
+      "grid"_a, "apodization"_a, "focus_shift"_a, "aiming"_a, "undersampled_waves"_a,
       "lost_warning_fraction"_a, "mapping_warning"_a, "mapping_limit"_a, "threads"_a.none(),
       "cancel"_a.none(), "progress"_a.none(),
-      "Encircled energy of `field` at `radii` (mm); wavelengths None means all.");
+      "Encircled energy of `field` at `radii` (mm, or fractions of radius_max if `relative`); "
+      "wavelengths None means all.");
   m.def(
       "encircled_energy_of_pupil",
-      [](const PupilFunction& pupil, const std::vector<double>& radii, EeCentre centre) {
-        return analysis::encircled_energy(pupil, radii, centre);
-      },
-      "pupil"_a, "radii"_a, "centre"_a, nb::call_guard<nb::gil_scoped_release>(),
-      "Encircled energy of one pupil function (monochromatic) at `radii` (mm).");
+      [](const PupilFunction& pupil, const std::vector<double>& radii, bool relative,
+         EeCentre centre) { return analysis::encircled_energy(pupil, radii, centre, relative); },
+      "pupil"_a, "radii"_a, "relative"_a, "centre"_a, nb::call_guard<nb::gil_scoped_release>(),
+      "Encircled energy of one pupil function (monochromatic) at `radii` (mm, or fractions of "
+      "radius_max if `relative`).");
 }
 
 }  // namespace rtt::py
