@@ -310,6 +310,7 @@ Psf psf(const compile::CompiledSystem& system,
   }
   {
     std::vector<const PupilFunction*> pupils;
+    pupils.reserve(parts.size());
     for (const Part& part : parts) pupils.push_back(&part.pupil);
     require_affine_mapping(pupils);
   }
@@ -708,6 +709,7 @@ std::vector<Spectral> spectral_parts(const CompiledSystem& system,
     parts.push_back(std::move(part));
   }
   std::vector<const PupilFunction*> pupils;
+  pupils.reserve(parts.size());
   for (const Spectral& part : parts) pupils.push_back(&part.pupil);
   require_affine_mapping(pupils);
   for (Spectral& part : parts) part.c = Autocorrelation(part.pupil);

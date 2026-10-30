@@ -93,7 +93,6 @@ analysis::PupilFunctionOptions pupil_options(int grid,
                                              trace::Aiming aiming,
                                              double lost_warning_fraction,
                                              double mapping_warning,
-                                             double mapping_limit,
                                              double mapping_limit) {
   analysis::PupilFunctionOptions o;
   o.grid = grid;
