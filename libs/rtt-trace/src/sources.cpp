@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "aim_continuation.hpp"
 #include "event_media.hpp"
 #include "rtt/compile/errors.hpp"
 #include "rtt/paraxial/paraxial.hpp"
@@ -38,17 +39,6 @@ inline constexpr bool kUnhandledSampling = false;
 
 /// Maximum number of step halvings per Newton step of real aiming.
 constexpr int kMaxAimHalvings = 10;
-
-/// Half-width of the bundle of one field in units of the EP radius, around the chief ray
-/// through the EP centre: reserve for the pupil aberration found by real aiming.
-constexpr double kBundleReserve = 3.0;
-
-/// Fallback of real aiming by continuation (#287, ADR 0007 addendum): first step of the
-/// parameter s in [0, 1], smallest step before the fallback gives up, and largest number of
-/// accepted steps.
-constexpr double kAimContinuationFirstStep = 1.0 / 16.0;
-constexpr double kAimContinuationMinStep = 1.0 / 1024.0;
-constexpr int kMaxAimContinuationSteps = 64;
 
 /// Draw in [0, 1) from the upper 53 bits of a 64-bit engine output; identical on all platforms
 /// (std::uniform_real_distribution is implementation-defined).
@@ -436,7 +426,7 @@ FieldStart make_field(const Context& c, const model::Field& f) {
   // The bundle reaches at most 3 EP radii off the chief ray (reserve for real aiming); every
   // ray must start at least 1 mm before the EP and before every surface of the path it can
   // reach (lowest_z).
-  const double r_bundle = kBundleReserve * c.r_ep;
+  const double r_bundle = detail::kBundleReserve * c.r_ep;
   double z_min = c.z_ep;
   for (const auto& e : system.path(c.path).events) {
     z_min = std::min(z_min, lowest_z(system.surfaces()[e.surface], c.z_ep, r_bundle, d_xy / d.z()));
@@ -497,95 +487,6 @@ std::optional<std::pair<double, double>> stop_hit(const Context& c, RayState ray
   return std::pair{hit.point.x(), hit.point.y()};
 }
 
-/// One Newton run of real aiming (aim()).
-struct NewtonRun {
-  int steps = 0;  ///< Newton steps taken
-  /// Distance to the target on the stop surface at the last iterate, mm; +infinity if the stop
-  /// was never reached.
-  double residual = std::numeric_limits<double>::infinity();
-  /// Last Jacobian computed, {j11, j12, j21, j22} (none if the run took no step).
-  std::optional<std::array<double, 4>> jacobian;
-};
-
-/// Pupil point (a, b) found by continuation(), with its residual and all Newton steps taken.
-struct ContinuationResult {
-  double a = 0.0;
-  double b = 0.0;
-  double residual = 0.0;
-  int steps = 0;
-};
-
-/// Fallback of real aiming by continuation (#287, ADR 0007 addendum), called by aim() only after
-/// the Newton run from the paraxial solution failed.
-///
-/// Embedding method with the explicit parameter s in [0, 1] (E. L. Allgower, K. Georg,
-/// "Continuation and path following", Acta Numerica 1993, Sec. 2, Eq. (2.10) and Algorithm 2.6,
-/// with the predictor tangent to the curve of p. 6; docs/quellen.md): the residual
-/// H(a, b, s) = hit(a, b) - s (tx, ty) = 0 is followed from the real chief ray (s = 0, target
-/// the stop centre) to the target (tx, ty) (s = 1). Since dH/d(a, b) = J and dH/ds = -(tx, ty),
-/// the tangent is d(a, b)/ds = J^-1 (tx, ty); the Euler predictor (their Eq. (3.2)) steps along
-/// it with the Jacobian of the last corrector run, an approximation of H' as in their
-/// Algorithm 3.1. Corrector: the Newton run of aim() (their Eq. (3.1), here with a square J).
-/// Steplength: their Sec. 3.3 asks for an automatic rule; this one is ours: start at 1/16,
-/// double after a success, halve after a failure, give up below 1/1024 or after 64 accepted
-/// steps. For an object at infinity every accepted point must stay inside the bundle reserve
-/// kBundleReserve r_ep, for which make_field() places the start plane of the field.
-/// @param newton      Newton run (u, v, gx, gy, NewtonRun&) -> bool of aim()
-/// @param jacobian_at central-difference Jacobian (u, v, gx, gy) of aim()
-/// @param infinite    object at infinity (bundle reserve applies)
-/// @param r_ep        paraxial EP radius, mm
-/// @param tx, ty      target on the stop surface, local stop coordinates, mm
-/// @return the pupil point at s = 1, or nullopt if the chief ray or the continuation fails
-template <class Newton, class JacobianAt>
-std::optional<ContinuationResult> continuation(const Newton& newton,
-                                               const JacobianAt& jacobian_at,
-                                               bool infinite,
-                                               double r_ep,
-                                               double tx,
-                                               double ty) {
-  const auto inside_reserve = [&](double u, double v) {
-    return !infinite || std::hypot(u, v) <= kBundleReserve * r_ep;
-  };
-  ContinuationResult out;
-  NewtonRun chief;
-  const bool chief_converged = newton(out.a, out.b, 0.0, 0.0, chief);
-  out.steps = chief.steps;
-  if (!chief_converged || !inside_reserve(out.a, out.b)) return std::nullopt;
-  out.residual = chief.residual;
-  std::optional<std::array<double, 4>> jacobian =
-      chief.jacobian ? chief.jacobian : jacobian_at(out.a, out.b, 0.0, 0.0);
-  double s = 0.0;
-  double ds = kAimContinuationFirstStep;
-  int accepted = 0;
-  while (s < 1.0) {
-    if (!jacobian || accepted == kMaxAimContinuationSteps) return std::nullopt;
-    const auto [j11, j12, j21, j22] = *jacobian;
-    const double det = j11 * j22 - j12 * j21;
-    if (!(det != 0.0) || !std::isfinite(det)) return std::nullopt;
-    const double s_next = ds >= 1.0 - s ? 1.0 : s + ds;  // exactly 1 at the end
-    const double dtx = (s_next - s) * tx;
-    const double dty = (s_next - s) * ty;
-    double u = out.a + (j22 * dtx - j12 * dty) / det;
-    double v = out.b + (-j21 * dtx + j11 * dty) / det;
-    NewtonRun step;
-    const bool converged = newton(u, v, s_next * tx, s_next * ty, step);
-    out.steps += step.steps;
-    if (converged && inside_reserve(u, v)) {
-      out.a = u;
-      out.b = v;
-      out.residual = step.residual;
-      s = s_next;
-      ++accepted;
-      ds *= 2.0;
-      jacobian = step.jacobian ? step.jacobian : jacobian_at(u, v, s * tx, s * ty);
-    } else {
-      ds *= 0.5;
-      if (ds < kAimContinuationMinStep) return std::nullopt;
-    }
-  }
-  return out;
-}
-
 AimedRay aim(const Context& c, const FieldStart& f, double px, double py, Aiming aiming) {
   // Pupil labels oriented at the object-space slope (label_sign, ADR 0007 addendum #35 B);
   // 1 * p == p exactly.
@@ -635,7 +536,8 @@ AimedRay aim(const Context& c, const FieldStart& f, double px, double py, Aiming
   // One Newton run from (u, v) on the target (gx, gy); true on convergence. (u, v) hold the
   // last accepted iterate either way; `run` the steps, the last residual (+infinity if the stop
   // was never reached) and the last Jacobian.
-  const auto newton = [&](double& u, double& v, double gx, double gy, NewtonRun& run) -> bool {
+  const auto newton = [&](double& u, double& v, double gx, double gy,
+                          detail::NewtonRun& run) -> bool {
     for (int iteration = 0;; ++iteration) {
       run.steps = iteration;
       const auto r = residual(u, v, gx, gy);
@@ -670,13 +572,13 @@ AimedRay aim(const Context& c, const FieldStart& f, double px, double py, Aiming
     }
   };
 
-  NewtonRun primary;
+  detail::NewtonRun primary;
   const bool converged = newton(a, b, tx, ty, primary);
   out.iterations = primary.steps;
   out.residual = primary.residual;
   out.ray = ray_through(c, f, a, b);
   if (converged) return out;
-  if (const auto fallback = continuation(newton, jacobian_at, f.infinite, c.r_ep, tx, ty)) {
+  if (const auto fallback = detail::continuation(newton, jacobian_at, f.infinite, c.r_ep, tx, ty)) {
     out.ray = ray_through(c, f, fallback->a, fallback->b);
     out.iterations = primary.steps + fallback->steps;
     out.residual = fallback->residual;
