@@ -38,7 +38,10 @@ namespace rtt::trace {
 /// How a ray is aimed into the stop.
 enum class Aiming : std::uint8_t {
   /// Newton iteration on the real ray until it hits the target point on the stop surface
-  /// (|residual| < kAimTolerance), starting from the paraxial solution.
+  /// (|residual| < kAimTolerance), starting from the paraxial solution. If that run fails (strong
+  /// pupil aberration, e.g. a stop deep inside the system), a fallback follows the target by
+  /// continuation from the real chief ray (#287, ADR 0007 addendum); rays that converge without
+  /// it are unchanged by it.
   Real,
   /// Straight line through the target point on the paraxial entrance pupil, no iteration.
   Paraxial,
@@ -164,7 +167,10 @@ struct AimedRay {
   /// Start of the ray in global coordinates (OPL 0). Status Alive, or NoConvergence if real
   /// aiming failed (the ray then holds the last iterate).
   RayState ray;
-  int iterations = 0;  ///< Newton steps taken (0 for paraxial aiming)
+  /// Newton steps taken (0 for paraxial aiming); with the continuation fallback of real aiming
+  /// all steps of all runs, so it can exceed kMaxAimIterations (#287). For NoConvergence the
+  /// steps of the run from the paraxial solution.
+  int iterations = 0;
   /// Distance to the target on the stop surface, mm (real aiming; 0 for paraxial aiming;
   /// +infinity if no iterate reached the stop).
   double residual = 0.0;
