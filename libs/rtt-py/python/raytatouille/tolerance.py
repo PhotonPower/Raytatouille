@@ -24,6 +24,7 @@ nu_d of the glass (SCHOTT TIE-29, table 5-1), so ``class_limit`` rejects ABBE an
 
 from __future__ import annotations
 
+import operator
 import warnings
 from collections.abc import Sequence
 
@@ -190,16 +191,22 @@ def sensitivity(
     return result
 
 
-def _uint64(name: str, value: int | None) -> None:
-    """ValueError for a seed or a number of trials that is not an int in [0, 2^64) (review of
-    #261, F2); nanobind would raise OverflowError or TypeError instead. The range of the number
-    of trials, [1, 2^32], is checked in C++."""
+def _uint64(name: str, value: int | None) -> int | None:
+    """`value` as an int; ValueError for a seed or a number of trials that is not an integer in
+    [0, 2^64) (review of #261, F2), where nanobind would raise OverflowError or TypeError. NumPy
+    integers are accepted (operator.index), bool is not. The range of the number of trials,
+    [1, 2^32], is checked in C++."""
     if value is None:
-        return
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(f"{name} must be an int, not {type(value).__name__}")
-    if not 0 <= value < 2**64:
-        raise ValueError(f"{name} must lie in [0, 2^64), got {value}")
+        return None
+    try:
+        if isinstance(value, bool):
+            raise TypeError
+        number = operator.index(value)
+    except TypeError:
+        raise ValueError(f"{name} must be an int, not {type(value).__name__}") from None
+    if not 0 <= number < 2**64:
+        raise ValueError(f"{name} must lie in [0, 2^64), got {number}")
+    return number
 
 
 def monte_carlo(
@@ -246,10 +253,8 @@ def monte_carlo(
     (0, 1], a z that is not finite and positive, and as ``sensitivity`` (CompileError,
     ValueError, OptimError) for the tolerance set; and whatever the progress callback raises.
     """
-    _uint64("trials", trials)
-    _uint64("seed", seed)
     result = _core.tolerance_monte_carlo(
-        system, materials, coatings, trials, seed, [float(p) for p in percentiles], z,
+        system, materials, coatings, _uint64("trials", trials), _uint64("seed", seed), [float(p) for p in percentiles], z,
         keep_trials, OptimizeOptions() if compensators is None else compensators, threads,
         cancel, progress)
     for d in result.warnings:

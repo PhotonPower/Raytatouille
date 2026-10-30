@@ -168,14 +168,13 @@ def flatten_monte_carlo(r: tolerance.MonteCarloResult) -> Arrays:
 
 
 @cache
-def monte_carlo_run() -> tolerance.MonteCarloResult:
+def monte_carlo_run(threads: int) -> tolerance.MonteCarloResult:
     system = explicit_only(rt.load(REFERENCE_DIR / "m7" / "achromat_tolerances.rtt.json"))
-    return tolerance.monte_carlo(system, materials=schott_library(), trials=12)
+    return tolerance.monte_carlo(system, materials=schott_library(), trials=12, threads=threads)
 
 
 def achromat_monte_carlo(threads: int) -> Arrays:
-    # Bitwise the same for every number of threads; C++ runs with 1 and 4.
-    return flatten_monte_carlo(monte_carlo_run())
+    return flatten_monte_carlo(monte_carlo_run(threads))
 
 
 def explicit_only(system: rt.System) -> rt.System:
@@ -261,7 +260,7 @@ def schott_library() -> rt.MaterialLibrary:
 def test_the_monte_carlo_case_has_content() -> None:
     """Completed, all 12 trials kept, each criterion with statistics, and the perturbations of
     every trial different."""
-    r = monte_carlo_run()
+    r = monte_carlo_run(1)
     assert r.status == tolerance.MonteCarloStatus.COMPLETED
     assert len(r.trials) == 12 and r.yield_.total == 12
     assert all(c.count >= 2 and c.standard_deviation is not None for c in r.criteria)

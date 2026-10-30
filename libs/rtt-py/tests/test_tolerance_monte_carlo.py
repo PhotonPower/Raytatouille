@@ -130,6 +130,33 @@ def test_the_statistics_follow_from_the_columns() -> None:
         check_yield(c.yield_, int(np.sum(t.satisfied[:, k] == 1)), N, 1.959963984540054)
 
 
+def test_good_trials_are_valid_with_every_criterion_satisfied() -> None:
+    """In the reference case spot-zone (max 0.03 mm) already fails at the nominal (0.041 mm), so
+    no trial is good. With max 0.0411 mm some are (review by the physik-reviewer, P3-3); the
+    values of the seed lie at 0.04085 to 0.04141 mm, none closer than 2.6e-5 mm to the bound."""
+    system = rt.apply_patch(explicit_only(), [
+        {"op": "replace", "path": "/tolerances/criteria/1/max", "value": 0.0411}])
+    r = tolerance.monte_carlo(system, materials=schott(), trials=N)
+    t = r.trials
+    valid = t.status == VALID
+    expected = valid & np.all(t.satisfied == 1, axis=1)
+    assert 0 < int(np.sum(expected)) < N  # content guard: good and bad trials
+    assert t.good.tolist() == expected.tolist()
+    assert bool(np.all(t.satisfied[:, 1] == (t.criteria[:, 1] <= 0.0411)))
+    check_yield(r.yield_, int(np.sum(expected)), N, 1.959963984540054)
+    check_yield(r.criteria[1].yield_, int(np.sum(t.satisfied[:, 1] == 1)), N, 1.959963984540054)
+
+
+def test_numpy_integers_are_a_seed_and_a_number_of_trials() -> None:
+    # Trial n depends only on the seed and n (ADR 0036, point 7, D2), so these are the first rows
+    # of the full run.
+    trials: Any = np.int64(2)
+    seed: Any = np.uint64(file_seed())
+    r = tolerance.monte_carlo(explicit_only(), materials=schott(), trials=trials, seed=seed)
+    assert (r.seed, r.requested) == (file_seed(), 2)
+    assert r.trials.values.tolist() == full().trials.values[:2].tolist()
+
+
 def test_the_same_seed_gives_the_same_run_and_another_seed_another() -> None:
     assert run().to_json() == full().to_json()
     assert run(threads=1).to_json() == full().to_json()

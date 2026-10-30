@@ -57,6 +57,7 @@ def main() -> int:
         print(f"  {trials.item.id:<10} {trials.item.limit:g} -> {new}")
 
     mc = rt.tolerance.monte_carlo(explicit, materials=materials, trials=TRIALS)
+    # spot-zone (max 0.03 mm) already fails at the nominal (0.041 mm), so the yield is 0 here.
     y = mc.yield_
     print(f"Monte Carlo, seed {mc.seed}, {y.total} trials: yield {y.fraction:.2f}"
           f" ({y.lower:.2f} ... {y.upper:.2f}, 95 %)")

@@ -415,7 +415,9 @@ void bind_monte_carlo(nb::module_& m) {
   nb::class_<TrialTable> table(
       m, "TrialTable",
       "The finished trials as NumPy columns, one row per trial in ascending trial number "
-      "(read-only copies; ADR 0036, point 10).");
+      "(read-only copies; ADR 0036, point 10). Each access to MonteCarloResult.trials and to a "
+      "column "
+      "copies it, so bind a column once before a loop, e.g. lm = table.lm_status.");
   table.attr("__hash__") = nb::none();
   table.def("__len__", [](const TrialTable& t) { return t.rows.size(); });
   using tolerance::TrialRecord;
@@ -454,7 +456,7 @@ void bind_monte_carlo(nb::module_& m) {
               return r.result.criteria[k].value.value_or(kNan);
             });
           },
-          ref, "(trials, criteria): the value of each criterion, NaN without a value.")
+          ref, "(trials, criteria): the value of each criterion in its unit, NaN without a value.")
       .def_prop_ro(
           "satisfied",
           [](const TrialTable& t) {
@@ -462,7 +464,7 @@ void bind_monte_carlo(nb::module_& m) {
                 t, t.criteria, [](const TrialRecord& r, std::size_t k) -> std::int8_t {
                   const std::optional<bool>& s = r.result.criteria[k].satisfied;
                   if (!s.has_value()) return -1;
-                  return *s ? 1 : 0;
+                  return *s ? std::int8_t{1} : std::int8_t{0};
                 });
           },
           ref, "(trials, criteria): 1 satisfied, 0 not, -1 undecidable.")
@@ -521,7 +523,7 @@ void bind_monte_carlo(nb::module_& m) {
             return trial_column<std::int32_t>(
                 t, [](const TrialRecord& r) { return std::int32_t{r.result.lm_iterations}; });
           },
-          ref, "Levenberg-Marquardt iterations of the compensator run.")
+          ref, "Levenberg-Marquardt iterations of the compensator run, 0 without a run.")
       .def_prop_ro(
           "reason",
           [](const TrialTable& t) {

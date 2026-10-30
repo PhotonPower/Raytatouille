@@ -215,7 +215,8 @@ void write_monte_carlo(const Writer& w, const tolerance::MonteCarloResult& r) {
     }
     add_yield(statistics, c.yield);
   }
-  // The columns of TrialTable, row by row (status + 1 so that 0 is free; -1 as 0 for none).
+  // The columns of TrialTable, row by row. Flags: lm_status + 1 with 0 for no run, satisfied
+  // as 2/1/0 for yes/no/undecidable (as flatten_monte_carlo in test_bitwise_tolerance.py).
   std::vector<double> rows;
   std::vector<std::uint64_t> flags;
   for (const tolerance::TrialRecord& t : r.trials) {
@@ -238,6 +239,7 @@ void write_monte_carlo(const Writer& w, const tolerance::MonteCarloResult& r) {
   w.f8("rows", rows);
   w.u8("flags", flags);
 }
+
 /// The achromat with the class switched off: only its three explicit items (as
 /// test_tolerance_sensitivity.py, explicit_only()).
 model::System explicit_only(model::System s) {
