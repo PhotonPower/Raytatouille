@@ -20,6 +20,7 @@
 #include "rtt/material/material.hpp"
 #include "rtt/model/system.hpp"
 #include "rtt/tolerance/expand.hpp"
+#include "rtt/tolerance/monte_carlo.hpp"
 #include "rtt/tolerance/sensitivity.hpp"
 #include "rtt/tolerance/trial.hpp"
 
@@ -193,6 +194,50 @@ void write_sensitivity(const Writer& w, const tolerance::ToleranceSensitivity& r
   w.f8("confirmation", confirmation);
 }
 
+/// good, total, fraction, lower, upper of a yield (NaN for none).
+void add_yield(std::vector<double>& v, const tolerance::Yield& y) {
+  v.insert(v.end(), {static_cast<double>(y.good), static_cast<double>(y.total), value(y.fraction),
+                     value(y.lower), value(y.upper)});
+}
+
+void write_monte_carlo(const Writer& w, const tolerance::MonteCarloResult& r) {
+  std::vector<std::uint64_t> ints{r.seed, r.requested, code(r.status), r.trials.size()};
+  std::vector<double> statistics;
+  add_yield(statistics, r.yield);
+  for (const tolerance::CriterionStatistics& c : r.criteria) {
+    ints.insert(ints.end(), {c.with_value, c.without_value, c.count, c.percentiles.size()});
+    for (const auto* x : {&c.mean, &c.standard_deviation, &c.min, &c.max}) {
+      statistics.push_back(value(*x));
+    }
+    for (const tolerance::Percentile& p : c.percentiles) {
+      ints.push_back(p.rank);
+      statistics.insert(statistics.end(), {p.p, p.value});
+    }
+    add_yield(statistics, c.yield);
+  }
+  // The columns of TrialTable, row by row (status + 1 so that 0 is free; -1 as 0 for none).
+  std::vector<double> rows;
+  std::vector<std::uint64_t> flags;
+  for (const tolerance::TrialRecord& t : r.trials) {
+    flags.insert(flags.end(), {t.trial, code(t.result.status), t.good ? 1U : 0U,
+                               t.result.lm_status ? code(*t.result.lm_status) + 1 : 0});
+    rows.insert(rows.end(), t.values.begin(), t.values.end());
+    for (const tolerance::CriterionValue& c : t.result.criteria) {
+      rows.push_back(value(c.value));
+      flags.push_back(c.satisfied ? (*c.satisfied ? 2U : 1U) : 0U);
+    }
+    for (const tolerance::CompensatorValue& c : t.result.compensators) {
+      rows.insert(rows.end(), {c.start, c.end});
+      flags.insert(flags.end(), {c.at_bound ? 1U : 0U, c.infeasible ? 1U : 0U});
+    }
+    rows.push_back(value(t.result.mu));
+    rows.push_back(static_cast<double>(t.result.lm_iterations));
+  }
+  w.u8("ints", ints);
+  w.f8("statistics", statistics);
+  w.f8("rows", rows);
+  w.u8("flags", flags);
+}
 /// The achromat with the class switched off: only its three explicit items (as
 /// test_tolerance_sensitivity.py, explicit_only()).
 model::System explicit_only(model::System s) {
@@ -218,6 +263,12 @@ void run_tolerance_cases(const fs::path& reference_dir,
   arena.execute([&] {
     write_sensitivity(Writer(out, "achromat_sensitivity"),
                       tolerance::sensitivity(explicit_only(achromat), schott, nullptr));
+  });
+  arena.execute([&] {
+    tolerance::MonteCarloOptions options;
+    options.trials = 12;  // the seed of the file
+    write_monte_carlo(Writer(out, "achromat_monte_carlo"),
+                      tolerance::monte_carlo(explicit_only(achromat), schott, nullptr, options));
   });
 }
 

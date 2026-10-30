@@ -175,3 +175,11 @@ def test_ideal_lens_example(capsys: pytest.CaptureFixture[str]) -> None:
     out = capsys.readouterr().out
     assert "rear focal length 50.000000 mm" in out and "magnification -2.000000" in out
     assert "cylinder lens: y from -4.000000000" in out
+
+
+def test_tolerance_example(capsys: pytest.CaptureFixture[str]) -> None:
+    # main() returns 1 if a run does not complete or Monte Carlo does not keep every trial.
+    namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "tolerance.py"))
+    assert namespace["main"]() == 0
+    out = capsys.readouterr().out
+    assert "26 items" in out and "Sensitivity" in out and "Monte Carlo, seed 20261012" in out
