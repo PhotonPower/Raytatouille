@@ -828,10 +828,10 @@ TEST_CASE("#280: a 30-surface microscope 300 mm from the origin is focal with fi
   // Phi = 0.213 / mm counted as afocal and object-space telecentric (#280). Reference: the
   // independent y-nu trace above. Tolerance fixed beforehand: the arithmetic rounds Phi by at
   // most 8 N u S = 8 * 30 * 1.1e-16 * 260 / mm (S from the magnitude trace with |z' - z|),
-  // relative 3e-11 of Phi; the coordinates could add u E, relative 1e-10 (E about 2e5), but the
-  // reference composes z exactly as compile does (element z + local z, no rotation), so the
-  // coordinates are the same doubles in both. 1e-10 for all values, also for the quotients of m,
-  // EP and XP, each a few more roundings.
+  // relative 3e-11 of Phi; the coordinates could add u E / Phi = 1.1e-10 (E about 2e5), more than
+  // the tolerance, so the test relies on the reference composing z exactly as compile does
+  // (element z + local z, no rotation): the coordinates are the same doubles in both. 1e-10 for all
+  // values, also for the quotients of m, EP and XP, each a few more roundings.
   const std::vector<Group> groups = microscope_280();
   System s = base_system();
   s.object = {false, Param(54.0)};  // object at z = -54
@@ -897,7 +897,8 @@ TEST_CASE("afocal threshold: nearly afocal thick lenses are afocal at z = 0, 10 
   // d = 6 r, r from 0.7 um to 1.4 mm in 1999 geometric steps. Phi is zero up to the rounding of
   // d = 6 r and of the trace, at most 0.40 N u (S + E) measured over all 1999, so each lies
   // below the threshold 16 N u (S + E). Every 10th lens keeps the run short (all 1999 at three
-  // positions take 1.5 s in a Debug build).
+  // positions take 1.5 s in a Debug build). Content guard: a threshold that made every lens
+  // afocal would fail "a nearly afocal lens just above the threshold stays focal".
   for (const double z : {0.0, 10.0, 1000.0}) {
     for (int i = 0; i < 1999; i += 10) {
       const double r = 0.0007 * std::pow(1.4 / 0.0007, static_cast<double>(i) / 1998.0);
