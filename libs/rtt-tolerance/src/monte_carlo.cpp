@@ -244,6 +244,11 @@ MonteCarloResult monte_carlo(const TrialContext& context,
                              const MonteCarloOptions& options,
                              const trace::RunControl* control) {
   const Resolved resolved = resolve(context.monte_carlo_defaults(), options);
+  // D6: the items' limits and distributions before any trial, not inside the parallel loop
+  // (Rule 3); perturbation() throws for them, and prepare() does not check them.
+  for (const model::ToleranceItem& item : context.items()) {
+    [[maybe_unused]] const double draw = perturbation(resolved.seed, 0, item);
+  }
   const trace::RunControl none;
   const trace::RunControl& run = control != nullptr ? *control : none;
   MonteCarloResult out;

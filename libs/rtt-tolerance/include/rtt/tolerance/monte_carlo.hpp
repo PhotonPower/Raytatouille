@@ -34,11 +34,12 @@ struct MonteCarloOptions {
   /// the nominal system, else 0.
   std::optional<std::uint64_t> seed;
   /// The number of trials N in [1, 2^32]. None: tolerances.monte_carlo.trials of the nominal
-  /// system; there is no default.
+  /// system; there is no default. The run holds one slot per trial, so its memory grows with N.
   std::optional<std::uint64_t> trials;
-  /// The percentiles p in (0, 1] of each criterion (nearest rank, ADR 0036, point 7).
+  /// The percentiles p in (0, 1] of each criterion, dimensionless (nearest rank, ADR 0036,
+  /// point 7).
   std::vector<double> percentiles = {0.5, 0.9, 0.95, 0.99};
-  /// z = z_{1 - alpha/2} > 0 of the Wilson interval; the default is 95 %.
+  /// z = z_{1 - alpha/2} > 0 of the Wilson interval, dimensionless; the default is 95 %.
   double z = 1.959963984540054;
   /// Keep every trial in MonteCarloResult::trials. Off: only the trials that are not Valid (they
   /// are always listed, ADR 0036, point 7).
@@ -80,7 +81,7 @@ struct Yield {
 
 /// One percentile: Q(p) = x_(r) of the ascending values, r = ceil(p n) (ADR 0036, point 7).
 struct Percentile {
-  double p = 0.0;
+  double p = 0.0;        ///< the requested p in (0, 1], dimensionless
   std::size_t rank = 0;  ///< r in [1, n], 1-based
   double value = 0.0;    ///< unit of the criterion
 };
@@ -135,7 +136,8 @@ struct MonteCarloResult {
 /// (status Cancelled). If nominal() of the context is Cancelled, no trial runs.
 /// @throws std::invalid_argument if the number of trials is neither given nor in the file, or
 ///         lies outside [1, 2^32]; for a percentile outside (0, 1] or a z that is not finite and
-///         positive; before any trial
+///         positive; for an item whose limit is not finite and > 0 or whose distribution is
+///         unknown (perturbation()); before any trial
 /// @throws whatever the progress callback throws (rtt::trace::RunControl)
 [[nodiscard]] MonteCarloResult monte_carlo(const TrialContext& context,
                                            const MonteCarloOptions& options = {},

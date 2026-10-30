@@ -271,6 +271,12 @@ TEST_CASE("monte carlo: the Wilson interval", "[tolerance][monte_carlo]") {
   CHECK(std::abs(required(half.lower) - bound(0.5, 10.0, -1.0)) <= 1e-15);
   CHECK(std::abs(required(half.upper) - bound(0.5, 10.0, 1.0)) <= 1e-15);
   CHECK(std::abs(required(half.lower) + required(half.upper) - 1.0) <= 1e-15);  // symmetric
+  // By hand: p = 1/2 gives 1/2 -+ z sqrt(1/40 + z^2/400) / (1 + z^2/10); p = 0 gives the upper
+  // bound z^2 / (n + z^2), p = 1 the lower bound n / (n + z^2) (40 digits, Python decimal).
+  CHECK(std::abs(required(half.lower) - 0.2365930905125640) <= 1e-15);
+  CHECK(std::abs(required(half.upper) - 0.7634069094874360) <= 1e-15);
+  CHECK(std::abs(required(wilson(0, 10, z).upper) - 0.2775327998628892) <= 1e-15);
+  CHECK(std::abs(required(wilson(10, 10, z).lower) - 0.7224672001371108) <= 1e-15);
   // Edges: exactly 0 and 1 (the formula gives about 1e-18 off in double).
   const rtt::tolerance::Yield none = wilson(0, 10, z);
   CHECK(required(none.fraction) == 0.0);
@@ -349,8 +355,8 @@ TEST_CASE("monte carlo: options, seed and number of trials", "[tolerance][monte_
   CHECK(from_file == s.tolerances.monte_carlo);
   CHECK(!no_defaults.monte_carlo_defaults().has_value());
 
-  const auto rejects = [&](MonteCarloOptions bad) {
-    CHECK_THROWS_AS(rtt::tolerance::monte_carlo(defaults, bad), std::invalid_argument);
+  const auto rejects = [&](const MonteCarloOptions& options) {
+    CHECK_THROWS_AS(rtt::tolerance::monte_carlo(defaults, options), std::invalid_argument);
   };
   MonteCarloOptions bad = with(1, 0);
   rejects(bad);
@@ -368,6 +374,21 @@ TEST_CASE("monte carlo: options, seed and number of trials", "[tolerance][monte_
     bad = with(1, 2);
     bad.z = z;
     rejects(bad);
+  }
+
+  // Items that prepare() takes but perturbation() rejects: thrown before any trial (D6).
+  std::vector<ToleranceItem> zero_limit = s.tolerances.items;
+  zero_limit[0].limit = 0.0;
+  std::vector<ToleranceItem> unknown = s.tolerances.items;
+  unknown[0].distribution = static_cast<ToleranceDistribution>(99);
+  for (const std::vector<ToleranceItem>& items : {zero_limit, unknown}) {
+    const TrialContext c = rtt::tolerance::prepare(s, materials(), nullptr, items);
+    int reports = 0;
+    rtt::trace::RunControl control;
+    control.min_interval = std::chrono::milliseconds{0};
+    control.progress = [&](const rtt::trace::Progress&) { ++reports; };
+    CHECK_THROWS_AS(rtt::tolerance::monte_carlo(c, with(1, 4), &control), std::invalid_argument);
+    CHECK(reports == 0);
   }
 }
 
@@ -520,20 +541,23 @@ void check_warnings(const MonteCarloResult& r, std::uint64_t trials) {
     std::size_t count = 0;
     std::uint32_t first = 0;
     std::size_t order = 0;
+    std::string message;  ///< of the first trial
   };
   using Key = std::pair<std::string, std::string>;
   std::map<Key, Seen> seen;
   for (const TrialRecord& t : r.trials) {
     std::vector<Key> in_trial;
+    std::vector<std::string> messages;
     for (const rtt::model::Diagnostic& w : t.result.warnings) {
       const Key key{w.code, w.location};
       if (std::find(in_trial.begin(), in_trial.end(), key) == in_trial.end()) {
         in_trial.push_back(key);
+        messages.push_back(w.message);
       }
     }
-    for (const Key& key : in_trial) {
+    for (std::size_t j = 0; j < in_trial.size(); ++j) {
       const std::size_t order = seen.size();
-      ++seen.try_emplace(key, Seen{0, t.trial, order}).first->second.count;
+      ++seen.try_emplace(in_trial[j], Seen{0, t.trial, order, messages[j]}).first->second.count;
     }
   }
   REQUIRE(!seen.empty());  // content guard: the trials report warnings
@@ -547,7 +571,7 @@ void check_warnings(const MonteCarloResult& r, std::uint64_t trials) {
     const std::string counted = "in " + std::to_string(it->second.count) + " of " +
                                 std::to_string(trials) + " trials, first trial " +
                                 std::to_string(it->second.first);
-    CHECK(w.message.find(counted) != std::string::npos);
+    CHECK(w.message == it->second.message + " (" + counted + ")");
   }
 }
 
@@ -646,8 +670,9 @@ TEST_CASE("monte carlo: the warnings of the trials", "[tolerance][monte_carlo]")
   // the spot is then not defined), so every trial is Valid. The spot warns "rays.lost" above half
   // of the rays lost (SpotOptions::lost_warning_fraction). The part of the disc outside the
   // detector (area of two overlapping circles) is 0.40 at |dy| = 0.7 and 0.55 at |dy| = 0.95, one
-  // half at about 0.87; the 127 rays of 6 hexapolar rings follow it to about 0.02. Some trials
-  // warn, some not.
+  // half at about 0.87. Of the 127 rays of 6 hexapolar rings, 0.41 are lost at |dy| = 0.7 and
+  // 0.55 at |dy| = 0.95; their fraction crosses one half at about 0.84. Some trials warn, some
+  // not.
   System s = lens_system(50.0);
   add_detector(s, 60.0, 1.05);
   s.tolerances.items = {item("det.dy", "detector", ToleranceKind::DecenterY, 1.0)};
