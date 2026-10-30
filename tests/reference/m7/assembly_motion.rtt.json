@@ -1,0 +1,128 @@
+{
+  "schema_version": "0.7.0",
+  "name": "M7 acceptance: assembly of an ideal lens f = 50 mm and its detector, a witness behind it (cases 1, 11, 12)",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 10.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "pose": {"position": [0.0, 0.0, -1.0]},
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 10.0}
+          }
+        ]
+      },
+      {
+        "type": "assembly",
+        "name": "module",
+        "children": [
+          {
+            "type": "thin_element",
+            "name": "lens",
+            "surfaces": [
+              {
+                "id": "IL",
+                "aperture": {"type": "circular", "radius": 30.0},
+                "interaction": {"type": "ideal_lens", "focal_length": 50.0}
+              }
+            ]
+          },
+          {
+            "type": "detector",
+            "name": "image",
+            "pose": {"reference": "relative_to_preceding", "position": [0.0, 0.0, 50.0]},
+            "surfaces": [
+              {
+                "id": "IMG",
+                "aperture": {"type": "circular", "radius": 30.0}
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "witness",
+        "pose": {"reference": "relative_to_preceding", "position": [0.0, 0.0, 10.0]},
+        "material": "CONST:1.5",
+        "surfaces": [
+          {
+            "id": "W.S1",
+            "aperture": {"type": "circular", "radius": 30.0}
+          },
+          {
+            "id": "W.S2",
+            "pose": {"position": [0.0, 0.0, 2.0]},
+            "aperture": {"type": "circular", "radius": 30.0}
+          }
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {
+      "name": "main",
+      "events": [
+        {"surface": "STO"},
+        {"surface": "IL", "kind": "transmit"},
+        {"surface": "IMG"}
+      ]
+    }
+  ],
+  "tolerances": {
+    "overrides": [
+      {"node": "module", "pivot": [0.0, 0.0, 0.0]},
+      {"node": "lens", "pivot": [0.0, 0.0, 0.0]},
+      {"node": "image", "pivot": [0.0, 0.0, -50.0]}
+    ],
+    "items": [
+      {
+        "id": "module-tilt",
+        "node": "module",
+        "kind": "tilt_x_deg",
+        "limit": 1.0
+      },
+      {"id": "lens-tilt", "node": "lens", "kind": "tilt_x_deg", "limit": 1.0},
+      {
+        "id": "image-tilt",
+        "node": "image",
+        "kind": "tilt_x_deg",
+        "limit": 1.0
+      },
+      {
+        "id": "module-shift",
+        "node": "module",
+        "kind": "shift_z",
+        "limit": 0.1
+      },
+      {
+        "id": "lens-thickness",
+        "node": "lens",
+        "kind": "thickness",
+        "limit": 0.05
+      }
+    ],
+    "criteria": [
+      {
+        "id": "chief-y",
+        "operand": {"type": "ray_y", "path": "main", "surface": "IMG"},
+        "max_change": 1.0
+      }
+    ]
+  }
+}
