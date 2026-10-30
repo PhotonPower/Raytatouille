@@ -160,9 +160,9 @@ def flatten_monte_carlo(r: tolerance.MonteCarloResult) -> Arrays:
         for k in range(t.criteria.shape[1]):
             rows.append(float(t.criteria[i, k]))
             flags.append(int(t.satisfied[i, k]) + 1)
-        for c in range(t.compensator_start.shape[1]):
-            rows += [float(t.compensator_start[i, c]), float(t.compensator_end[i, c])]
-            flags += [int(t.at_bound[i, c]), int(t.infeasible[i, c])]
+        for j in range(t.compensator_start.shape[1]):
+            rows += [float(t.compensator_start[i, j]), float(t.compensator_end[i, j])]
+            flags += [int(t.at_bound[i, j]), int(t.infeasible[i, j])]
         rows += [float(t.mu[i]), float(t.lm_iterations[i])]
     return {"ints": u8(ints), "statistics": f8(statistics), "rows": f8(rows), "flags": u8(flags)}
 

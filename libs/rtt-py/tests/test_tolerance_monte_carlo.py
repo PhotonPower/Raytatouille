@@ -267,7 +267,7 @@ def test_a_seed_or_number_of_trials_must_be_an_int() -> None:
                               seed=1.5)  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="trials must be an int"):
         tolerance.monte_carlo(explicit_only(), materials=schott(),
-                              trials=True)  # type: ignore[arg-type]
+                              trials=True)  # bool is an int to mypy, not to monte_carlo
 
 
 def test_without_a_number_of_trials_it_is_an_error() -> None:
