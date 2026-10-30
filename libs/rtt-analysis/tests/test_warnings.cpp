@@ -305,6 +305,28 @@ TEST_CASE("pupil.field_amplitude_absorbing and pupil.chief_phase_unavailable at 
   CHECK(global.warnings[1].location == "/paths/0");
 }
 
+TEST_CASE("pupil.mapping_too_nonlinear: the FFT analyses reject, at the path",
+          "[analysis][warnings]") {
+  // The paraboloid at F/1.7 (#202): delta_max about 0.0225, above mapping_limit 0.02, so psf
+  // throws AnalysisError with the code at /paths/0 (ADR 0033, addendum #286); the cases of all
+  // five analyses are in test_mapping_limit.cpp.
+  const CompiledSystem cs = rtt::compile::compile(
+      rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m2/paraboloid_stop.rtt.json"),
+      rtt::material::MaterialLibrary{});
+  rtt::analysis::PsfOptions o;
+  o.pupil.grid = 16;
+  o.pupil.mapping_limit = 0.02;
+  bool thrown = false;
+  try {
+    static_cast<void>(rtt::analysis::psf(cs, PathId{0}, 0, o));
+  } catch (const rtt::analysis::AnalysisError& e) {
+    thrown = true;
+    CHECK(e.code() == std::optional<std::string>("pupil.mapping_too_nonlinear"));
+    CHECK(e.location() == std::optional<std::string>("/paths/0"));
+  }
+  CHECK(thrown);
+}
+
 TEST_CASE("every analysis code has a case in this file", "[analysis][warnings]") {
   const std::set<std::string> covered = {"rays.lost",
                                          "stop.clips_beam",
@@ -315,7 +337,8 @@ TEST_CASE("every analysis code has a case in this file", "[analysis][warnings]")
                                          "psf.pupil_undersampled",
                                          "pupil.basis_pole",
                                          "pupil.field_amplitude_absorbing",
-                                         "pupil.chief_phase_unavailable"};
+                                         "pupil.chief_phase_unavailable",
+                                         "pupil.mapping_too_nonlinear"};
   for (const rtt::diagnostics::CodeInfo& info : rtt::diagnostics::kCodes) {
     if (info.producer != "analysis") continue;
     INFO("no case for " << info.code);
