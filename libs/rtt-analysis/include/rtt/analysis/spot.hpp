@@ -171,9 +171,14 @@ struct SpotDiagram {
   std::uint32_t image_surface = 0;          ///< index into CompiledSystem::surfaces()
   std::vector<SpotPoint> points;            ///< arrived rays, in trace order
   Point2 chief;                             ///< reference ray on the image surface, mm
-  SpotStatistics stats;             ///< statistics of `points` about their centroid and `chief`
-  std::size_t rays_launched = 0;    ///< rays started, over all wavelengths of the spot
-  std::size_t rays_arrived = 0;     ///< rays that reached the image surface (= points.size())
+  SpotStatistics stats;           ///< statistics of `points` about their centroid and `chief`
+  std::size_t rays_launched = 0;  ///< rays started, over all wavelengths of the spot
+  std::size_t rays_arrived = 0;   ///< rays that reached the image surface (= points.size())
+  /// Per started ray in trace order (per wavelength in index order, the points of the sampling): 1
+  /// if it reached the image surface (then it is the next entry of `points`), 0 otherwise;
+  /// rays_launched entries. For callers that must know which rays arrived, e.g. optimize with a
+  /// fixed ray set (ADR 0032, addendum #299). C++ only, not in the result format.
+  std::vector<std::uint8_t> arrived;
   double vignetted_fraction = 0.0;  ///< (launched - arrived) / launched, unweighted
   RayLosses losses;  ///< rays of the sampling by final status, worst loss surface (ADR 0023)
   /// Warnings with stable codes (ADR 0022, 0023): "rays.lost" above lost_warning_fraction,
