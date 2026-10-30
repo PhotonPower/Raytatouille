@@ -60,9 +60,10 @@ def main() -> int:
     y = mc.yield_
     print(f"Monte Carlo, seed {mc.seed}, {y.total} trials: yield {y.fraction:.2f}"
           f" ({y.lower:.2f} ... {y.upper:.2f}, 95 %)")
-    for c in mc.criteria:
-        median = c.percentiles[0].value
-        print(f"  {c.id:<10} mean {c.mean:.6g}  sd {c.standard_deviation:.3g}  median {median:.6g}")
+    for stats in mc.criteria:
+        median = stats.percentiles[0].value
+        print(f"  {stats.id:<10} mean {stats.mean:.6g}  sd {stats.standard_deviation:.3g}"
+              f"  median {median:.6g}")
 
     ok = (s.status == rt.tolerance.SensitivityStatus.COMPLETED
           and mc.status == rt.tolerance.MonteCarloStatus.COMPLETED and y.total == TRIALS)
