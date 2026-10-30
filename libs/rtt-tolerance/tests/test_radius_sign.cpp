@@ -188,7 +188,9 @@ TEST_CASE("radius sign: a compensator that ends on the other side of 0",
   // row with a target. Target -40: LM ends near -40, on the other side of 0, so already the
   // nominal trial Phi_0 (all items at 0) is Invalid after the compensator run, and so is every
   // trial; the compensator values stay in the result. Target 30: valid. The item only gives the
-  // context a perturbation; it does not touch R1.
+  // context a perturbation; it does not touch R1. The merit has no operand that compiles the
+  // system, so LM passes R1 = 0 without a failed evaluation and ends near the target: the residual
+  // R1 - target is linear in R1.
   const auto with_target = [](double target) {
     System s = singlet(Param::bound("R1"), Param(-50.0));
     s.parameters = {row("R1", 50.0)};
@@ -248,10 +250,10 @@ TEST_CASE("radius sign: sensitivity and Monte Carlo exclude the flipped trials",
   INFO("excluded: " << c.items[0].excluded);
   CHECK(contains(c.items[0].excluded, "row 'R1'"));
   REQUIRE(sens.items.size() == 1);
-  REQUIRE(sens.items[0].plus.has_value());
-  REQUIRE(sens.items[0].minus.has_value());
-  CHECK(sens.items[0].plus->status == TrialStatus::Valid);
-  CHECK(sens.items[0].minus->status == TrialStatus::Invalid);
+  const std::optional<TrialResult>& plus = sens.items[0].plus;
+  const std::optional<TrialResult>& minus = sens.items[0].minus;
+  CHECK((plus.has_value() && plus->status == TrialStatus::Valid));
+  CHECK((minus.has_value() && minus->status == TrialStatus::Invalid));
 
   rtt::tolerance::MonteCarloOptions mo;
   mo.trials = 100;

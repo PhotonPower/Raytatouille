@@ -62,10 +62,11 @@ struct CompensatorTarget {
 
 /// A base radius of the nominal system in one configuration (ADR 0036, addendum #293).
 struct NominalRadius {
-  std::string pointer;             ///< .../shape/base/radius (edit form, ADR 0024)
-  std::string surface;             ///< its SurfaceId
-  std::optional<std::string> row;  ///< the row it is bound to, if any
-  double value = 0.0;              ///< mm, finite and non-zero (model::Conic)
+  std::string pointer;               ///< .../shape/base/radius (edit form, ADR 0024)
+  std::string surface;               ///< its SurfaceId
+  std::optional<std::string> row;    ///< the row it is bound to, if any
+  std::optional<std::size_t> index;  ///< that row's index in System::parameters
+  std::vector<double> value;         ///< mm per configuration, finite and non-zero (model::Conic)
 };
 
 struct ContextData {
@@ -83,7 +84,7 @@ struct ContextData {
   std::optional<optim::NominalBasis> basis;
   TrialResult nominal_result;
   /// Per configuration the nominal base radii (ADR 0036, addendum #293).
-  std::vector<std::vector<NominalRadius>> radii;
+  std::vector<NominalRadius> radii;
 };
 
 struct ContextAccess {
@@ -436,66 +437,68 @@ std::optional<std::string> radius_invalid(const ContextData& d, model::System& t
 
 constexpr std::string_view kRadiusSuffix = "/shape/base/radius";
 
-/// The base radii of `system` by pointer (edit form).
-std::map<std::string, double, std::less<>> base_radii(const model::System& system) {
-  std::map<std::string, double, std::less<>> out;
+/// The base radius Params of `system` in tree order, with their pointers (edit form).
+std::vector<std::pair<std::string, const model::Param*>> base_radii(const model::System& system) {
+  std::vector<std::pair<std::string, const model::Param*>> out;
   model::for_each_param(system, [&](std::string_view pointer, const model::Param& p) {
-    if (pointer.ends_with(kRadiusSuffix)) out.emplace(std::string(pointer), p.value);
+    if (pointer.ends_with(kRadiusSuffix)) out.emplace_back(std::string(pointer), &p);
   });
   return out;
 }
 
-/// The nominal base radii per configuration, with surface and row (ADR 0036, addendum #293).
-std::vector<std::vector<detail::NominalRadius>> nominal_radii(const model::System& nominal,
-                                                              const Anchors& anchors) {
+/// The nominal base radii with surface, row and value per configuration (ADR 0036, addendum
+/// #293). A radius bound to a row takes the row's value in each configuration.
+std::vector<detail::NominalRadius> nominal_radii(const model::System& nominal,
+                                                 const Anchors& anchors) {
   std::unordered_map<std::string, std::string> surfaces;  // pointer -> SurfaceId
   for (const auto& [name, pointer] : anchors.surfaces) surfaces.emplace(pointer, name);
-  std::unordered_map<std::string, std::string> rows;  // radius pointer -> row
-  model::for_each_param(nominal, [&](std::string_view pointer, const model::Param& p) {
-    if (pointer.ends_with(kRadiusSuffix) && p.param) rows.emplace(std::string(pointer), *p.param);
-  });
-  std::vector<std::vector<detail::NominalRadius>> out(model::configuration_count(nominal));
-  for (std::size_t c = 0; c < out.size(); ++c) {
-    const model::System resolved = model::resolve_parameters(nominal, c);
-    for (const auto& [pointer, value] : base_radii(resolved)) {
-      detail::NominalRadius r;
-      r.pointer = pointer;
-      const std::string owner = pointer.substr(0, pointer.size() - kRadiusSuffix.size());
-      if (const auto it = surfaces.find(owner); it != surfaces.end()) r.surface = it->second;
-      if (const auto it = rows.find(pointer); it != rows.end()) r.row = it->second;
-      r.value = value;
-      out[c].push_back(std::move(r));
+  const model::ParameterValues table = model::evaluate_parameters(nominal);
+  std::vector<detail::NominalRadius> out;
+  for (const auto& [pointer, param] : base_radii(nominal)) {
+    detail::NominalRadius r;
+    r.pointer = pointer;
+    const std::string owner = pointer.substr(0, pointer.size() - kRadiusSuffix.size());
+    if (const auto it = surfaces.find(owner); it != surfaces.end()) r.surface = it->second;
+    if (param->param) {
+      r.row = *param->param;
+      r.index = model::find_parameter(nominal, *param->param);
     }
+    for (std::size_t c = 0; c < table.configurations; ++c) {
+      r.value.push_back(r.index ? table.at(*r.index, c) : param->value);
+    }
+    out.push_back(std::move(r));
   }
   return out;
 }
 
 /// Why a base radius of `system` makes no valid trial, or none (ADR 0036, addendum #293): in
-/// any configuration, after resolving the parameter table, a base radius that is 0, not finite
-/// or of the other sign than its nominal value. This covers what radius_invalid does not see:
-/// rows (also through expression rows and per configuration) and compensators. A table that
-/// does not resolve is left to compile, which reports it with the criteria.
+/// any configuration, with the parameter table evaluated, a base radius that is 0, infinite or
+/// of the other sign than its nominal value. This covers what radius_invalid does not see: rows
+/// (also through expression rows and per configuration) and compensators. A row that is not
+/// defined (NaN: an error in the table) is left to compile, which reports it with the criteria.
+/// One walk over the Params and one evaluation of the table; validate does not run again.
 std::optional<std::string> radius_sign_invalid(const ContextData& d,
                                                const model::System& system,
                                                std::string_view stage) {
-  for (std::size_t c = 0; c < d.radii.size(); ++c) {
-    std::map<std::string, double, std::less<>> radii;
-    try {
-      // Without a table the system is its own resolved form (no copy).
-      radii = system.parameters.empty() ? base_radii(system)
-                                        : base_radii(model::resolve_parameters(system, c));
-    } catch (const std::invalid_argument&) {
-      return std::nullopt;
-    }
-    for (const detail::NominalRadius& n : d.radii[c]) {
-      const auto it = radii.find(n.pointer);
-      if (it == radii.end()) continue;
-      const double r = it->second;
-      if (std::isfinite(r) && r != 0.0 && std::signbit(r) == std::signbit(n.value)) continue;
+  if (d.radii.empty()) return std::nullopt;
+  const std::vector<std::pair<std::string, const model::Param*>> radii = base_radii(system);
+  if (radii.size() != d.radii.size()) return std::nullopt;  // the tree is that of the nominal
+  const bool bound =
+      std::any_of(d.radii.begin(), d.radii.end(),
+                  [](const detail::NominalRadius& n) { return n.index.has_value(); });
+  const model::ParameterValues table =
+      bound ? model::evaluate_parameters(system) : model::ParameterValues{};
+  const std::size_t configurations = d.radii.front().value.size();
+  for (std::size_t c = 0; c < configurations; ++c) {
+    for (std::size_t k = 0; k < d.radii.size(); ++k) {
+      const detail::NominalRadius& n = d.radii[k];
+      const double r = n.index ? table.at(*n.index, c) : radii[k].second->value;
+      if (std::isnan(r)) continue;  // an undefined row: compile reports the table error
+      if (std::isfinite(r) && r != 0.0 && std::signbit(r) == std::signbit(n.value[c])) continue;
       std::ostringstream why;
       why << stage << "surface '" << n.surface << "'";
-      if (d.radii.size() > 1) why << ", configuration '" << system.configurations[c].name << "'";
-      why << ": the radius " << r << " mm (nominal " << n.value << " mm";
+      if (configurations > 1) why << ", configuration '" << system.configurations[c].name << "'";
+      why << ": the radius " << r << " mm (nominal " << n.value[c] << " mm";
       if (n.row) why << ", row '" << *n.row << "'";
       why << ") is zero, infinite or of the other sign";
       return why.str();
