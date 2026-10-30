@@ -704,7 +704,8 @@ def mtf(
     ))
 
 
-def _ee_radii(radii: Sequence[float] | int, relative: bool) -> tuple[list[float], bool]:
+def _ee_radii(radii: Sequence[float] | int | np.integer[Any],
+              relative: bool) -> tuple[list[float], bool]:
     """The radii of encircled_energy() and whether they are relative: an int k >= 2 gives the k
     relative radii i / (k - 1), i = 0 ... k - 1 (the last exactly 1; #267). NumPy integers are
     accepted, bool and numpy.bool_ are not."""
@@ -720,7 +721,7 @@ def _ee_radii(radii: Sequence[float] | int, relative: bool) -> tuple[list[float]
 
 def encircled_energy(
     system: SystemLike | PupilFunction,
-    radii: Sequence[float] | int,
+    radii: Sequence[float] | int | np.integer[Any],
     path: int | str | None = None,
     field: int | None = None,
     *,

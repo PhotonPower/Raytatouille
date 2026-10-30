@@ -860,6 +860,10 @@ TEST_CASE("encircled energy: relative radii of two wavelengths and of a pupil fu
   const EncircledEnergy mm = rtt::analysis::encircled_energy(cs, PathId{0}, 0, rel.radii, eo);
   require_energy(mm, t.size());
   for (std::size_t i = 0; i < t.size(); ++i) CHECK(same_bits(rel.energy[i], mm.energy[i]));
+  // Content guard: radius_max is about 8 lambda F#_w of the shorter wavelength at N = 32, where
+  // 1 - J0^2 - J1^2 is 0.975, less the edge deficit of about 2e-2.
+  CHECK(rel.energy[1] > rel.energy[0]);
+  CHECK(rel.energy[1] > 0.9);
 
   // The overload for one pupil function.
   const PupilFunction p = pupil(paraboloid(10.0), 32);
