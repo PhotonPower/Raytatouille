@@ -1607,3 +1607,200 @@ TEST_CASE("aperture types image_fnumber and object_na end to end (#35, from #38)
     REQUIRE(std::abs(marginal.dir_y()[0] - 0.05 / std::sqrt(1.0 + 0.05 * 0.05)) <= 1e-11);
   }
 }
+
+// ---------------------------------------- fallback of real aiming by continuation (#287) -----
+
+namespace {
+
+/// Element of the #287 microscope: vertex at global z, local surfaces (z, R; nullopt = plane),
+/// one CONST index per segment (none for stop and detector).
+struct Group {
+  std::string name;
+  ElementKind kind;
+  double z;
+  std::vector<std::string> indices;
+  std::vector<std::pair<double, std::optional<double>>> surfaces;
+};
+
+/// Microscope objective 100x/1.45 (US 6,504,653 B2) with tube lens, reversed (tube side first),
+/// CONST indices at 546 nm, as in the reproduction file of #280 and the #280 test of
+/// rtt-paraxial: object 54 mm before the first surface, object_na 0.0145 (1.45 on the specimen
+/// side), stop inside the objective at z = 294.347 mm.
+System microscope() {
+  using P = std::pair<double, std::optional<double>>;
+  const auto plane = std::optional<double>{};
+  const std::vector<Group> groups = {
+      {"block", ElementKind::Lens, 0.0, {"1.51872"}, {P{0.0, plane}, P{161.2, plane}}},
+      {"tube", ElementKind::Lens, 163.13, {"1.58569"}, {P{0.0, 273.84}, P{6.0, -147.49}}},
+      {"L13-L14",
+       ElementKind::Lens,
+       265.549,
+       {"1.48794", "1.65222"},
+       {P{0.0, 8.1748}, P{0.73, 2.8175}, P{2.65, 3.1612}}},
+      {"L12", ElementKind::Lens, 270.106, {"1.53019"}, {P{0.0, -3.759}, P{4.85, -4.5281}}},
+      {"L10-L11",
+       ElementKind::Lens,
+       276.262,
+       {"1.61664", "1.53019"},
+       {P{0.0, -3.5485}, P{1.1, 93.056}, P{6.93, -6.7777}}},
+      {"L7-L9",
+       ElementKind::Lens,
+       283.397,
+       {"1.53019", "1.61664", "1.43494"},
+       {P{0.0, 51.958}, P{4.87, -9.8584}, P{6.03, 15.961}, P{10.9, -21.754}}},
+      {"STO", ElementKind::Stop, 294.347, {}, {P{0.0, plane}}},
+      {"L5-L6",
+       ElementKind::Lens,
+       294.397,
+       {"1.53019", "1.61664"},
+       {P{0.0, 13.925}, P{7.76, -12.23}, P{8.87, 139.25}}},
+      {"L4", ElementKind::Lens, 303.37, {"1.53019"}, {P{0.0, 11.14}, P{3.09, 44.666}}},
+      {"L3", ElementKind::Lens, 306.56, {"1.48794"}, {P{0.0, 4.9407}, P{3.64, 6.5423}}},
+      {"front",
+       ElementKind::Lens,
+       310.3,
+       {"1.88577", "1.51872", "1.51800", "1.52550"},
+       {P{0.0, 2.778}, P{2.5, 1.2579}, P{3.1, plane}, P{3.22, plane}, P{3.39, plane}}},
+      {"specimen", ElementKind::Detector, 313.690001, {}, {P{0.0, plane}}},
+  };
+  System s;
+  s.name = "microscope #287";
+  s.environment.medium = "VACUUM";
+  s.wavelengths = {{0.546074, 1.0, true}};
+  s.object = {false, Param(54.0)};
+  s.aperture = {rtt::model::SystemApertureType::ObjectSpaceNA, Param(0.0145)};
+  s.fields = {FieldType::ObjectHeight, {{0.0, 0.0, 1.0}, {0.0, 7.0, 1.0}}};
+  s.root.name = "root";
+  s.paths = {{"main", true, {}}};
+  for (const Group& g : groups) {
+    Element e{g.name, g.kind, Pose::along_z(g.z), std::nullopt, {}};
+    for (std::size_t k = 0; k < g.surfaces.size(); ++k) {
+      e.surfaces.push_back(
+          surface(g.name + ".S" + std::to_string(k), g.surfaces[k].first, g.surfaces[k].second));
+    }
+    for (const std::string& n : g.indices) e.segment_materials.push_back("CONST:" + n);
+    // The stop's own radius as in the #280 test; the system aperture is object_na.
+    if (g.kind == ElementKind::Stop)
+      e.surfaces[0].aperture = rtt::model::CircularAperture{8.6, 0.0};
+    s.root.children.push_back({std::move(e)});
+  }
+  return s;
+}
+
+/// Hit on the stop surface in local stop coordinates, as hit_on_stop(), or nullopt if the ray
+/// does not get there.
+std::optional<Vec3> reaches_stop(const CompiledSystem& cs, RayState ray) {
+  const auto& events = cs.path(PathId{0}).events;
+  const std::size_t stop = stop_event(cs);
+  for (std::size_t i = 0; i < stop; ++i) {
+    const auto& e = events[i];
+    ray = rtt::trace::sequential_step(ray, cs.surfaces()[e.surface], e.surface, e.kind,
+                                      cs.media()[e.medium_before].index[0].real(),
+                                      cs.media()[e.medium_after].index[0].real());
+    if (ray.status != RayStatus::Alive) return std::nullopt;
+  }
+  const auto hit = rtt::trace::intersect_surface(ray, cs.surfaces()[events[stop].surface]);
+  if (hit.status != rtt::geom::HitStatus::Hit) return std::nullopt;
+  return hit.point;
+}
+
+/// How far a ray gets along path 0 (sequential_step, with the apertures): its status right after
+/// the stop event (none if it ends before), and the event and status where it ends (the event
+/// count and Alive if it gets through).
+struct Passage {
+  std::optional<RayStatus> after_stop;
+  std::size_t end_event = 0;
+  RayStatus end = RayStatus::Alive;
+};
+
+Passage passage(const CompiledSystem& cs, RayState ray) {
+  const auto& events = cs.path(PathId{0}).events;
+  const std::size_t stop = stop_event(cs);
+  Passage out;
+  out.end_event = events.size();
+  for (std::size_t i = 0; i < events.size(); ++i) {
+    const auto& e = events[i];
+    ray = rtt::trace::sequential_step(ray, cs.surfaces()[e.surface], e.surface, e.kind,
+                                      cs.media()[e.medium_before].index[0].real(),
+                                      cs.media()[e.medium_after].index[0].real());
+    if (i == stop) out.after_stop = ray.status;
+    if (ray.status != RayStatus::Alive) {
+      out.end_event = i;
+      break;
+    }
+  }
+  out.end = ray.status;
+  return out;
+}
+
+}  // namespace
+
+TEST_CASE("#287: real aiming converges by continuation under strong pupil aberration",
+          "[sources][aiming]") {
+  // The marginal ray at full aperture: the run from the paraxial solution ends with
+  // NoConvergence (checked on main before the fix, #287); the continuation from the real chief
+  // ray reaches the target sigma p R_s. object_na 0.0155 (R_s = 8.35 mm, inside the stop radius
+  // 8.6) lies in the gap: field 0, p = (0, 1), was Alive on main only up to 0.0151 and is Alive
+  // with the fallback up to 0.0165, field 1 up to 0.0161 (scan in steps of 0.0002, #287). The
+  // cases are those that end with NoConvergence on main at 0.0155; field 1, p = (0, -1),
+  // converges there without the fallback and is left out. Not 0.0159: there three of the rays end
+  // Missed at L3.S0 (R = 4.94 mm) instead of Tir at the exit into vacuum.
+  // Content guards: the stop hit (own sequential trace) is on target within 1e-9 mm, the ray is
+  // still Alive after the stop event, the paraxially aimed ray misses the target by more than
+  // 0.1 mm or does not reach the stop (the pupil aberration is really there). The ray does not
+  // reach the specimen: behind the front group the model has vacuum, and every ray with
+  // n sin U > 1 there ends in total internal reflection. So it must end with Tir at that exit
+  // (front.S4), and with no other status.
+  const MaterialLibrary lib;
+  System system = microscope();
+  system.aperture.value = Param(0.0155);
+  const CompiledSystem cs = compile(system, lib);
+  const double r_s = paraxial_stop_radius(cs);
+  REQUIRE(r_s < 8.6);
+  const auto& events = cs.path(PathId{0}).events;
+  struct Case {
+    std::uint16_t field;
+    double py;
+  };
+  for (const Case& c : {Case{0, 1.0}, Case{0, -1.0}, Case{1, 1.0}}) {
+    const double px = 0.0;
+    const double py = c.py;
+    INFO("field " << c.field << ", p = (" << px << ", " << py << ")");
+    const auto real = rtt::trace::aim_ray(cs, PathId{0}, c.field, 0, px, py, Aiming::Real);
+    REQUIRE(real.ray.status == RayStatus::Alive);
+    REQUIRE(real.residual < rtt::trace::kAimTolerance);
+    const Vec3 hit = hit_on_stop(cs, real.ray);
+    // The target is +-R_s in y (label orientation sigma = +1: finite object, EP behind it).
+    REQUIRE(std::hypot(hit.x() - px * r_s, hit.y() - py * r_s) < 1e-9);
+    const auto paraxial = rtt::trace::aim_ray(cs, PathId{0}, c.field, 0, px, py, Aiming::Paraxial);
+    const auto miss = reaches_stop(cs, paraxial.ray);
+    if (miss) REQUIRE(std::hypot(miss->x() - px * r_s, miss->y() - py * r_s) > 0.1);
+    const Passage run = passage(cs, real.ray);
+    REQUIRE(run.after_stop == std::optional<RayStatus>(RayStatus::Alive));
+    REQUIRE(run.end == RayStatus::Tir);
+    REQUIRE(run.end_event > stop_event(cs));
+    REQUIRE(run.end_event < events.size());
+    CHECK(cs.surfaces()[events[run.end_event].surface].id.str() == "front.S4");
+  }
+}
+
+TEST_CASE("#287: without a converged real chief ray the fallback gives up as before",
+          "[sources][aiming]") {
+  // Stop behind the group, 30 deg (as in "target beyond the reachable stop heights"): even the
+  // real chief ray (target: stop centre) does not converge, so the continuation has no start and
+  // aim() keeps the last point of the primary run: NoConvergence, its residual (> 5 mm, finite)
+  // and its steps (at most kMaxAimIterations; the fallback adds none to a NoConvergence result).
+  const MaterialLibrary lib;
+  System s = two_lenses(StopPlace::After);
+  s.fields = {FieldType::AngleDeg, {{0.0, 0.0, 1.0}, {0.0, 30.0, 1.0}}};
+  const CompiledSystem cs = compile(s, lib);
+  const auto chief = rtt::trace::aim_ray(cs, PathId{0}, 1, 0, 0.0, 0.0, Aiming::Real);
+  REQUIRE(chief.ray.status == RayStatus::NoConvergence);
+  const auto aimed = rtt::trace::aim_ray(cs, PathId{0}, 1, 0, 0.0, 1.0, Aiming::Real);
+  REQUIRE(aimed.ray.status == RayStatus::NoConvergence);
+  REQUIRE(aimed.iterations <= rtt::trace::kMaxAimIterations);
+  REQUIRE(std::isfinite(aimed.residual));
+  REQUIRE(aimed.residual > 5.0);
+  REQUIRE(aimed.ray.pos.allFinite());
+  REQUIRE(aimed.ray.dir.allFinite());
+}

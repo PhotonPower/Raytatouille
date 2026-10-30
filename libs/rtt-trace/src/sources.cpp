@@ -5,6 +5,7 @@
 #include <oneapi/tbb/partitioner.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <numbers>
@@ -17,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "aim_continuation.hpp"
 #include "event_media.hpp"
 #include "rtt/compile/errors.hpp"
 #include "rtt/paraxial/paraxial.hpp"
@@ -37,10 +39,6 @@ inline constexpr bool kUnhandledSampling = false;
 
 /// Maximum number of step halvings per Newton step of real aiming.
 constexpr int kMaxAimHalvings = 10;
-
-/// Half-width of the bundle of one field in units of the EP radius, around the chief ray
-/// through the EP centre: reserve for the pupil aberration found by real aiming.
-constexpr double kBundleReserve = 3.0;
 
 /// Draw in [0, 1) from the upper 53 bits of a 64-bit engine output; identical on all platforms
 /// (std::uniform_real_distribution is implementation-defined).
@@ -428,7 +426,7 @@ FieldStart make_field(const Context& c, const model::Field& f) {
   // The bundle reaches at most 3 EP radii off the chief ray (reserve for real aiming); every
   // ray must start at least 1 mm before the EP and before every surface of the path it can
   // reach (lowest_z).
-  const double r_bundle = kBundleReserve * c.r_ep;
+  const double r_bundle = detail::kBundleReserve * c.r_ep;
   double z_min = c.z_ep;
   for (const auto& e : system.path(c.path).events) {
     z_min = std::min(z_min, lowest_z(system.surfaces()[e.surface], c.z_ep, r_bundle, d_xy / d.z()));
@@ -504,7 +502,6 @@ AimedRay aim(const Context& c, const FieldStart& f, double px, double py, Aiming
 
   // Real aiming: Newton on the residual at the stop, central-difference Jacobian (ADR 0007;
   // Newton's method in 2D, e.g. Press et al., Numerical Recipes, 3rd ed., Sec. 9.6).
-  out.residual = std::numeric_limits<double>::infinity();  // until the stop is reached
   const double r_s = c.r_ep * c.stop_scale;
   const double tx = sx * r_s;
   const double ty = sy * r_s;
@@ -515,50 +512,77 @@ AimedRay aim(const Context& c, const FieldStart& f, double px, double py, Aiming
   const double h = c.telecentric
                        ? kAimStepRelative * c.r_ep
                        : std::max(kAimStepRelative * std::abs(r_s), kAimStepPupilFloor * c.r_ep);
-  const auto residual = [&](double u, double v) -> std::optional<std::pair<double, double>> {
+  // Residual hit - target on the stop for the pupil point (u, v) and the target (gx, gy).
+  const auto residual = [&](double u, double v, double gx,
+                            double gy) -> std::optional<std::pair<double, double>> {
     const auto hit = stop_hit(c, ray_through(c, f, u, v));
     if (!hit) return std::nullopt;
-    return std::pair{hit->first - tx, hit->second - ty};
+    return std::pair{hit->first - gx, hit->second - gy};
   };
-  for (int iteration = 0;; ++iteration) {
-    out.iterations = iteration;
-    const auto r = residual(a, b);
-    if (!r) break;
-    out.residual = std::hypot(r->first, r->second);
-    if (out.residual < kAimTolerance) {
-      out.ray = ray_through(c, f, a, b);
-      return out;
-    }
-    if (iteration == kMaxAimIterations) break;
-    const auto ap = residual(a + h, b);
-    const auto am = residual(a - h, b);
-    const auto bp = residual(a, b + h);
-    const auto bm = residual(a, b - h);
-    if (!ap || !am || !bp || !bm) break;
+  // Jacobian {j11, j12, j21, j22} of the residual at (u, v) by central differences.
+  const auto jacobian_at = [&](double u, double v, double gx,
+                               double gy) -> std::optional<std::array<double, 4>> {
+    const auto ap = residual(u + h, v, gx, gy);
+    const auto am = residual(u - h, v, gx, gy);
+    const auto bp = residual(u, v + h, gx, gy);
+    const auto bm = residual(u, v - h, gx, gy);
+    if (!ap || !am || !bp || !bm) return std::nullopt;
     const double j11 = (ap->first - am->first) / (2.0 * h);
     const double j21 = (ap->second - am->second) / (2.0 * h);
     const double j12 = (bp->first - bm->first) / (2.0 * h);
     const double j22 = (bp->second - bm->second) / (2.0 * h);
-    const double det = j11 * j22 - j12 * j21;
-    if (!(det != 0.0) || !std::isfinite(det)) break;
-    const double da = -(j22 * r->first - j12 * r->second) / det;
-    const double db = -(-j21 * r->first + j11 * r->second) / det;
-    // Backtracking: halve the Newton step while it does not reduce the residual or the ray
-    // does not reach the stop (damped Newton, cf. Numerical Recipes, Sec. 9.7).
-    double lambda = 1.0;
-    bool accepted = false;
-    for (int k = 0; k < kMaxAimHalvings; ++k, lambda *= 0.5) {
-      const auto trial = residual(a + lambda * da, b + lambda * db);
-      if (trial && std::hypot(trial->first, trial->second) < out.residual) {
-        accepted = true;
-        break;
+    return std::array<double, 4>{j11, j12, j21, j22};
+  };
+  // One Newton run from (u, v) on the target (gx, gy); true on convergence. (u, v) hold the
+  // last accepted iterate either way; `run` the steps, the last residual (+infinity if the stop
+  // was never reached) and the last Jacobian.
+  const auto newton = [&](double& u, double& v, double gx, double gy,
+                          detail::NewtonRun& run) -> bool {
+    for (int iteration = 0;; ++iteration) {
+      run.steps = iteration;
+      const auto r = residual(u, v, gx, gy);
+      if (!r) return false;
+      run.residual = std::hypot(r->first, r->second);
+      if (run.residual < kAimTolerance) return true;
+      if (iteration == kMaxAimIterations) return false;
+      const auto jac = jacobian_at(u, v, gx, gy);
+      if (!jac) return false;
+      const auto [j11, j12, j21, j22] = *jac;
+      const double det = j11 * j22 - j12 * j21;
+      if (!(det != 0.0) || !std::isfinite(det)) return false;
+      run.jacobian = jac;
+      const double da = -(j22 * r->first - j12 * r->second) / det;
+      const double db = -(-j21 * r->first + j11 * r->second) / det;
+      // Backtracking: halve the Newton step while it does not reduce the residual or the ray
+      // does not reach the stop (damped Newton, cf. Numerical Recipes, Sec. 9.7).
+      double lambda = 1.0;
+      bool accepted = false;
+      for (int k = 0; k < kMaxAimHalvings; ++k, lambda *= 0.5) {
+        const auto trial = residual(u + lambda * da, v + lambda * db, gx, gy);
+        if (trial && std::hypot(trial->first, trial->second) < run.residual) {
+          accepted = true;
+          break;
+        }
       }
+      if (!accepted) return false;
+      u += lambda * da;
+      v += lambda * db;
+      const RayState next = ray_through(c, f, u, v);
+      if (!next.pos.allFinite() || !next.dir.allFinite()) return false;
     }
-    if (!accepted) break;
-    a += lambda * da;
-    b += lambda * db;
-    out.ray = ray_through(c, f, a, b);
-    if (!out.ray.pos.allFinite() || !out.ray.dir.allFinite()) break;
+  };
+
+  detail::NewtonRun primary;
+  const bool converged = newton(a, b, tx, ty, primary);
+  out.iterations = primary.steps;
+  out.residual = primary.residual;
+  out.ray = ray_through(c, f, a, b);
+  if (converged) return out;
+  if (const auto fallback = detail::continuation(newton, jacobian_at, f.infinite, c.r_ep, tx, ty)) {
+    out.ray = ray_through(c, f, fallback->a, fallback->b);
+    out.iterations = primary.steps + fallback->steps;
+    out.residual = fallback->residual;
+    return out;
   }
   out.ray.status = RayStatus::NoConvergence;
   if (!out.ray.pos.allFinite() || !out.ray.dir.allFinite()) {
