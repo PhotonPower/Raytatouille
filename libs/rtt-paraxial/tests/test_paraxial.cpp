@@ -796,11 +796,8 @@ struct YNu {
   double z, y, nu, n;
 };
 
-YNu trace_table(const std::vector<Group>& groups,
-                std::size_t first,
-                std::size_t last,
-                YNu ray,
-                double z_out) {
+YNu trace_table(
+    const std::vector<Group>& groups, std::size_t first, std::size_t last, YNu ray, double z_out) {
   std::size_t event = 0;
   for (const Group& g : groups) {
     for (std::size_t k = 0; k < g.surfaces.size(); ++k, ++event) {
@@ -887,6 +884,27 @@ TEST_CASE("#280: a 30-surface microscope 300 mm from the origin is focal with fi
   // (B, D) and meets the axis at z_last - B n' / D.
   const YNu back = trace_table(groups, stop_event + 1, events, {z_stop, 0.0, 1.0, 1.0}, z_last);
   REQUIRE_THAT(*exit_pupil(fo).z, WithinRel(z_last - back.y * back.n / back.nu, kTol));
+}
+
+TEST_CASE("afocal threshold: nearly afocal thick lenses are afocal at z = 0, 10 and 1000 mm",
+          "[paraxial][afocal]") {
+  // The lenses of the measurement in the comment of power_scale() (#280): R = +-r, n = 1.5,
+  // d = 6 r, r from 0.7 um to 1.4 mm in 1999 geometric steps. Phi is zero up to the rounding of
+  // d = 6 r and of the trace, at most 0.40 N u (S + E) measured over all 1999, so each lies
+  // below the threshold 16 N u (S + E). Every 10th lens keeps the run short (all 1999 at three
+  // positions take 1.5 s in a Debug build).
+  for (const double z : {0.0, 10.0, 1000.0}) {
+    for (int i = 0; i < 1999; i += 10) {
+      const double r = 0.0007 * std::pow(1.4 / 0.0007, static_cast<double>(i) / 1998.0);
+      System s = base_system();
+      add(s, lens("L", z, 1.5, r, -r, 6.0 * r));
+      const FirstOrder fo = first_order_of(s);
+      if (fo.efl) {
+        INFO("z = " << z << ", r = " << r << ", Phi = " << fo.power);
+        FAIL("focal");
+      }
+    }
+  }
 }
 
 // ----------------------------- infinity thresholds of pupils and image (#35, rest of B9) -----

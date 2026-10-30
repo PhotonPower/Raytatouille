@@ -196,8 +196,7 @@ Magnitudes magnitude_trace(const std::vector<Step>& steps,
     z = step.z;
     const double direction = n > 0.0 ? 1.0 : -1.0;
     const double n_after = step.kind == EventKind::Reflect ? -n : direction * step.n_after;
-    const double phi =
-        std::abs(step.c * (n_after - n)) + std::abs(n * step.inverse_focal_length);
+    const double phi = std::abs(step.c * (n_after - n)) + std::abs(n * step.inverse_focal_length);
     e_nu += e_y * phi;
     nu += y * phi;
     n = n_after;
@@ -242,8 +241,8 @@ Magnitudes magnitude_trace(const std::vector<Step>& steps,
 /// factor 1.2 below the threshold; and one scale keeps the form of the threshold. The threshold
 /// k = 16 is twice the bound. Measured with the same operations for 1999 nearly afocal thick
 /// lenses (R = +-r, n = 1.5, d = 6 r, r from 0.7 um to 1.4 mm, at z = 0, 10 and 1000 mm): at
-/// most |Phi| = @@280-MEASURE@@ N u (S + E), so the threshold lies more than 30 times above the
-/// rounding.
+/// most |Phi| = 0.40 N u (S + E), so the threshold lies 40 times above the rounding (until #280,
+/// with S alone: 0.60 N u S, not the 0.30 stated here before).
 double power_scale(const std::vector<Step>& steps, double z_in, double n_in) {
   return magnitude_trace(steps, 0, steps.size(), z_in, n_in, z_in, 1.0, 0.0).nu;
 }
