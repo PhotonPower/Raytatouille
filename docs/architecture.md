@@ -540,6 +540,30 @@ Ein Feature ist erst fertig, wenn es mindestens einen Referenztest gegen eine un
   - Die Jones-Pupille braucht einen ankommenden Hauptstrahl. Geht er verloren oder streift er die Bildfläche, ist das ein `AnalysisError`; hat er kein J, bleibt mit `remove_global_phase` die Phase stehen (Warnung `pupil.chief_phase_unavailable`).
 - **Umfang:** Die übrigen M6-Bausteine sind über ihre eigenen Tests und Bitvergleiche abgenommen: Q und P je Ereignis (#207), das Interferogramm zweier Pfade (#210) und die Stokes-Karte (#211).
 
+**Abnahme M7 (#262):** `libs/rtt-tolerance/tests/test_m7_acceptance.cpp` (Tag `[m7]`) prüft die Toleranzierung durchgehend, mit Referenzsystemen unter `tests/reference/m7/`, unabhängigen Sollwerten und vorab festgelegten Toleranzen. Jeder gestörte Prüfling läuft über `prepare`/`evaluate`, `sensitivity` oder `monte_carlo` mit dem nominalen Bezug (ADR 0036); kein Fall rechnet das gestörte System an der Toleranzschicht vorbei.
+- **Toleranzregel:** Strahlkoordinaten auf 10⁻¹² mm. Paraxiale Größen eines Prüflings kommen aus parabasalen Strahlen (ADR 0030, Nachtrag #256), auch beim Nennwert: Sollwert ist der reale parabasale Strahl, Schranke der Rundungsterm der Richardson-Schranke. Ein Kompensator ist durch das Abbruchkriterium von LM beschränkt, mit der MINUIT-Transformation seines Hubs. Statistik in Bändern aus der Verteilung: Mittel 4σ/√N, Varianz 4√Var(s²) mit Var(s²) = (μ₄ − (N − 3)/(N − 1) σ⁴)/N, Ausbeute im Wilson-Intervall mit z = 3,8906. Seeds stehen in der Datei und wurden nicht gesucht.
+- **Fälle:**
+  1. Baugruppen-Kippung bewegt alle Kinder: ray_y = +f tan θ im Rahmen der Baugruppe; gleich der Kippung jedes Kindes um denselben Pivot; ein Element hinter der Baugruppe bleibt stehen: `m7/assembly_motion`.
+  2. Dezentrierung einer idealen Linse: y′ = δ (Objekt unendlich) und δ(1 − m), m = −0,5; efl des Prüflings 2/(k_x + k_y) ≈ f + 3δ²/(4f) aus den parabasalen Strahlen: `m7/decentred_lens`, `m7/decentred_lens_finite`.
+  3. Gekippte planparallele Platte: Versatz −t sin θ [1 − cos θ/√(n² − sin² θ)]: `m7/tilted_plate`.
+  4. Δn_d und Δν_d durch `first_order`: plankonvexe Linse aus N-BK7, efl bei F, d und C nach ADR 0036, Punkt 1c, mit n_d, n_F, n_C aus `compile::fraunhofer_indices`; Linearisierung in D′/D − 1 mit exaktem Rest: `m7/planoconvex_bk7`.
+  5. Kompensator: Verschiebung eines Paraboloids, die Detektorlage folgt auf etwa 3·10⁻⁹ mm, der Spot ist danach nominal: `m7/paraboloid_compensator`.
+  6. Sensitivität und RSS: delta = (1 − m)T und −T, predicted_sigma gegen die Standardabweichung aus Monte Carlo (N = 1000); quadratisch predicted_mean_square gegen das Mittel von Φ² im Band 4√(4/45) q/√N: `m7/decentred_lens_finite`.
+  7. Monte Carlo mit LM in jedem Prüfling bitgleich bei 1, 4 und allen Threads und bei Wiederholung; ein zusätzliches Item ändert die Ziehungen der übrigen nicht: `m7/paraboloid_compensator`.
+  8. Statistik gegen die Verteilung: gleichverteilt (Mittel, Varianz mit μ₄ = 9/5 σ⁴, Ausbeute 0,5) und abgeschnitten normal (Varianz 0,773741 σ²): `m7/decentred_lens`.
+  9. Toleranz auf eine Zeile der Parametertabelle: ΔT tan U′ in beiden Konfigurationen: `m7/configuration_row`.
+  10. Doppeldurchgang: Spiegelkippung θ lenkt um 2θ ab; ein zweimal getroffenes Element sieht in beiden Durchgängen dieselbe Störung: `m7/double_pass`.
+  11. Vorzeichen der Baugruppen-Kippung: `m7/assembly_motion`.
+  12. Eine Dicke verschiebt relativ platzierte Folgeelemente mit, eine starre Bewegung nicht: `m7/assembly_motion`.
+  13. Toleranzklassen mit Überschreibung, Einzelwerten und expliziten Items; Monte Carlo über die erzeugten Items bitgleich: `m7/achromat_tolerances`.
+- **Reproduzierbar:** Sensitivität und Monte Carlo sind bei 1, 4 und allen Threads bitgleich, mit und ohne Kompensator. Python ist für die Abnahmesysteme bitgleich zu C++: `test_bitwise_m7.py` (Fälle 4, 6, 7, 8 und 13), mit Inhaltswachen. Dazu kommen die Bitvergleiche der Bausteine (`test_bitwise_tolerance.py`).
+- **Bekannte Grenzen:**
+  - Ein Vorzeichenwechsel von R über eine Tabellenzeile oder einen Kompensator wird nicht erkannt; `radius_invalid` sieht nur Radius-Items (#293, geplant nach 0.9.0).
+  - Bitgleich nur auf derselben Plattform (libm, ADR 0036). Ein abgebrochener Monte-Carlo-Lauf ist nicht reproduzierbar: Welche Prüflinge fertig sind, hängt vom Zeitpunkt ab.
+  - Keine korrelierten Toleranzen, keine Zernike-Flächenfehler (M8); Strehl und MTF sind keine Kriterien.
+  - `LmStatus::Failed` eines Kompensators hat keinen eigenen Test (#278).
+  - efl, bfl, image_fnumber und magnification eines Prüflings kommen aus parabasalen Strahlen bei h = 10⁻³ des Pupillenradius, nicht aus einem y-nu-Trace. Auch der Nennwert Φ₀ weicht deshalb vom paraxialen Wert ab, um die Aberration bei h (beim N-BK7-Fall etwa −4,3·10⁻⁷ mm).
+
 **Teststufen:** Unit-Tests mit Catch2 v3 in jeder Bibliothek; Property-Tests (RapidCheck, ab M1) für Energieerhaltung, |dir| = 1, P·k_ein = k_aus, Umkehrbarkeit, Invarianz bei starrer Bewegung; Golden-Tests mit Standardsystemen aus der Literatur; NSC-Tests (M9) gegen analytische Fälle (Lambert-Strahler, Etendue, Integrationskugel, Leistungsbilanz); Benchmarks mit Google Benchmark (Ziel ≥ 5 Mio. Strahl-Flächen-Schnitte pro Sekunde und Kern bei Sphären inkl. Polarisation, Regression > 10 % blockiert); Schema-Tests mit pytest.
 
 **CI (`.github/workflows/ci.yml`):** clang-format, JSON-Schema, Linux GCC (Release), Linux Clang mit clang-tidy (Release), Linux Clang mit ASan/UBSan (Debug), Windows MSVC (Release); Warnungen sind Fehler. Job Python (ADR 0018): Paket `raytatouille` in der CMake-Baumstruktur (Presets `ci-linux-python` mit Python 3.10 und 3.13, `ci-windows-python` mit 3.13), pytest einschließlich Bitvergleich mit C++ und mypy --strict über ctest; je OS ein Smoke-Test mit `pip install .`.

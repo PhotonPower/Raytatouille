@@ -33,6 +33,7 @@
 #include "ideal_lens_cases.hpp"
 #include "jones_cases.hpp"
 #include "m6_cases.hpp"
+#include "m7_cases.hpp"
 #include "npy_writer.hpp"
 #include "optim_cases.hpp"
 #include "paths_cases.hpp"
@@ -345,6 +346,7 @@ int main(int argc, char** argv) {
     rtt::py::reference::run_psf_cases(args[0], args[2], threads);
     rtt::py::reference::run_m6_cases(args[0], args[2], threads);
     rtt::py::reference::run_tolerance_cases(args[0], args[1], args[2], threads);
+    rtt::py::reference::run_m7_cases(args[0], args[1], args[2], threads);
     return 0;
   } catch (const std::exception& e) {
     std::cerr << "rtt_py_reference: " << e.what() << '\n';
