@@ -956,7 +956,7 @@ TEST_CASE("infinity thresholds: a stop in the rear focal plane up to rounding is
     CHECK_FALSE(fo.entrance_pupil->z.has_value());  // entrance pupil at infinity
     CHECK_FALSE(fo.angular_magnification.has_value());
   }
-  // Guards at 3 T (148 ulp): the entrance pupil is finite (about 4e15 mm away).
+  // Guards at 2 T (148 ulp): the entrance pupil is finite (about 4e15 mm away).
   for (const int k : {-148, 148}) {
     INFO("stop at 129 + " << k << " ulp");
     System s = base_system();
@@ -981,7 +981,7 @@ TEST_CASE("infinity thresholds: a stop in the front focal plane up to rounding i
     CHECK_FALSE(fo.exit_pupil->z.has_value());  // exit pupil at infinity
     CHECK_FALSE(fo.exit_pupil->diameter.has_value());
   }
-  // Guards at 3 T (290 ulp): the exit pupil is finite.
+  // Guards at 2 T (290 ulp): the exit pupil is finite.
   for (const int k : {-290, 290}) {
     INFO("stop at -126 + " << k << " ulp");
     System s = base_system();
@@ -1007,7 +1007,7 @@ TEST_CASE(
     CHECK_FALSE(fo.image_z.has_value());
     CHECK_FALSE(fo.lateral_magnification.has_value());
   }
-  // Guards at 3 T (290 ulp): the image is finite.
+  // Guards at 2 T (290 ulp): the image is finite.
   for (const int k : {-290, 290}) {
     INFO("object distance 126 + " << k << " ulp");
     System s = base_system();
