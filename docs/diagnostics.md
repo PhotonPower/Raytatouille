@@ -103,12 +103,12 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `object.medium_infinite` | Fehler | Medium im Objektraum bei einem Objekt im Unendlichen (ADR 0037) | validate | `/object/medium` |
 | `object.reference_at_infinity` | Fehler | Bezug des Objektabstands bei einem Objekt im Unendlichen (ADR 0038) | validate | `/object/reference` |
 | `object.reference_surface_unknown` | Fehler | Der Bezug des Objektabstands nennt keine Fläche des Systems (ADR 0038) | validate | `/object/reference` |
-| `optim.evaluation_failed` | Warnung | Auswertungen der Merit-Funktion sind im Lauf gescheitert (Analysefehler oder nicht definierter Wert); diese Versuche galten als abgelehnt (ADR 0030, Punkt 10) | optim | `/optimization` |
-| `optim.jacobian_failed` | Fehler | eine Spalte der Jacobi-Matrix hat kein gültiges Auswertungspaar; der Lauf endet mit Status `failed` und dem letzten angenommenen Stand | optim | Pointer der Variablen (kleinster Index) |
+| `optim.evaluation_failed` | Warnung | Auswertungen der Merit-Funktion sind im Lauf gescheitert (Analysefehler, nicht definierter Wert oder geänderte Menge der Generator-Strahlen, deren Zahl die Meldung eigens nennt); diese Versuche galten als abgelehnt (ADR 0030, Punkt 10, Nachtrag #289) | optim | `/optimization` |
+| `optim.jacobian_failed` | Fehler | eine Spalte der Jacobi-Matrix hat auf keiner Seite eine gültige Auswertung (ist nur eine Seite ungültig, gilt die einseitige Differenz, ADR 0030, Nachtrag #289); der Lauf endet mit Status `failed` und dem letzten angenommenen Stand | optim | Pointer der Variablen (kleinster Index) |
 | `optim.no_operands` | Fehler | Optimierung ohne Operanden und ohne Generatoren (ADR 0030, Nachtrag #167) | optim | leer |
 | `optim.no_variables` | Fehler | Optimierung ohne variables Param und ohne variable Tabellenzeile | optim | leer |
 | `optim.parameter_at_bound` | Warnung | Ergebniswert einer Variablen liegt an ihrer Grenze | optim | Pointer der Variablen |
-| `optim.rays_lost` | Warnung | Strahlen eines Generators gingen am Endstand verloren; sie haben die Residuen 0 und senken die Merit-Funktion (ADR 0030, Nachtrag #168) | optim | `/optimization/generators/i` |
+| `optim.rays_lost` | Warnung | Strahlen eines Generators waren am Start verloren und bleiben für den Lauf draußen (Residuen 0); die Menge der angekommenen Strahlen ist im ganzen Lauf die des Starts (ADR 0030, Nachträge #168 und #289) | optim | `/optimization/generators/i` |
 | `param.bound_conflict` | Fehler | gebundenes Param (`param`) mit `variable` oder Grenzen (nur über die API) | validate | Pointer des Params |
 | `param.unknown_parameter` | Fehler | Param an eine Zeile gebunden, die es nicht gibt | validate | `…/param` |
 | `parameters.expression_syntax` | Fehler | Ausdruck einer Zeile nicht nach der Grammatik von ADR 0029 (Zeichenposition in der Meldung), länger als 1000 Zeichen, tiefer als 64 geschachtelt oder mit einem Literal, das weder 0 noch ein endliches normales double ist (Überlauf, Unterlauf, subnormal) | validate | `/parameters/i/expression` |

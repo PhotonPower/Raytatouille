@@ -29,14 +29,18 @@
 ///
 /// Lost rays (F7): a ray that does not arrive Alive on the image surface (wavefront: or misses
 /// the reference sphere) has the residuals 0, does not count for the reference and is counted in
-/// GeneratorStats. Lost rays lower the sum of squares (no renormalisation): a known limit of
-/// ADR 0030. If no ray of a field (spot) or of a field and wavelength (wavefront) arrives, or the
-/// chief ray of a spot with reference "chief" does not, its residuals are NaN: the evaluation is
-/// invalid (ADR 0030, point 10). All rays use real aiming.
+/// GeneratorStats, which also lists per ray whether it arrived. optimize() keeps the set of
+/// arrived rays of the start for the whole run (ADR 0030, addendum #289): an evaluation with
+/// another set is invalid, so a run cannot lower the sum of squares by losing rays. If no ray of
+/// a field (spot) or of a field and wavelength (wavefront) arrives, or the chief ray of a spot
+/// with reference "chief" does not, its residuals are NaN: the evaluation is invalid (ADR 0030,
+/// point 10). All rays use real aiming.
 
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <string>
+#include <vector>
 
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/model/optimization.hpp"
@@ -47,6 +51,9 @@ namespace rtt::optim {
 struct GeneratorStats {
   std::size_t rays_launched = 0;  ///< |fields| |wavelengths| rings arms
   std::size_t rays_lost = 0;      ///< rays with residuals 0 because they did not arrive
+  /// Per ray in the order of the residuals (fields, wavelengths, pupil points): 1 if it arrived,
+  /// 0 if it is lost; rays_launched entries (ADR 0030, addendum #289).
+  std::vector<std::uint8_t> arrived;
   /// Weighted mean square of the deviations, sum_f sum_l W_f W_l sum_k q_k |d_k|^2 (mm^2 for the
   /// spot, waves^2 for the wavefront), independent of the generator weight; NaN if a residual
   /// is NaN. The sum of squares of the residuals is weight times this.

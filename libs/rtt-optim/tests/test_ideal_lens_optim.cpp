@@ -41,7 +41,10 @@ TEST_CASE("ideal lens: an evaluation at f = 0 is invalid, the run ends without e
   // a C library need not; GCC 13 -O3 folded cbrt(kMeritPrecision) in CI). No exactness of cbrt is
   // assumed: glibc's cbrt is not correctly rounded, even for an exact cube such as 2^-30.
   // The operand is a ray of a path that bypasses the lenses (STO -> IMG): every evaluation
-  // compiles the whole system, the lens included, so only f = 0 fails.
+  // compiles the whole system, the lens included, so only f = 0 fails. Only the side theta - h of
+  // the Jacobian column is invalid, so the column is one-sided (ADR 0030, addendum #289) and 0,
+  // because the operand does not depend on f: g = 0, the run ends with ConvergedGradient at the
+  // start, and the invalid evaluation is still reported.
   System s = rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/r2/ideal_lens.rtt.json");
   rtt::optim::OptimizeOptions options;
   volatile double eps_f = rtt::optim::kMeritPrecision;  // not a constant for the compiler
@@ -69,11 +72,11 @@ TEST_CASE("ideal lens: an evaluation at f = 0 is invalid, the run ends without e
 
   OptimResult r;
   REQUIRE_NOTHROW(r = rtt::optim::optimize(s, rtt::material::MaterialLibrary{}, nullptr, options));
-  CHECK(r.status == LmStatus::Failed);
+  CHECK(r.status == LmStatus::ConvergedGradient);
   CHECK(r.failed_evaluations >= 1);
   CHECK(has(r, "optim.evaluation_failed", "/optimization"));
-  CHECK(has(r, "optim.jacobian_failed",
-            "/root/children/1/surfaces/0/interaction/focal_length/value"));
+  CHECK_FALSE(has(r, "optim.jacobian_failed",
+                  "/root/children/1/surfaces/0/interaction/focal_length/value"));
   // The result is the last accepted state, the input.
   CHECK(r.system == s);
   CHECK(r.patch == "[]");
