@@ -43,6 +43,7 @@
 #include "rtt/material/material.hpp"
 #include "rtt/model/model.hpp"
 #include "rtt/paraxial/paraxial.hpp"
+#include "rtt/trace/run_control.hpp"
 
 using rtt::analysis::EeCentre;
 using rtt::analysis::EncircledEnergy;
@@ -894,6 +895,18 @@ TEST_CASE("encircled energy: relative radii above 1 or not finite are errors (#2
     CHECK_THROWS_AS(rtt::analysis::encircled_energy(p, t, EeCentre::Reference, true),
                     std::invalid_argument);
   }
+  // The check comes before the trace (review of #267, P3-1): with a cancellation requested
+  // before the call, t = 1.5 is still an invalid_argument; a valid t reaches the trace and ends
+  // as Cancelled (content guard: the cancellation is effective).
+  rtt::trace::RunControl cancelled;
+  cancelled.cancel = rtt::trace::CancelToken();
+  cancelled.cancel->request_cancel();
+  const std::array<double, 1> above{1.5};
+  const std::array<double, 1> inside{0.5};
+  CHECK_THROWS_AS(rtt::analysis::encircled_energy(cs, PathId{0}, 0, above, eo, cancelled),
+                  std::invalid_argument);
+  CHECK_THROWS_AS(rtt::analysis::encircled_energy(cs, PathId{0}, 0, inside, eo, cancelled),
+                  rtt::trace::Cancelled);
   // -0 is allowed, as for radii in mm.
   const std::array<double, 2> zero{-0.0, 1.0};
   CHECK_NOTHROW(rtt::analysis::encircled_energy(cs, PathId{0}, 0, zero, eo));

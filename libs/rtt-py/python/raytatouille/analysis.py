@@ -712,7 +712,12 @@ def _ee_radii(radii: Sequence[float] | int | np.integer[Any],
     if isinstance(radii, (bool, np.bool_)):
         raise TypeError("radii must be a sequence of radii or an int, not bool")
     if not isinstance(radii, (int, np.integer)):
-        return [float(r) for r in radii], relative
+        try:
+            items = iter(radii)
+        except TypeError:
+            raise TypeError("radii must be a sequence of radii or an int, not "
+                            f"{type(radii).__name__}") from None
+        return [float(r) for r in items], relative
     count = operator.index(radii)
     if count < 2:
         raise ValueError(f"radii as a number of radii must be >= 2, got {count}")

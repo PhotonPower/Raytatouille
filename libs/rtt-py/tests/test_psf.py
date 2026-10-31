@@ -328,3 +328,6 @@ def test_encircled_energy_with_relative_radii(f10: rt.CompiledSystem) -> None:
     for flag in (True, np.True_):
         with pytest.raises(TypeError, match="bool"):
             an.encircled_energy(f10, flag, grid=32)  # type: ignore[arg-type]
+    # A float is neither a number of radii nor a sequence (review of #267, P3-2).
+    with pytest.raises(TypeError, match="a sequence of radii or an int, not float"):
+        an.encircled_energy(f10, 5.0, grid=32)  # type: ignore[arg-type]
