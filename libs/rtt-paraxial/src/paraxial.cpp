@@ -365,7 +365,7 @@ FirstOrder first_order(const compile::CompiledSystem& system,
   if (system.object().at_infinity) {
     fo.image_z = fo.rear_focal_z;
   } else {
-    const double z_obj = -system.object().distance.value;
+    const double z_obj = system.object_z();
     const Matrix o = propagate(steps, 0, steps.size(), z_obj, n1, z_last);
     // Axial ray (y, nu) = (0, n1 * 1) at the object.
     const double y_out = o.b * n1;
@@ -443,7 +443,7 @@ FirstOrder first_order(const compile::CompiledSystem& system,
     case model::SystemApertureType::ObjectSpaceNA:
       // Paraxial marginal slope u = NA / n from the axial object point to the pupil edge.
       if (!system.object().at_infinity && ep.z) {
-        const double z_obj = -system.object().distance.value;
+        const double z_obj = system.object_z();
         ep.diameter = 2.0 * value / n1 * std::abs(*ep.z - z_obj);
       }
       break;
