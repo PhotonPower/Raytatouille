@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <exception>
 #include <functional>
+#include <iomanip>
+#include <limits>
 #include <map>
 #include <memory>
 #include <numbers>
@@ -482,7 +484,15 @@ std::optional<std::string> radius_sign_invalid(const ContextData& d,
                                                std::string_view stage) {
   if (d.radii.empty()) return std::nullopt;
   const std::vector<std::pair<std::string, const model::Param*>> radii = base_radii(system);
-  if (radii.size() != d.radii.size()) return std::nullopt;  // the tree is that of the nominal
+  // Invariant: a trial has the tree of the nominal (values change, never the structure), so its
+  // base radii come in the same order with the same pointers.
+  const auto mismatch = [] {
+    return std::logic_error("tolerance: the base radii of a trial differ from the nominal");
+  };
+  if (radii.size() != d.radii.size()) throw mismatch();
+  for (std::size_t k = 0; k < radii.size(); ++k) {
+    if (radii[k].first != d.radii[k].pointer) throw mismatch();
+  }
   const bool bound =
       std::any_of(d.radii.begin(), d.radii.end(),
                   [](const detail::NominalRadius& n) { return n.index.has_value(); });
@@ -496,6 +506,7 @@ std::optional<std::string> radius_sign_invalid(const ContextData& d,
       if (std::isnan(r)) continue;  // an undefined row: compile reports the table error
       if (std::isfinite(r) && r != 0.0 && std::signbit(r) == std::signbit(n.value[c])) continue;
       std::ostringstream why;
+      why << std::setprecision(std::numeric_limits<double>::max_digits10);  // 50.00000012 != 50
       why << stage << "surface '" << n.surface << "'";
       if (configurations > 1) why << ", configuration '" << system.configurations[c].name << "'";
       why << ": the radius " << r << " mm (nominal " << n.value[c] << " mm";
