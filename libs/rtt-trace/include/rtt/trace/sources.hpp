@@ -164,12 +164,14 @@ using PupilSampling = std::variant<SinglePupilPoint,
 
 /// Result of aiming one ray.
 struct AimedRay {
-  /// Start of the ray in global coordinates (OPL 0). Status Alive, or NoConvergence if real
-  /// aiming failed (the ray then holds the last iterate).
+  /// Start of the ray in global coordinates (OPL 0). Status Alive; NoConvergence if real aiming
+  /// failed; Vignetted with last_surface = the stop surface if it failed and the target lies
+  /// outside the outer rim of the stop aperture, so that no ray can pass there (ADR 0007,
+  /// addendum #310). A failed ray holds the last iterate.
   RayState ray;
   /// Newton steps taken (0 for paraxial aiming); with the continuation fallback of real aiming
-  /// all steps of all runs, so it can exceed kMaxAimIterations (#287). For NoConvergence the
-  /// steps of the run from the paraxial solution.
+  /// all steps of all runs, so it can exceed kMaxAimIterations (#287). For a failed ray
+  /// (NoConvergence or Vignetted) the steps of the run from the paraxial solution.
   int iterations = 0;
   /// Distance to the target on the stop surface, mm (real aiming; 0 for paraxial aiming;
   /// +infinity if no iterate reached the stop).
@@ -253,7 +255,8 @@ struct AimedRay {
 
 /// Rays for the given fields and one wavelength: for every field (outer loop) every pupil point
 /// (inner loop) of `sampling`, aimed with `aiming`. Sets pos, dir, wl, field, pupil_x, pupil_y,
-/// status (Alive or NoConvergence); OPL 0, weight 1, P = identity, last_surface = kNoSurface.
+/// status (Alive, NoConvergence or Vignetted, as AimedRay) and last_surface (kNoSurface, the stop
+/// surface for a Vignetted ray, #310); OPL 0, weight 1, P = identity.
 /// The rays are aimed in parallel with oneTBB (#119), each from its own paraxial start value;
 /// the result is bitwise the same for every number of threads (ADR 0004, addendum #119).
 /// @throws as aim_ray()

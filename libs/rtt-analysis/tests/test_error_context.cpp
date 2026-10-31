@@ -6,6 +6,7 @@
 #include <variant>
 #include <vector>
 
+#include "rtt/analysis/chromatic.hpp"
 #include "rtt/analysis/opd.hpp"
 #include "rtt/analysis/spot.hpp"
 #include "rtt/compile/compiled_system.hpp"
@@ -90,4 +91,71 @@ TEST_CASE("an AnalysisError without a ray has no context", "[analysis][errors]")
   REQUIRE_FALSE(e.ray_status().has_value());
   REQUIRE_FALSE(e.field().has_value());
   REQUIRE_FALSE(e.wavelength().has_value());
+}
+
+namespace {
+
+/// A singlet with R1 = 20 mm and EPD 50 mm: the marginal rays above 20 mm miss the sphere, so
+/// real aiming cannot reach the outer targets on the stop 10 mm behind the lens (paraxial stop
+/// radius about 20 mm). Stop radius `stop`: 3 mm puts those targets outside the stop, 50 mm
+/// inside (#310).
+CompiledSystem unreachable_rim(double stop) {
+  const std::string json = R"json({
+  "schema_version": "0.7.0",
+  "name": "unreachable rim, issue 310",
+  "units": {"length": "mm", "wavelength": "um"},
+  "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": true}, {"um": 0.6563}],
+  "aperture": {"type": "epd", "value": 50.0},
+  "fields": {"points": [{}]},
+  "root": {"type": "assembly", "name": "system", "children": [
+    {"type": "lens", "name": "L1", "material": "CONST:1.5168",
+     "surfaces": [{"id": "L1.S1", "shape": {"base": {"type": "conic", "radius": 20.0}},
+                   "aperture": {"type": "circular", "radius": 19.9}},
+                  {"id": "L1.S2", "pose": {"position": [0.0, 0.0, 5.0]},
+                   "aperture": {"type": "circular", "radius": 19.9}}]},
+    {"type": "stop", "name": "stop", "pose": {"position": [0.0, 0.0, 10.0]},
+     "surfaces": [{"id": "STO", "aperture": {"type": "circular", "radius": )json" +
+                           std::to_string(stop) + R"json(}}]},
+    {"type": "detector", "name": "image", "pose": {"position": [0.0, 0.0, 40.0]},
+     "surfaces": [{"id": "IMG", "aperture": {"type": "circular", "radius": 50.0}}]}]},
+  "paths": [{"name": "main", "events": "auto"}]
+})json";
+  const rtt::material::MaterialLibrary lib;
+  return rtt::compile::compile(rtt::io::parse_system(json), lib);
+}
+
+}  // namespace
+
+TEST_CASE("a zone ray aimed outside the stop names the stop as Vignetted (#310)",
+          "[analysis][errors]") {
+  // ADR 0007, addendum #310: real aiming fails for the zone ray p = (0, 1), whose target lies
+  // outside the 3 mm stop; the ray ends Vignetted at the stop, and the AnalysisError of the
+  // longitudinal colour names it. With the 50 mm stop the target lies inside: NoConvergence
+  // without a surface, as before (content guard: the aim fails in both systems).
+  const CompiledSystem wide = unreachable_rim(50.0);
+  const AnalysisError open =
+      analysis_error([&] { (void)rtt::analysis::longitudinal_colour(wide, PathId{0}); });
+  CHECK(open.ray_status() == RayStatus::NoConvergence);
+  CHECK_FALSE(open.surface().has_value());
+
+  const CompiledSystem narrow = unreachable_rim(3.0);
+  const AnalysisError e =
+      analysis_error([&] { (void)rtt::analysis::longitudinal_colour(narrow, PathId{0}); });
+  INFO(e.what());
+  CHECK(e.ray_status() == RayStatus::Vignetted);
+  CHECK(e.surface() == rtt::model::SurfaceId("STO"));
+  CHECK(e.location() == "/root/children/1/surfaces/0");
+
+  // The spot through make_rays: the failed outer rays count as Vignetted at the stop, none as
+  // NoConvergence (with the wide stop some do).
+  const auto lost = [](const CompiledSystem& cs) {
+    return rtt::analysis::spot(cs, PathId{0}, 0, std::nullopt).losses;
+  };
+  const rtt::analysis::RayLosses open_losses = lost(wide);
+  CHECK(open_losses.count(RayStatus::NoConvergence) > 0);
+  const rtt::analysis::RayLosses losses = lost(narrow);
+  CHECK(losses.count(RayStatus::NoConvergence) == 0);
+  CHECK(losses.count(RayStatus::Vignetted) >= open_losses.count(RayStatus::NoConvergence));
+  REQUIRE(losses.worst_surface.has_value());
+  CHECK(narrow.surfaces()[*losses.worst_surface].id == rtt::model::SurfaceId("STO"));
 }

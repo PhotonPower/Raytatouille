@@ -112,7 +112,6 @@ Ideenliste aus der Umsetzung von M6 (0.8.0), gesammelt von den Agenten; neu zu b
 Ideenliste aus der Umsetzung von M7 (0.9.0), gesammelt von den Agenten; neu zu bewerten beim Planen. Herkunft in Klammern.
 
 - **Toleranzierung:**
-  - Vorzeichenwechsel eines Radius über eine Tabellenzeile oder einen Kompensator erkennen; heute wird er nicht bemerkt (#293, aus dem Review von #278).
   - Korrelierte Toleranzen (K7); heute zieht jedes Item unabhängig.
   - Flächenfehler als additive Zernike-Terme (T1, Rest); kommt mit den Zernike-Flächen in M8.
   - Strehl und MTF als Toleranzkriterien; heute Kriterien aus den Operanden von ADR 0030 (erste Ordnung, Strahlkoordinaten, Spot, OPD, Tabellenwerte).

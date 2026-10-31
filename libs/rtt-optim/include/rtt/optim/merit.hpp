@@ -8,6 +8,7 @@
 /// operand and the generators of generators.hpp.
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <stdexcept>
@@ -59,6 +60,11 @@ struct MeritEvaluation {
   std::vector<model::Diagnostic> warnings;
   /// Rays and mean square of each generator, file order (ADR 0030, addendum #168).
   std::vector<GeneratorStats> generators;
+  /// Which rays of each operand arrived, file order (ADR 0030, addendum #299): for spot_rms
+  /// analysis::SpotDiagram::arrived (per started ray in trace order), for opd_rms 1 per point of
+  /// analysis::OpdMap::points with status Alive (grid order), otherwise 0; empty for the other
+  /// operands. optimize holds the masks of the start fixed for the run.
+  std::vector<std::vector<std::uint8_t>> operand_arrived;
 
   /// True if every residual is finite.
   [[nodiscard]] bool valid() const noexcept;
