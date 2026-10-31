@@ -89,10 +89,17 @@ struct Perturbation {
   std::map<model::SurfaceId, RigidMotion> surfaces;
   /// Material changes of element segments.
   std::map<MaterialTarget, MaterialChange> materials;
+  /// The nominal z (mm, global) of the vertex of the surface that object.reference names, one
+  /// entry per configuration (index of System::configurations, one entry without
+  /// configurations), for a system with that reference (ADR 0038, point 5). compile() then
+  /// places the object at this z minus the trial's distance instead of using the surface's
+  /// place in the trial; empty: as without the overlay. A tolerance trial keeps the object at its
+  /// nominal reference so.
+  std::vector<double> object_reference_z;
 
   /// True if there are no entries at all.
   [[nodiscard]] bool empty() const noexcept {
-    return nodes.empty() && surfaces.empty() && materials.empty();
+    return nodes.empty() && surfaces.empty() && materials.empty() && object_reference_z.empty();
   }
 };
 

@@ -74,6 +74,9 @@ struct ContextData {
   TrialOptions options;
   std::optional<optim::NominalBasis> basis;
   TrialResult nominal_result;
+  /// Per configuration the nominal vertex z of the reference of the object distance, empty
+  /// without one (ADR 0038, point 5): the object of a trial stays at its nominal reference.
+  std::vector<double> object_reference_z;
 };
 
 struct ContextAccess {
@@ -381,6 +384,7 @@ Applied applied(const ContextData& d, std::span<const double> values) {
       }
     }
   }
+  out.perturbation.object_reference_z = d.object_reference_z;
   return out;
 }
 
@@ -638,6 +642,15 @@ TrialContext prepare(const model::System& nominal,
     }
   }
   check_materials(*d, anchors);
+  // ADR 0038, point 5: the nominal vertex z of the object reference, one per configuration.
+  if (nominal.object.reference && !nominal.object.at_infinity) {
+    const coating::CoatingLibrary none;
+    for (std::size_t c = 0; c < model::configuration_count(nominal); ++c) {
+      const compile::CompiledSystem cs =
+          compile::compile(nominal, materials, coatings != nullptr ? *coatings : none, c);
+      d->object_reference_z.push_back(cs.object_reference_z().value());
+    }
+  }
   // Pivots of the targets (ADR 0035, point 2): one per target, for explicit and generated items.
   for (const model::ToleranceOverride& o : set.overrides) {
     const auto* p = std::get_if<model::TolerancePivotOverride>(&o);
