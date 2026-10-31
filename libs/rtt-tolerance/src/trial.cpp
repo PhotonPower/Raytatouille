@@ -791,11 +791,12 @@ TrialContext prepare(const model::System& nominal,
   }
   for (const model::Criterion& c : set.criteria) d->criteria.operands.push_back(c.operand);
 
-  d->basis.emplace(optim::nominal_basis(nominal, materials, coatings));
+  const optim::NominalBasis& basis =
+      d->basis.emplace(optim::nominal_basis(nominal, materials, coatings));
   // Start checks with the nominal basis (ADR 0030, addendum #256): an operand the nominal system
   // does not support is an input error of the run, before any trial.
   {
-    const optim::TrialOverlay overlay{{}, d->basis.value()};
+    const optim::TrialOverlay overlay{{}, basis};
     model::System s = nominal;
     s.optimization = d->criteria;
     if (!s.optimization.empty()) {
