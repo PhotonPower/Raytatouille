@@ -313,6 +313,9 @@ struct EncircledEnergyOptions {
   EeCentre centre = EeCentre::Reference;
   /// Warning psf.pupil_undersampled, as in MtfOptions; > 0.
   double undersampled_waves = 0.5;
+  /// The radii are fractions t in [0, 1] of radius_max instead of mm: r = t * radius_max, so
+  /// the whole allowed range takes one run (ADR 0033, addendum #267).
+  bool relative_radii = false;
 };
 
 /// Encircled energy of one field.
@@ -326,7 +329,7 @@ struct EncircledEnergy {
   /// Centre relative to C' in the PSF plane, mm; 0 for EeCentre::Reference. Polychromatic:
   /// sum w_i E_i x0_i / sum w_i E_i.
   Point2 offset;
-  std::vector<double> radii;  ///< mm, as given
+  std::vector<double> radii;  ///< mm: as given, or t * radius_max for relative radii
   /// EE(r) = (|det M| a^2 / lambda^2) sum_l Re[C(l) exp(-2 pi i nu(l) . x0)] K_r(nu(l)) / E with
   /// K_r(nu) = r J1(2 pi r |nu|) / |nu|, K_r(0) = pi r^2 and C(0) = sum |u|^2 (ADR 0033, point 6
   /// with the erratum): fraction of the pupil energy E; polychromatic sum w_i E_i EE_i / sum w_i
@@ -343,8 +346,10 @@ struct EncircledEnergy {
   std::vector<model::Diagnostic> warnings;
 };
 
-/// Encircled energy of `field` on `path` at `radii` (mm in the PSF plane; ADR 0033, point 6).
-/// @throws std::invalid_argument for a radius < 0, not finite or > radius_max, an unknown
+/// Encircled energy of `field` on `path` at `radii` (mm in the PSF plane, or fractions of
+/// radius_max with options.relative_radii; ADR 0033, point 6 and addendum #267).
+/// @throws std::invalid_argument for a radius < 0, not finite or > radius_max (relative: > 1,
+///         checked before the trace), an unknown
 ///         wavelength, an empty wavelength list, undersampled_waves <= 0 (and as
 ///         pupil_function()); an empty `radii` is allowed and gives empty vectors
 /// @throws AnalysisError as mtf()
@@ -364,12 +369,14 @@ struct EncircledEnergy {
 
 /// Encircled energy of one pupil function (monochromatic), e.g. after refocus(). Losses and
 /// warnings are copied from the pupil function; psf.pupil_undersampled is not checked.
-/// @throws std::invalid_argument for a radius < 0, not finite or > radius_max
+/// `relative_radii` as EncircledEnergyOptions::relative_radii.
+/// @throws std::invalid_argument for a radius < 0, not finite or > radius_max (relative: > 1)
 /// @throws AnalysisError if the pupil function has no mapping (afocal) or no arrived cell, and
 ///         with code "pupil.mapping_too_nonlinear" if its delta_max exceeds its mapping_limit < 1
 ///         (ADR 0033, addendum #286)
 [[nodiscard]] EncircledEnergy encircled_energy(const PupilFunction& pupil,
                                                std::span<const double> radii,
-                                               EeCentre centre = EeCentre::Reference);
+                                               EeCentre centre = EeCentre::Reference,
+                                               bool relative_radii = false);
 
 }  // namespace rtt::analysis

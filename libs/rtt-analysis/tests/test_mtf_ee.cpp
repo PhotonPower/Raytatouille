@@ -43,6 +43,7 @@
 #include "rtt/material/material.hpp"
 #include "rtt/model/model.hpp"
 #include "rtt/paraxial/paraxial.hpp"
+#include "rtt/trace/run_control.hpp"
 
 using rtt::analysis::EeCentre;
 using rtt::analysis::EncircledEnergy;
@@ -798,4 +799,115 @@ TEST_CASE("mtf, encircled energy: input errors", "[mtf][ee]") {
   CHECK_THROWS_AS(rtt::analysis::mtf(afocal, PathId{0}, 0), rtt::analysis::AnalysisError);
   CHECK_THROWS_AS(rtt::analysis::encircled_energy(afocal, PathId{0}, 0, r),
                   rtt::analysis::AnalysisError);
+}
+
+TEST_CASE("encircled energy: relative radii up to radius_max in one run (#267)", "[ee]") {
+  // radius_max comes from the traced mapping, so it is known only after the run; with
+  // relative_radii the radii are fractions t of it (ADR 0033, addendum #267). r = t * radius_max:
+  // 1 * radius_max is exact, so the whole range is allowed. The result equals the run with the
+  // radii in mm bit for bit.
+  const CompiledSystem cs = paraboloid(10.0);
+  const std::array<double, 0> none{};
+  const double r_max = ee_n(cs, 64, none).radius_max;
+  const std::vector<double> t{0.0, 0.25, 0.5, 1.0};
+  EncircledEnergyOptions o;
+  o.pupil.grid = 64;
+  o.relative_radii = true;
+  const EncircledEnergy rel = rtt::analysis::encircled_energy(cs, PathId{0}, 0, t, o);
+  require_energy(rel, t.size());
+  REQUIRE(rel.radii.size() == t.size());
+  CHECK(same_bits(rel.radius_max, r_max));
+  for (std::size_t i = 0; i < t.size(); ++i) CHECK(same_bits(rel.radii[i], t[i] * r_max));
+  CHECK(same_bits(rel.radii.back(), r_max));
+  const EncircledEnergy mm = ee_n(cs, 64, rel.radii);
+  require_energy(mm, t.size());
+  for (std::size_t i = 0; i < t.size(); ++i) {
+    INFO("t = " << t[i]);
+    CHECK(same_bits(rel.energy[i], mm.energy[i]));
+  }
+  // Content guard: the radii are in mm (radius_max = 16 lambda F#_w = 0.094 mm, so 0.25 R is far
+  // below the fraction 0.25), and EE rises from 0 to near 1: 1 - J0^2 - J1^2 at 4 and 16
+  // lambda F#_w is about 0.95 and 0.99; the discrete model loses at most the edge deficit (about
+  // 1e-2 at N = 64).
+  CHECK(rel.radii[1] < 0.25);
+  CHECK(rel.energy[0] == 0.0);
+  CHECK(rel.energy[1] > 0.9);
+  CHECK(rel.energy[1] < rel.energy[2]);
+  CHECK(rel.energy[2] < rel.energy[3]);
+  CHECK(rel.energy[3] > 0.95);
+}
+
+TEST_CASE("encircled energy: relative radii of two wavelengths and of a pupil function (#267)",
+          "[ee]") {
+  // Polychromatic: radius_max is the minimum over the wavelengths, and t = 1 gives exactly it.
+  rtt::model::System sys = paraboloid_model(10.0);
+  sys.wavelengths = {{0.5876, 1.0, true}, {0.5876 * 1.25, 3.0, false}};
+  const CompiledSystem cs = compiled(sys);
+  EncircledEnergyOptions eo;
+  eo.pupil.grid = 32;
+  const std::array<double, 0> none{};
+  eo.wavelengths = std::vector<std::uint16_t>{0};
+  const double max_a = rtt::analysis::encircled_energy(cs, PathId{0}, 0, none, eo).radius_max;
+  eo.wavelengths = std::vector<std::uint16_t>{1};
+  const double max_b = rtt::analysis::encircled_energy(cs, PathId{0}, 0, none, eo).radius_max;
+  REQUIRE(max_a != max_b);  // content guard: the minimum decides
+  eo.wavelengths.reset();
+  eo.relative_radii = true;
+  const std::array<double, 2> t{0.5, 1.0};
+  const EncircledEnergy rel = rtt::analysis::encircled_energy(cs, PathId{0}, 0, t, eo);
+  require_energy(rel, t.size());
+  CHECK(same_bits(rel.radii[1], std::min(max_a, max_b)));
+  eo.relative_radii = false;
+  const EncircledEnergy mm = rtt::analysis::encircled_energy(cs, PathId{0}, 0, rel.radii, eo);
+  require_energy(mm, t.size());
+  for (std::size_t i = 0; i < t.size(); ++i) CHECK(same_bits(rel.energy[i], mm.energy[i]));
+  // Content guard: radius_max is about 8 lambda F#_w of the shorter wavelength at N = 32, where
+  // 1 - J0^2 - J1^2 is 0.975, less the edge deficit of about 2e-2.
+  CHECK(rel.energy[1] > rel.energy[0]);
+  CHECK(rel.energy[1] > 0.9);
+
+  // The overload for one pupil function.
+  const PupilFunction p = pupil(paraboloid(10.0), 32);
+  const std::array<double, 3> u{0.0, 0.3, 1.0};
+  const EncircledEnergy prel = rtt::analysis::encircled_energy(p, u, EeCentre::Reference, true);
+  require_energy(prel, u.size());
+  REQUIRE(prel.radii.size() == u.size());
+  CHECK(same_bits(prel.radii[2], prel.radius_max));
+  CHECK(same_bits(prel.radii[1], 0.3 * prel.radius_max));
+  const EncircledEnergy pmm = rtt::analysis::encircled_energy(p, prel.radii);
+  require_energy(pmm, u.size());
+  for (std::size_t i = 0; i < u.size(); ++i) CHECK(same_bits(prel.energy[i], pmm.energy[i]));
+  CHECK(prel.energy[2] > 0.9);  // content guard
+}
+
+TEST_CASE("encircled energy: relative radii above 1 or not finite are errors (#267)", "[ee]") {
+  const CompiledSystem cs = paraboloid(10.0);
+  EncircledEnergyOptions eo;
+  eo.pupil.grid = 32;
+  eo.relative_radii = true;
+  const PupilFunction p = pupil(cs, 32);
+  for (const double bad :
+       {std::nextafter(1.0, 2.0), -1e-300, std::nan(""), std::numeric_limits<double>::infinity()}) {
+    const std::array<double, 2> t{0.5, bad};
+    INFO("t = " << bad);
+    CHECK_THROWS_AS(rtt::analysis::encircled_energy(cs, PathId{0}, 0, t, eo),
+                    std::invalid_argument);
+    CHECK_THROWS_AS(rtt::analysis::encircled_energy(p, t, EeCentre::Reference, true),
+                    std::invalid_argument);
+  }
+  // The check comes before the trace (review of #267, P3-1): with a cancellation requested
+  // before the call, t = 1.5 is still an invalid_argument; a valid t reaches the trace and ends
+  // as Cancelled (content guard: the cancellation is effective).
+  rtt::trace::RunControl cancelled;
+  cancelled.cancel = rtt::trace::CancelToken();
+  cancelled.cancel->request_cancel();
+  const std::array<double, 1> above{1.5};
+  const std::array<double, 1> inside{0.5};
+  CHECK_THROWS_AS(rtt::analysis::encircled_energy(cs, PathId{0}, 0, above, eo, cancelled),
+                  std::invalid_argument);
+  CHECK_THROWS_AS(rtt::analysis::encircled_energy(cs, PathId{0}, 0, inside, eo, cancelled),
+                  rtt::trace::Cancelled);
+  // -0 is allowed, as for radii in mm.
+  const std::array<double, 2> zero{-0.0, 1.0};
+  CHECK_NOTHROW(rtt::analysis::encircled_energy(cs, PathId{0}, 0, zero, eo));
 }
