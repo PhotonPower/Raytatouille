@@ -113,8 +113,9 @@ struct OptimResult {
   std::vector<GeneratorValue> generators;  ///< final state, file order
   std::vector<VariableValue> variables;    ///< order of ADR 0030, point 5
   /// optim.parameter_at_bound (per variable), optim.evaluation_failed, optim.jacobian_failed
-  /// (status Failed, error), optim.rays_lost (per generator with lost rays in the final state),
-  /// then the warnings of the analyses in the final state (rays.lost, stop.clips_beam).
+  /// (status Failed, error), optim.rays_lost (per spot_rms or opd_rms operand, then per
+  /// generator, with lost rays in the final state), then the warnings of the analyses in the
+  /// final state (rays.lost, stop.clips_beam).
   std::vector<model::Diagnostic> diagnostics;
   int iterations = 0;  ///< number of solves
   /// Evaluations of the merit function in this call: the solver's, the start check and the
