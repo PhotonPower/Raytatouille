@@ -5,6 +5,8 @@
 
 #include <bit>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -108,4 +110,70 @@ TEST_CASE("object.reference: a tolerance on the distance moves the object",
   const TrialContext ctx = rtt::tolerance::prepare(s, materials, nullptr, items);
   CHECK(same(trial_object_z(ctx, {0.0}), -55.0));
   CHECK(same(trial_object_z(ctx, {0.5}), 20.0 - 75.5));
+}
+
+TEST_CASE("object.reference: trials give the same criteria as the system from the origin",
+          "[tolerance][trial][object-reference]") {
+  // The same system written once with object.reference (75 mm in front of IL at z = 20) and once
+  // from the origin (55 mm): both put the object at z = -55, nominally and in every trial, so all
+  // criteria agree bitwise. efl and bfl of a finite object go through the variant with the object
+  // at infinity (addendum #256), which must compile with and without object.reference.
+  // Field 0 only: the variant has one field, and validate checks every criterion against it.
+  System referenced_s = referenced();
+  rtt::model::RayOperand ray;
+  ray.path = "main";
+  ray.surface = rtt::model::SurfaceId("IMG");
+  ray.py = 0.5;
+  rtt::model::Criterion rc;
+  rc.id = "image-y";
+  rc.operand = ray;
+  rc.max_change = 1.0;
+  referenced_s.tolerances.criteria = {rc};
+  for (const auto q : {rtt::model::FirstOrderQuantity::Efl, rtt::model::FirstOrderQuantity::Bfl}) {
+    rtt::model::FirstOrderOperand f;
+    f.quantity = q;
+    f.path = "main";
+    rtt::model::Criterion c;
+    c.id = q == rtt::model::FirstOrderQuantity::Efl ? "efl" : "bfl";
+    c.operand = f;
+    c.max_change = 1.0;
+    referenced_s.tolerances.criteria.push_back(c);
+  }
+  System origin_s = referenced_s;
+  origin_s.object.reference.reset();
+  origin_s.object.distance = Param(55.0);
+
+  const rtt::material::MaterialLibrary materials;
+  const std::vector<ToleranceItem> items = {
+      item("lens-dt", ToleranceAnchor::Node, "ideal lens", ToleranceKind::Thickness, 1.0),
+      item("lens-dy", ToleranceAnchor::Node, "ideal lens", ToleranceKind::DecenterY, 1.0)};
+  const TrialContext with_ref = rtt::tolerance::prepare(referenced_s, materials, nullptr, items);
+  const TrialContext from_origin = rtt::tolerance::prepare(origin_s, materials, nullptr, items);
+  for (const std::vector<double>& values :
+       {std::vector<double>{0.0, 0.0}, std::vector<double>{0.5, 0.0},
+        std::vector<double>{0.0, 0.25}}) {
+    const rtt::tolerance::TrialResult a = rtt::tolerance::evaluate(with_ref, values);
+    const rtt::tolerance::TrialResult b = rtt::tolerance::evaluate(from_origin, values);
+    REQUIRE(a.status == rtt::tolerance::TrialStatus::Valid);
+    REQUIRE(b.status == rtt::tolerance::TrialStatus::Valid);
+    REQUIRE(a.criteria.size() == 3);
+    REQUIRE(b.criteria.size() == 3);
+    for (std::size_t i = 0; i < a.criteria.size(); ++i) {
+      REQUIRE(a.criteria[i].value.has_value());
+      REQUIRE(b.criteria[i].value.has_value());
+      CHECK(same(*a.criteria[i].value, *b.criteria[i].value));
+    }
+  }
+  // Content guard: the thickness moves the lens, so the image ray changes; efl and bfl of the
+  // single ideal lens stay f = 50 (the variant really compiled and gave values).
+  const rtt::tolerance::TrialResult moved =
+      rtt::tolerance::evaluate(with_ref, std::vector<double>{0.5, 0.0});
+  const rtt::tolerance::TrialResult nominal = with_ref.nominal();
+  REQUIRE(moved.criteria.at(0).value.has_value());
+  REQUIRE(nominal.criteria.at(0).value.has_value());
+  CHECK(*moved.criteria[0].value != *nominal.criteria[0].value);
+  for (std::size_t i = 1; i < 3; ++i) {
+    REQUIRE(moved.criteria.at(i).value.has_value());
+    CHECK_THAT(*moved.criteria[i].value, Catch::Matchers::WithinRel(50.0, 1e-12));
+  }
 }
