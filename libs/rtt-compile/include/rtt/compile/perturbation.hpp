@@ -17,6 +17,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "rtt/material/material.hpp"
 #include "rtt/math/types.hpp"

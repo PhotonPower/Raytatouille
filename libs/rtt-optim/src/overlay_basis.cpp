@@ -63,6 +63,8 @@ namespace detail {
 model::System variant_of(const model::System& system) {
   model::System v = system;
   v.object.at_infinity = true;
+  // A reference of the object distance only exists for a finite object (ADR 0038, point 7).
+  v.object.reference.reset();
   v.fields = {model::FieldType::AngleDeg, {{0.0, 0.0, 1.0}}};
   v.aperture = {model::SystemApertureType::StopSize, model::Param(0.0)};
   return v;

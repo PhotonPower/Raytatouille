@@ -363,7 +363,7 @@ dahinter, der Detektor im paraxialen Fokus bei z = 106,442 mm.
 
 ```json
 {
-  "schema_version": "0.7.0",
+  "schema_version": "0.8.0",
   "name": "Plankonvex-Singlet",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": true}, {"um": 0.6563}],
@@ -444,7 +444,7 @@ def singlet(r1, r2, dicke, glas="CONST:1.5168", epd=20.0, bild_abstand=95.0, hal
 
     z_linse = 5.0
     return {
-        "schema_version": "0.7.0", "name": f"Singlet R1={r1} R2={r2}",
+        "schema_version": "0.8.0", "name": f"Singlet R1={r1} R2={r2}",
         "units": {"length": "mm", "wavelength": "um"},
         "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": True}, {"um": 0.6563}],
         "aperture": {"type": "epd", "value": epd},

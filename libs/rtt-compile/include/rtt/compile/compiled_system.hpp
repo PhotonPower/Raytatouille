@@ -307,7 +307,9 @@ class CompiledSystem;
 ///         element with segment materials, given for one with a single material, out of
 ///         range, or other than 0 for a list of equal materials, and non-finite values (only
 ///         reachable through the API; rtt-tolerance builds the overlay from a validated tolerance
-///         set)
+///         set); and for `object_reference_z` given for a system without object.reference or with
+///         the object at infinity, with a length other than the number of configurations, or with
+///         a non-finite value (ADR 0038, point 5)
 /// @throws CompileError as compile(), and for a material change (at .../material or
 ///         .../material/<i> of the element) with tolerances.material_unsupported (crystal,
 ///         element without material, kappa != 0 at d, F or C, a line outside the range of the

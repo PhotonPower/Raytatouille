@@ -750,7 +750,9 @@ TrialContext prepare(const model::System& nominal,
     for (std::size_t c = 0; c < model::configuration_count(nominal); ++c) {
       const compile::CompiledSystem cs =
           compile::compile(nominal, materials, coatings != nullptr ? *coatings : none, c);
-      d->object_reference_z.push_back(cs.object_reference_z().value());
+      const std::optional<double> z = cs.object_reference_z();
+      if (!z) throw std::logic_error("prepare: no nominal vertex z for object.reference");
+      d->object_reference_z.push_back(*z);
     }
   }
   d->radii = nominal_radii(nominal, anchors);
