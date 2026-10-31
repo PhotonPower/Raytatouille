@@ -76,10 +76,10 @@ TEST_CASE("object.reference: a trial keeps the object at the nominal reference",
           "[tolerance][trial][object-reference]") {
   const System s = referenced();
   const rtt::material::MaterialLibrary materials;
-  const TrialContext ctx = rtt::tolerance::prepare(
-      s, materials, nullptr,
-      {item("lens-dt", ToleranceAnchor::Node, "ideal lens", ToleranceKind::Thickness, 1.0),
-       item("lens-dy", ToleranceAnchor::Node, "ideal lens", ToleranceKind::DecenterY, 1.0)});
+  const std::vector<ToleranceItem> items = {
+      item("lens-dt", ToleranceAnchor::Node, "ideal lens", ToleranceKind::Thickness, 1.0),
+      item("lens-dy", ToleranceAnchor::Node, "ideal lens", ToleranceKind::DecenterY, 1.0)};
+  const TrialContext ctx = rtt::tolerance::prepare(s, materials, nullptr, items);
   REQUIRE(ctx.nominal().status == rtt::tolerance::TrialStatus::Valid);
   CHECK(same(trial_object_z(ctx, {0.0, 0.0}), -55.0));
   CHECK(same(trial_object_z(ctx, {0.5, 0.0}), -55.0));   // the lens 0.5 mm further in the model
@@ -103,9 +103,9 @@ TEST_CASE("object.reference: a tolerance on the distance moves the object",
   s.parameters = {row};
   s.object.distance = Param::bound("OBJ");
   const rtt::material::MaterialLibrary materials;
-  const TrialContext ctx = rtt::tolerance::prepare(
-      s, materials, nullptr,
-      {item("obj", ToleranceAnchor::Parameter, "OBJ", ToleranceKind::Parameter, 1.0)});
+  const std::vector<ToleranceItem> items = {
+      item("obj", ToleranceAnchor::Parameter, "OBJ", ToleranceKind::Parameter, 1.0)};
+  const TrialContext ctx = rtt::tolerance::prepare(s, materials, nullptr, items);
   CHECK(same(trial_object_z(ctx, {0.0}), -55.0));
   CHECK(same(trial_object_z(ctx, {0.5}), 20.0 - 75.5));
 }
