@@ -617,6 +617,7 @@ struct Migration {
   bool before_0_5 = false;  ///< no ideal lenses (ADR 0031)
   bool before_0_6 = false;  ///< no tolerance set (ADR 0035)
   bool before_0_7 = false;  ///< no medium of the object space (ADR 0037)
+  bool before_0_8 = false;  ///< no reference of the object distance (ADR 0038)
 };
 
 /// Checks the schema version of `j` and tells which migrations to the current version it needs.
@@ -633,6 +634,7 @@ struct Migration {
 ///   ideal_cylinder_lens are new.
 /// - 0.5 -> 0.6 (ADR 0035): content unchanged, only the section "tolerances" is new.
 /// - 0.6 -> 0.7 (ADR 0037): content unchanged, only "object.medium" is new.
+/// - 0.7 -> 0.8 (ADR 0038): content unchanged, only "object.reference" is new.
 Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
   const std::string ours(kSchemaVersion);
   const std::string mm = major_minor(version);
@@ -641,14 +643,15 @@ Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
     if (const Json* root = find(j, "root")) {
       check_material_forms(*root, Ctx().at("root"), mm == "0.2");
     }
-    return {true, true, true, true, true};
+    return {true, true, true, true, true, true};
   }
-  if (mm == "0.3") return {false, true, true, true, true};
-  if (mm == "0.4") return {false, false, true, true, true};
-  if (mm == "0.5") return {false, false, false, true, true};
-  if (mm == "0.6") return {false, false, false, false, true};
+  if (mm == "0.3") return {false, true, true, true, true, true};
+  if (mm == "0.4") return {false, false, true, true, true, true};
+  if (mm == "0.5") return {false, false, false, true, true, true};
+  if (mm == "0.6") return {false, false, false, false, true, true};
+  if (mm == "0.7") return {false, false, false, false, false, true};
   c.fail("incompatible schema_version '" + version + "', this build reads " + ours +
-         " and migrates 0.1, 0.2, 0.3, 0.4, 0.5 and 0.6");
+         " and migrates 0.1, 0.2, 0.3, 0.4, 0.5, 0.6 and 0.7");
 }
 
 /// Files before 0.5 (ADR 0031): an ideal lens or ideal cylinder lens is an error at the type of
@@ -1099,6 +1102,17 @@ ToleranceSet read_tolerances(const Json& j, const Ctx& c) {
 
 System read_migrated(const Json& j, const Migration& m);
 
+/// object.reference (ADR 0038, points 1 and 2): the text "origin" (none) or the reference form
+/// {"surface": "<id>"} with exactly that key.
+std::optional<SurfaceId> read_object_reference(const Json& j, const Ctx& c) {
+  if (j.is_string()) {
+    if (j.get<std::string>() == "origin") return std::nullopt;
+    c.fail("expected \"origin\" or {\"surface\": id}, got \"" + j.get<std::string>() + "\"");
+  }
+  expect_object(j, c, {"surface"});
+  return SurfaceId(read_string(require(j, "surface", c), c.at("surface")));
+}
+
 /// `warnings` may be null: the warnings of the migration are dropped.
 System read_system_tree(const Json& j, std::vector<Diagnostic>* warnings) {
   const Ctx c;
@@ -1117,6 +1131,15 @@ System read_system_tree(const Json& j, std::vector<Diagnostic>* warnings) {
     if (object != nullptr && object->is_object() && find(*object, "medium") != nullptr) {
       c.at("object").at("medium").fail(
           "an object medium needs schema_version 0.7 or later (ADR 0037)");
+    }
+  }
+  // Files before 0.8 (ADR 0038): a reference of the object distance is an error at its pointer.
+  if (m.before_0_8) {
+    const Json* object = find(j, "object");
+    if (object != nullptr && object->is_object() && find(*object, "reference") != nullptr) {
+      c.at("object")
+          .at("reference")
+          .fail("a reference of the object distance needs schema_version 0.8 or later (ADR 0038)");
     }
   }
   if (m.before_0_5) {
@@ -1162,10 +1185,13 @@ System read_migrated(const Json& j, const Migration& m) {
 
   if (const Json* o = find(j, "object")) {
     const Ctx oc = c.at("object");
-    expect_object(*o, oc, {"at_infinity", "distance", "medium"});
+    expect_object(*o, oc, {"at_infinity", "distance", "medium", "reference"});
     s.object.at_infinity = read_bool(require(*o, "at_infinity", oc), oc.at("at_infinity"));
     read_opt(*o, "distance", oc, s.object.distance, read_param);
     read_opt(*o, "medium", oc, s.object.medium, read_string);
+    if (const Json* r = find(*o, "reference")) {
+      s.object.reference = read_object_reference(*r, oc.at("reference"));
+    }
   }
 
   {
@@ -1294,6 +1320,13 @@ class Writer {
       ob["at_infinity"] = s.object.at_infinity;
       if (edit_ || s.object.distance != Param{}) ob["distance"] = param(s.object.distance);
       if (s.object.medium) ob["medium"] = *s.object.medium;
+      // ADR 0038, point 8: the origin is the default and is not written (also not in the edit
+      // form, like the medium: a patch adds /object/reference).
+      if (s.object.reference) {
+        OJson ref;
+        ref["surface"] = s.object.reference->str();
+        ob["reference"] = std::move(ref);
+      }
       o["object"] = std::move(ob);
     }
 

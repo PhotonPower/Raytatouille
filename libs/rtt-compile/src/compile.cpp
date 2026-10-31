@@ -155,6 +155,14 @@ class Compiler {
     node_frames_.push_back({"/root", math::Isometry3::identity(), root});
     add_assembly(system_.root, root, std::nullopt, "/root");
     check_perturbation_targets();
+    // ADR 0038, point 3: the vertex z of the surface object.reference names, in its nominal frame.
+    if (system_.object.reference) {
+      for (std::size_t k = 0; k < surfaces_.size(); ++k) {
+        if (surfaces_[k].id != *system_.object.reference) continue;
+        reference_vertex_z_ = nominal_surfaces_[k].translation().z();
+        break;
+      }
+    }
     for (std::size_t p = 0; p < system_.paths.size(); ++p) {
       paths_.push_back(build_path(system_.paths[p], idx("/paths", p)));
     }
@@ -172,6 +180,8 @@ class Compiler {
   std::vector<CompiledMedium> media_;
   std::vector<CompiledCoating> compiled_coatings_;
   std::vector<CompiledPath> paths_;
+  /// The nominal vertex z of the reference surface of the object distance (ADR 0038), if any.
+  std::optional<double> reference_vertex_z_;
 
  private:
   /// Adds a diagnostic with the severity of `code` in the registry: errors make compile() throw,
@@ -1385,6 +1395,20 @@ CompiledSystem compile(const model::System& input,
   std::optional<model::System> resolved;
   if (bound) resolved = model::resolve_parameters(input, configuration);
   const model::System& system = resolved ? *resolved : input;
+  // ADR 0038, point 5: the nominal vertex z of the reference, one per configuration.
+  const std::vector<double>& reference_z = perturbation.object_reference_z;
+  if (!reference_z.empty()) {
+    if (!input.object.reference || input.object.at_infinity) {
+      throw std::invalid_argument(
+          "compile: object_reference_z for a system without object.reference");
+    }
+    if (reference_z.size() != configurations ||
+        !std::all_of(reference_z.begin(), reference_z.end(),
+                     [](double z) { return std::isfinite(z); })) {
+      throw std::invalid_argument(
+          "compile: object_reference_z needs one finite value per configuration");
+    }
+  }
 
   Compiler compiler(system, materials, coatings, perturbation);
   compiler.run();
@@ -1400,6 +1424,24 @@ CompiledSystem compile(const model::System& input,
   cs.aperture_ = system.aperture;
   cs.fields_ = system.fields;
   cs.object_ = system.object;
+  // The position of the object (ADR 0038, points 3 to 5): from the origin, or in front of the
+  // vertex of the reference surface in its nominal frame.
+  cs.object_z_ = -system.object.distance.value;
+  if (system.object.reference && !system.object.at_infinity) {
+    // validate guarantees the surface (object.reference_surface_unknown).
+    double z_ref = 0.0;
+    if (reference_z.empty()) {
+      const std::optional<double>& vertex_z = compiler.reference_vertex_z_;
+      if (!vertex_z) {
+        throw std::logic_error("compile: no vertex for object.reference after validate");
+      }
+      z_ref = *vertex_z;
+    } else {
+      z_ref = reference_z[configuration];
+    }
+    cs.object_reference_z_ = z_ref;
+    cs.object_z_ = z_ref - system.object.distance.value;
+  }
   cs.configuration_ = configuration;
   if (!input.configurations.empty())
     cs.configuration_name_ = input.configurations[configuration].name;

@@ -229,6 +229,13 @@ std::vector<Case> cases() {
        }},
       {"object.medium_infinite", "/object/medium",
        [](System& s) { s.object.medium = "CONST:1.5"; }},
+      {"object.reference_at_infinity", "/object/reference",
+       [](System& s) { s.object.reference = SurfaceId("L1.S1"); }},
+      {"object.reference_surface_unknown", "/object/reference",
+       [](System& s) {
+         s.object = {false, Param(100.0)};
+         s.object.reference = SurfaceId("NOPE");
+       }},
       {"aperture.stop_missing", "/aperture/type",
        [](System& s) {
          s.aperture.type = SystemApertureType::StopSize;
