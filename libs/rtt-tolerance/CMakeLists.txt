@@ -18,6 +18,7 @@ if(RTT_BUILD_TESTS)
   # files of the class tests.
   rtt_add_test(rtt_tolerance_tests
     SOURCES tests/test_classes.cpp tests/test_m7_acceptance.cpp tests/test_monte_carlo.cpp
+      tests/test_object_reference.cpp
       tests/test_random.cpp tests/test_sensitivity.cpp tests/test_trial.cpp
     LIBS rtt::tolerance rtt::io TBB::tbb)
   # src/: the kernels of the normal distribution (random_detail.hpp), the RSS reduction
