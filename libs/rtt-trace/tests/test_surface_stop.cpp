@@ -94,7 +94,7 @@ std::vector<Traced> trace(const CompiledSystem& cs,
   for (std::size_t r = 0; r < paths.ray_count(); ++r) {
     Traced t;
     t.alive = paths.lost_at[r] == -1 && paths.count[r] == paths.slots;
-    t.l2_local = cs.surfaces()[l2].to_local * paths.position_at(r, l2_slot);
+    t.l2_local = cs.surfaces()[l2].to_local.apply_point(paths.position_at(r, l2_slot));
     t.image = paths.position_at(r, paths.slots - 1);
     out.push_back(t);
   }
@@ -226,7 +226,7 @@ TEST_CASE("surface stop: the stop follows the perturbed lens",
         rtt::trace::SequentialTracer().trace(cs, PathId{0}, batch, paths);
     REQUIRE(paths.lost_at[0] == -1);
     const Vec3 global = paths.position_at(0, 3);  // after event 2, L2.S1
-    return std::pair<Vec3, Vec3>{global, cs.surfaces()[l2].to_local * global};
+    return std::pair<Vec3, Vec3>{global, cs.surfaces()[l2].to_local.apply_point(global)};
   };
   for (const std::uint16_t field : {std::uint16_t{0}, std::uint16_t{2}}) {
     INFO("field " << field);
