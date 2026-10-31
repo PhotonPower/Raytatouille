@@ -175,15 +175,13 @@ class LossCounter {
     if (!(lost_warning_fraction >= 0.0 && lost_warning_fraction <= 1.0)) {
       throw std::invalid_argument("analysis: lost_warning_fraction must lie in [0, 1]");
     }
-    for (const auto& event : system.path(path).events) {
-      const compile::CompiledSurface& surface = system.surfaces()[event.surface];
-      if (surface.element_kind == model::ElementKind::Stop) {
-        stop_ = event.surface;
-        const auto* circle =
-            surface.aperture ? std::get_if<model::CircularAperture>(&*surface.aperture) : nullptr;
-        if (circle != nullptr) stop_inner_radius_ = circle->inner_radius;
-        break;
-      }
+    // The stop of the path (ADR 0039, point 3), counted by surface index on every pass.
+    if (const std::optional<std::size_t> e = compile::stop_event(system, path)) {
+      stop_ = system.path(path).events[*e].surface;
+      const compile::CompiledSurface& surface = system.surfaces()[*stop_];
+      const auto* circle =
+          surface.aperture ? std::get_if<model::CircularAperture>(&*surface.aperture) : nullptr;
+      if (circle != nullptr) stop_inner_radius_ = circle->inner_radius;
     }
   }
 

@@ -145,15 +145,6 @@ std::array<Vec2, 2> pairs(F q) {
   return {minus(q(1), q(2)), minus(q(3), q(4))};
 }
 
-/// The first event of `path` at a surface of a Stop element (as rtt::paraxial::first_order).
-std::optional<std::size_t> stop_event(const compile::CompiledSystem& cs, compile::PathId path) {
-  const std::vector<compile::CompiledEvent>& events = cs.path(path).events;
-  for (std::size_t e = 0; e < events.size(); ++e) {
-    if (cs.surfaces()[events[e].surface].element_kind == model::ElementKind::Stop) return e;
-  }
-  return std::nullopt;
-}
-
 ParabasalValue undefined(std::string why) {
   ParabasalValue v;
   v.undefined = std::move(why);
@@ -270,7 +261,7 @@ ParabasalValue parabasal_value(const model::FirstOrderOperand& op,
       // measured hits are taken, not the requested p, because real aiming stops at a residual
       // of up to kAimTolerance = 1e-9 mm, which is 2e-7 of a parabasal offset delta R_s = 5e-3
       // mm. The mean principal value of the map p -> u' is |u'_m| (linear in p).
-      const std::optional<std::size_t> stop = stop_event(system, path);
+      const std::optional<std::size_t> stop = compile::stop_event(system, path);
       if (!stop) return undefined("the path has no stop");
       const compile::CompiledSurface& s =
           system.surfaces()[system.path(path).events[*stop].surface];

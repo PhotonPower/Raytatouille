@@ -14,7 +14,7 @@ if(RTT_BUILD_TESTS)
             tests/test_migration.cpp tests/test_crystal.cpp tests/test_object_medium.cpp
             tests/test_relative_placement.cpp tests/test_configurations.cpp
             tests/test_node_frames.cpp tests/test_ideal_lens.cpp tests/test_perturbation.cpp
-            tests/test_object_z.cpp
+            tests/test_object_z.cpp tests/test_stop.cpp
     LIBS rtt::compile rtt::io rtt::model_test_support)
   target_compile_definitions(rtt_compile_tests PRIVATE
     RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs")
