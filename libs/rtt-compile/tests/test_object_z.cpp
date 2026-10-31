@@ -39,6 +39,17 @@ TEST_CASE("object_z: the object point lies at -distance", "[compile][object]") {
   CHECK(same(cs.object_z(), -cs.object().distance.value));
 }
 
+TEST_CASE("object_z: an object at infinity keeps -distance as stored", "[compile][object]") {
+  // At infinity object_z() has no meaning and every caller checks at_infinity first; the value is
+  // still the stored -distance, so nothing else can get in.
+  const rtt::material::MaterialLibrary materials;
+  const rtt::model::System s = rtt::io::load_system(std::filesystem::path(RTT_REFERENCE_DIR) /
+                                                    "m7" / "decentred_lens.rtt.json");
+  REQUIRE(s.object.at_infinity);
+  const rtt::compile::CompiledSystem cs = rtt::compile::compile(s, materials);
+  CHECK(same(cs.object_z(), -cs.object().distance.value));
+}
+
 TEST_CASE("object_z: a distance from a row follows each configuration", "[compile][object]") {
   // The distance bound to a row with one value per configuration: the resolved value of each
   // configuration (compile copies the object after resolving the table).
