@@ -1414,11 +1414,16 @@ CompiledSystem compile(const model::System& input,
   cs.object_z_ = -system.object.distance.value;
   if (system.object.reference && !system.object.at_infinity) {
     // validate guarantees the surface (object.reference_surface_unknown).
-    const std::optional<double>& vertex_z = compiler.reference_vertex_z_;
-    if (reference_z.empty() && !vertex_z) {
-      throw std::logic_error("compile: no vertex for object.reference after validate");
+    double z_ref = 0.0;
+    if (reference_z.empty()) {
+      const std::optional<double>& vertex_z = compiler.reference_vertex_z_;
+      if (!vertex_z) {
+        throw std::logic_error("compile: no vertex for object.reference after validate");
+      }
+      z_ref = *vertex_z;
+    } else {
+      z_ref = reference_z[configuration];
     }
-    const double z_ref = reference_z.empty() ? *vertex_z : reference_z[configuration];
     cs.object_reference_z_ = z_ref;
     cs.object_z_ = z_ref - system.object.distance.value;
   }
