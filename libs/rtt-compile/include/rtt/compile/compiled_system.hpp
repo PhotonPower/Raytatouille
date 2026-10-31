@@ -380,6 +380,12 @@ class CompiledSystem {
   [[nodiscard]] const model::FieldSet& fields() const noexcept { return fields_; }
   [[nodiscard]] const model::ObjectSpace& object() const noexcept { return object_; }
 
+  /// Global z of the axial object point in mm, for a finite object: -object().distance, because
+  /// the distance is measured from the global origin along -z (ADR 0031, addendum #279). The one
+  /// place that turns the object distance into a position (#288); for an object at infinity the
+  /// value has no meaning (callers use at_infinity first).
+  [[nodiscard]] double object_z() const noexcept { return -object_.distance.value; }
+
   /// All surfaces in tree order.
   [[nodiscard]] const std::vector<CompiledSurface>& surfaces() const noexcept { return surfaces_; }
   /// Elements in tree order; CompiledSurface::element indexes this list (#81).
