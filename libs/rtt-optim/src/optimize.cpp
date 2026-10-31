@@ -2,9 +2,11 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <charconv>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -114,12 +116,28 @@ OptimResult run(const model::System& system,
     offset = block_end;
   }
 
+  // ADR 0030, addendum #289: the set of generator rays that arrive at the start holds for the
+  // run. An evaluation with another set (a ray of the start lost, or a ray lost at the start
+  // arrived) is invalid, so the merit is always a function of p over the same rays (point 11).
+  std::vector<std::vector<std::uint8_t>> start_arrived;
+  start_arrived.reserve(start.generators.size());
+  for (const GeneratorStats& g : start.generators) start_arrived.push_back(g.arrived);
+  // Evaluations refused for this reason; an integer sum, independent of the order of the
+  // concurrent Jacobian evaluations.
+  std::atomic<std::size_t> changed_sets{0};
+
   const LmOptions lm_options{options.max_iterations, options.ftol, options.xtol,
                              options.gtol,           options.tau,  options.function_precision};
   const LmResult lm = levenberg_marquardt(
-      [&merit](std::span<const double> p, std::span<double> f) {
+      [&merit, &start_arrived, &changed_sets](std::span<const double> p, std::span<double> f) {
         // Exceptions and non-finite residuals are invalid evaluations of the solver.
         const MeritEvaluation e = merit.evaluate(p);
+        for (std::size_t g = 0; g < e.generators.size(); ++g) {
+          if (e.generators[g].arrived != start_arrived[g]) {
+            changed_sets.fetch_add(1, std::memory_order_relaxed);
+            return false;
+          }
+        }
         std::copy(e.residuals.begin(), e.residuals.end(), f.begin());
         return true;
       },
@@ -193,25 +211,31 @@ OptimResult run(const model::System& system,
   result.patch = patch + "]";
 
   if (lm.failed_evaluations > 0) {
-    result.diagnostics.push_back(
-        diagnostic("optim.evaluation_failed", "/optimization",
-                   std::to_string(lm.failed_evaluations) +
-                       " evaluation(s) failed (analysis error or undefined value); the trials "
-                       "counted as rejected"));
+    const std::size_t changed = changed_sets.load();
+    result.diagnostics.push_back(diagnostic(
+        "optim.evaluation_failed", "/optimization",
+        std::to_string(lm.failed_evaluations) +
+            " evaluation(s) failed (analysis error, undefined value or changed generator rays); "
+            "the trials counted as rejected" +
+            (changed > 0 ? "; " + std::to_string(changed) +
+                               " of them because the set of arrived generator rays differed "
+                               "from the start (ADR 0030, addendum #289)"
+                         : std::string())));
   }
   if (lm.status == LmStatus::Failed && lm.failed_variable) {
     result.diagnostics.push_back(
         diagnostic("optim.jacobian_failed", variables[*lm.failed_variable].pointer,
                    "no valid evaluation for the Jacobian column of this variable"));
   }
-  // F7: lost rays of a generator in the final state (ADR 0030, point 4 and addendum #168).
+  // F7: lost rays of a generator in the final state (ADR 0030, point 4, addenda #168 and #289):
+  // the same rays as at the start, since every accepted state has the start set.
   for (const GeneratorValue& g : result.generators) {
     if (g.rays_lost == 0) continue;
     result.diagnostics.push_back(diagnostic(
         "optim.rays_lost", g.pointer,
         std::to_string(g.rays_lost) + " of " + std::to_string(g.rays_launched) +
-            " rays of the generator are lost in the final state; they give residuals 0 and "
-            "lower the merit"));
+            " rays of the generator were lost at the start and stay out of the run (residuals "
+            "0)"));
   }
   for (const model::Diagnostic& d : end.warnings) result.diagnostics.push_back(d);
   return result;

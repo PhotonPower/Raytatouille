@@ -473,8 +473,9 @@ TEST_CASE("LM: invalid evaluations (T10)", "[optim][lm]") {
     CHECK(r.iterations == 0);
   }
   SECTION("an exception in the residual function counts as invalid") {
+    // Both sides of column 0 throw: one invalid side alone gives a one-sided column (#289).
     const Residuals f = [&](std::span<const double> p, std::span<double> out) {
-      if (p[0] > p0[0]) throw std::runtime_error("invalid");
+      if (p[0] != p0[0]) throw std::runtime_error("invalid");
       quadratic(p, out);
       return true;
     };
@@ -676,4 +677,43 @@ TEST_CASE("LM: a start value exactly on a bound gives a zero column", "[optim][l
     CHECK(r.changed == std::vector<std::uint8_t>{0});
     CHECK(r.at_bound == std::vector<std::uint8_t>{1});
   }
+}
+
+TEST_CASE("LM: a Jacobian column with one invalid side is one-sided (#289)", "[optim][lm]") {
+  // ADR 0030, addendum #289: if exactly one of theta +- h is invalid, the column is the one-sided
+  // difference with the stored f(theta) and the same h (MINPACK-1, section 2.4); Failed only if
+  // both sides are invalid (section T10). f = p - 1, valid only for p <= b: from the start
+  // p0 = 1 + h/3 the side p0 + h lies beyond b = 1 + 2h/3, so does p + h of every later iterate
+  // near 1, while p - h is valid. h = cbrt(eps_f) max(|theta|, 1) as levenberg_marquardt.cpp, at
+  // run time (volatile: no folding of cbrt, AGENTS.md); theta = p (no bounds), |theta| ~ 1.
+  volatile double eps_in = LmOptions{}.function_precision;
+  const double h = std::cbrt(static_cast<double>(eps_in));
+  REQUIRE(h > 1e-7);  // the edge lies far above the rounding of p near 1
+  const double p0 = 1.0 + h / 3.0;
+  const auto edge = [](double b) -> Residuals {
+    return [b](std::span<const double> p, std::span<double> out) {
+      if (p[0] > b) return false;
+      out[0] = p[0] - 1.0;
+      return true;
+    };
+  };
+  // Stop test (MNT eq. (3.15b), D = |J| = 1 here): the unapplied step -f / (1 + mu) has the norm
+  // <= xtol (|p| + xtol), so |p - 1| <= (1 + mu) xtol (|p| + xtol); mu <= tau = 1e-3 after the
+  // first accepted step. Factor 2 covers mu and the rounding of the one-sided column.
+  const LmOptions options;
+  const auto check_converged = [&](const LmResult& r) {
+    INFO("status " << static_cast<int>(r.status) << ", p " << r.p[0]);
+    CHECK(r.status != LmStatus::Failed);
+    CHECK(!r.failed_variable.has_value());
+    CHECK(std::abs(r.p[0] - 1.0) <= 2.0 * options.xtol * (std::abs(r.p[0]) + options.xtol));
+  };
+  const LmResult edge_run = levenberg_marquardt(edge(1.0 + 2.0 * h / 3.0), 1, {p0}, free_bounds(1));
+  check_converged(edge_run);
+  CHECK(edge_run.failed_evaluations >= 1);  // content: the side beyond b was invalid
+  CHECK(edge_run.p[0] <= 1.0 + 2.0 * h / 3.0);
+  // Content guard: without the edge (central differences) the run ends at 1 as well.
+  const LmResult free_run =
+      levenberg_marquardt(edge(std::numeric_limits<double>::infinity()), 1, {p0}, free_bounds(1));
+  check_converged(free_run);
+  CHECK(free_run.failed_evaluations == 0);
 }
