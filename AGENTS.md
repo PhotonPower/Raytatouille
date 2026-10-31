@@ -175,6 +175,61 @@ Neue Bibliothek: Ordner wie oben, `CMakeLists.txt` nach dem Muster von `libs/rtt
 10. **Unklarheit = Frage, nicht Annahme.** Bei offenen physikalischen Konventionen oder
     widersprüchlichen Vorgaben: Frage im Issue stellen und auf Antwort warten.
 
+## Neuer Flächentyp (Checkliste, ADR 0041)
+
+Jeder neue Typ für `shape.base` oder `shape.terms` berührt alle diese Stellen; fehlt eine, fällt
+das oft erst spät auf. Die Paraxialregel steht in ADR 0041, Punkt 2. Formatänderungen folgen
+Regel 9; der Plan für M8 steht in ADR 0041, Punkt 7.
+
+1. **Modell** (`rtt-model`):
+   - Struct in `include/rtt/model/surface.hpp` und Alternative in `BaseShape` bzw. `ShapeTerm`;
+   - `validate.cpp`: Prüfung der Parameter in `check_shape` (vollständiger Besuch), Codes in der
+     Registry;
+   - `parameters.cpp`: Pointer jedes Params für `for_each_param` (vollständiger Besuch);
+   - Toleranzen: Arten und Klassen in `tolerance.cpp`, `tolerance_targets.cpp` und
+     `validate.cpp`, Anwenden und Vorzeichenprüfung in `rtt-tolerance/src/trial.cpp`, mit
+     Nachtrag zu ADR 0035, oder ausdrücklich keine.
+2. **Datei** (`rtt-io`, `schema/`):
+   - `json_io.cpp`: `read_base_shape` bzw. `read_shape_term`, Schreiben in `base_shape()` und
+     `shape()` (vollständiger Besuch), Versionsprüfung wie `check_0_5_forms`;
+   - JSON-Schema `base_shape` bzw. `shape_term`, `docs/dateiformat.md`;
+   - Tests: Roundtrip, Schlüssel der Bearbeitungsform (`test_edit.cpp`),
+     `test_for_each_param.cpp`, die Tests, die die Version festhalten.
+3. **Form** (`rtt-geom`):
+   - Klasse `final` mit `sag`, `grad` (beide `noexcept`), `base_conic` (Startwert des
+     Schnitts), `max_radius` und `vertex_expansion` (ADR 0041, Punkt 1), Quelle mit
+     Gleichungsnummer;
+   - analytischer Schnitt als eigene Überladung von `intersect`, sonst `intersect_newton`;
+   - Instanziierung in `src/instantiate.cpp`, Tests in `CMakeLists.txt`.
+4. **Kompilieren** (`rtt-compile`): Alternative in `CompiledShape` (`compiled_system.hpp`);
+   Abbildung Modell → Form in `compile_shape` (vollständiger Besuch); die Layout-Besuche in
+   `layout.cpp` sind generisch, prüfen.
+5. **Paraxial** (`rtt-paraxial`): Scheitelentwicklung nach ADR 0041, Punkt 2, also Scheitellage,
+   c und Kappe (K, A4) oder `ParaxialError`; Tests für erste Ordnung und Seidel bzw. den
+   Fehler.
+6. **Trace und Analysen:** `intersect_surface` und die Startebene der Zielung (`sources.cpp`)
+   besuchen generisch, die Startebene und die Mittendicke im Maßreport (`reports.cpp`) mit dem
+   Scheitel `sag(0, 0)`; ein Test mit einem realen Strahl durch die neue Fläche gegen eine
+   unabhängige Rechnung.
+7. **Ergebnisformat:** `SurfaceLayout` um die Parameter des Typs erweitern (Nachtrag zu
+   ADR 0023, Version des Ergebnisformats, `raytatouille-result.schema.json`,
+   `tests/reference/results/`).
+8. **Python** (`rtt-py`):
+   - Klasse in `bind_model_tree.cpp`, denn jede Alternative einer Variante braucht eine
+     gebundene Klasse;
+   - `shape_data()` in `bind_layout.cpp` (vollständiger Besuch);
+   - `model.py` (Import und `__all__`) und `layout.py`;
+   - Tests: `VARIANT_CLASSES` in `test_model_read.py`, `test_layout.py`, `test_edit_dict.py`;
+   - die Stubs entstehen beim Build aus den Docstrings.
+9. **Diagnosen:** neue Codes in `rtt-diagnostics/codes.hpp`, `docs/diagnostics.md`, je ein Fall
+   in `test_diagnostic_codes.cpp`.
+10. **Referenzen und Doku:**
+    - ein Beispiel unter `tests/reference/`; es läuft auch durch `tests/schema` und die
+      Python-Lesetests;
+    - in `docs/architecture.md` die Liste „Flächentypen v1“ (Abschnitt Geometrie) und
+      „Stand M1: Formen …“ (Absatz „Medien entlang eines Pfads“);
+    - `docs/quellen.md`, Changelog-Fragment.
+
 ## Sprache und Stil
 
 - Code, Kommentare, Commit-Messages und Bezeichner auf Englisch; Projektdokumentation auf Deutsch.
