@@ -1,8 +1,8 @@
 # Systemdateien `.rtt.json` erzeugen
 
 Kurzanleitung für das Dateiformat, das die Engine, die CLI (`rtt`) und der Raytatouille Explorer
-laden. Alle Beispiele hier wurden gegen Schema `0.7.x` geprüft (nach Bibliothek 0.9.0). Dateien mit
-Schema 0.1 bis 0.6 liest `rtt` weiter und schreibt sie mit `rtt format` als 0.7; ein `pickup` aus
+laden. Alle Beispiele hier wurden gegen Schema `0.8.x` geprüft (nach Bibliothek 0.9.0). Dateien mit
+Schema 0.1 bis 0.7 liest `rtt` weiter und schreibt sie mit `rtt format` als 0.8; ein `pickup` aus
 einer Datei vor 0.4 fällt dabei weg, mit der Warnung `io.pickup_dropped` (siehe
 „Parametertabelle“).
 Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/architecture.md`.
@@ -32,11 +32,11 @@ Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/a
 
 | Feld | Pflicht | Inhalt |
 | --- | --- | --- |
-| `schema_version` | ja | `"0.7.0"` (Muster `0.7.x`) |
+| `schema_version` | ja | `"0.8.0"` (Muster `0.8.x`) |
 | `name` | nein | Anzeigename |
 | `units` | ja | genau `{"length": "mm", "wavelength": "um"}` |
 | `environment` | nein | `temperature_c`, `pressure_atm`, `medium` (Standard: Luft nach Ciddor, 20 °C, 1 atm) |
-| `object` | nein | `{"at_infinity": true}` ist der Standard; sonst `distance` (mm, Param): Abstand vom Objekt zum **globalen Ursprung** längs −z. Das Objekt liegt also bei z = −`distance` im globalen System, unabhängig davon, wo die erste Fläche liegt; positiv heißt vor dem Ursprung. Soll der Abstand vor einer Fläche gelten, rechnet ihn die Parametertabelle um: Liegt der Scheitel global bei z = `Z1` und ist `Z1` eine Zeile der Tabelle (etwa die gebundene Lage eines Elements an der Wurzel, dessen erste Fläche lokal bei 0 liegt), gibt `{"name": "OBJ", "expression": "WD - Z1"}` mit `"distance": {"param": "OBJ"}` den Arbeitsabstand `WD` vor diesem Scheitel. Optional `medium` (ab Schema 0.7, ADR 0037): Material des Objektraums als `KATALOG:NAME`, nur bei endlichem Objekt (sonst Fehler `object.medium_infinite`). Fehlt es, ist der Objektraum die Umgebung. Eine Quelle in Glas (n > 1) strahlt dann auch jenseits des Grenzwinkels Glas/Luft; `object_na` wird mit dem Index dieses Mediums gelesen (NA darf größer als 1 sein, aber nicht größer als n) |
+| `object` | nein | `{"at_infinity": true}` ist der Standard; sonst `distance` (mm, Param): Abstand vom Objekt zum **globalen Ursprung** längs −z. Das Objekt liegt also bei z = −`distance` im globalen System, unabhängig davon, wo die erste Fläche liegt; positiv heißt vor dem Ursprung. Soll der Abstand vor einer Fläche gelten, nennt `reference` diese Fläche (ab Schema 0.8, ADR 0038): `"reference": {"surface": "L1.S1"}` legt das Objekt `distance` vor den **nominalen Scheitel** dieser Fläche, längs −z; es zählt nur die z-Koordinate des Scheitels (das Objekt bleibt auf der globalen z-Achse). `"origin"` ist der Standard und wird nicht geschrieben. Ein Bezug nur bei endlichem Objekt (sonst `object.reference_at_infinity`) und auf eine Fläche des Systems (sonst `object.reference_surface_unknown`). Bei der Optimierung folgt das Objekt der Fläche, bei der Toleranzierung bleibt es am nominalen Ort. Optional `medium` (ab Schema 0.7, ADR 0037): Material des Objektraums als `KATALOG:NAME`, nur bei endlichem Objekt (sonst Fehler `object.medium_infinite`). Fehlt es, ist der Objektraum die Umgebung. Eine Quelle in Glas (n > 1) strahlt dann auch jenseits des Grenzwinkels Glas/Luft; `object_na` wird mit dem Index dieses Mediums gelesen (NA darf größer als 1 sein, aber nicht größer als n) |
 | `wavelengths` | ja | Liste von `{"um": …, "weight": …, "reference": true}`. **Genau eine** Wellenlänge ist `reference`. `weight` ≥ 0. |
 | `aperture` | ja | `{"type": "epd" \| "image_fnumber" \| "object_na" \| "stop_size", "value": …}`. `epd`: Durchmesser der Eintrittspupille in mm. `image_fnumber`: F-Zahl bei unendlichen Konjugierten, EPD = |EFL| / F#, auch bei endlichem Objekt. `object_na`: objektseitige numerische Apertur, nur bei endlichem Objekt, **paraxial gelesen**: die paraxiale Randstrahlsteigung vom axialen Objektpunkt ist u = NA / n, n der Brechungsindex des Objektraums (Greivenkamp, OPTI-502, Abschn. 9, S. 9-34: NA = n sin U ≈ n u; ein realer Randstrahl mit n sin U = NA weicht bei großer NA ab). Bei paraxialer Zielung hat der Randstrahl tan U = NA / n; bei realer Zielung trifft er den paraxialen Blendenrand R_s, und sein tan U weicht um die Pupillenaberration davon ab. Bei objektseitiger Telezentrie legen nur `object_na` und `stop_size` das Bündel fest. `stop_size` braucht kein `value` (die Blendengröße kommt aus der Apertur der Blende) |
 | `fields` | ja | `{"type": "angle_deg" \| "object_height" \| "paraxial_image_height", "points": [{"x":…, "y":…, "weight":…}]}`. `{}` ist der Achspunkt. `weight` ≥ 0. |
@@ -363,7 +363,7 @@ dahinter, der Detektor im paraxialen Fokus bei z = 106,442 mm.
 
 ```json
 {
-  "schema_version": "0.7.0",
+  "schema_version": "0.8.0",
   "name": "Plankonvex-Singlet",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": true}, {"um": 0.6563}],
@@ -444,7 +444,7 @@ def singlet(r1, r2, dicke, glas="CONST:1.5168", epd=20.0, bild_abstand=95.0, hal
 
     z_linse = 5.0
     return {
-        "schema_version": "0.7.0", "name": f"Singlet R1={r1} R2={r2}",
+        "schema_version": "0.8.0", "name": f"Singlet R1={r1} R2={r2}",
         "units": {"length": "mm", "wavelength": "um"},
         "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": True}, {"um": 0.6563}],
         "aperture": {"type": "epd", "value": epd},

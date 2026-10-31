@@ -307,7 +307,9 @@ class CompiledSystem;
 ///         element with segment materials, given for one with a single material, out of
 ///         range, or other than 0 for a list of equal materials, and non-finite values (only
 ///         reachable through the API; rtt-tolerance builds the overlay from a validated tolerance
-///         set)
+///         set); and for `object_reference_z` given for a system without object.reference or with
+///         the object at infinity, with a length other than the number of configurations, or with
+///         a non-finite value (ADR 0038, point 5)
 /// @throws CompileError as compile(), and for a material change (at .../material or
 ///         .../material/<i> of the element) with tolerances.material_unsupported (crystal,
 ///         element without material, kappa != 0 at d, F or C, a line outside the range of the
@@ -380,11 +382,21 @@ class CompiledSystem {
   [[nodiscard]] const model::FieldSet& fields() const noexcept { return fields_; }
   [[nodiscard]] const model::ObjectSpace& object() const noexcept { return object_; }
 
-  /// Global z of the axial object point in mm, for a finite object: -object().distance, because
-  /// the distance is measured from the global origin along -z (ADR 0031, addendum #279). The one
-  /// place that turns the object distance into a position (#288); for an object at infinity the
-  /// value has no meaning (callers use at_infinity first).
-  [[nodiscard]] double object_z() const noexcept { return -object_.distance.value; }
+  /// Global z of the axial object point in mm, for a finite object (ADR 0038, points 3 and 4):
+  /// -object().distance from the global origin (ADR 0031, addendum #279), or with
+  /// object.reference z_S - distance, z_S the vertex z of that surface in the nominal frame of
+  /// this configuration (or Perturbation::object_reference_z). The one place that turns the
+  /// object distance into a position; for an object at infinity the value has no meaning
+  /// (callers use at_infinity first).
+  [[nodiscard]] double object_z() const noexcept { return object_z_; }
+
+  /// The z_S that object_z() used (mm, global): the nominal vertex z of the surface that
+  /// object.reference names, or Perturbation::object_reference_z; none without a reference or
+  /// for an object at infinity (ADR 0038). rtt-tolerance fills the overlay of its trials with
+  /// the nominal values from here.
+  [[nodiscard]] const std::optional<double>& object_reference_z() const noexcept {
+    return object_reference_z_;
+  }
 
   /// All surfaces in tree order.
   [[nodiscard]] const std::vector<CompiledSurface>& surfaces() const noexcept { return surfaces_; }
@@ -442,6 +454,8 @@ class CompiledSystem {
   model::FieldSet fields_;
   model::ObjectSpace object_;
   std::vector<CompiledSurface> surfaces_;
+  double object_z_ = 0.0;                     ///< see object_z()
+  std::optional<double> object_reference_z_;  ///< see object_reference_z()
   std::vector<CompiledElement> elements_;
   std::vector<CompiledMedium> media_;
   std::vector<CompiledCoating> coatings_;

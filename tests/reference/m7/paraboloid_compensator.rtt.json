@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.7.0",
+  "schema_version": "0.8.0",
   "name": "M7 acceptance: paraboloid R = -200 mm (F/10) with the detector position as compensator (cases 5, 7)",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},

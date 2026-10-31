@@ -23,7 +23,7 @@ if(RTT_BUILD_TESTS)
             tests/test_validate_0_4.cpp tests/test_validate_optimization.cpp
             tests/test_expression.cpp tests/test_parameters.cpp tests/test_validate_ideal_lens.cpp
             tests/test_tolerance_classes.cpp tests/test_validate_tolerances.cpp
-            tests/test_validate_object_medium.cpp
+            tests/test_validate_object_medium.cpp tests/test_validate_object_reference.cpp
     LIBS rtt::model rtt::model_test_support)
   # src/: the expression parser (expression.hpp) is tested directly.
   target_include_directories(rtt_model_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)

@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/PhotonPower/Raytatouille/schema/raytatouille.schema.json",
-  "title": "Raytatouille system file (.rtt.json), schema 0.7",
-  "description": "Units: lengths mm, wavelengths um, angles in degree where the key ends in _deg. Parsing in rtt-io is the reference; this schema must accept exactly what rtt-io accepts structurally for the current schema version. rtt-io migrates older files (0.1 to 0.5); run rtt format before checking them against this schema. Semantic rules (names of parameter rows, one value per configuration, bounds, the targets and limits of tolerances) are checked by validate, not here.",
+  "title": "Raytatouille system file (.rtt.json), schema 0.8",
+  "description": "Units: lengths mm, wavelengths um, angles in degree where the key ends in _deg. Parsing in rtt-io is the reference; this schema must accept exactly what rtt-io accepts structurally for the current schema version. rtt-io migrates older files (0.1 to 0.7); run rtt format before checking them against this schema. Semantic rules (names of parameter rows, one value per configuration, bounds, the targets and limits of tolerances) are checked by validate, not here.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "units", "wavelengths", "aperture", "fields", "root", "paths"],
   "properties": {
-    "schema_version": {"type": "string", "pattern": "^0\\.7\\.[0-9]+$"},
+    "schema_version": {"type": "string", "pattern": "^0\\.8\\.[0-9]+$"},
     "name": {"type": "string"},
     "units": {
       "type": "object",
@@ -32,9 +32,13 @@
         "at_infinity": {"type": "boolean"},
         "distance": {
           "$ref": "#/$defs/param",
-          "description": "mm from the object to the global origin along -z: the object lies at global z = -distance, wherever the first surface is; positive in front of the origin. Used only if at_infinity is false. A distance in front of a surface comes from the parameter table (an expression row)."
+          "description": "mm from the object along -z to the global origin, or to the nominal vertex of the surface named by reference: without reference the object lies at global z = -distance, wherever the first surface is; positive in front of the origin. Used only if at_infinity is false."
         },
-        "medium": {"type": "string"}
+        "medium": {"type": "string"},
+        "reference": {
+          "description": "Reference of the distance (schema 0.8, ADR 0038): \"origin\" (the default, not written) or a surface, in front of whose nominal vertex the object lies along -z (only the vertex z counts). Only for a finite object (validate).",
+          "oneOf": [{"const": "origin"}, {"$ref": "#/$defs/surface_reference"}]
+        }
       }
     },
     "wavelengths": {
@@ -130,6 +134,13 @@
     }
   },
   "$defs": {
+    "surface_reference": {
+      "description": "A reference to a surface by its SurfaceId (ADR 0038, point 1); also used by aperture.stop (ADR 0039).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["surface"],
+      "properties": {"surface": {"type": "string"}}
+    },
     "index": {"type": "integer", "minimum": 0, "maximum": 65535},
     "uint64": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615},
     "merit": {

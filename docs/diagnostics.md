@@ -101,6 +101,8 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `node.name_empty` | Fehler | leerer Name einer Baugruppe oder eines Elements | validate | `…/name` |
 | `object.distance_invalid` | Fehler | endlicher Objektabstand nicht endlich oder ≤ 0 mm | validate | `/object/distance` |
 | `object.medium_infinite` | Fehler | Medium im Objektraum bei einem Objekt im Unendlichen (ADR 0037) | validate | `/object/medium` |
+| `object.reference_at_infinity` | Fehler | Bezug des Objektabstands bei einem Objekt im Unendlichen (ADR 0038) | validate | `/object/reference` |
+| `object.reference_surface_unknown` | Fehler | Der Bezug des Objektabstands nennt keine Fläche des Systems (ADR 0038) | validate | `/object/reference` |
 | `optim.evaluation_failed` | Warnung | Auswertungen der Merit-Funktion sind im Lauf gescheitert (Analysefehler, nicht definierter Wert oder geänderte Strahlmenge eines Generators oder eines Operanden `spot_rms`/`opd_rms`, deren Zahl die Meldung eigens nennt); diese Versuche galten als abgelehnt (ADR 0030, Punkt 10, Nachträge #289 und #299) | optim | `/optimization` |
 | `optim.jacobian_failed` | Fehler | eine Spalte der Jacobi-Matrix hat auf keiner Seite eine gültige Auswertung (ist nur eine Seite ungültig, gilt die einseitige Differenz, ADR 0030, Nachtrag #289); der Lauf endet mit Status `failed` und dem letzten angenommenen Stand | optim | Pointer der Variablen (kleinster Index) |
 | `optim.no_operands` | Fehler | Optimierung ohne Operanden und ohne Generatoren (ADR 0030, Nachtrag #167) | optim | leer |

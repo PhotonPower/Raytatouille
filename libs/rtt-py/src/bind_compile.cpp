@@ -150,6 +150,10 @@ void bind_compile(nb::module_& m) {
                    "Wavelength weights as in the model (not normalised).")
       .def_prop_ro("temperature_c", &compile::CompiledSystem::temperature_c,
                    "Environment temperature in degC at which the media were evaluated.")
+      .def_prop_ro("object_z", &compile::CompiledSystem::object_z,
+                   "Global z of the axial object point in mm for a finite object: -distance, or "
+                   "the vertex z of object.reference minus the distance (ADR 0038). No meaning "
+                   "for an object at infinity.")
       .def_prop_ro(
           "field_count", [](const compile::CompiledSystem& s) { return s.fields().points.size(); },
           "Number of field points.")

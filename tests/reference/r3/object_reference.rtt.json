@@ -1,0 +1,62 @@
+{
+  "schema_version": "0.8.0",
+  "name": "Ideal lens f = 50 mm at z = 20 mm, object 75 mm in front of its vertex (object.reference, ADR 0038)",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "object": {
+    "at_infinity": false,
+    "distance": 75.0,
+    "reference": {"surface": "IL"}
+  },
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "stop_size"},
+  "fields": {
+    "type": "object_height",
+    "points": [
+      {},
+      {"y": 5.0}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "pose": {"position": [0.0, 0.0, 19.0]},
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 10.0}
+          }
+        ]
+      },
+      {
+        "type": "thin_element",
+        "name": "ideal lens",
+        "pose": {"position": [0.0, 0.0, 20.0]},
+        "surfaces": [
+          {
+            "id": "IL",
+            "aperture": {"type": "circular", "radius": 12.0},
+            "interaction": {"type": "ideal_lens", "focal_length": 50.0, "object_distance": 75.0}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 170.0]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}

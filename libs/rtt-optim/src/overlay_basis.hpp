@@ -67,8 +67,9 @@ struct BasisAccess {
 };
 
 /// The variant of `system` for the axis-parallel bundle of efl and bfl (addendum #256): object
-/// at infinity, one field at 0 degree, the system aperture StopSize (the stop of each path as
-/// defined). Everything else, the tree and the parameter table included, is the input.
+/// at infinity without object.reference, one field at 0 degree, the system aperture StopSize (the
+/// stop of each path as defined). Everything else, the tree and the parameter table included, is
+/// the input.
 [[nodiscard]] model::System variant_of(const model::System& system);
 
 }  // namespace rtt::optim::detail

@@ -67,6 +67,7 @@ class Validator {
     check_object_and_environment();
     check_assembly(system_.root, "/root", false);
     check_stops();
+    check_object_reference();  // after the tree: needs the surface ids
     check_paths();
     check_optimization();
     check_tolerances();
@@ -130,6 +131,21 @@ class Validator {
         report("fields.coordinate_invalid", loc, "field coordinates must be finite");
       if (!std::isfinite(f.weight) || f.weight < 0.0)
         report("fields.weight_invalid", loc + "/weight", "weight must be >= 0");
+    }
+  }
+
+  /// object.reference (ADR 0038, point 7): a surface of the system, only for a finite object. Any
+  /// surface is allowed, also one on no path: it only fixes a point on the z axis.
+  void check_object_reference() {
+    const std::optional<SurfaceId>& r = system_.object.reference;
+    if (!r) return;
+    if (system_.object.at_infinity) {
+      report("object.reference_at_infinity", "/object/reference",
+             "a reference of the object distance needs a finite object");
+    }
+    if (!surface_ids_.contains(r->str())) {
+      report("object.reference_surface_unknown", "/object/reference",
+             "no surface '" + r->str() + "' for the reference of the object distance");
     }
   }
 

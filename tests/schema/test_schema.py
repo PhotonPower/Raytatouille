@@ -490,3 +490,24 @@ def test_0_7_object_medium_is_accepted():
 )
 def test_0_7_object_medium_errors_are_rejected(mutate):
     assert not VALIDATOR.is_valid(_obj(mutate))
+
+
+# ---- schema 0.8 (#288, ADR 0038): the reference of the object distance ----
+
+def test_0_8_object_reference_is_accepted():
+    assert VALIDATOR.is_valid(_obj(lambda d: d["object"].update(reference="origin")))
+    assert VALIDATOR.is_valid(_obj(lambda d: d["object"].update(reference={"surface": "L1.S1"})))
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [lambda d: d["object"].update(reference="vertex"),
+     lambda d: d["object"].update(reference=1.0),
+     lambda d: d["object"].update(reference={}),
+     lambda d: d["object"].update(reference={"node": "L1"}),
+     lambda d: d["object"].update(reference={"surface": "L1.S1", "node": "L1"}),
+     lambda d: d["object"].update(reference={"surface": 3})],
+    ids=["other-text", "number", "empty", "node", "extra-key", "surface-number"],
+)
+def test_0_8_object_reference_errors_are_rejected(mutate):
+    assert not VALIDATOR.is_valid(_obj(mutate))

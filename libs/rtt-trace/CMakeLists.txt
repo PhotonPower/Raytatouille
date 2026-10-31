@@ -21,6 +21,7 @@ if(RTT_BUILD_TESTS)
             tests/test_gauss_pupil.cpp tests/test_ideal_lens_trace.cpp
             tests/test_point_list_pupil.cpp tests/test_ideal_lens_aiming.cpp
             tests/test_obscuration.cpp tests/test_aim_reference.cpp tests/test_object_medium.cpp
+            tests/test_object_reference.cpp
             tests/test_aim_continuation.cpp
     LIBS rtt::trace rtt::io rtt::polar rtt::coating rtt::model_test_support TBB::tbb)
   # src/: the continuation fallback of real aiming (aim_continuation.hpp, #287) is tested directly.

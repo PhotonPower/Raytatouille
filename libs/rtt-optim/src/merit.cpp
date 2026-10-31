@@ -418,8 +418,16 @@ MeritEvaluation MeritFunction::evaluate(std::span<const double> values) const {
   std::vector<std::optional<compile::CompiledSystem>> variants(compiled.size());
   if (!variants_.empty()) {
     const model::System variant = detail::variant_of(system);
+    // The variant has no object.reference, so the nominal reference z of the overlay does not
+    // apply to it (ADR 0038, point 5); the rest of the perturbation does.
+    std::optional<TrialOverlay> variant_overlay;
+    if (overlay_ != nullptr) {
+      variant_overlay.emplace(*overlay_);
+      variant_overlay->perturbation.object_reference_z.clear();
+    }
+    const TrialOverlay* const vo = variant_overlay ? &*variant_overlay : nullptr;
     for (const std::size_t k : variants_) {
-      variants[k].emplace(compile_one(variant, *materials_, coatings_, k, overlay_));
+      variants[k].emplace(compile_one(variant, *materials_, coatings_, k, vo));
     }
   }
   std::optional<model::ParameterValues> table;

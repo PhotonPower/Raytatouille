@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.7.0",
+  "schema_version": "0.8.0",
   "name": "M7 acceptance: plane-parallel plate t = 10 mm, n = 1.5, tilted about its centre (case 3)",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},

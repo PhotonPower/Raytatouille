@@ -46,8 +46,8 @@ std::string with_version_and_object(const System& s,
 
 }  // namespace
 
-TEST_CASE("schema version is 0.7.0", "[io][0.7]") {
-  REQUIRE(rtt::model::kSchemaVersion == "0.7.0");
+TEST_CASE("schema version is 0.8.0", "[io][0.7]") {
+  REQUIRE(rtt::model::kSchemaVersion == "0.8.0");
 }
 
 TEST_CASE("object.medium: canonical form and round trip", "[io][0.7]") {
@@ -71,13 +71,13 @@ TEST_CASE("object.medium: canonical form and round trip", "[io][0.7]") {
   }
 }
 
-TEST_CASE("migration 0.6 -> 0.7: content unchanged, the version becomes 0.7.0", "[io][0.7]") {
+TEST_CASE("migration 0.6 -> 0.7: content unchanged, the version becomes 0.8.0", "[io][0.7]") {
   const System s = finite_object(std::nullopt);
   const System read = rtt::io::parse_system(
       with_version_and_object(s, "0.6.0", json{{"at_infinity", false}, {"distance", 50.0}}));
-  CHECK(read.schema_version == "0.7.0");
+  CHECK(read.schema_version == "0.8.0");
   CHECK(read == s);
-  CHECK(json::parse(rtt::io::to_json(read))["schema_version"] == "0.7.0");
+  CHECK(json::parse(rtt::io::to_json(read))["schema_version"] == "0.8.0");
 }
 
 TEST_CASE("object.medium in a file before 0.7 is an error at its pointer", "[io][0.7]") {
