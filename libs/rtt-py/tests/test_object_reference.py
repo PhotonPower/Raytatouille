@@ -12,7 +12,7 @@ FILE = REFERENCE_DIR / "r3" / "object_reference.rtt.json"
 
 def test_the_reference_is_read() -> None:
     s = rt.load(FILE)
-    assert s.object_space.reference == "IL"
+    assert s.object_space.reference is not None and s.object_space.reference.surface == "IL"
     assert s.object_space.distance.value == 75.0
 
 
@@ -30,7 +30,7 @@ def test_the_reference_is_added_by_a_patch() -> None:
     origin = rt.apply_patch(s, [{"op": "remove", "path": "/object/reference"}])
     back = rt.apply_patch(origin, [
         {"op": "add", "path": "/object/reference", "value": {"surface": "IL"}}])
-    assert back.object_space.reference == "IL"
+    assert back.object_space.reference is not None and back.object_space.reference.surface == "IL"
     assert rt.compile(back).object_z == -55.0
 
 

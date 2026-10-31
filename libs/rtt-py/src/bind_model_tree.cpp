@@ -41,6 +41,13 @@ nb::class_<T> read_only_class(nb::module_& m, const char* name, const char* doc)
   return cls;
 }
 
+/// The reference form {"surface": "<id>"} of the file (ADR 0038, point 1) as a typed copy, so
+/// that the tree mirrors the file (ADR 0024); also for aperture.stop (ADR 0039).
+struct SurfaceReference {
+  std::string surface;  ///< the SurfaceId
+  bool operator==(const SurfaceReference&) const = default;
+};
+
 /// Children of an assembly as the alternatives themselves (Assembly or Element).
 std::vector<std::variant<model::Assembly, model::Element>> children(const model::Assembly& a) {
   std::vector<std::variant<model::Assembly, model::Element>> out;
@@ -745,6 +752,11 @@ void bind_model_tree(nb::module_& m) {
               "mm for ENTRANCE_PUPIL_DIAMETER, dimensionless for IMAGE_SPACE_F_NUMBER and "
               "OBJECT_SPACE_NA, not used for STOP_SIZE (Param).");
 
+  read_only_class<SurfaceReference>(
+      m, "SurfaceReference",
+      "A reference to a surface by its SurfaceId, {\"surface\": id} in the file (ADR 0038).")
+      .def_ro("surface", &SurfaceReference::surface, "The SurfaceId.");
+
   read_only_class<model::ObjectSpace>(m, "ObjectSpace", "Position of the object (read-only copy).")
       .def_ro("at_infinity", &model::ObjectSpace::at_infinity, "True for an object at infinity.")
       .def_ro("distance", &model::ObjectSpace::distance,
@@ -755,12 +767,13 @@ void bind_model_tree(nb::module_& m) {
               "for the environment. Only for a finite object.")
       .def_prop_ro(
           "reference",
-          [](const model::ObjectSpace& o) -> std::optional<std::string> {
+          [](const model::ObjectSpace& o) -> std::optional<SurfaceReference> {
             if (!o.reference) return std::nullopt;
-            return o.reference->str();
+            return SurfaceReference{o.reference->str()};
           },
-          "SurfaceId whose nominal vertex the distance is measured from (schema 0.8, ADR "
-          "0038); None for the global origin. Only for a finite object.");
+          "The surface whose nominal vertex the distance is measured from, as in the file "
+          "(SurfaceReference, schema 0.8, ADR 0038); None for the global origin. Only for a "
+          "finite object.");
 
   bind_optimization(m);
   bind_tolerances(m);
