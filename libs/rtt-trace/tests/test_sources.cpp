@@ -1804,3 +1804,104 @@ TEST_CASE("#287: without a converged real chief ray the fallback gives up as bef
   REQUIRE(aimed.ray.pos.allFinite());
   REQUIRE(aimed.ray.dir.allFinite());
 }
+
+TEST_CASE("#310: a failed aim at a target outside the stop aperture is Vignetted at the stop",
+          "[sources][aiming]") {
+  // Stop behind the group, 30 deg (as in "target beyond the reachable stop heights"): Newton and
+  // the continuation fail for py = 1, whose target R_s = 2.88 mm cannot be reached (heights of
+  // about 8.6 ... 18.4 mm). With the stop radius 50 mm the target lies inside the stop:
+  // NoConvergence as before. With 2 mm it lies outside, so no ray can pass the stop there: the
+  // ray ends Vignetted at the stop, the surface it carries (ADR 0007, addendum #310, variant 1).
+  const MaterialLibrary lib;
+  System s = two_lenses(StopPlace::After);
+  s.fields = {FieldType::AngleDeg, {{0.0, 0.0, 1.0}, {0.0, 30.0, 1.0}}};
+  const CompiledSystem wide = compile(s, lib);
+  std::get<Element>(s.root.children[2].value).surfaces[0].aperture =
+      rtt::model::CircularAperture{2.0, 0.0};
+  const CompiledSystem narrow = compile(s, lib);
+  const double r_s = paraxial_stop_radius(narrow);
+  REQUIRE(std::abs(r_s) > 2.0);
+  REQUIRE(std::abs(r_s) < 50.0);
+  const std::uint32_t stop_surface = narrow.path(PathId{0}).events[stop_event(narrow)].surface;
+
+  const auto open = rtt::trace::aim_ray(wide, PathId{0}, 1, 0, 0.0, 1.0, Aiming::Real);
+  REQUIRE(open.ray.status == RayStatus::NoConvergence);
+  CHECK(open.ray.last_surface == rtt::trace::kNoSurface);
+  const auto stopped = rtt::trace::aim_ray(narrow, PathId{0}, 1, 0, 0.0, 1.0, Aiming::Real);
+  CHECK(stopped.ray.status == RayStatus::Vignetted);
+  CHECK(stopped.ray.last_surface == stop_surface);
+  // The same failed run: the ray stays at the last iterate of the first run.
+  CHECK(stopped.residual == open.residual);
+  CHECK(stopped.iterations == open.iterations);
+  CHECK(stopped.ray.pos == open.ray.pos);
+  CHECK(stopped.ray.dir == open.ray.dir);
+  // A target inside the narrow stop (the chief ray: its centre) still fails with NoConvergence.
+  const auto chief = rtt::trace::aim_ray(narrow, PathId{0}, 1, 0, 0.0, 0.0, Aiming::Real);
+  CHECK(chief.ray.status == RayStatus::NoConvergence);
+  CHECK(chief.ray.last_surface == rtt::trace::kNoSurface);
+  // An annular stop (outer radius 50, inner 5): the target 2.88 mm lies in the obscuration,
+  // which a ray could reach; only the outer rim counts, so NoConvergence as before, for the
+  // marginal and the chief ray.
+  std::get<Element>(s.root.children[2].value).surfaces[0].aperture =
+      rtt::model::CircularAperture{50.0, 5.0};
+  const CompiledSystem annular = compile(s, lib);
+  CHECK(rtt::trace::aim_ray(annular, PathId{0}, 1, 0, 0.0, 1.0, Aiming::Real).ray.status ==
+        RayStatus::NoConvergence);
+  CHECK(rtt::trace::aim_ray(annular, PathId{0}, 1, 0, 0.0, 0.0, Aiming::Real).ray.status ==
+        RayStatus::NoConvergence);
+  // Paraxial aiming does not aim: unchanged.
+  const auto paraxial = rtt::trace::aim_ray(narrow, PathId{0}, 1, 0, 0.0, 1.0, Aiming::Paraxial);
+  CHECK(paraxial.ray.status == RayStatus::Alive);
+  // make_rays carries the status and the surface into the batch.
+  const auto rays = rtt::trace::make_rays(narrow, PathId{0}, std::vector<std::uint16_t>{1, 1}, 0,
+                                          rtt::trace::FanYPupil{3});
+  REQUIRE(rays.size() == 6);
+  for (std::size_t i = 0; i < rays.size(); ++i) {
+    INFO("ray " << i << ", py " << rays.pupil_y()[i]);
+    if (rays.pupil_y()[i] == 0.0) {
+      CHECK(rays.status()[i] == RayStatus::NoConvergence);
+      CHECK(rays.last_surface()[i] == rtt::trace::kNoSurface);
+    } else {
+      CHECK(rays.status()[i] == RayStatus::Vignetted);
+      CHECK(rays.last_surface()[i] == stop_surface);
+    }
+  }
+}
+
+TEST_CASE("#310: the overfilled stop of the microscope gives Vignetted, not NoConvergence",
+          "[sources][aiming]") {
+  // The case of #310 (#291 scan): object_na 0.02 gives R_s > 8.6 mm, the stop radius, so the
+  // stop is overfilled. Real aiming at targets just outside the stop still converges (stop_hit()
+  // ignores the stop aperture; the tracer vignettes the ray later); farther out no ray reaches the
+  // target, and those rays ended NoConvergence before #310. Now every failed ray of the fan has
+  // its target outside the stop and ends Vignetted at the stop; NoConvergence is left.
+  const MaterialLibrary lib;
+  System system = microscope();
+  system.aperture.value = Param(0.02);
+  const CompiledSystem cs = compile(system, lib);
+  const double r_s = paraxial_stop_radius(cs);
+  const std::uint32_t stop_surface = cs.path(PathId{0}).events[stop_event(cs)].surface;
+  const auto& aperture = cs.surfaces()[stop_surface].aperture;
+  REQUIRE(aperture.has_value());
+  const auto* circle = std::get_if<rtt::model::CircularAperture>(&*aperture);
+  REQUIRE(circle != nullptr);
+  const double stop_radius = circle->radius;
+  REQUIRE(std::abs(r_s) > stop_radius);  // content guard: the stop is overfilled
+  const auto rays = rtt::trace::make_rays(cs, PathId{0}, std::vector<std::uint16_t>{0}, 0,
+                                          rtt::trace::FanYPupil{41}, Aiming::Real);
+  std::size_t stopped = 0;
+  for (std::size_t i = 0; i < rays.size(); ++i) {
+    const double target = std::abs(rays.pupil_y()[i] * r_s);
+    INFO("py " << rays.pupil_y()[i] << ", target " << target);
+    CHECK(rays.status()[i] != RayStatus::NoConvergence);
+    if (rays.status()[i] == RayStatus::Vignetted) {
+      CHECK(target > stop_radius);
+      CHECK(rays.last_surface()[i] == stop_surface);
+      ++stopped;
+    } else {
+      CHECK(rays.status()[i] == RayStatus::Alive);
+    }
+  }
+  // Content guard: the fan reaches the failing targets (4 of each side in the #291 scan).
+  CHECK(stopped >= 4);
+}
