@@ -589,6 +589,18 @@ AimedRay aim(const Context& c, const FieldStart& f, double px, double py, Aiming
     out.ray = ray_through(c, f, sx * c.r_ep, sy * c.r_ep);
     out.ray.status = RayStatus::NoConvergence;
   }
+  // ADR 0007, addendum #310: a target outside the outer rim of the stop aperture cannot be passed
+  // by any ray, so the ray ends Vignetted at the stop (the tracer's aperture test there), not
+  // NoConvergence. Inner rims are not tested: a target in an obscuration can be reached, and the
+  // chief ray aims at the centre (reference rays ignore obscurations, ADR 0032, addendum #229).
+  // The ray keeps the last iterate of the first run.
+  const std::uint32_t stop_surface = c.system->path(c.path).events[c.stop_event].surface;
+  const SurfaceHit target{geom::HitStatus::Hit, 0.0, Vec3(tx, ty, 0.0), Vec3::UnitZ(),
+                          Vec3::UnitZ()};
+  if (!inside_aperture(c.system->surfaces()[stop_surface], target, /*ignore_inner=*/true)) {
+    out.ray.status = RayStatus::Vignetted;
+    out.ray.last_surface = stop_surface;
+  }
   return out;
 }
 
@@ -993,6 +1005,7 @@ RayBatch make_rays_impl(const compile::CompiledSystem& system,
       rays.pupil_x()[i] = p.px;
       rays.pupil_y()[i] = p.py;
       rays.status()[i] = aimed.ray.status;
+      rays.last_surface()[i] = aimed.ray.last_surface;  // the stop if Vignetted (#310)
     }
   };
   if (control == nullptr || !control->active()) {
