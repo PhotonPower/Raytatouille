@@ -93,7 +93,7 @@ std::optional<paraxial::RayStart> marginal_start(const CompiledSystem& system,
   const double z_ep = *fo.entrance_pupil->z;
   const double r_ep = 0.5 * *fo.entrance_pupil->diameter;
   if (system.object().at_infinity) return paraxial::RayStart{z_ep, r_ep, 0.0};
-  const double z_obj = -system.object().distance.value;
+  const double z_obj = system.object_z();
   return paraxial::RayStart{z_obj, 0.0, r_ep / (z_ep - z_obj)};
 }
 

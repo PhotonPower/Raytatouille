@@ -429,9 +429,11 @@ MeritEvaluation MeritFunction::evaluate(std::span<const double> values) const {
   out.values.reserve(operands.size());
   out.residuals.reserve(size_);
   out.undefined.reserve(operands.size());
+  out.operand_arrived.reserve(operands.size());
   for (std::size_t i = 0; i < operands.size(); ++i) {
     const model::Operand& op = operands[i];
     Value v;
+    std::vector<std::uint8_t> arrived;  // spot_rms and opd_rms only (addendum #299)
     if (const std::optional<std::size_t> row = rows_[i]; row.has_value()) {
       if (!table) table.emplace(model::evaluate_parameters(system));
       v.value = table.value().at(row.value(), configurations_[i]);
@@ -466,11 +468,12 @@ MeritEvaluation MeritFunction::evaluate(std::span<const double> values) const {
         const std::optional<std::uint16_t> wl =
             s->polychromatic ? std::nullopt
                              : std::optional(s->wavelength.value_or(cs.reference_wavelength()));
-        const analysis::SpotDiagram spot =
+        analysis::SpotDiagram spot =
             analysis::spot(cs, path_id(cs, s->path), s->field, wl, options);
         v.value = s->reference == model::SpotReference::Centroid ? spot.stats.rms_centroid
                                                                  : spot.stats.rms_chief;
         add_warnings(out.warnings, spot.warnings);
+        arrived = std::move(spot.arrived);
       } else {
         const auto& o = std::get<model::OpdRmsOperand>(op);
         analysis::OpdOptions options;
@@ -481,6 +484,11 @@ MeritEvaluation MeritFunction::evaluate(std::span<const double> values) const {
                               o.wavelength.value_or(cs.reference_wavelength()), options);
         v.value = map.rms;
         add_warnings(out.warnings, map.warnings);
+        arrived.reserve(map.points.size());
+        for (const analysis::OpdPoint& q : map.points) {
+          arrived.push_back(q.status == trace::RayStatus::Alive ? std::uint8_t{1}
+                                                                : std::uint8_t{0});
+        }
       }
     }
     // ADR 0030, point 1: r = sqrt(w) (v - t).
@@ -488,6 +496,7 @@ MeritEvaluation MeritFunction::evaluate(std::span<const double> values) const {
     out.values.push_back(v.value);
     out.residuals.push_back(std::sqrt(common.weight) * (v.value - common.target));
     out.undefined.push_back(std::move(v.undefined));
+    out.operand_arrived.push_back(std::move(arrived));
   }
 
   // Generators after the operands, each in its configuration (ADR 0030, addendum #168).

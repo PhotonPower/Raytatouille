@@ -105,7 +105,7 @@ Seidel seidel(const compile::CompiledSystem& system,
   const double z_ep = *ep.z;
   const double r_ep = 0.5 * *ep.diameter;
   const bool infinite = system.object().at_infinity;
-  const double z_obj = infinite ? 0.0 : -system.object().distance.value;
+  const double z_obj = infinite ? 0.0 : system.object_z();
   if (!infinite && z_ep == z_obj) {
     throw ParaxialError(field_error("the entrance pupil lies in the object plane"));
   }

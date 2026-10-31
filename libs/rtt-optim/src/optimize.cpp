@@ -116,12 +116,14 @@ OptimResult run(const model::System& system,
     offset = block_end;
   }
 
-  // ADR 0030, addendum #289: the set of generator rays that arrive at the start holds for the
-  // run. An evaluation with another set (a ray of the start lost, or a ray lost at the start
-  // arrived) is invalid, so the merit is always a function of p over the same rays (point 11).
+  // ADR 0030, addenda #289 and #299: the set of rays that arrive at the start holds for the run,
+  // for each generator and each spot_rms and opd_rms operand. An evaluation with another set (a
+  // ray of the start lost, or a ray lost at the start arrived) is invalid, so the merit is always
+  // a function of p over the same rays (point 11).
   std::vector<std::vector<std::uint8_t>> start_arrived;
   start_arrived.reserve(start.generators.size());
   for (const GeneratorStats& g : start.generators) start_arrived.push_back(g.arrived);
+  const std::vector<std::vector<std::uint8_t>>& start_operand_arrived = start.operand_arrived;
   // Evaluations refused for this reason; an integer sum, independent of the order of the
   // concurrent Jacobian evaluations.
   std::atomic<std::size_t> changed_sets{0};
@@ -129,9 +131,14 @@ OptimResult run(const model::System& system,
   const LmOptions lm_options{options.max_iterations, options.ftol, options.xtol,
                              options.gtol,           options.tau,  options.function_precision};
   const LmResult lm = levenberg_marquardt(
-      [&merit, &start_arrived, &changed_sets](std::span<const double> p, std::span<double> f) {
+      [&merit, &start_arrived, &start_operand_arrived, &changed_sets](std::span<const double> p,
+                                                                      std::span<double> f) {
         // Exceptions and non-finite residuals are invalid evaluations of the solver.
         const MeritEvaluation e = merit.evaluate(p);
+        if (e.operand_arrived != start_operand_arrived) {
+          changed_sets.fetch_add(1, std::memory_order_relaxed);
+          return false;
+        }
         for (std::size_t g = 0; g < e.generators.size(); ++g) {
           if (e.generators[g].arrived != start_arrived[g]) {
             changed_sets.fetch_add(1, std::memory_order_relaxed);
@@ -215,11 +222,12 @@ OptimResult run(const model::System& system,
     result.diagnostics.push_back(diagnostic(
         "optim.evaluation_failed", "/optimization",
         std::to_string(lm.failed_evaluations) +
-            " evaluation(s) failed (analysis error, undefined value or changed generator rays); "
-            "the trials counted as rejected" +
+            " evaluation(s) failed (analysis error, undefined value or changed ray set); the "
+            "trials counted as rejected" +
             (changed > 0 ? "; " + std::to_string(changed) +
-                               " of them because the set of arrived generator rays differed "
-                               "from the start (ADR 0030, addendum #289)"
+                               " of them because the set of arrived rays of a generator or a "
+                               "spot_rms/opd_rms operand differed from the start (ADR 0030, "
+                               "addenda #289 and #299)"
                          : std::string())));
   }
   if (lm.status == LmStatus::Failed && lm.failed_variable) {
@@ -227,8 +235,19 @@ OptimResult run(const model::System& system,
         diagnostic("optim.jacobian_failed", variables[*lm.failed_variable].pointer,
                    "no valid evaluation for the Jacobian column of this variable"));
   }
-  // F7: lost rays of a generator in the final state (ADR 0030, point 4, addenda #168 and #289):
-  // the same rays as at the start, since every accepted state has the start set.
+  // F7: lost rays of a spot_rms or opd_rms operand and of a generator in the final state
+  // (ADR 0030, point 4, addenda #168, #289 and #299): the same rays as at the start, since every
+  // accepted state has the start set. None after a cancellation (no final evaluation).
+  for (std::size_t i = 0; i < end.operand_arrived.size(); ++i) {
+    const std::vector<std::uint8_t>& mask = end.operand_arrived[i];
+    const auto lost =
+        static_cast<std::size_t>(std::count(mask.begin(), mask.end(), std::uint8_t{0}));
+    if (lost == 0) continue;
+    result.diagnostics.push_back(
+        diagnostic("optim.rays_lost", "/optimization/operands/" + std::to_string(i),
+                   std::to_string(lost) + " of " + std::to_string(mask.size()) +
+                       " rays of the operand were lost at the start and stay out of the run"));
+  }
   for (const GeneratorValue& g : result.generators) {
     if (g.rays_lost == 0) continue;
     result.diagnostics.push_back(diagnostic(

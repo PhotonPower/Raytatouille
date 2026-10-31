@@ -125,7 +125,7 @@ struct FieldStart {
 void set_telecentric(Context& c) {
   const CompiledSystem& system = *c.system;
   c.telecentric = true;
-  const double z_obj = -system.object().distance.value;
+  const double z_obj = system.object_z();
   c.stop_scale = paraxial::trace_ray(system, c.path, c.wavelength, z_obj, 0.0, 1.0)[c.stop_event].y;
   if (c.stop_scale == 0.0) {
     throw std::invalid_argument("sources: telecentric object space, but no ray reaches the stop");
@@ -221,7 +221,7 @@ Context make_context(const CompiledSystem& system, PathId path, std::uint16_t wa
   // which left the jump at the reference wavelength itself. An object at infinity keeps the EP
   // convention of #8: sigma = +1. sigma = +1 gives 1 * p == p exactly, so the rays of every
   // system without a virtual EP beyond the object are bit for bit those of before.
-  if (!infinite && !c.telecentric && c.z_ep < -system.object().distance.value) {
+  if (!infinite && !c.telecentric && c.z_ep < system.object_z()) {
     c.label_sign = -1.0;
   }
   return c;
@@ -326,7 +326,7 @@ double unit_image_height(const Context& c) {
   if (system.object().at_infinity) {
     ray = paraxial::trace_ray(system, c.path, ref, c.z_ep_ref, 0.0, 1.0);
   } else {
-    const double z_obj = -system.object().distance.value;
+    const double z_obj = system.object_z();
     if (c.telecentric_ref) {
       // EP at infinity: the chief ray of unit object height is parallel to the axis (#96).
       ray = paraxial::trace_ray(system, c.path, ref, z_obj, 1.0, 0.0);
@@ -357,7 +357,7 @@ const model::Field& field_point(const Context& c, std::uint16_t field) {
 FieldStart make_field(const Context& c, const model::Field& f) {
   const CompiledSystem& system = *c.system;
   const bool infinite = system.object().at_infinity;
-  const double z_obj = infinite ? 0.0 : -system.object().distance.value;
+  const double z_obj = infinite ? 0.0 : system.object_z();
 
   // Field value as tangent of the angle (infinite object) or object height (finite object).
   double tx = 0.0;
@@ -586,6 +586,18 @@ AimedRay aim(const Context& c, const FieldStart& f, double px, double py, Aiming
     out.ray = ray_through(c, f, sx * c.r_ep, sy * c.r_ep);
     out.ray.status = RayStatus::NoConvergence;
   }
+  // ADR 0007, addendum #310: a target outside the outer rim of the stop aperture cannot be passed
+  // by any ray, so the ray ends Vignetted at the stop (the tracer's aperture test there), not
+  // NoConvergence. Inner rims are not tested: a target in an obscuration can be reached, and the
+  // chief ray aims at the centre (reference rays ignore obscurations, ADR 0032, addendum #229).
+  // The ray keeps the last iterate of the first run.
+  const std::uint32_t stop_surface = c.system->path(c.path).events[c.stop_event].surface;
+  const SurfaceHit target{geom::HitStatus::Hit, 0.0, Vec3(tx, ty, 0.0), Vec3::UnitZ(),
+                          Vec3::UnitZ()};
+  if (!inside_aperture(c.system->surfaces()[stop_surface], target, /*ignore_inner=*/true)) {
+    out.ray.status = RayStatus::Vignetted;
+    out.ray.last_surface = stop_surface;
+  }
   return out;
 }
 
@@ -685,7 +697,7 @@ struct Signature {
   model::FieldType field_type = model::FieldType::AngleDeg;
   std::vector<std::pair<double, double>> fields;  ///< (x, y); the weights do not aim
   bool object_at_infinity = true;
-  double object_distance = 0.0;  ///< 0 for an object at infinity
+  double object_z = 0.0;  ///< CompiledSystem::object_z(); 0 for an object at infinity
   model::SystemApertureType aperture_type = model::SystemApertureType::EntrancePupilDiameter;
   double aperture_value = 0.0;
 };
@@ -702,7 +714,7 @@ Signature signature(const CompiledSystem& system, PathId path) {
   s.field_type = system.fields().type;
   for (const model::Field& f : system.fields().points) s.fields.emplace_back(f.x, f.y);
   s.object_at_infinity = system.object().at_infinity;
-  s.object_distance = s.object_at_infinity ? 0.0 : system.object().distance.value;
+  s.object_z = s.object_at_infinity ? 0.0 : system.object_z();
   s.aperture_type = system.aperture().type;
   s.aperture_value = system.aperture().value.value;
   return s;
@@ -716,7 +728,7 @@ std::string mismatch(const Signature& a, const Signature& b) {
     return "the wavelengths differ";
   }
   if (a.field_type != b.field_type || a.fields != b.fields) return "the fields differ";
-  if (a.object_at_infinity != b.object_at_infinity || a.object_distance != b.object_distance) {
+  if (a.object_at_infinity != b.object_at_infinity || a.object_z != b.object_z) {
     return "the object differs";
   }
   if (a.aperture_type != b.aperture_type || a.aperture_value != b.aperture_value) {
@@ -990,6 +1002,7 @@ RayBatch make_rays_impl(const compile::CompiledSystem& system,
       rays.pupil_x()[i] = p.px;
       rays.pupil_y()[i] = p.py;
       rays.status()[i] = aimed.ray.status;
+      rays.last_surface()[i] = aimed.ray.last_surface;  // the stop if Vignetted (#310)
     }
   };
   if (control == nullptr || !control->active()) {

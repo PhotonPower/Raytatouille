@@ -155,7 +155,8 @@ inline trace::RayBatch trace_aimed(const CompiledSystem& system,
   rays.dir_z()[0] = aimed.ray.dir.z();
   rays.wl()[0] = wavelength;
   rays.status()[0] = aimed.ray.status;
-  rays.set_ignore_obscurations(true);  // a reference ray (ADR 0032, addendum #229)
+  rays.last_surface()[0] = aimed.ray.last_surface;  // the stop if Vignetted (#310)
+  rays.set_ignore_obscurations(true);               // a reference ray (ADR 0032, addendum #229)
   [[maybe_unused]] const auto stats = trace::SequentialTracer().trace(system, path, rays);
   return rays;
 }

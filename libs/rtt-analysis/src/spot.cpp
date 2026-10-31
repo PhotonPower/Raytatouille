@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <numeric>
 #include <string>
 
@@ -137,7 +138,9 @@ SpotDiagram spot(const compile::CompiledSystem& system,
     losses.add(rays, d.image_surface);
     d.rays_launched += rays.size();
     for (std::size_t i = 0; i < rays.size(); ++i) {
-      if (!arrived(rays, i, d.image_surface)) continue;
+      const bool hit = arrived(rays, i, d.image_surface);
+      d.arrived.push_back(hit ? std::uint8_t{1} : std::uint8_t{0});
+      if (!hit) continue;
       const Point2 p = local_point(system, rays, i, d.image_surface);
       d.points.push_back({p.x, p.y, wavelengths[k], weights[k] * rays.weight()[i]});
     }
