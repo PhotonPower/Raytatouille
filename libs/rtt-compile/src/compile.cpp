@@ -33,6 +33,24 @@
 namespace rtt::compile {
 namespace {
 
+/// The surface of the system stop (ADR 0039, point 3): the surface of the Stop element (at most
+/// one, validate: stop.multiple); none without one.
+std::optional<std::uint32_t> stop_surface_of(const std::vector<CompiledSurface>& surfaces) {
+  for (std::size_t i = 0; i < surfaces.size(); ++i) {
+    if (surfaces[i].element_kind == model::ElementKind::Stop) return static_cast<std::uint32_t>(i);
+  }
+  return std::nullopt;
+}
+
+/// Index of the first event at `surface` in `events`, whatever its kind; none if there is none.
+std::optional<std::size_t> first_event_at(const std::vector<CompiledEvent>& events,
+                                          std::uint32_t surface) {
+  for (std::size_t e = 0; e < events.size(); ++e) {
+    if (events[e].surface == surface) return e;
+  }
+  return std::nullopt;
+}
+
 /// Phase layers of the model as phase functions of rtt-geom (ADR 0025, point 1): the same numbers
 /// (lines per mm; coefficients in rad, no factor 2 pi), only parameters turned into values and
 /// orientation_deg into rad. validate() guarantees lines_per_mm > 0 and normalization_radius > 0;
@@ -164,24 +182,16 @@ class Compiler {
         {code.severity(), std::move(location), std::move(message), std::string(code.str())});
   }
 
-  /// Warning for every path that does not visit the stop element of a system that has one
-  /// (ADR 0023): aiming, pupils, Seidel sums and OPD on such a path throw NoStopError.
+  /// Warning for every path that does not visit the stop of a system that has one (ADR 0023;
+  /// ADR 0039, point 3): aiming, pupils, Seidel sums and OPD on such a path throw NoStopError.
   void check_stop_on_paths() {
-    const auto is_stop = [&](std::uint32_t surface) {
-      return surfaces_[surface].element_kind == model::ElementKind::Stop;
-    };
-    const auto stop = std::find_if(
-        surfaces_.begin(), surfaces_.end(),
-        [](const CompiledSurface& s) { return s.element_kind == model::ElementKind::Stop; });
-    if (stop == surfaces_.end()) return;
+    const std::optional<std::uint32_t> stop = stop_surface_of(surfaces_);
+    if (!stop) return;
     for (std::size_t p = 0; p < paths_.size(); ++p) {
-      const auto& events = paths_[p].events;
-      if (std::any_of(events.begin(), events.end(),
-                      [&](const CompiledEvent& e) { return is_stop(e.surface); })) {
-        continue;
-      }
+      if (first_event_at(paths_[p].events, *stop)) continue;
       report("stop.not_on_path", idx("/paths", p),
-             "path '" + paths_[p].name + "' does not visit the stop '" + stop->element_name +
+             "path '" + paths_[p].name + "' does not visit the stop '" +
+                 surfaces_[*stop].element_name +
                  "': aiming, pupils, Seidel sums and OPD on it need a stop (NoStopError)");
     }
   }
@@ -1298,12 +1308,17 @@ NoStopError::NoStopError(std::string path_name, std::string location)
       path_name_(std::move(path_name)),
       location_(std::move(location)) {}
 
-void require_stop(const CompiledSystem& system, PathId path) {
+std::optional<std::size_t> stop_event(const CompiledSystem& system, PathId path) {
   const CompiledPath& p = system.path(path);
-  const bool has_stop = std::any_of(p.events.begin(), p.events.end(), [&](const CompiledEvent& e) {
-    return system.surfaces()[e.surface].element_kind == model::ElementKind::Stop;
-  });
-  if (!has_stop) throw NoStopError(p.name, "/paths/" + std::to_string(path.index));
+  const std::optional<std::uint32_t> stop = system.stop_surface();
+  if (!stop) return std::nullopt;
+  return first_event_at(p.events, *stop);
+}
+
+void require_stop(const CompiledSystem& system, PathId path) {
+  if (!stop_event(system, path)) {
+    throw NoStopError(system.path(path).name, "/paths/" + std::to_string(path.index));
+  }
 }
 
 CompiledSystem compile(const model::System& system,
@@ -1389,6 +1404,7 @@ CompiledSystem compile(const model::System& input,
   if (!input.configurations.empty())
     cs.configuration_name_ = input.configurations[configuration].name;
   cs.surfaces_ = std::move(compiler.surfaces_);
+  cs.stop_surface_ = stop_surface_of(cs.surfaces_);
   cs.node_frames_ = std::move(compiler.node_frames_);
   cs.elements_ = std::move(compiler.compiled_elements_);
   cs.media_ = std::move(compiler.media_);

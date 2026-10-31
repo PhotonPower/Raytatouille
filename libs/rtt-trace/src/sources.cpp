@@ -171,11 +171,7 @@ Context make_context(const CompiledSystem& system, PathId path, std::uint16_t wa
   c.path = path;
   c.wavelength = wavelength;
   compile::require_stop(system, path);  // the one check for all users of the stop (ADR 0022)
-  const auto& events = system.path(path).events;
-  const auto stop = std::find_if(events.begin(), events.end(), [&](const auto& e) {
-    return system.surfaces()[e.surface].element_kind == model::ElementKind::Stop;
-  });
-  c.stop_event = static_cast<std::size_t>(stop - events.begin());
+  c.stop_event = compile::stop_event(system, path).value();  // ADR 0039, point 3
   c.first_order = paraxial::first_order(system, path, wavelength);
   const auto& ep = c.first_order.entrance_pupil;
   const bool infinite = system.object().at_infinity;

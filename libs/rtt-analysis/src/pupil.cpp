@@ -335,15 +335,13 @@ void reject_crystal_modes(const CompiledSystem& system, PathId path) {
 /// With real aiming the ray of pupil point p meets the stop at |p| |R_s|, so the obscuration is
 /// the pupil circle |p| = r_i / |R_s|. 0 if the stop has no inner radius.
 double stop_obscuration(const CompiledSystem& system, PathId path, std::uint16_t wavelength) {
-  for (const auto& event : system.path(path).events) {
-    const compile::CompiledSurface& surface = system.surfaces()[event.surface];
-    if (surface.element_kind != model::ElementKind::Stop) continue;
-    const auto* circle =
-        surface.aperture ? std::get_if<model::CircularAperture>(&*surface.aperture) : nullptr;
-    if (circle == nullptr || !(circle->inner_radius > 0.0)) return 0.0;
-    return circle->inner_radius / trace::stop_radius(system, path, wavelength);
-  }
-  return 0.0;
+  const std::optional<std::size_t> e = compile::stop_event(system, path);  // ADR 0039, point 3
+  if (!e) return 0.0;
+  const compile::CompiledSurface& surface = system.surfaces()[system.path(path).events[*e].surface];
+  const auto* circle =
+      surface.aperture ? std::get_if<model::CircularAperture>(&*surface.aperture) : nullptr;
+  if (circle == nullptr || !(circle->inner_radius > 0.0)) return 0.0;
+  return circle->inner_radius / trace::stop_radius(system, path, wavelength);
 }
 
 math::Vec3 end_pos(const PupilEndStates& e, std::size_t j) {

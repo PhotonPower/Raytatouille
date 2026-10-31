@@ -180,11 +180,8 @@ SystemReport system_report(const compile::CompiledSystem& system,
   r.field_count = system.fields().points.size();
   r.surface_count = system.surfaces().size();
   r.event_count = p.events.size();
-  for (const compile::CompiledEvent& e : p.events) {
-    if (system.surfaces()[e.surface].element_kind == model::ElementKind::Stop) {
-      r.stop = e.surface;
-      break;
-    }
+  if (const std::optional<std::size_t> e = compile::stop_event(system, path)) {
+    r.stop = p.events[*e].surface;  // ADR 0039, point 3
   }
   try {
     r.prescription = paraxial::prescription(system, path, wavelength);

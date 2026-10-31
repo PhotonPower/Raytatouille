@@ -398,6 +398,11 @@ class CompiledSystem {
   /// @throws std::out_of_range if `id` does not belong to this system
   [[nodiscard]] const CompiledPath& path(PathId id) const { return paths_.at(id.index); }
 
+  /// Index of the surface of the system stop (ADR 0039, point 3): the surface of the Stop
+  /// element; none without one. The stop of a path is its first event at this surface
+  /// (stop_event()).
+  [[nodiscard]] std::optional<std::uint32_t> stop_surface() const noexcept { return stop_surface_; }
+
   /// Index of the surface with this id, if any.
   [[nodiscard]] std::optional<std::uint32_t> find_surface(const model::SurfaceId& id) const;
   /// Id of the path with this name, if any.
@@ -436,6 +441,7 @@ class CompiledSystem {
   model::FieldSet fields_;
   model::ObjectSpace object_;
   std::vector<CompiledSurface> surfaces_;
+  std::optional<std::uint32_t> stop_surface_;
   std::vector<CompiledElement> elements_;
   std::vector<CompiledMedium> media_;
   std::vector<CompiledCoating> coatings_;
@@ -445,5 +451,12 @@ class CompiledSystem {
   std::string configuration_name_;
   std::vector<NodeFrame> node_frames_;
 };
+
+/// The stop event of `path` (ADR 0039, point 3): the index of its first event at
+/// CompiledSystem::stop_surface(), whatever the event kind (a double pass or a ghost path may
+/// meet the stop surface more than once); none if the system has no stop or the path does not
+/// visit it. require_stop() throws for none.
+/// @throws std::out_of_range if `path` does not belong to `system`
+[[nodiscard]] std::optional<std::size_t> stop_event(const CompiledSystem& system, PathId path);
 
 }  // namespace rtt::compile

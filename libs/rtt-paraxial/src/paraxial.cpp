@@ -26,7 +26,7 @@ struct Step {
   double c = 0.0;        ///< vertex curvature in global orientation, 1/mm
   double n_after = 1.0;  ///< |n| of the medium after the event
   EventKind kind = EventKind::Transmit;
-  bool stop = false;  ///< surface of a Stop element
+  bool stop = false;  ///< at the stop surface (CompiledSystem::stop_surface(), ADR 0039)
   std::uint32_t surface = 0;
   /// 1/f of an ideal lens (ADR 0031, point 6), 1/mm; 0 for every other surface. The power of the
   /// step is then phi = |n| / f with n the index of the surrounding medium.
@@ -99,7 +99,7 @@ std::vector<Step> prepare(const CompiledSystem& cs, PathId path, std::uint16_t w
     step.c = axis.z() > 0.0 ? c_local : -c_local;
     step.n_after = cs.media()[event.medium_after].index[wavelength].real();
     step.kind = event.kind;
-    step.stop = s.element_kind == model::ElementKind::Stop;
+    step.stop = event.surface == cs.stop_surface();  // ADR 0039, point 3
     step.surface = event.surface;
     if (s.ideal_lens) step.inverse_focal_length = 1.0 / s.ideal_lens->focal_length;
     steps.push_back(step);
