@@ -121,7 +121,7 @@ Ideenliste aus der Umsetzung von M7 (0.9.0), gesammelt von den Agenten; neu zu b
   - Die Warnung `tolerances.rss_negative` ist nur in C++ getestet, nicht aus Python (#302, P3-7).
   - efl, bfl, image_fnumber und magnification eines Prüflings kommen aus parabasalen Strahlen bei 10⁻³ des Pupillenradius (5·10⁻³ mm in den M7-Systemen), also aus einem realen Strahl und nicht aus dem y-ν-Trace; wer mit einem paraxialen Wert vergleicht, sieht die Aberration dieses Strahls (#303).
 - **Optimierung:**
-  - Versuche mit neu verlorenen Strahlen ablehnen statt Residuum 0 (#289, Revision F7) und Spot/OPD-Operanden gleich behandeln (#299); was danach von #281 bleibt, wird dort neu bewertet.
+  - Spot/OPD-Operanden wie die Generatoren behandeln, deren Strahlmenge seit #289 die des Starts bleibt (#299); was danach von #281 bleibt, wird dort neu bewertet.
   - Differenzenschrittweite je Variable für steife Probleme (#290).
   - Zielungsart als Lauf-Option von `optimize` (#291).
   - Exakte Gleichheitsbedingungen statt Strafgewicht (#196).

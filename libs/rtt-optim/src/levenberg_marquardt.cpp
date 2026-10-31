@@ -208,7 +208,8 @@ class Run {
   std::vector<LmIteration> history_;
 };
 
-// Central difference in theta (ADR 0007, ADR 0030 point 9), all 2n evaluations in parallel.
+// Central difference in theta (ADR 0007, ADR 0030 point 9), all 2n evaluations in parallel; one
+// invalid side gives the one-sided difference with f(theta) (addendum #289, below).
 //
 // Step h_j = eps_f^(1/3) max(|theta_j|, 1). Derivation (no literature source, docs/quellen.md
 // "hergeleitet"): the central difference (f(x + h) - f(x - h)) / (2h) has the truncation error h^2
@@ -280,16 +281,24 @@ Run::JacobianOutcome Run::jacobian() {
     }
   }
   for (std::size_t j = 0; j < n_; ++j) {
-    if (state[2 * j] != kValid || state[2 * j + 1] != kValid) {
-      failed_variable_ = j;  // smallest index (ADR 0030, point 10)
+    if (state[2 * j] != kValid && state[2 * j + 1] != kValid) {
+      failed_variable_ = j;  // smallest index (ADR 0030, point 10; addendum #289)
       return JacobianOutcome::Failed;
     }
   }
+  // Exactly one invalid side (ADR 0030, addendum #289): the one-sided difference with the stored
+  // f(theta) of the last accepted state and the same h (MINPACK-1, section 2.4: the forward
+  // difference; error O(h) instead of O(h^2)). The denominator is again the difference of the
+  // two points as represented. The choice of the side depends only on the validity of the 2n
+  // evaluations, each deterministic in its own slot.
   j_ = Columns{m_, n_, std::vector<double>(m_ * n_)};
   for (std::size_t j = 0; j < n_; ++j) {
-    const double denominator = plus[j] - minus[j];
-    const double* fp = values.data() + 2 * j * m_;
-    const double* fm = values.data() + (2 * j + 1) * m_;
+    const bool plus_valid = state[2 * j] == kValid;
+    const bool minus_valid = state[2 * j + 1] == kValid;
+    const double* fp = plus_valid ? values.data() + 2 * j * m_ : f_.data();
+    const double* fm = minus_valid ? values.data() + (2 * j + 1) * m_ : f_.data();
+    const double denominator =
+        (plus_valid ? plus[j] : theta_[j]) - (minus_valid ? minus[j] : theta_[j]);
     for (std::size_t i = 0; i < m_; ++i) j_(i, j) = (fp[i] - fm[i]) / denominator;
   }
   return JacobianOutcome::Ok;
