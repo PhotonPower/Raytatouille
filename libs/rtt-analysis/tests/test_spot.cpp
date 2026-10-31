@@ -236,3 +236,37 @@ TEST_CASE("polychromatic centroid with dispersion: sum of w S c over the wavelen
   REQUIRE(std::abs(poly.stats.centroid.x - cx / sum) <= 1e-12);
   REQUIRE(std::abs(poly.stats.centroid.y - cy / sum) <= 1e-12);
 }
+
+TEST_CASE("spot lists which started rays arrived, in trace order (#299)", "[spot]") {
+  // ADR 0032, addendum #299. As "vignetted fraction": mirror aperture 21 mm with EPD 60 stops
+  // the hexapolar rings k = 5, 6 (radius 25, 30 mm). In trace order the centre and rings 1 to 4
+  // come first (1 + 6 + 12 + 18 + 24 = 61 rays), then the 66 stopped rays.
+  System s = load("m2/paraboloid_stop.rtt.json");
+  const MaterialLibrary lib;
+  const CompiledSystem open = compile(s, lib);
+  element(s, 1).surfaces[0].aperture = rtt::model::CircularAperture{21.0, 0.0};
+  const CompiledSystem stopped = compile(s, lib);
+  const auto all = rtt::analysis::spot(open, PathId{0}, 0, 0);
+  REQUIRE(all.arrived.size() == 127);
+  for (const std::uint8_t a : all.arrived) CHECK(a == 1);
+  const auto spot = rtt::analysis::spot(stopped, PathId{0}, 0, 0);
+  REQUIRE(spot.arrived.size() == spot.rays_launched);
+  REQUIRE(spot.rays_arrived == 61);
+  for (std::size_t i = 0; i < spot.arrived.size(); ++i) CHECK(spot.arrived[i] == (i < 61 ? 1 : 0));
+  // The arrived rays are the points in the same order: their positions equal those of the
+  // unstopped spot for the first 61 rays (the aperture does not change them).
+  for (std::size_t i = 0; i < 61; ++i) {
+    CHECK(spot.points[i].x == all.points[i].x);
+    CHECK(spot.points[i].y == all.points[i].y);
+  }
+  // Polychromatic: one block of 127 per wavelength, in index order (the mirror stops the same
+  // rings at every wavelength).
+  s.wavelengths = {{0.4861, 1.0, false}, {0.5876, 3.0, true}};
+  const auto poly = rtt::analysis::spot(compile(s, lib), PathId{0}, 0, std::nullopt);
+  REQUIRE(poly.rays_launched == 254);
+  REQUIRE(poly.arrived.size() == 254);
+  REQUIRE(poly.rays_arrived == 122);
+  for (std::size_t i = 0; i < poly.arrived.size(); ++i) {
+    CHECK(poly.arrived[i] == (i % 127 < 61 ? 1 : 0));
+  }
+}

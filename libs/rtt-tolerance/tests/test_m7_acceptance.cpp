@@ -308,7 +308,7 @@ TEST_CASE("m7 case 4: index and Abbe number end to end through first_order", "[m
   // pair at the pupil offsets +-delta (delta = 1e-3 of the pupil radius 5 mm, h = 5e-3 mm) gives
   // phi = n' u' / y_1 with u' the tangent of the image-side angle, so efl = h / tan(beta(h)) of
   // the real ray at height h. That differs from the paraxial R / (n - 1) by the spherical
-  // aberration at h (about 3e-7 mm here), so the target is the real ray itself: refraction at the
+  // aberration at h (about 4.3e-7 mm here), so the target is the real ray itself: refraction at the
   // sphere and at the plane by Snell's law (docs/quellen.md, row "Brechung in Vektorform"): sin I =
   // h / R, sin I' = sin I / n, the ray runs at alpha = I - I' to the axis, and leaves the plane at
   // sin beta = n sin alpha. The thickness does not enter. Bound per value: the rounding term of

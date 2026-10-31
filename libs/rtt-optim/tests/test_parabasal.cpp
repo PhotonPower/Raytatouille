@@ -314,7 +314,7 @@ TEST_CASE("parabasal: a decentered ideal lens, hand values", "[optim][parabasal]
   // - x pair, ray from (y, 0, 0) to F, r = (d - y, 0, f): tan = f y / (L^2 - d y); the pair gives
   //   k_x = f L^2 / (L^4 - d^2 y^2);
   // - y pair, ray from (0, y, 0), r = (d, -y, f): |c x r| = y L, c . r = L^2, tan = y / L, k_y =
-  // 1/L. efl = 2 / (k_x + k_y) (about f + d^2/(2f) + ...: the decenter tilts the image-side chief
+  // 1/L. efl = 2 / (k_x + k_y) (about f + 3d^2/(4f) + ...: the decenter tilts the image-side chief
   // ray); bfl = L (all rays through F).
   const double f = 100.0;
   const double d = 0.1;

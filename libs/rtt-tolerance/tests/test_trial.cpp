@@ -7,6 +7,7 @@
 #include <oneapi/tbb/parallel_for.h>
 #include <oneapi/tbb/task_arena.h>
 
+#include <algorithm>
 #include <bit>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
@@ -20,10 +21,12 @@
 #include <vector>
 
 #include "rtt/compile/compiled_system.hpp"
+#include "rtt/io/json_io.hpp"
 #include "rtt/material/material.hpp"
 #include "rtt/model/model.hpp"
 #include "rtt/optim/bounds.hpp"
 #include "rtt/optim/merit.hpp"
+#include "rtt/optim/optimize.hpp"
 #include "rtt/tolerance/trial.hpp"
 
 using rtt::model::Compensator;
@@ -598,4 +601,127 @@ TEST_CASE("trial: satisfies takes every given bound, bounds included", "[toleran
   CHECK(satisfies(c, 1.625, 1.5) == std::optional<bool>(true));
   CHECK(satisfies(c, 1.625, 1.375) == std::optional<bool>(false));
   CHECK(!satisfies(c, 1.625, std::nullopt).has_value());
+}
+
+TEST_CASE("trial: a compensator does not win by clipping generator rays (#289)",
+          "[tolerance][trial]") {
+  // ADR 0030, addendum #289, and ADR 0036, point 3: the set of arrived generator rays of the
+  // compensator run is that of the perturbed trial at its start. Behind an ideal lens f = 50 a
+  // baffle of radius 4 sits at z = Z, the row Z = 8 is the compensator (travel +-1). The 6 rays
+  // of the generator's outer ring (rho_3 = sqrt((1 + sqrt(3/5)) / 2)) run at the height
+  // 5 rho_3 (50 - z) / 50 and are clipped for z < 50 (1 - 4 / (5 rho_3)) = 7.535584 (as
+  // test_optimize.cpp, #289). The compensator merit is the spot generator of the trial,
+  // defocused by the detector shift of 5 mm, and a weak param_value Z with target 7 that pulls
+  // the baffle into the clip, where the clip would also lower the spot merit. The compensator
+  // stops on the open side of the edge with every ray. Before #289 it went into the clip and
+  // lost the outer ring.
+  const System s = rtt::io::parse_system(R"json({
+  "schema_version": "0.7.0",
+  "name": "baffle compensator, issue 289",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [{"um": 0.5876, "reference": true}],
+  "aperture": {"type": "epd", "value": 10.0},
+  "fields": {"points": [{}]},
+  "parameters": [{"name": "Z", "value": 8.0}],
+  "root": {"type": "assembly", "name": "system", "children": [
+    {"type": "stop", "name": "stop", "pose": {"position": [0.0, 0.0, -1.0]},
+     "surfaces": [{"id": "STO", "aperture": {"type": "circular", "radius": 10.0}}]},
+    {"type": "thin_element", "name": "lens",
+     "surfaces": [{"id": "IL", "aperture": {"type": "circular", "radius": 30.0},
+                   "interaction": {"type": "ideal_lens", "focal_length": 50.0}}]},
+    {"type": "thin_element", "name": "baffle", "pose": {"position": [0.0, 0.0, {"param": "Z"}]},
+     "surfaces": [{"id": "B", "aperture": {"type": "circular", "radius": 4.0}}]},
+    {"type": "detector", "name": "image", "pose": {"position": [0.0, 0.0, 50.0]},
+     "surfaces": [{"id": "IMG", "aperture": {"type": "circular", "radius": 30.0}}]}]},
+  "paths": [{"name": "main", "events": "auto"}],
+  "tolerances": {
+    "items": [{"id": "image-dz", "node": "image", "kind": "shift_z", "limit": 5.0}],
+    "compensators": [{"parameter": "Z", "travel_min": -1.0, "travel_max": 1.0}],
+    "compensator_merit": {
+      "operands": [{"type": "param_value", "parameter": "Z", "target": 7.0, "weight": 0.01}],
+      "generators": [
+        {"type": "rms_spot", "path": "main", "reference": "centroid", "rings": 3, "arms": 6}]},
+    "criteria": [{"id": "spot", "operand": {"type": "spot_rms", "path": "main"}, "max": 1.0}]}
+})json");
+  const double rho3 = std::sqrt((1.0 + std::sqrt(3.0 / 5.0)) / 2.0);
+  const double edge = 50.0 * (1.0 - 4.0 / (5.0 * rho3));
+  const TrialContext ctx = rtt::tolerance::prepare(s, library(), nullptr, s.tolerances.items);
+  const TrialResult r = rtt::tolerance::evaluate(ctx, std::vector<double>{5.0});
+  INFO("reason: " << r.reason);
+  REQUIRE(r.status == TrialStatus::Valid);
+  REQUIRE(r.compensators.size() == 1);
+  REQUIRE(r.lm_status.has_value());
+  const rtt::optim::LmStatus st = *r.lm_status;
+  CHECK((st == rtt::optim::LmStatus::ConvergedGradient ||
+         st == rtt::optim::LmStatus::ConvergedStep || st == rtt::optim::LmStatus::ConvergedMerit));
+  CHECK(r.compensators[0].start == 8.0);
+  CHECK(r.compensators[0].end > edge);
+  CHECK(r.compensators[0].end < 8.0);  // content: the pull moved the baffle towards the edge
+  // The clipping side was tried and refused, and nothing is lost at the end.
+  const auto has = [&](const std::string& code, const std::string& text) {
+    return std::any_of(r.warnings.begin(), r.warnings.end(), [&](const rtt::model::Diagnostic& d) {
+      return d.code == code && d.message.find(text) != std::string::npos;
+    });
+  };
+  CHECK(has("optim.evaluation_failed", "differed from the start"));  // the start-set rule fired
+  CHECK_FALSE(has("optim.rays_lost", ""));
+}
+
+TEST_CASE("trial: a compensator does not win by clipping spot_rms rays (#299)",
+          "[tolerance][trial]") {
+  // As the case for #289 with a spot_rms operand (hexapolar rings 3) in the compensator merit
+  // instead of the generator (ADR 0030, addendum #299). Its outer ring (pupil radius 1, beam
+  // height 5 mm) runs behind the ideal lens at the height 5 (50 - z) / 50 and is clipped by the
+  // baffle (radius 4) for z < 10; ring 2 never (height below 4). The compensator Z starts at 11
+  // (travel +-2), a weak param_value pulls it to 9. It stops on the open side of the edge with
+  // every ray. Before #299 the clipped ring fell out of the RMS and the compensator went into the
+  // clip.
+  const System s = rtt::io::parse_system(R"json({
+  "schema_version": "0.7.0",
+  "name": "baffle compensator with spot_rms, issue 299",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [{"um": 0.5876, "reference": true}],
+  "aperture": {"type": "epd", "value": 10.0},
+  "fields": {"points": [{}]},
+  "parameters": [{"name": "Z", "value": 11.0}],
+  "root": {"type": "assembly", "name": "system", "children": [
+    {"type": "stop", "name": "stop", "pose": {"position": [0.0, 0.0, -1.0]},
+     "surfaces": [{"id": "STO", "aperture": {"type": "circular", "radius": 10.0}}]},
+    {"type": "thin_element", "name": "lens",
+     "surfaces": [{"id": "IL", "aperture": {"type": "circular", "radius": 30.0},
+                   "interaction": {"type": "ideal_lens", "focal_length": 50.0}}]},
+    {"type": "thin_element", "name": "baffle", "pose": {"position": [0.0, 0.0, {"param": "Z"}]},
+     "surfaces": [{"id": "B", "aperture": {"type": "circular", "radius": 4.0}}]},
+    {"type": "detector", "name": "image", "pose": {"position": [0.0, 0.0, 50.0]},
+     "surfaces": [{"id": "IMG", "aperture": {"type": "circular", "radius": 30.0}}]}]},
+  "paths": [{"name": "main", "events": "auto"}],
+  "tolerances": {
+    "items": [{"id": "image-dz", "node": "image", "kind": "shift_z", "limit": 5.0}],
+    "compensators": [{"parameter": "Z", "travel_min": -2.0, "travel_max": 2.0}],
+    "compensator_merit": {
+      "operands": [{"type": "param_value", "parameter": "Z", "target": 9.0, "weight": 0.01},
+                   {"type": "spot_rms", "path": "main", "rings": 3, "target": 0.0}]},
+    "criteria": [{"id": "spot", "operand": {"type": "spot_rms", "path": "main"}, "max": 1.0}]}
+})json");
+  const TrialContext ctx = rtt::tolerance::prepare(s, library(), nullptr, s.tolerances.items);
+  const TrialResult r = rtt::tolerance::evaluate(ctx, std::vector<double>{5.0});
+  INFO("reason: " << r.reason);
+  REQUIRE(r.status == TrialStatus::Valid);
+  REQUIRE(r.compensators.size() == 1);
+  REQUIRE(r.lm_status.has_value());
+  const rtt::optim::LmStatus st = *r.lm_status;
+  CHECK((st == rtt::optim::LmStatus::ConvergedGradient ||
+         st == rtt::optim::LmStatus::ConvergedStep || st == rtt::optim::LmStatus::ConvergedMerit));
+  CHECK(r.compensators[0].start == 11.0);
+  CHECK(r.compensators[0].end > 10.0);
+  CHECK(r.compensators[0].end < 11.0);  // content: the pull moved the baffle towards the edge
+  const auto has = [&](const std::string& code, const std::string& text) {
+    return std::any_of(r.warnings.begin(), r.warnings.end(), [&](const rtt::model::Diagnostic& d) {
+      return d.code == code && d.message.find(text) != std::string::npos;
+    });
+  };
+  CHECK(has("optim.evaluation_failed", "differed from the start"));  // the start-set rule fired
+  CHECK_FALSE(has("optim.rays_lost", ""));
 }

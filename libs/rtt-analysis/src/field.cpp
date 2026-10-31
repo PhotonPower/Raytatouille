@@ -70,7 +70,7 @@ std::vector<paraxial::RayAtEvent> unit_chief(const CompiledSystem& system,
     if (!z_ep_opt) throw std::invalid_argument("analysis: the entrance pupil is not defined");
     return paraxial::trace_ray(system, path, wavelength, *z_ep_opt, 0.0, 1.0);
   }
-  const double z_obj = -system.object().distance.value;
+  const double z_obj = system.object_z();
   if (!z_ep_opt) return paraxial::trace_ray(system, path, wavelength, z_obj, 1.0, 0.0);
   const double z_ep = *z_ep_opt;
   if (z_ep == z_obj) {
@@ -114,7 +114,7 @@ Point2 paraxial_chief(const CompiledSystem& system,
           throw std::invalid_argument(
               "analysis: a field angle with a finite object needs a finite entrance pupil");
         }
-        scale = -system.object().distance.value - *z_ep_ref;
+        scale = system.object_z() - *z_ep_ref;
       }
       sx = scale * tx;
       sy = scale * ty;

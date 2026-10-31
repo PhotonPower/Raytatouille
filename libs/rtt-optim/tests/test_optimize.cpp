@@ -604,14 +604,18 @@ TEST_CASE("optimize M7: an invalid trial is a rejected step with a warning", "[o
 
 TEST_CASE("optimize M7: a Jacobian column without a valid evaluation fails the run",
           "[optim][optimize]") {
-  // Row E = X * 1e308 overflows for X > 1.7976931348623157 (DBL_MAX = 1.7976931348623157e308),
-  // and validate reports a non-finite row (parameters.not_finite), so compile throws. Start
-  // X = 1.79769 is valid. Above it the limit is 3.1e-6 away; the difference step
-  // h = eps_f^(1/3) max(|X|, 1) is at least eps_M^(1/3) * 1.79769 = 1.1e-5 for any eps_f >= eps_M
-  // (ADR 0030, point 9), so X + h overflows: the column of X has no valid pair, the run ends
-  // with status Failed and the input (ADR 0030, point 10).
+  // Row E = 1e308 (1 + 1e300 (X - 1.79769)^2), the square written as a product (the grammar has
+  // no power), is exactly 1e308 at the start X = 1.79769 and overflows on both sides of it: the
+  // difference step h = eps_f^(1/3) max(|X|, 1) is at least eps_M^(1/3) * 1.79769 = 1.1e-5 for
+  // any eps_f >= eps_M (ADR 0030, point 9), so 1e300 h^2 >= 1.2e290 and E(X +- h) = inf
+  // (evaluated left to right: 1e300 h h stays finite, the product with 1e308 does not). validate
+  // reports a non-finite row (parameters.not_finite), so compile throws on both sides: the column
+  // of X has no valid evaluation, the run ends with status Failed and the input (ADR 0030, point
+  // 10). One invalid side alone would give a one-sided column (addendum #289).
   System s = singlet();
-  s.parameters = {row("X", 1.79769, true), row("E", rtt::model::ParameterExpression{"X * 1e308"})};
+  s.parameters = {row("X", 1.79769, true),
+                  row("E", rtt::model::ParameterExpression{
+                               "1e308 * (1 + 1e300 * (X - 1.79769) * (X - 1.79769))"})};
   s.optimization.operands = {efl(80.0)};
   const MaterialLibrary lib;
   const OptimResult r = optimize(s, lib);
@@ -720,4 +724,245 @@ TEST_CASE("optimize M8: a bound that excludes the optimum", "[optim][optimize]")
         warned || (d.code == "optim.parameter_at_bound" && d.location == r.variables[0].pointer);
   }
   CHECK(warned);
+}
+
+namespace {
+
+/// An ideal lens f = 50 (ADR 0031) with a baffle of radius 4 behind it in the converging beam,
+/// the detector 5 mm behind the focus. The baffle's z is the variable row Z (start `z`, a JSON
+/// number); the merit is one rms_spot generator (rings 3, arms 6) and a weak operand
+/// param_value Z with target `target` that pulls Z towards one side. The baffle has no optical
+/// effect: the generator depends on Z only through which rays it clips (#289).
+System baffle_system(const std::string& z, const std::string& target) {
+  const std::string json = R"json({
+  "schema_version": "0.7.0",
+  "name": "baffle behind an ideal lens, issue 289",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [{"um": 0.5876, "reference": true}],
+  "aperture": {"type": "epd", "value": 10.0},
+  "fields": {"points": [{}]},
+  "parameters": [{"name": "Z", "value": )json" +
+                           z + R"json(, "variable": true}],
+  "root": {"type": "assembly", "name": "system", "children": [
+    {"type": "stop", "name": "stop", "pose": {"position": [0.0, 0.0, -1.0]},
+     "surfaces": [{"id": "STO", "aperture": {"type": "circular", "radius": 10.0}}]},
+    {"type": "thin_element", "name": "lens",
+     "surfaces": [{"id": "IL", "aperture": {"type": "circular", "radius": 30.0},
+                   "interaction": {"type": "ideal_lens", "focal_length": 50.0}}]},
+    {"type": "thin_element", "name": "baffle", "pose": {"position": [0.0, 0.0, {"param": "Z"}]},
+     "surfaces": [{"id": "B", "aperture": {"type": "circular", "radius": 4.0}}]},
+    {"type": "detector", "name": "image", "pose": {"position": [0.0, 0.0, 55.0]},
+     "surfaces": [{"id": "IMG", "aperture": {"type": "circular", "radius": 30.0}}]}]},
+  "paths": [{"name": "main", "events": "auto"}],
+  "optimization": {
+    "operands": [{"type": "param_value", "parameter": "Z", "target": )json" +
+                           target + R"json(, "weight": 0.01}],
+    "generators": [
+      {"type": "rms_spot", "path": "main", "reference": "centroid", "rings": 3, "arms": 6}]}
+})json";
+  return rtt::io::parse_system(json);
+}
+
+/// Geometry of baffle_system: the outer ring has rho_3 = sqrt((1 + sqrt(3/5)) / 2) (Gauss-Legendre
+/// nodes in rho^2, trace::GaussPupil); behind the ideal lens its 6 rays run to the focus at z = 50
+/// at the height 5 rho_3 (50 - z) / 50, so the baffle clips them all for z below
+/// 50 (1 - 4 / (5 rho_3)) = 7.535584 mm. The inner rings (rho_2 = sqrt(1/2)) never reach radius
+/// 4 behind the lens.
+double baffle_edge() {
+  const double rho3 = std::sqrt((1.0 + std::sqrt(3.0 / 5.0)) / 2.0);
+  return 50.0 * (1.0 - 4.0 / (5.0 * rho3));
+}
+
+/// Rays of the generator that do not arrive at the value z of the row.
+std::size_t lost_at(const System& s, double z) {
+  const MaterialLibrary lib;
+  return MeritFunction(s, lib, nullptr).evaluate(std::vector<double>{z}).generators.at(0).rays_lost;
+}
+
+bool reported(const OptimResult& r, std::string_view code, std::string_view text) {
+  return std::any_of(r.diagnostics.begin(), r.diagnostics.end(), [&](const auto& d) {
+    return d.code == code && d.message.find(text) != std::string::npos;
+  });
+}
+
+/// A run that ended by one of the convergence tests (not Failed, MaxIterations or Cancelled).
+bool converged(LmStatus s) {
+  return s == LmStatus::ConvergedGradient || s == LmStatus::ConvergedStep ||
+         s == LmStatus::ConvergedMerit;
+}
+
+}  // namespace
+
+TEST_CASE("optimize #289: generator rays lost at the edge make the evaluation invalid",
+          "[optim][optimize]") {
+  // baffle_system from Z = 8 with the pull towards Z = 7, beyond the clip of the outer ring at
+  // 7.535584. All 18 rays arrive at the start, and that set holds for the run (ADR 0030, addendum
+  // #289): every trial and difference point below the edge is invalid. A difference point there
+  // makes the column one-sided (from above), a trial there is rejected, so the run moves towards
+  // the edge and stops on its open side with all rays. Before #289 the clip lowered the merit
+  // (the rays farthest from the centroid of the defocused spot drop out with residuals 0), and
+  // the run went into it and ended with 6 lost rays.
+  const System s = baffle_system("8.0", "7.0");
+  REQUIRE(lost_at(s, 8.0) == 0);
+  // Content guard: the edge lies where the comment says.
+  REQUIRE(lost_at(s, baffle_edge() + 1e-6) == 0);
+  REQUIRE(lost_at(s, baffle_edge() - 1e-6) == 6);
+
+  const OptimResult r = optimize(s, MaterialLibrary{});
+  INFO("status " << static_cast<int>(r.status));
+  CHECK(converged(r.status));
+  REQUIRE(r.variables.size() == 1);
+  CHECK(r.variables[0].end > baffle_edge());
+  CHECK(r.variables[0].end < 8.0);  // content: the pull moved Z towards the edge
+  REQUIRE(r.generators.size() == 1);
+  CHECK(r.generators[0].rays_launched == 18);
+  CHECK(r.generators[0].rays_lost == 0);
+  CHECK(r.failed_evaluations >= 1);
+  // The suffix of the start-set rule (the base text also names a changed ray set).
+  CHECK(reported(r, "optim.evaluation_failed", "differed from the start"));
+  CHECK_FALSE(reported(r, "optim.rays_lost", ""));
+}
+
+TEST_CASE("optimize #289: generator rays that come back make the evaluation invalid",
+          "[optim][optimize]") {
+  // As above from Z = 7 with the pull towards Z = 8: at the start the outer ring is clipped
+  // (12 of 18 rays arrive), and that set holds for the run. Above the edge the ring would come
+  // back: invalid as well (variant A of #289; rays jumping from 0 to their deviation would make
+  // the column worthless and change the centroid). The run stops on the clipped side of the edge,
+  // and the rays lost at the start stay out and are reported. Before #289 the run crossed the
+  // edge and ended with all rays.
+  const System s = baffle_system("7.0", "8.0");
+  REQUIRE(lost_at(s, 7.0) == 6);
+  REQUIRE(lost_at(s, baffle_edge() + 1e-6) == 0);  // content guard: the comeback
+
+  const OptimResult r = optimize(s, MaterialLibrary{});
+  INFO("status " << static_cast<int>(r.status));
+  CHECK(converged(r.status));
+  REQUIRE(r.variables.size() == 1);
+  CHECK(r.variables[0].end < baffle_edge());
+  CHECK(r.variables[0].end > 7.0);  // content: the pull moved Z towards the edge
+  REQUIRE(r.generators.size() == 1);
+  CHECK(r.generators[0].rays_lost == 6);
+  CHECK(r.failed_evaluations >= 1);
+  // The suffix of the start-set rule (the base text also names a changed ray set).
+  CHECK(reported(r, "optim.evaluation_failed", "differed from the start"));
+  CHECK(reported(r, "optim.rays_lost", "at the start"));
+}
+
+namespace {
+
+/// baffle_system with the generator replaced by one operand after the pull (operand 1): spot_rms
+/// (hexapolar rings 3) or opd_rms (grid 9). Both reach the baffle only with their outer rays: the
+/// hexapolar ring 3 (pupil radius 1) and the four grid points at radius 1 run behind the lens at
+/// the height 5 (50 - z) / 50 and are clipped for z < 10 (#299). The next rays inward (ring 2 at
+/// radius 2/3, grid points at sqrt(0.75^2 + 0.5^2) = 0.901): ring 2 never (its height stays
+/// below 4, also in the parallel beam before the lens), the grid points only for z < 5.6.
+System baffle_operand_system(const std::string& z, const std::string& target, bool opd) {
+  System s = baffle_system(z, target);
+  s.optimization.generators.clear();
+  if (opd) {
+    rtt::model::OpdRmsOperand o;
+    o.path = "main";
+    o.grid = 9;
+    o.common.weight = 1e-4;  // about 12 waves of defocus: a residual of the order of the pull
+    s.optimization.operands.emplace_back(o);
+  } else {
+    rtt::model::SpotRmsOperand o;
+    o.path = "main";
+    o.rings = 3;
+    s.optimization.operands.emplace_back(o);
+  }
+  return s;
+}
+
+/// The ray set of operand 1 at the value z of the row.
+std::vector<std::uint8_t> operand_mask(const System& s, double z) {
+  const MaterialLibrary lib;
+  return MeritFunction(s, lib, nullptr).evaluate(std::vector<double>{z}).operand_arrived.at(1);
+}
+
+std::size_t zeros(const std::vector<std::uint8_t>& mask) {
+  return static_cast<std::size_t>(std::count(mask.begin(), mask.end(), std::uint8_t{0}));
+}
+
+}  // namespace
+
+TEST_CASE("merit #299: operand_arrived holds the ray set of spot_rms and opd_rms",
+          "[optim][merit]") {
+  for (const bool opd : {false, true}) {
+    INFO("opd_rms " << opd);
+    const System s = baffle_operand_system("11.0", "9.0", opd);
+    const std::size_t clipped = opd ? std::size_t{4} : std::size_t{18};
+    const std::vector<std::uint8_t> open = operand_mask(s, 11.0);
+    REQUIRE(!open.empty());
+    CHECK(zeros(open) == 0);
+    const std::vector<std::uint8_t> in = operand_mask(s, 9.0);
+    REQUIRE(in.size() == open.size());
+    CHECK(zeros(in) == clipped);
+    // Content guard: the edge lies where the comment of baffle_operand_system says.
+    CHECK(zeros(operand_mask(s, 10.0 + 1e-6)) == 0);
+    CHECK(zeros(operand_mask(s, 10.0 - 1e-6)) == clipped);
+    // param_value has no ray set.
+    const MaterialLibrary lib;
+    const MeritEvaluation e = MeritFunction(s, lib, nullptr).evaluate(std::vector<double>{9.0});
+    REQUIRE(e.operand_arrived.size() == 2);
+    CHECK(e.operand_arrived[0].empty());
+  }
+  // spot_rms in trace order: centre, rings 1 and 2 (1 + 6 + 12 = 19 rays), then ring 3.
+  const std::vector<std::uint8_t> spot =
+      operand_mask(baffle_operand_system("11.0", "9.0", false), 9.0);
+  REQUIRE(spot.size() == 37);
+  for (std::size_t i = 0; i < spot.size(); ++i) CHECK(spot[i] == (i < 19 ? 1 : 0));
+}
+
+TEST_CASE("optimize #299: spot_rms and opd_rms rays lost at the edge make the evaluation invalid",
+          "[optim][optimize]") {
+  // As "optimize #289: generator rays lost at the edge" with a spot_rms or opd_rms operand
+  // instead of the generator: from Z = 11 with the pull towards Z = 9, beyond the clip at 10. The
+  // set of the operand's rays at the start holds for the run (ADR 0030, addendum #299), so the
+  // run stops on the open side of the edge. Before #299 the clipped rays fell silently out of the
+  // RMS, and the run went into the clip.
+  for (const bool opd : {false, true}) {
+    INFO("opd_rms " << opd);
+    const System s = baffle_operand_system("11.0", "9.0", opd);
+    REQUIRE(zeros(operand_mask(s, 11.0)) == 0);
+    const OptimResult r = optimize(s, MaterialLibrary{});
+    INFO("status " << static_cast<int>(r.status));
+    CHECK(converged(r.status));
+    REQUIRE(r.variables.size() == 1);
+    CHECK(r.variables[0].end > 10.0);
+    CHECK(r.variables[0].end < 11.0);  // content: the pull moved Z towards the edge
+    CHECK(zeros(operand_mask(s, r.variables[0].end)) == 0);
+    CHECK(r.failed_evaluations >= 1);
+    CHECK(reported(r, "optim.evaluation_failed", "differed from the start"));
+    CHECK_FALSE(reported(r, "optim.rays_lost", ""));
+  }
+}
+
+TEST_CASE("optimize #299: spot_rms and opd_rms rays that come back make the evaluation invalid",
+          "[optim][optimize]") {
+  // From Z = 9 (clipped) with the pull towards Z = 11: the rays lost at the start stay out, the
+  // run stops on the clipped side, and optim.rays_lost names the operand. Before #299 the run
+  // crossed the edge and the rays came back.
+  for (const bool opd : {false, true}) {
+    INFO("opd_rms " << opd);
+    const System s = baffle_operand_system("9.0", "11.0", opd);
+    const std::vector<std::uint8_t> start = operand_mask(s, 9.0);
+    REQUIRE(zeros(start) == (opd ? std::size_t{4} : std::size_t{18}));
+    const OptimResult r = optimize(s, MaterialLibrary{});
+    INFO("status " << static_cast<int>(r.status));
+    CHECK(converged(r.status));
+    REQUIRE(r.variables.size() == 1);
+    CHECK(r.variables[0].end < 10.0);
+    CHECK(r.variables[0].end > 9.0);  // content: the pull moved Z towards the edge
+    CHECK(r.failed_evaluations >= 1);
+    CHECK(reported(r, "optim.evaluation_failed", "differed from the start"));
+    const std::string text = std::to_string(zeros(start)) + " of " + std::to_string(start.size()) +
+                             " rays of the operand were lost";
+    CHECK(std::any_of(r.diagnostics.begin(), r.diagnostics.end(), [&](const auto& d) {
+      return d.code == "optim.rays_lost" && d.location == "/optimization/operands/1" &&
+             d.message.find(text) != std::string::npos;
+    }));
+  }
 }

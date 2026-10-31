@@ -649,3 +649,31 @@ TEST_CASE("optimize H4: the spot generator lowers the RMS spot", "[optim][genera
   REQUIRE(r.generators.size() == 1);
   CHECK(r.generators[0].rms < std::sqrt(start.mean_square));
 }
+
+TEST_CASE("generators #289: arrived lists every ray in the order of the residuals",
+          "[optim][generators]") {
+  // ADR 0030, addendum #289: optimize() compares this list with the start. Systems as G5: with
+  // L1.S1 radius 5 mm only the inner ring of GaussPupil{3, 6} arrives (rays 0 to 5, ring-major
+  // with ascending rho); with radius 1 mm no gauss ray arrives (the residuals are NaN).
+  SpotGenerator spot = spot_generator();
+  spot.fields = std::vector<std::uint16_t>{0};
+  spot.wavelengths = std::vector<std::uint16_t>{1};
+  WavefrontGenerator wave = wavefront_generator();
+  wave.fields = spot.fields;
+  wave.wavelengths = spot.wavelengths;
+  const CompiledSystem clipped = compiled(singlet(rtt::model::CircularAperture{5.0, 0.0}));
+  const CompiledSystem closed = compiled(singlet(rtt::model::CircularAperture{1.0, 0.0}));
+  for (const Generator& g : {Generator(spot), Generator(wave)}) {
+    GeneratorStats st;
+    (void)residuals(g, clipped, st);
+    REQUIRE(st.arrived.size() == st.rays_launched);
+    REQUIRE(st.rays_launched == 18);
+    for (std::size_t k = 0; k < 18; ++k) CHECK(st.arrived[k] == (k < 6 ? 1 : 0));
+    CHECK(static_cast<std::size_t>(std::count(st.arrived.begin(), st.arrived.end(), 0)) ==
+          st.rays_lost);
+    // A second evaluation overwrites the list (GeneratorStats is reset).
+    (void)residuals(g, closed, st);
+    REQUIRE(st.arrived.size() == st.rays_launched);
+    CHECK(std::all_of(st.arrived.begin(), st.arrived.end(), [](std::uint8_t a) { return a == 0; }));
+  }
+}

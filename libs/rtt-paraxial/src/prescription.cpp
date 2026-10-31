@@ -43,7 +43,7 @@ Prescription prescription(const compile::CompiledSystem& system,
   out.first_order = first_order(system, path, wavelength);
   const FirstOrder& fo = out.first_order;
   const bool infinite = system.object().at_infinity;
-  const double z_obj = infinite ? 0.0 : -system.object().distance.value;
+  const double z_obj = infinite ? 0.0 : system.object_z();
 
   // Vertex z and signed index of every event from the axial ray; they do not depend on the
   // ray, so they exist without a marginal or chief ray.
