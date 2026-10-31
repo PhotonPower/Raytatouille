@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.7.0",
+  "schema_version": "0.8.0",
   "name": "M6 acceptance: paraboloid R = -200 mm with stop, D = 10 mm (F/10), aberration-free on axis",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [

@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.7.0",
+  "schema_version": "0.8.0",
   "name": "M6 acceptance: collimated 45 deg fold on a test metal (n = 1.2 + 7.26 i), VACUUM",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},
