@@ -47,6 +47,7 @@ Präzisierungen und Ergänzungen einer angenommenen Entscheidung kommen als dati
 | [0036](0036.md) | Toleranzanalyse (Störungsmodell, nominaler Bezug, Kompensatoren, Zufall, Statistik; Nachtrag #254: Linien in Normalluft, Prüfungen in compile; Nachtrag #257: ein Prüfling; Nachtrag #258: Sensitivität bei ungültigen Seiten, Abbruch, mehreren Kriterien; Nachtrag #259: Monte Carlo, ungültige Prüflinge, Seed und Warnungen; Nachtrag #293: Radien über Tabellenzeilen und Kompensatoren) | angenommen |
 | [0037](0037.md) | Medium im Objektraum (`object.medium`, Schema 0.7; Startmedium aller Pfade, nur endliches Objekt, NA-Prüfung in validate und compile) | angenommen |
 | [0040](0040.md) | Objektseitige NA real gelesen (`object_na` mit `reading`, Schema 0.8; realer axialer Randstrahl bestimmt das Ziel der Zielung, paraxiale Größen bleiben bei NA/n) | angenommen |
+| [0041](0041.md) | Grundlagen für neue Flächentypen (M8 S0: Scheitelentwicklung statt `base_conic` für die Paraxialrechnung, Schnitt mit statischem Dispatch, keine stillen Rückfälle, Schemaplan Welle 3) | angenommen |
 
 ## Vorlage
 
