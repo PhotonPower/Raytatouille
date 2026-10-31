@@ -71,6 +71,7 @@ TEST_CASE("stop: a system without a Stop element has neither surface nor event",
   const CompiledSystem cs =
       rtt::compile::compile(load("m1/paraboloid_mirror.rtt.json"), MaterialLibrary{});
   CHECK(!cs.stop_surface().has_value());
+  REQUIRE(!cs.paths().empty());
   for (std::size_t p = 0; p < cs.paths().size(); ++p) {
     const PathId id{static_cast<std::uint32_t>(p)};
     CHECK(!rtt::compile::stop_event(cs, id).has_value());
@@ -103,8 +104,8 @@ TEST_CASE("stop: a path that does not visit the stop", "[compile][stop]") {
 
 TEST_CASE("stop: the first of several passes in the ghost paths", "[compile][stop]") {
   // Every ghost of the triplet whose reflections enclose STO passes it three times (forward,
-  // back, forward, ADR 0027); the stop event is the first pass, as before. Content guard: at
-  // least one ghost passes STO more than once.
+  // back, forward, ADR 0027); the stop event is the first pass, as before. Content guard: exactly
+  // the 3 x 3 ghosts with j behind and i in front of STO pass it more than once.
   const rtt::coating::CoatingLibrary coatings;
   const rtt::compile::GhostSystem g = rtt::compile::compile_with_ghosts(
       load("m2/cooke_triplet.rtt.json"), "main", schott_m2(), coatings);
@@ -125,5 +126,5 @@ TEST_CASE("stop: the first of several passes in the ghost paths", "[compile][sto
     CHECK(events[*e].surface == stop);
     CHECK(events[*e].kind == EventKind::Transmit);
   }
-  CHECK(multiple > 0);
+  CHECK(multiple == 9);  // j in {L2.S2, L3.S1, L3.S2}, i in {L1.S1, L1.S2, L2.S1}
 }

@@ -71,7 +71,7 @@ struct Context {
   PathId path;
   std::uint16_t wavelength = 0;
   paraxial::FirstOrder first_order;
-  std::size_t stop_event = 0;  ///< index of the first Stop event in the path
+  std::size_t stop_event = 0;  ///< the stop event of the path (compile::stop_event)
   /// Object-space telecentric (#96): finite object and the paraxial entrance pupil at infinity
   /// at the ray's wavelength. Pupil coordinates are then object-space slopes, not EP points.
   bool telecentric = false;
@@ -171,7 +171,8 @@ Context make_context(const CompiledSystem& system, PathId path, std::uint16_t wa
   c.path = path;
   c.wavelength = wavelength;
   compile::require_stop(system, path);  // the one check for all users of the stop (ADR 0022)
-  c.stop_event = compile::stop_event(system, path).value();  // ADR 0039, point 3
+  // require_stop guarantees the stop event (ADR 0039, point 3).
+  c.stop_event = compile::stop_event(system, path).value_or(0);
   c.first_order = paraxial::first_order(system, path, wavelength);
   const auto& ep = c.first_order.entrance_pupil;
   const bool infinite = system.object().at_infinity;
