@@ -77,6 +77,40 @@ System doublet(rtt::model::ApertureReading reading) {
   return s;
 }
 
+/// The immersion front of test_real_na.cpp (object in oil n = 1.52 at z = -0.1, index-matched
+/// lens ending in a sphere of R = 1 mm around the object point, plane stop r = 10 in vacuum at
+/// z = 2) with object-space NA 1.45 read `reading`, and a positive lens (CONST:1.6, R = +-15 mm)
+/// at z = 20 that forms a real image.
+System immersion_objective(rtt::model::ApertureReading reading) {
+  System s;
+  s.name = "immersion front and focusing lens";
+  s.environment.medium = "VACUUM";
+  s.wavelengths = {{0.5876, 1.0, true}};
+  s.root.name = "root";
+  s.paths = {{"main", true, {}}};
+  s.object = {false, Param(0.1)};
+  s.object.medium = "CONST:1.52";
+  s.aperture = {rtt::model::SystemApertureType::ObjectSpaceNA, Param(1.45)};
+  s.aperture.reading = reading;
+  s.fields = {FieldType::ObjectHeight, {{0.0, 0.0, 1.0}}};
+  Surface stop = plane("STO");
+  stop.aperture = rtt::model::CircularAperture{10.0, 0.0};
+  s.root.children = {
+      {Element{"F",
+               ElementKind::Lens,
+               Pose::along_z(0.0),
+               "CONST:1.52",
+               {plane("F.S1", 0.0), plane("F.S2", 0.9, -1.0)}}},
+      {Element{"stop", ElementKind::Stop, Pose::along_z(2.0), std::nullopt, {stop}}},
+      {Element{"L",
+               ElementKind::Lens,
+               Pose::along_z(20.0),
+               "CONST:1.6",
+               {plane("L.S1", 0.0, 15.0), plane("L.S2", 4.0, -15.0)}}},
+      {Element{"D", ElementKind::Detector, Pose::along_z(60.0), std::nullopt, {plane("IMG")}}}};
+  return s;
+}
+
 double f_number(const System& system, const TrialOverlay* overlay = nullptr) {
   System s = system;
   rtt::model::FirstOrderOperand op;
@@ -95,6 +129,24 @@ TrialOverlay overlay_of(const System& nominal, double step) {
 
 }  // namespace
 
+/// The Richardson check of test_parabasal.cpp for image_fnumber of `s` (see the test cases).
+void check_richardson(const System& s) {
+  const double x0 = f_number(s);
+  const TrialOverlay one = overlay_of(s, kDelta);
+  const TrialOverlay two = overlay_of(s, 2.0 * kDelta);
+  const double x1 = f_number(s, &one);
+  const double x2 = f_number(s, &two);
+  REQUIRE(std::isfinite(x0));
+  REQUIRE(std::isfinite(x1));
+  REQUIRE(std::isfinite(x2));
+  const rtt::compile::CompiledSystem cs = rtt::compile::compile(s, library());
+  const double n_image = rtt::paraxial::first_order(cs, {0}, 0).image_index;
+  const double u_m = 1.0 / (2.0 * n_image * x0);
+  const double r = 20.0 * kEps / (kDelta * u_m) * std::abs(x0);
+  INFO("X0 " << x0 << ", X(delta) - X0 " << x1 - x0 << ", X(2 delta) - X(delta) " << x2 - x1);
+  CHECK(std::abs(x1 - x0) <= 2.0 / 3.0 * std::abs(x2 - x1) + r);
+}
+
 TEST_CASE("parabasal: image_fnumber with object_na read real", "[optim][parabasal][real-na]") {
   // Bound as in test_parabasal.cpp ("nominal systems within the Richardson bound"):
   // |X(delta) - X_0| <= (2/3) |X(2 delta) - X(delta)| + 20 eps / (delta u_m) |X_0|, u_m the image
@@ -105,21 +157,7 @@ TEST_CASE("parabasal: image_fnumber with object_na read real", "[optim][parabasa
   for (const auto reading :
        {rtt::model::ApertureReading::Paraxial, rtt::model::ApertureReading::Real}) {
     INFO("reading " << static_cast<int>(reading));
-    const System s = doublet(reading);
-    const double x0 = f_number(s);
-    const TrialOverlay one = overlay_of(s, kDelta);
-    const TrialOverlay two = overlay_of(s, 2.0 * kDelta);
-    const double x1 = f_number(s, &one);
-    const double x2 = f_number(s, &two);
-    REQUIRE(std::isfinite(x0));
-    REQUIRE(std::isfinite(x1));
-    REQUIRE(std::isfinite(x2));
-    const rtt::compile::CompiledSystem cs = rtt::compile::compile(s, library());
-    const double n_image = rtt::paraxial::first_order(cs, {0}, 0).image_index;
-    const double u_m = 1.0 / (2.0 * n_image * x0);
-    const double r = 20.0 * kEps / (kDelta * u_m) * std::abs(x0);
-    INFO("X0 " << x0 << ", X(delta) - X0 " << x1 - x0 << ", X(2 delta) - X(delta) " << x2 - x1);
-    CHECK(std::abs(x1 - x0) <= 2.0 / 3.0 * std::abs(x2 - x1) + r);
+    check_richardson(doublet(reading));
   }
   // Content guard: the readings differ in the aim target (R_s), not in rtt::paraxial.
   const rtt::compile::CompiledSystem real =
@@ -127,4 +165,23 @@ TEST_CASE("parabasal: image_fnumber with object_na read real", "[optim][parabasa
   CHECK(rtt::trace::stop_radius(real, {0}, 0) != rtt::trace::paraxial_stop_radius(real, {0}, 0));
   CHECK(f_number(doublet(rtt::model::ApertureReading::Real)) ==
         f_number(doublet(rtt::model::ApertureReading::Paraxial)));
+}
+
+TEST_CASE("parabasal: image_fnumber at NA 1.45 read real", "[optim][parabasal][real-na]") {
+  // ADR 0040, point 5, side effect: with reading real the parabasal offsets on the stop grow to
+  // delta |R_s,real| = delta 2.1 tan U, 1 / cos U = 3.3 times delta 2.1 NA / n at NA 1.45 in
+  // n = 1.52, so the O(delta^2) error grows about 11-fold. The Richardson bound of ADR 0036, point
+  // 2, still holds for both readings (same check as above).
+  for (const auto reading :
+       {rtt::model::ApertureReading::Paraxial, rtt::model::ApertureReading::Real}) {
+    INFO("reading " << static_cast<int>(reading));
+    check_richardson(immersion_objective(reading));
+  }
+  // Content guard: the real stop target is 1 / cos U times the paraxial one (both 2.1 mm from the
+  // object, slopes tan U and NA / n).
+  const rtt::compile::CompiledSystem real =
+      rtt::compile::compile(immersion_objective(rtt::model::ApertureReading::Real), library());
+  const double ratio =
+      rtt::trace::stop_radius(real, {0}, 0) / rtt::trace::paraxial_stop_radius(real, {0}, 0);
+  CHECK(std::abs(ratio - 1.0 / std::cos(std::asin(1.45 / 1.52))) <= 1e-9);
 }

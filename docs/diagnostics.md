@@ -34,7 +34,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `aperture.na_exceeds_index` | Warnung | objektseitige NA ≥ Brechungsindex des Objektraums (bei `object.medium` ungleich `AIR`; für Luft meldet validate `aperture.na_not_physical`, ADR 0037) | compile | `/aperture/value` |
 | `aperture.na_not_physical` | Warnung | objektseitige NA ≥ 1 in Luft (Objektraum: `object.medium`, sonst `environment.medium`) | validate | `/aperture/value` |
 | `aperture.na_unreachable` | Fehler | `object_na` mit `reading: real`: NA ≥ Index des Objektraums bei der Referenzwellenlänge (jede Zielung), oder der reale Randstrahl erreicht die Blende nicht bzw. trifft sie auf der falschen Seite (reale Zielung und `stop_radius`; ADR 0040, Punkt 6) | trace | `/aperture/value` |
-| `aperture.reading_not_na` | Fehler | `aperture.reading` ist `real`, der Aperturtyp aber nicht `object_na` (nur über eine Bearbeitung möglich; ADR 0040) | validate | `/aperture/reading` |
+| `aperture.reading_not_na` | Fehler | `aperture.reading` ist `real`, der Aperturtyp aber nicht `object_na` (nur über die C++-API möglich; Datei und Bearbeitung lehnt schon der Leser ab; ADR 0040) | validate | `/aperture/reading` |
 | `aperture.stop_missing` | Fehler | Aperturtyp `stop_size` ohne Blendenelement und ohne `aperture.stop` | validate | `/aperture/type` |
 | `aperture.value_invalid` | Fehler | Wert der Systemapertur nicht endlich oder ≤ 0 | validate | `/aperture/value` |
 | `bounds.invalid` | Fehler | `min` nicht kleiner als `max`, oder Grenzen an einer abgeleiteten Zeile (nur über die API) | validate | `…/min` (bei einer Zeile ohne `min`: `…/max`) |

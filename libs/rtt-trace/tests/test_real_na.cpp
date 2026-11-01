@@ -18,10 +18,13 @@
 #include <cstdint>
 #include <stdexcept>
 #include <string>
+#include <variant>
 
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/material/material.hpp"
 #include "rtt/model/model.hpp"
+#include "rtt/paraxial/paraxial.hpp"
+#include "rtt/trace/sequential.hpp"
 #include "rtt/trace/sources.hpp"
 
 using rtt::compile::CompiledSystem;
@@ -86,6 +89,18 @@ CompiledSystem compiled(const System& s) {
   return rtt::compile::compile(s, rtt::material::MaterialLibrary{});
 }
 
+/// The immersion system with N-BK7 as object medium and lens (index-matched at every wavelength)
+/// and two wavelengths, the reference d line first.
+CompiledSystem immersion_bk7() {
+  System s = immersion(kNa, ApertureReading::Real);
+  s.wavelengths = {{0.5876, 1.0, true}, {0.4861, 1.0, false}};
+  s.object.medium = "SCHOTT:N-BK7";
+  std::get<Element>(s.root.children[0].value).material = "SCHOTT:N-BK7";
+  rtt::material::MaterialLibrary lib;
+  lib.add_catalog(std::string(RTT_CATALOG_DIR) + "/schott.agf");
+  return rtt::compile::compile(s, lib);
+}
+
 /// n sin U of a ray direction in the object medium (U against the axis, meridional).
 double n_sin_u(const rtt::math::Vec3& dir) {
   return kN * std::hypot(dir.x(), dir.y()) / dir.norm();
@@ -107,6 +122,48 @@ TEST_CASE("real NA: the marginal ray has n sin U = NA", "[trace][real-na]") {
     CHECK(std::abs(n_sin_u(ray.ray.dir) - kNa) <= 1e-12);
     CHECK(ray.ray.dir.y() > 0.0);  // rising in object space
   }
+}
+
+TEST_CASE("real NA: the marginal ray is alive at the image", "[trace][real-na]") {
+  // Content guard of ADR 0040 (acceptance): the real-aimed ray at p = (0, 1) passes the sphere
+  // (height 0.954 mm < 0.99) and the stop (2.1 tan U = 6.63 mm < 10) and arrives at the image.
+  const CompiledSystem cs = compiled(immersion(kNa, ApertureReading::Real));
+  const std::array<std::uint16_t, 1> fields{0};
+  rtt::trace::RayBatch rays =
+      rtt::trace::make_rays(cs, PathId{0}, fields, 0, rtt::trace::SinglePupilPoint{0.0, 1.0});
+  REQUIRE(rays.status()[0] == rtt::trace::RayStatus::Alive);
+  [[maybe_unused]] const auto stats = rtt::trace::SequentialTracer().trace(cs, PathId{0}, rays);
+  REQUIRE(rays.status()[0] == rtt::trace::RayStatus::Alive);
+  // At the image (z = 3) the ray left the stop plane (z = 2) at 2.1 tan U with slope tan U
+  // (undeviated at the sphere, file comment): y = 3.1 tan U, within the aim residual 1e-9 mm
+  // (times 3.1 / 2.1).
+  const double tan_u = std::tan(std::asin(kNa / kN));
+  CHECK(std::abs(rays.pos_y()[0] - 3.1 * tan_u) <= 2e-9);
+}
+
+TEST_CASE("real NA: the same U and S at every wavelength", "[trace][real-na]") {
+  // ADR 0040, points 2 and 3: U is formed with n_ref only, and R_s = sigma S is the same for all
+  // wavelengths. N-BK7 in object space and lens keeps the system index-matched and the sphere
+  // normal to every ray from the object point at every wavelength, so a ray meeting the stop at
+  // S has the angle U of the reference wavelength: n(lambda) sin U = NA n(lambda) / n_ref.
+  const CompiledSystem cs = immersion_bk7();
+  const double n_ref = rtt::paraxial::first_order(cs, PathId{0}, 0).object_index;
+  const double n_f = rtt::paraxial::first_order(cs, PathId{0}, 1).object_index;
+  REQUIRE(n_f - n_ref > 5e-3);  // dispersion of N-BK7, d to F line: 0.0080
+  const double tan_u = std::tan(std::asin(kNa / n_ref));
+  // The stop target is bitwise the same (sigma = +1 at both wavelengths), the paraxial one not.
+  CHECK(rtt::trace::stop_radius(cs, PathId{0}, 1) == rtt::trace::stop_radius(cs, PathId{0}, 0));
+  CHECK(std::abs(rtt::trace::stop_radius(cs, PathId{0}, 0) - kStopDist * tan_u) <=
+        1e-12 * kStopDist * tan_u);
+  CHECK(rtt::trace::paraxial_stop_radius(cs, PathId{0}, 1) <
+        rtt::trace::paraxial_stop_radius(cs, PathId{0}, 0));
+  // Real aiming at the F line: the residual 1e-9 mm on the stop moves sin U by at most
+  // cos^3 U 1e-9 / 2.1 < 1e-9.
+  const rtt::trace::AimedRay ray = rtt::trace::aim_ray(cs, PathId{0}, 0, 1, 0.0, 1.0);
+  REQUIRE(ray.ray.status == rtt::trace::RayStatus::Alive);
+  const double sin_u = std::hypot(ray.ray.dir.x(), ray.ray.dir.y()) / ray.ray.dir.norm();
+  CHECK(std::abs(sin_u - kNa / n_ref) <= 1e-9);
+  CHECK(std::abs(n_f * sin_u - kNa) > 5e-3);  // n(lambda) sin U != NA
 }
 
 TEST_CASE("real NA: the paraxial reading gives a smaller real NA", "[trace][real-na]") {

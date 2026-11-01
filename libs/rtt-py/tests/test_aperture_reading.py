@@ -26,11 +26,16 @@ def test_the_marginal_ray_has_the_real_na() -> None:
     x, y, z = float(rays.dir_x[0]), float(rays.dir_y[0]), float(rays.dir_z[0])
     assert 1.52 * math.hypot(x, y) / math.sqrt(x * x + y * y + z * z) == pytest.approx(
         1.45, abs=1e-12)
+    # Content guard: the ray arrives at the image.
+    rt.trace.trace(cs, rays)
+    assert rays.status[0] == int(rt.trace.RayStatus.ALIVE)
 
 
 def test_an_unreachable_na_is_an_aperture_error() -> None:
     s = rt.apply_patch(rt.load(FILE), [{"op": "replace", "path": "/aperture/value", "value": 1.6}])
-    cs = rt.compile(s)
+    # NA >= n is only a warning for compile (ADR 0037); the aiming fails (ADR 0040, point 6).
+    with pytest.warns(rt.RaytatouilleWarning, match="aperture.na_exceeds_index"):
+        cs = rt.compile(s)
     with pytest.raises(rt.ApertureError) as error:
         rt.trace.make_rays(cs, rt.trace.SinglePupilPoint(px=0.0, py=1.0), fields=[0])
     assert error.value.code == "aperture.na_unreachable"

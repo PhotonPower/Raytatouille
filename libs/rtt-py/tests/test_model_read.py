@@ -72,6 +72,7 @@ ENUM_NAMES: dict[type, dict[str, str]] = {
     model.SystemApertureType: {"epd": "ENTRANCE_PUPIL_DIAMETER",
                                "image_fnumber": "IMAGE_SPACE_F_NUMBER",
                                "object_na": "OBJECT_SPACE_NA", "stop_size": "STOP_SIZE"},
+    model.ApertureReading: {"paraxial": "PARAXIAL", "real": "REAL"},  # ADR 0040
     model.PoseReference: {"absolute": "ABSOLUTE", "relative_to_preceding": "RELATIVE_TO_PRECEDING",
                           "relative_to_sibling": "RELATIVE_TO_SIBLING"},
     model.PoseOrder: {"translate_first": "TRANSLATE_FIRST", "rotate_first": "ROTATE_FIRST"},

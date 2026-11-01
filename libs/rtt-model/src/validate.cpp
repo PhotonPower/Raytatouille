@@ -103,7 +103,8 @@ class Validator {
   }
 
   void check_aperture() {
-    // ADR 0040, point 1: reading real only for object_na (another type only through an edit).
+    // ADR 0040, point 1: reading real only for object_na (another type only through the
+    // C++ API: the reader rejects it in files and edits).
     if (system_.aperture.reading != ApertureReading::Paraxial &&
         system_.aperture.type != SystemApertureType::ObjectSpaceNA) {
       report("aperture.reading_not_na", "/aperture/reading",
