@@ -718,7 +718,8 @@ Signature signature(const CompiledSystem& system, PathId path) {
   s.object_z = s.object_at_infinity ? 0.0 : system.object_z();
   s.aperture_type = system.aperture().type;
   s.aperture_value = system.aperture().value.value;
-  if (system.aperture().stop) s.aperture_stop = system.aperture().stop->str();
+  const std::optional<model::SurfaceId>& stop = system.aperture().stop;
+  if (stop) s.aperture_stop = stop->str();
   return s;
 }
 

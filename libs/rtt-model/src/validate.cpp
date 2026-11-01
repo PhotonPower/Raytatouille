@@ -644,26 +644,26 @@ class Validator {
   /// thin element with an aperture (ADR 0039, points 2 and 8).
   void check_stops() {
     if (stops_.size() > 1) report("stop.multiple", stops_[1], "only one stop element is allowed");
-    const std::optional<SurfaceId>& surface = system_.aperture.stop;
-    if (surface) {
+    if (system_.aperture.stop) {
+      const std::string id = system_.aperture.stop->str();
       if (!stops_.empty()) {
         report("stop.multiple", "/aperture/stop",
                "a stop element and aperture.stop: only one stop is allowed");
       }
-      const auto it = surface_info_.find(surface->str());
+      const auto it = surface_info_.find(id);
       if (it == surface_info_.end()) {
-        report("stop.surface_unknown", "/aperture/stop",
-               "no surface '" + surface->str() + "' for the stop");
+        report("stop.surface_unknown", "/aperture/stop", "no surface '" + id + "' for the stop");
       } else if (it->second.kind == ElementKind::Stop || it->second.kind == ElementKind::Detector) {
-        report("stop.surface_kind", "/aperture/stop",
-               "the stop surface '" + surface->str() +
-                   "' must belong to a lens, mirror, plate or thin element");
+        report(
+            "stop.surface_kind", "/aperture/stop",
+            "the stop surface '" + id + "' must belong to a lens, mirror, plate or thin element");
       } else if (!it->second.has_aperture) {
         report("stop.aperture_missing", it->second.location + "/aperture",
-               "the stop surface '" + surface->str() + "' needs an aperture");
+               "the stop surface '" + id + "' needs an aperture");
       }
     }
-    if (stops_.empty() && !surface && system_.aperture.type == SystemApertureType::StopSize) {
+    if (stops_.empty() && !system_.aperture.stop &&
+        system_.aperture.type == SystemApertureType::StopSize) {
       report("aperture.stop_missing", "/aperture/type",
              "aperture type 'stop_size' requires a stop element or aperture.stop");
     }

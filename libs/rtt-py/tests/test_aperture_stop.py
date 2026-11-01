@@ -33,10 +33,11 @@ def test_the_system_report_names_the_stop_surface() -> None:
 
 def test_the_stop_is_removed_and_added_by_a_patch() -> None:
     s = rt.load(FILE)
-    # Without aperture.stop and without a stop element the triplet has no stop: compile warns
-    # nothing, but the pupils need one.
+    # Without aperture.stop and without a stop element the triplet has no stop: valid, compile
+    # warns nothing (stop.not_on_path needs a stop), but the pupils need one.
     none = rt.apply_patch(s, [{"op": "remove", "path": "/aperture/stop"}])
     assert none.aperture.stop is None
+    assert rt.compile(none, schott()).diagnostics == []
     back = rt.apply_patch(none, [
         {"op": "add", "path": "/aperture/stop", "value": {"surface": "L2.S1"}}])
     assert back.aperture.stop is not None and back.aperture.stop.surface == "L2.S1"

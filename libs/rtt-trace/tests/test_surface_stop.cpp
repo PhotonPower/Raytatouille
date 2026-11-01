@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -180,24 +181,38 @@ TEST_CASE("surface stop: every aimed ray meets L2.S1 at sigma p R_s", "[trace][a
 }
 
 TEST_CASE("surface stop: a mirror as the stop", "[trace][aperture-stop]") {
-  // m2/paraboloid_stop without its stop element, the stop on the mirror M: the chief ray of the
-  // axial field meets the mirror at its centre (local 0, 0) within kAimTolerance.
+  // m2/paraboloid_stop without its stop element, the stop on the mirror M, with a field of 1 deg
+  // besides the axis: the aim target lies in the local coordinates of the mirror, the stop event
+  // is a reflection (ADR 0039, point 5). The chief ray meets M at its centre, the rim ray at R_s,
+  // both within kAimTolerance.
   System s = load("m2/paraboloid_stop.rtt.json");
   std::erase_if(s.root.children, [](const rtt::model::Node& node) {
     const auto* e = std::get_if<rtt::model::Element>(&node.value);
     return e != nullptr && e->kind == rtt::model::ElementKind::Stop;
   });
   s.aperture.stop = SurfaceId("M");
+  s.fields.points.push_back({0.0, 1.0, 1.0});
   const CompiledSystem cs = rtt::compile::compile(s, MaterialLibrary{});
-  const rtt::trace::AimedRay chief =
-      rtt::trace::aim_ray(cs, PathId{0}, 0, cs.reference_wavelength(), 0.0, 0.0);
-  REQUIRE(chief.ray.status == rtt::trace::RayStatus::Alive);
-  const rtt::trace::AimedRay rim =
-      rtt::trace::aim_ray(cs, PathId{0}, 0, cs.reference_wavelength(), 0.0, 1.0);
-  REQUIRE(rim.ray.status == rtt::trace::RayStatus::Alive);
-  // The rim ray of the 60 mm entrance pupil starts 30 mm off the axis (parallel to it).
-  CHECK(std::abs(std::abs(rim.ray.pos.y()) - 30.0) <= 1e-9);
-  CHECK(std::abs(chief.ray.pos.y()) <= 1e-9);
+  const std::uint16_t wl = cs.reference_wavelength();
+  REQUIRE(cs.path(PathId{0}).events.at(0).kind == rtt::model::EventKind::Reflect);
+  const double r_s = rtt::trace::stop_radius(cs, PathId{0}, wl);
+  const std::array<std::uint16_t, 1> fields{1};
+  rtt::trace::RayBatch rays = rtt::trace::make_rays(
+      cs, PathId{0}, fields, wl, rtt::trace::PointListPupil{{{0.0, 0.0}, {0.0, 1.0}}});
+  rtt::trace::RayPaths paths;
+  [[maybe_unused]] const auto stats =
+      rtt::trace::SequentialTracer().trace(cs, PathId{0}, rays, paths);
+  const std::uint32_t m = cs.find_surface(SurfaceId("M")).value();
+  REQUIRE(paths.lost_at[0] == -1);
+  REQUIRE(paths.lost_at[1] == -1);
+  const Vec3 chief = cs.surfaces()[m].to_local.apply_point(paths.position_at(0, 1));
+  const Vec3 rim = cs.surfaces()[m].to_local.apply_point(paths.position_at(1, 1));
+  CHECK(std::hypot(chief.x(), chief.y()) <= kAimTolerance);
+  CHECK(std::abs(std::hypot(rim.x(), rim.y()) - r_s) <= kAimTolerance + 1e-12);
+  // Content guard: the chief ray of the oblique field starts off the axis (it is not the axial
+  // ray), and R_s is the radius of the 60 mm entrance pupil on the mirror in its vertex plane.
+  CHECK(std::abs(rays.pos_y()[0]) > 1e-3);
+  CHECK(std::abs(r_s - 30.0) <= 1e-9);
 }
 
 TEST_CASE("surface stop: the stop follows the perturbed lens",
@@ -253,9 +268,9 @@ TEST_CASE("surface stop: aiming data of another stop surface do not fit",
   const CompiledSystem cs = rtt::compile::compile(other, schott_m2());
   const std::uint16_t wl = cs.reference_wavelength();
   const rtt::trace::AimReference reference = rtt::trace::aim_reference(cs, PathId{0}, wl);
-  CHECK_THROWS_AS(rtt::trace::aim_ray(surface_stop(), PathId{0}, 0, wl, 0.0, 0.0,
-                                      rtt::trace::Aiming::Real, reference),
-                  std::invalid_argument);
+  CHECK_THROWS_WITH(rtt::trace::aim_ray(surface_stop(), PathId{0}, 0, wl, 0.0, 0.0,
+                                        rtt::trace::Aiming::Real, reference),
+                    Catch::Matchers::ContainsSubstring("system aperture"));
   // Content guard: with its own reference the ray is aimed.
   CHECK(rtt::trace::aim_ray(cs, PathId{0}, 0, wl, 0.0, 0.0, rtt::trace::Aiming::Real, reference)
             .ray.status == rtt::trace::RayStatus::Alive);

@@ -58,8 +58,8 @@ const CompiledSystem& workaround() {
 }
 
 /// Image of the stop through L2.S1, L2.S2, L3.S1, L3.S2 by an independent y-nu trace
-/// (Greivenkamp, Field Guide to Geometrical Optics, SPIE 2004, "Paraxial raytrace equations",
-/// p. 33: refraction n'u' = nu - y phi with phi = c (n' - n), transfer y' = y + t u'), starting at
+/// (Greivenkamp, OPTI-201/202, Sec. 9, p. 9-2, docs/quellen.md: refraction n'u' = nu - y phi with
+/// phi = c (n' - n), transfer y' = y + t u'), starting at
 /// the vertex plane of L2.S1 in the medium in front of it. Radii and vertices from the file
 /// (L2 at z = 10.691, L2.S2 0.975 behind; L3 at z = 16.488, L3.S2 3.127 behind), indices from
 /// the compiled media of the path at the reference wavelength. `refract_at_stop` = false is the
@@ -147,8 +147,8 @@ TEST_CASE("surface stop: first order as with the stop element", "[paraxial][aper
   REQUIRE(b.bfl);
   REQUIRE(b.ffl);
   CHECK(std::abs(*a.rear_focal_length - *b.rear_focal_length) <= 1e-12 * *b.rear_focal_length);
-  CHECK(std::abs(*a.bfl - *b.bfl) <= 1e-12 * *b.bfl);
-  CHECK(std::abs(*a.ffl - *b.ffl) <= 1e-12 * *b.ffl);
+  CHECK(std::abs(*a.bfl - *b.bfl) <= 1e-12 * std::abs(*b.bfl));
+  CHECK(std::abs(*a.ffl - *b.ffl) <= 1e-12 * std::abs(*b.ffl));
 }
 
 TEST_CASE("surface stop: entrance pupil of the triplet against #34", "[paraxial][aperture-stop]") {
@@ -244,4 +244,24 @@ TEST_CASE("surface stop: a mirror as the stop", "[paraxial][aperture-stop]") {
   REQUIRE(fo.exit_pupil);
   REQUIRE(fo.exit_pupil->z);
   CHECK(std::abs(*fo.exit_pupil->z) <= 1e-12);
+}
+
+TEST_CASE("surface stop: stop_size takes the aperture of the stop surface",
+          "[paraxial][aperture-stop]") {
+  // ADR 0039, points 1 and 4: with stop_size the entrance pupil is the image of the aperture of
+  // L2.S1 (radius 10 mm). Pupil and stop are conjugate and the map is linear in the height, so
+  // D_EP = 12.5 mm * 10 / R_s with R_s the independent stop radius of the 12.5 mm pupil (above).
+  System s = load("m2/cooke_triplet_surface_stop.rtt.json");
+  s.aperture.type = rtt::model::SystemApertureType::StopSize;
+  s.aperture.value = rtt::model::Param();
+  const CompiledSystem cs = rtt::compile::compile(s, schott_m2());
+  const auto fo = rtt::paraxial::first_order(cs, PathId{0}, cs.reference_wavelength());
+  REQUIRE(fo.entrance_pupil);
+  REQUIRE(fo.entrance_pupil->diameter);
+  const double expected = 12.5 * 10.0 / independent_stop_radius(surface_stop());
+  INFO(std::setprecision(17) << "D_EP " << *fo.entrance_pupil->diameter << ", expected "
+                             << expected);
+  CHECK(std::abs(*fo.entrance_pupil->diameter - expected) <= 1e-9);
+  // Content guard: the aperture radius matters (10 mm, not the file's EPD 12.5 mm).
+  CHECK(std::abs(*fo.entrance_pupil->diameter - 12.5) > 1.0);
 }
