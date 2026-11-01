@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <iomanip>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <variant>
@@ -237,4 +238,25 @@ TEST_CASE("surface stop: the stop follows the perturbed lens",
     CHECK(std::hypot(l1_local.x(), l1_local.y()) <= kAimTolerance);
     CHECK(std::abs(g1.y()) <= kAimTolerance + 1e-12);
   }
+}
+
+TEST_CASE("surface stop: aiming data of another stop surface do not fit",
+          "[trace][aperture-stop][aim-reference]") {
+  // ADR 0039, point 5: the signature of the aiming data (ADR 0007, addendum #255) compares the
+  // system aperture with aperture.stop. The same triplet with the stop on L2.S2 (given the
+  // aperture of L2.S1) has the same path, but its aiming data belong to another stop.
+  System other = load("m2/cooke_triplet_surface_stop.rtt.json");
+  auto& l2 = std::get<rtt::model::Element>(other.root.children[1].value);
+  REQUIRE(l2.name == "L2");
+  l2.surfaces[1].aperture = l2.surfaces[0].aperture;
+  other.aperture.stop = SurfaceId("L2.S2");
+  const CompiledSystem cs = rtt::compile::compile(other, schott_m2());
+  const std::uint16_t wl = cs.reference_wavelength();
+  const rtt::trace::AimReference reference = rtt::trace::aim_reference(cs, PathId{0}, wl);
+  CHECK_THROWS_AS(rtt::trace::aim_ray(surface_stop(), PathId{0}, 0, wl, 0.0, 0.0,
+                                      rtt::trace::Aiming::Real, reference),
+                  std::invalid_argument);
+  // Content guard: with its own reference the ray is aimed.
+  CHECK(rtt::trace::aim_ray(cs, PathId{0}, 0, wl, 0.0, 0.0, rtt::trace::Aiming::Real, reference)
+            .ray.status == rtt::trace::RayStatus::Alive);
 }

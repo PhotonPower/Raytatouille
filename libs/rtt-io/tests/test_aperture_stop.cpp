@@ -39,9 +39,11 @@ TEST_CASE("aperture.stop: the reference form round trip", "[io][0.8][aperture-st
   const System s = surface_stop();
   const json j = json::parse(rtt::io::to_json(s));
   CHECK(j["aperture"]["stop"] == json{{"surface", "L1.S1"}});
-  // Written after value (ADR 0039, point 9): type, value, stop.
+  // Written after value (ADR 0039, point 9): type, value, stop (ordered_json keeps the order of
+  // the file; json sorts the keys).
   json keys = json::array();
-  for (const auto& [key, value] : j["aperture"].items()) keys.push_back(key);
+  const nlohmann::ordered_json o = nlohmann::ordered_json::parse(rtt::io::to_json(s));
+  for (const auto& [key, value] : o["aperture"].items()) keys.push_back(key);
   CHECK(keys == json{"type", "value", "stop"});
   const System back = rtt::io::parse_system(rtt::io::to_json(s));
   CHECK(back == s);

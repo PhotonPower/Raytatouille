@@ -62,9 +62,10 @@ const CompiledSystem& workaround() {
 /// p. 33: refraction n'u' = nu - y phi with phi = c (n' - n), transfer y' = y + t u'), starting at
 /// the vertex plane of L2.S1 in the medium in front of it. Radii and vertices from the file
 /// (L2 at z = 10.691, L2.S2 0.975 behind; L3 at z = 16.488, L3.S2 3.127 behind), indices from
-/// the compiled media of the path at the reference wavelength. `refract_at_stop` = false leaves
-/// out the refraction at L2.S1 (the content guard: what the exit pupil would be if the backward
-/// trace started behind the stop as for a stop element).
+/// the compiled media of the path at the reference wavelength. `refract_at_stop` = false is the
+/// content guard, the trace of the code before ADR 0039, point 4: the backward trace started
+/// behind the stop event, as for a stop element, but in the medium in front of the stop (air), so
+/// it left out the refraction at L2.S1 and took air for the glass of L2.
 struct ExitPupil {
   double z = 0.0;
   double diameter = 0.0;
@@ -76,8 +77,10 @@ ExitPupil independent_exit_pupil(const CompiledSystem& cs, bool refract_at_stop)
   auto n = [&](std::uint32_t medium) { return cs.media()[medium].index[wl].real(); };
   const std::array<double, 4> radius{-24.456, 21.896, 86.759, -20.4942};
   const std::array<double, 4> z{10.691, 10.691 + 0.975, 16.488, 16.488 + 3.127};
-  const std::array<double, 4> n_before{n(events[2].medium_before), n(events[3].medium_before),
-                                       n(events[4].medium_before), n(events[5].medium_before)};
+  const std::array<double, 4> n_before{
+      n(events[2].medium_before),
+      refract_at_stop ? n(events[3].medium_before) : n(events[2].medium_before),
+      n(events[4].medium_before), n(events[5].medium_before)};
   const std::array<double, 4> n_after{n(events[2].medium_after), n(events[3].medium_after),
                                       n(events[4].medium_after), n(events[5].medium_after)};
   // Two rays from the stop plane: the chief ray from the centre (y = 0, u = 0.1) and the rim ray
@@ -186,9 +189,12 @@ TEST_CASE("surface stop: exit pupil through the stop surface itself", "[paraxial
   const double r_s = independent_stop_radius(cs);
   INFO(std::setprecision(17) << "R_s " << r_s);
   CHECK(std::abs(*fo.exit_pupil->diameter - xp.diameter * r_s / 10.0) <= 1e-9);
-  // Content guard: without the refraction at L2.S1 the exit pupil lies clearly elsewhere.
+  // Content guard: the trace of the old code (see independent_exit_pupil) puts the exit pupil
+  // clearly elsewhere. A refraction in the stop plane alone would change neither position nor size
+  // (it only turns rays at the points of the stop, like a field lens in an image plane); the
+  // old code went wrong by continuing with the index in front of the stop.
   const ExitPupil wrong = independent_exit_pupil(cs, false);
-  INFO(std::setprecision(17) << "without refraction at L2.S1: z_XP " << wrong.z);
+  INFO(std::setprecision(17) << "old code: z_XP " << wrong.z);
   CHECK(std::abs(wrong.z - xp.z) > 1e-3);
 }
 
