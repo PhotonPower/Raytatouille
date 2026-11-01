@@ -96,12 +96,18 @@ TEST_CASE("intersect forwards a shape without its own overload to intersect_newt
 
 TEST_CASE("intersect keeps the analytic overloads for plane and conic", "[shape]") {
   // The analytic paths report 0 Newton steps; a constrained template must not take them over.
-  const Vec3 o(0.0, 1.0, -5.0);
-  const Vec3 d = Vec3(0.0, 0.1, 1.0).normalized();
-  const auto conic = rtt::geom::intersect(Conic<double>(0.02, -1.0), o, d);
+  // Far ray origin: |F| at the analytic start is limited by ulp(z) ~ 1.5e-11 mm > 1e-12 mm, so
+  // Newton takes at least one step there (precondition), while the analytic overload takes none.
+  const Conic<double> sphere(0.02, 0.0);
+  const Vec3 o(0.0, 3.0, -1e5);
+  const Vec3 d = Vec3::UnitZ();
+  const auto newton = rtt::geom::intersect_newton(sphere, o, d);
+  REQUIRE(newton.status == HitStatus::Hit);
+  REQUIRE(newton.iterations > 0);
+  const auto conic = rtt::geom::intersect(sphere, o, d);
   REQUIRE(conic.status == HitStatus::Hit);
   REQUIRE(conic.iterations == 0);
-  const auto plane = rtt::geom::intersect(Plane<double>(), o, d);
+  const auto plane = rtt::geom::intersect(Plane<double>(), Vec3(0.0, 1.0, -5.0), d);
   REQUIRE(plane.status == HitStatus::Hit);
   REQUIRE(plane.iterations == 0);
 }

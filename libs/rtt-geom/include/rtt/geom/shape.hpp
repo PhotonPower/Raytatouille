@@ -26,9 +26,10 @@ namespace rtt::geom {
 /// - `grad(x, y)`: slopes (dz/dx, dz/dy), dimensionless. NaN outside the domain; a component may
 ///   be +-infinity where the surface is vertical (rim r = max_radius()). Must not throw.
 /// - `base_conic()`: best-fit base conic (curvature c in 1/mm, conic constant k), the starting
-///   value of the intersection; not the paraxial curvature (ADR 0041, point 1).
+///   value of the intersection; not the paraxial curvature (ADR 0041, point 1). Must not throw
+///   (called from the noexcept intersection).
 /// - `max_radius()`: largest radial distance r = sqrt(x^2 + y^2) in mm on which the shape is
-///   defined, or std::nullopt if it is defined for all r.
+///   defined, or std::nullopt if it is defined for all r. Must not throw (as base_conic()).
 template <class S, class T>
 concept IntersectableShape = rtt::math::Real<T> && requires(const S& shape, T x, T y) {
   { shape.sag(x, y) } noexcept -> std::same_as<T>;
