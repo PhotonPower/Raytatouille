@@ -330,8 +330,8 @@ class AimReference {
 ///         `path` and `wavelength`; in `system` another name, number of events or surface id,
 ///         kind or order of an event of the path; other wavelength values or another reference
 ///         wavelength; other field type or field values (x, y); another object (at infinity,
-///         object_z(), ADR 0038) or system aperture (type, value) (ADR 0007, addendum #252,
-///         precision #255);
+///         object_z(), ADR 0038) or system aperture (type, value, stop surface; ADR 0039) (ADR
+///         0007, addendum #252, precision #255);
 ///         and as aim_ray() for px, py, the field and the start plane
 [[nodiscard]] AimedRay aim_ray(const compile::CompiledSystem& system,
                                compile::PathId path,

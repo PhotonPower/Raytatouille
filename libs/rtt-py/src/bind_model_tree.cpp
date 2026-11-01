@@ -745,17 +745,27 @@ void bind_model_tree(nb::module_& m) {
           "Field points (copies; Field is mutable, but changing one does not change this "
           "FieldSet or the System).");
 
+  // Registered before its users (SystemAperture.stop, ObjectSpace.reference), so that their
+  // signatures name it.
+  read_only_class<SurfaceReference>(
+      m, "SurfaceReference",
+      "A reference to a surface by its SurfaceId, {\"surface\": id} in the file (ADR 0038).")
+      .def_ro("surface", &SurfaceReference::surface, "The SurfaceId.");
+
   read_only_class<model::SystemAperture>(m, "SystemAperture",
                                          "Aperture of the system (read-only copy).")
       .def_ro("type", &model::SystemAperture::type, "What `value` means.")
       .def_ro("value", &model::SystemAperture::value,
               "mm for ENTRANCE_PUPIL_DIAMETER, dimensionless for IMAGE_SPACE_F_NUMBER and "
-              "OBJECT_SPACE_NA, not used for STOP_SIZE (Param).");
-
-  read_only_class<SurfaceReference>(
-      m, "SurfaceReference",
-      "A reference to a surface by its SurfaceId, {\"surface\": id} in the file (ADR 0038).")
-      .def_ro("surface", &SurfaceReference::surface, "The SurfaceId.");
+              "OBJECT_SPACE_NA, not used for STOP_SIZE (Param).")
+      .def_prop_ro(
+          "stop",
+          [](const model::SystemAperture& a) -> std::optional<SurfaceReference> {
+            if (!a.stop) return std::nullopt;
+            return SurfaceReference{a.stop->str()};
+          },
+          "The surface whose aperture is the system stop, as in the file (SurfaceReference, "
+          "schema 0.8, ADR 0039); None: the stop element, if any.");
 
   read_only_class<model::ObjectSpace>(m, "ObjectSpace", "Position of the object (read-only copy).")
       .def_ro("at_infinity", &model::ObjectSpace::at_infinity, "True for an object at infinity.")

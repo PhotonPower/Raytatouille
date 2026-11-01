@@ -236,6 +236,10 @@ std::vector<Case> cases() {
          s.object = {false, Param(100.0)};
          s.object.reference = SurfaceId("NOPE");
        }},
+      {"stop.surface_unknown", "/aperture/stop",
+       [](System& s) { s.aperture.stop = SurfaceId("NOPE"); }},
+      {"stop.surface_kind", "/aperture/stop",
+       [](System& s) { s.aperture.stop = SurfaceId("IMG"); }},
       {"aperture.stop_missing", "/aperture/type",
        [](System& s) {
          s.aperture.type = SystemApertureType::StopSize;

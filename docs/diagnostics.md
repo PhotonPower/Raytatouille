@@ -32,7 +32,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `agf.stray_line` | Warnung | einzelnes Wort vor dem nächsten NM-Datensatz übersprungen, nur Leerzeilen dazwischen (NIKON-HIKARI_201911 Z. 10102) | agf | Datei:Zeile |
 | `aperture.na_exceeds_index` | Warnung | objektseitige NA ≥ Brechungsindex des Objektraums (bei `object.medium` ungleich `AIR`; für Luft meldet validate `aperture.na_not_physical`, ADR 0037) | compile | `/aperture/value` |
 | `aperture.na_not_physical` | Warnung | objektseitige NA ≥ 1 in Luft (Objektraum: `object.medium`, sonst `environment.medium`) | validate | `/aperture/value` |
-| `aperture.stop_missing` | Fehler | Aperturtyp `stop_size` ohne Blendenelement | validate | `/aperture/type` |
+| `aperture.stop_missing` | Fehler | Aperturtyp `stop_size` ohne Blendenelement und ohne `aperture.stop` | validate | `/aperture/type` |
 | `aperture.value_invalid` | Fehler | Wert der Systemapertur nicht endlich oder ≤ 0 | validate | `/aperture/value` |
 | `bounds.invalid` | Fehler | `min` nicht kleiner als `max`, oder Grenzen an einer abgeleiteten Zeile (nur über die API) | validate | `…/min` (bei einer Zeile ohne `min`: `…/max`) |
 | `bounds.value_outside` | Warnung | Wert eines ungebundenen Params oder einer Zeile außerhalb seiner Grenzen (ein Startwert darf außerhalb liegen) | validate | `…/value` bzw. `/parameters/i/values/k` |
@@ -150,10 +150,12 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `shape.zernike_radius_invalid` | Fehler | Zernike-Normierungsradius nicht endlich oder ≤ 0 mm | validate | `…/s/shape/terms/i/normalization_radius` |
 | `shape.zernike_unsupported` | Fehler | Zernike-Pfeilhöhenterme noch nicht unterstützt (M8) | compile | `…/s/shape/terms/i` |
 | `shape.zernike_without_coefficients` | Warnung | Zernike-Term ohne Koeffizienten | validate | `…/s/shape/terms/i/coefficients` |
-| `stop.aperture_missing` | Fehler | Blende ohne Apertur | validate | `…/el/surfaces/0/aperture` |
+| `stop.aperture_missing` | Fehler | Blendenelement oder Blendenfläche (`aperture.stop`, ADR 0039) ohne Apertur | validate | `…/el/surfaces/k/aperture` |
 | `stop.clips_beam` | Warnung | Strahlen der Abtastung enden an der Blende mit VIGNETTED: die Blendenöffnung beschneidet das Bündel, das die Systemapertur festlegt | analysis | Blendenfläche `…/s` |
-| `stop.multiple` | Fehler | mehr als ein Blendenelement | validate | `…/el` (zweite Blende) |
-| `stop.not_on_path` | Warnung | ein Pfad besucht das Blendenelement nicht; Zielen, Pupillen, Seidel-Summen und OPD werfen auf ihm `NoStopError` | compile | `/paths/i` |
+| `stop.multiple` | Fehler | mehr als ein Blendenelement, oder ein Blendenelement und `aperture.stop` (ADR 0039) | validate | `…/el` (zweite Blende) bzw. `/aperture/stop` |
+| `stop.not_on_path` | Warnung | ein Pfad besucht die Blende (Blendenelement oder Blendenfläche) nicht; Zielen, Pupillen, Seidel-Summen und OPD werfen auf ihm `NoStopError` | compile | `/paths/i` |
+| `stop.surface_kind` | Fehler | `aperture.stop` nennt eine Fläche eines Blenden- oder Detektorelements; zulässig sind Linse, Spiegel, Platte und dünnes Element (ADR 0039) | validate | `/aperture/stop` |
+| `stop.surface_unknown` | Fehler | `aperture.stop` nennt keine Fläche des Systems (ADR 0039) | validate | `/aperture/stop` |
 | `surface.efficiency_invalid` | Fehler | Beugungseffizienz ungültig: leere Liste, Wert außerhalb [0, 1], Ordnung doppelt oder Fläche ohne Phasenschicht (ADR 0025) | validate | `…/s/diffraction_efficiency`, `…/k/efficiency`, `…/k/order` |
 | `surface.id_duplicate` | Fehler | Flächen-ID doppelt | validate | `…/s/id` |
 | `surface.id_empty` | Fehler | leere Flächen-ID | validate | `…/s/id` |

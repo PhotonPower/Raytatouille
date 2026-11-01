@@ -24,7 +24,7 @@ namespace rtt::model {
 /// Pose.reference and Pose.order, ADR 0028; parameter table, configurations and bounds, pickup
 /// dropped, ADR 0029; merit function, ADR 0030; 0.5: ideal lenses, ADR 0031; 0.6: tolerance
 /// set, ADR 0035; 0.7: medium of the object space, ADR 0037; 0.8: reference of the object
-/// distance, ADR 0038).
+/// distance, ADR 0038, and the stop on a surface, ADR 0039).
 inline constexpr std::string_view kSchemaVersion = "0.8.0";
 
 struct Wavelength {
@@ -70,6 +70,10 @@ enum class SystemApertureType : std::uint8_t {
 struct SystemAperture {
   SystemApertureType type = SystemApertureType::EntrancePupilDiameter;
   Param value;
+  /// Stop on a surface (schema 0.8, ADR 0039): the aperture of this surface of a lens, mirror,
+  /// plate or thin element is the system stop; none: the Stop element, if any. A system has
+  /// either a Stop element or this (validate: stop.multiple, stop.surface_kind).
+  std::optional<SurfaceId> stop = std::nullopt;
   bool operator==(const SystemAperture&) const = default;
 };
 

@@ -416,9 +416,9 @@ class CompiledSystem {
   /// @throws std::out_of_range if `id` does not belong to this system
   [[nodiscard]] const CompiledPath& path(PathId id) const { return paths_.at(id.index); }
 
-  /// Index of the surface of the system stop (ADR 0039, point 3): the surface of the Stop
-  /// element; none without one. The stop of a path is its first event at this surface
-  /// (stop_event()).
+  /// Index of the surface of the system stop (ADR 0039, point 3): the surface named by
+  /// aperture.stop, or else the surface of the Stop element; none without either. The stop of a
+  /// path is its first event at this surface (stop_event()), whatever its kind.
   [[nodiscard]] std::optional<std::uint32_t> stop_surface() const noexcept { return stop_surface_; }
 
   /// Index of the surface with this id, if any.

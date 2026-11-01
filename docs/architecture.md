@@ -110,7 +110,7 @@ Das Modell ist reine Datenstruktur ohne Tracing-Logik. Header: `libs/rtt-model/i
 
 - **`System`:** Name, Umgebung (Temperatur, Druck, Umgebungsmedium), Objektraum (unendlich oder Abstand), Wellenlängen (genau eine Referenz), Systemapertur, Feldpunkte, Wurzel-Baugruppe, Pfade.
 - **`Assembly`:** Name, `Pose`, Kinder (`Node` = Assembly oder Element).
-- **`Element`:** physischer Körper mit `ElementKind`: `Lens` (≥ 2 Flächen, Material je Segment), `Mirror` (≥ 1 Fläche, optional ein Substratmaterial), `Plate` (≥ 2 plane Flächen, Material je Segment; Platten, Würfel, Prismen), `ThinElement` (1 Fläche ohne Dicke), `Stop` (1 Fläche mit Apertur, höchstens einer pro System), `Detector` (1 Fläche).
+- **`Element`:** physischer Körper mit `ElementKind`: `Lens` (≥ 2 Flächen, Material je Segment), `Mirror` (≥ 1 Fläche, optional ein Substratmaterial), `Plate` (≥ 2 plane Flächen, Material je Segment; Platten, Würfel, Prismen), `ThinElement` (1 Fläche ohne Dicke), `Stop` (1 Fläche mit Apertur, höchstens einer pro System; die Blende kann stattdessen auf einer Fläche einer Linse, eines Spiegels, einer Platte oder eines dünnen Elements liegen, `aperture.stop`, ADR 0039), `Detector` (1 Fläche).
 - **Segmente (ADR 0017):** Ein Element mit N Flächen hat N − 1 Segmente; Segment i liegt zwischen Fläche i und i + 1 (nullbasiert). `Lens` und `Plate` geben entweder ein Material für alle Segmente an (`material`, Kurzform) oder eine Liste mit genau N − 1 Einträgen (`segment_materials`, Kittglieder); `Element::segment_material(i)` liefert das Material von Segment i in beiden Formen.
 - **`Surface`:** eindeutige `SurfaceId` (lesbarer String wie `"L1.S1"`), `Pose` im Element, Layer-Stack.
 

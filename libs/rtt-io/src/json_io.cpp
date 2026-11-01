@@ -634,7 +634,8 @@ struct Migration {
 ///   ideal_cylinder_lens are new.
 /// - 0.5 -> 0.6 (ADR 0035): content unchanged, only the section "tolerances" is new.
 /// - 0.6 -> 0.7 (ADR 0037): content unchanged, only "object.medium" is new.
-/// - 0.7 -> 0.8 (ADR 0038): content unchanged, only "object.reference" is new.
+/// - 0.7 -> 0.8 (ADR 0038, ADR 0039): content unchanged, only "object.reference" and
+///   "aperture.stop" are new.
 Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
   const std::string ours(kSchemaVersion);
   const std::string mm = major_minor(version);
@@ -1113,6 +1114,13 @@ std::optional<SurfaceId> read_object_reference(const Json& j, const Ctx& c) {
   return SurfaceId(read_string(require(j, "surface", c), c.at("surface")));
 }
 
+/// aperture.stop (ADR 0039, points 1 and 9): only the reference form {"surface": "<id>"} of
+/// ADR 0038, point 1, with exactly that key.
+SurfaceId read_stop_surface(const Json& j, const Ctx& c) {
+  expect_object(j, c, {"surface"});
+  return SurfaceId(read_string(require(j, "surface", c), c.at("surface")));
+}
+
 /// `warnings` may be null: the warnings of the migration are dropped.
 System read_system_tree(const Json& j, std::vector<Diagnostic>* warnings) {
   const Ctx c;
@@ -1140,6 +1148,13 @@ System read_system_tree(const Json& j, std::vector<Diagnostic>* warnings) {
       c.at("object")
           .at("reference")
           .fail("a reference of the object distance needs schema_version 0.8 or later (ADR 0038)");
+    }
+    // ADR 0039, point 9: the stop on a surface as well.
+    const Json* aperture = find(j, "aperture");
+    if (aperture != nullptr && aperture->is_object() && find(*aperture, "stop") != nullptr) {
+      c.at("aperture")
+          .at("stop")
+          .fail("a stop on a surface needs schema_version 0.8 or later (ADR 0039)");
     }
   }
   if (m.before_0_5) {
@@ -1211,13 +1226,14 @@ System read_migrated(const Json& j, const Migration& m) {
   {
     const Ctx ac = c.at("aperture");
     const Json& a = require(j, "aperture", c);
-    expect_object(a, ac, {"type", "value"});
+    expect_object(a, ac, {"type", "value", "stop"});
     s.aperture.type = read_enum(require(a, "type", ac), ac.at("type"), kApertureTypes);
     if (s.aperture.type == SystemApertureType::StopSize) {
       read_opt(a, "value", ac, s.aperture.value, read_param);
     } else {
       s.aperture.value = read_param(require(a, "value", ac), ac.at("value"));
     }
+    if (const Json* st = find(a, "stop")) s.aperture.stop = read_stop_surface(*st, ac.at("stop"));
   }
 
   {
@@ -1344,6 +1360,13 @@ class Writer {
     ap["type"] = std::string(enum_name(s.aperture.type, kApertureTypes));
     if (edit_ || s.aperture.type != SystemApertureType::StopSize || s.aperture.value != Param{}) {
       ap["value"] = param(s.aperture.value);
+    }
+    // ADR 0039, point 9: only a set stop surface, after value (also in the edit form, like
+    // object.reference: a patch adds /aperture/stop).
+    if (s.aperture.stop) {
+      OJson st;
+      st["surface"] = s.aperture.stop->str();
+      ap["stop"] = std::move(st);
     }
     o["aperture"] = std::move(ap);
 

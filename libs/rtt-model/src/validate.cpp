@@ -386,6 +386,9 @@ class Validator {
       check_pose_values(e.surfaces[i].pose, sloc + "/pose");
       check_surface(e.surfaces[i], sloc);
       check_ideal_lens_place(e, i, sloc);
+      // For aperture.stop (ADR 0039, point 8): the first surface of each id.
+      surface_info_.try_emplace(e.surfaces[i].id.str(),
+                                SurfaceInfo{e.kind, e.surfaces[i].aperture.has_value(), sloc});
     }
   }
 
@@ -637,11 +640,32 @@ class Validator {
     }
   }
 
+  /// At most one stop: a Stop element or aperture.stop on a surface of a lens, mirror, plate or
+  /// thin element with an aperture (ADR 0039, points 2 and 8).
   void check_stops() {
     if (stops_.size() > 1) report("stop.multiple", stops_[1], "only one stop element is allowed");
-    if (stops_.empty() && system_.aperture.type == SystemApertureType::StopSize) {
+    if (system_.aperture.stop) {
+      const std::string id = system_.aperture.stop->str();
+      if (!stops_.empty()) {
+        report("stop.multiple", "/aperture/stop",
+               "a stop element and aperture.stop: only one stop is allowed");
+      }
+      const auto it = surface_info_.find(id);
+      if (it == surface_info_.end()) {
+        report("stop.surface_unknown", "/aperture/stop", "no surface '" + id + "' for the stop");
+      } else if (it->second.kind == ElementKind::Stop || it->second.kind == ElementKind::Detector) {
+        report(
+            "stop.surface_kind", "/aperture/stop",
+            "the stop surface '" + id + "' must belong to a lens, mirror, plate or thin element");
+      } else if (!it->second.has_aperture) {
+        report("stop.aperture_missing", it->second.location + "/aperture",
+               "the stop surface '" + id + "' needs an aperture");
+      }
+    }
+    if (stops_.empty() && !system_.aperture.stop &&
+        system_.aperture.type == SystemApertureType::StopSize) {
       report("aperture.stop_missing", "/aperture/type",
-             "aperture type 'stop_size' requires a stop element");
+             "aperture type 'stop_size' requires a stop element or aperture.stop");
     }
   }
 
@@ -1365,6 +1389,13 @@ class Validator {
   const System& system_;
   std::vector<Diagnostic> out_;
   std::unordered_map<std::string, std::string> surface_ids_;
+  /// Element kind, aperture and location of each surface id, for aperture.stop (ADR 0039).
+  struct SurfaceInfo {
+    ElementKind kind = ElementKind::Lens;
+    bool has_aperture = false;
+    std::string location;
+  };
+  std::unordered_map<std::string, SurfaceInfo> surface_info_;
   std::unordered_set<std::string> phase_surfaces_;  // ids of surfaces with a phase layer
   std::unordered_map<std::string, std::string> node_names_;
   std::vector<std::string> stops_;

@@ -33,11 +33,15 @@
 namespace rtt::compile {
 namespace {
 
-/// The surface of the system stop (ADR 0039, point 3): the surface of the Stop element (at most
-/// one, validate: stop.multiple); none without one.
-std::optional<std::uint32_t> stop_surface_of(const std::vector<CompiledSurface>& surfaces) {
+/// The surface of the system stop (ADR 0039, point 3): the surface named by aperture.stop, or
+/// the surface of the Stop element (validate allows only one of them and at most one Stop
+/// element: stop.multiple, stop.surface_unknown); none without either.
+std::optional<std::uint32_t> stop_surface_of(const std::vector<CompiledSurface>& surfaces,
+                                             const model::SystemAperture& aperture) {
   for (std::size_t i = 0; i < surfaces.size(); ++i) {
-    if (surfaces[i].element_kind == model::ElementKind::Stop) return static_cast<std::uint32_t>(i);
+    const bool stop = aperture.stop ? surfaces[i].id == *aperture.stop
+                                    : surfaces[i].element_kind == model::ElementKind::Stop;
+    if (stop) return static_cast<std::uint32_t>(i);
   }
   return std::nullopt;
 }
@@ -195,13 +199,16 @@ class Compiler {
   /// Warning for every path that does not visit the stop of a system that has one (ADR 0023;
   /// ADR 0039, point 3): aiming, pupils, Seidel sums and OPD on such a path throw NoStopError.
   void check_stop_on_paths() {
-    const std::optional<std::uint32_t> stop = stop_surface_of(surfaces_);
+    const std::optional<std::uint32_t> stop = stop_surface_of(surfaces_, system_.aperture);
     if (!stop) return;
     for (std::size_t p = 0; p < paths_.size(); ++p) {
       if (first_event_at(paths_[p].events, *stop)) continue;
+      // The Stop element by its name, a stop surface (aperture.stop) by its id.
+      const CompiledSurface& s = surfaces_[*stop];
+      const std::string name =
+          s.element_kind == model::ElementKind::Stop ? s.element_name : s.id.str();
       report("stop.not_on_path", idx("/paths", p),
-             "path '" + paths_[p].name + "' does not visit the stop '" +
-                 surfaces_[*stop].element_name +
+             "path '" + paths_[p].name + "' does not visit the stop '" + name +
                  "': aiming, pupils, Seidel sums and OPD on it need a stop (NoStopError)");
     }
   }
@@ -1446,7 +1453,7 @@ CompiledSystem compile(const model::System& input,
   if (!input.configurations.empty())
     cs.configuration_name_ = input.configurations[configuration].name;
   cs.surfaces_ = std::move(compiler.surfaces_);
-  cs.stop_surface_ = stop_surface_of(cs.surfaces_);
+  cs.stop_surface_ = stop_surface_of(cs.surfaces_, system.aperture);
   cs.node_frames_ = std::move(compiler.node_frames_);
   cs.elements_ = std::move(compiler.compiled_elements_);
   cs.media_ = std::move(compiler.media_);

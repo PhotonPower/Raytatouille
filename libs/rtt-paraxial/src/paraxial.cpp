@@ -399,17 +399,23 @@ FirstOrder first_order(const compile::CompiledSystem& system,
                         stop_surface);
   }
   const double z_stop = steps[stop].z;
-  // Object space -> stop plane, and stop plane -> image space (the stop itself only transmits).
+  // Object space -> stop plane, and stop plane -> image space. The stop plane is the vertex
+  // plane of the stop surface, in front of its own event (ADR 0039, point 4): a Stop element only
+  // transmits, so the back part starts behind it (bitwise as before); a stop on a lens or mirror
+  // surface refracts or reflects, so the back part starts with that event (transfer over 0 mm,
+  // then its power and index change). front.n_out is the medium in front of the stop surface.
+  const std::size_t back_start =
+      stop_surface.element_kind == model::ElementKind::Stop ? stop + 1 : stop;
   const Matrix front = propagate(steps, 0, stop, z_first, n1, z_stop);
-  const Matrix back = propagate(steps, stop + 1, steps.size(), z_stop, front.n_out, z_last);
+  const Matrix back = propagate(steps, back_start, steps.size(), z_stop, front.n_out, z_last);
   // Pupils at infinity if front.a or back.d is zero up to rounding (#35, rest of B9): a with the
   // magnitudes of the ray (1, 0) from z_first to the stop, d with those of (0, 1) from the stop.
   const bool ep_finite = !zero_up_to_rounding(
       front.a, stop, magnitude_trace(steps, 0, stop, z_first, n1, z_stop, 1.0, 0.0).y);
-  const std::size_t after_stop = steps.size() - stop - 1;
+  const std::size_t after_stop = steps.size() - back_start;
   const bool xp_finite = !zero_up_to_rounding(
       back.d, after_stop,
-      magnitude_trace(steps, stop + 1, steps.size(), z_stop, front.n_out, z_last, 0.0, 1.0).nu);
+      magnitude_trace(steps, back_start, steps.size(), z_stop, front.n_out, z_last, 0.0, 1.0).nu);
 
   // Entrance pupil, derived from the y-nu equations with front = [[a, b], [c, d]] from z_first
   // (object space) to the stop plane:
