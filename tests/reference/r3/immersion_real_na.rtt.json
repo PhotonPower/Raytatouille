@@ -3,11 +3,7 @@
   "name": "Immersion front: object in oil n = 1.52, index-matched hemisphere R = 1 mm around the object point, plane stop in vacuum; NA 1.45 read real (ADR 0040)",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},
-  "object": {
-    "at_infinity": false,
-    "distance": 0.1,
-    "medium": "CONST:1.52"
-  },
+  "object": {"at_infinity": false, "distance": 0.1, "medium": "CONST:1.52"},
   "wavelengths": [
     {"um": 0.5876, "reference": true}
   ],

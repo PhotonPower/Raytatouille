@@ -5,6 +5,7 @@
 #include <nlohmann/json.hpp>
 #include <string>
 
+#include "rtt/io/edit.hpp"
 #include "rtt/io/json_io.hpp"
 #include "rtt/model/system.hpp"
 #include "test_support.hpp"
