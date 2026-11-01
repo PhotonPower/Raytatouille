@@ -1,0 +1,65 @@
+{
+  "schema_version": "0.8.0",
+  "name": "Immersion front: object in oil n = 1.52, index-matched hemisphere R = 1 mm around the object point, plane stop in vacuum; NA 1.45 read real (ADR 0040)",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "object": {
+    "at_infinity": false,
+    "distance": 0.1,
+    "medium": "CONST:1.52"
+  },
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "object_na", "value": 1.45, "reading": "real"},
+  "fields": {
+    "type": "object_height",
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "lens",
+        "name": "L",
+        "material": "CONST:1.52",
+        "surfaces": [
+          {"id": "L.S1"},
+          {
+            "id": "L.S2",
+            "pose": {"position": [0.0, 0.0, 0.9]},
+            "shape": {
+              "base": {"type": "conic", "radius": -1.0}
+            },
+            "aperture": {"type": "circular", "radius": 0.99}
+          }
+        ]
+      },
+      {
+        "type": "stop",
+        "name": "stop",
+        "pose": {"position": [0.0, 0.0, 2.0]},
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 10.0}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 3.0]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}

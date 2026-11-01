@@ -18,7 +18,7 @@ if(RTT_BUILD_TESTS)
   rtt_add_test(rtt_optim_tests
     SOURCES tests/test_bounds.cpp tests/test_generators.cpp tests/test_levenberg_marquardt.cpp
       tests/test_m5_acceptance.cpp tests/test_merit_noise.cpp tests/test_optimize.cpp
-      tests/test_parabasal.cpp tests/test_trial_overlay.cpp tests/test_variables.cpp
+      tests/test_parabasal.cpp tests/test_parabasal_real_na.cpp tests/test_trial_overlay.cpp tests/test_variables.cpp
       tests/test_ideal_lens_optim.cpp
     LIBS rtt::optim rtt::io rtt::analysis rtt::paraxial TBB::tbb nlohmann_json::nlohmann_json)
   # Glass catalogues of the reference systems for the noise measurement ([.noise]).
