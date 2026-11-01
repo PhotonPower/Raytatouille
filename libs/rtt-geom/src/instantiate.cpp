@@ -11,7 +11,10 @@
 
 namespace rtt::geom {
 
-template class Shape<double>;
+static_assert(IntersectableShape<Plane<double>, double>);
+static_assert(IntersectableShape<Conic<double>, double>);
+static_assert(IntersectableShape<EvenAsphere<double>, double>);
+
 template class Plane<double>;
 template class Conic<double>;
 template class EvenAsphere<double>;
@@ -35,9 +38,11 @@ template Intersection<double> intersect<double>(const Plane<double>&,
                                                 const math::Vec3T<double>&,
                                                 const math::Vec3T<double>&,
                                                 double);
-template Intersection<double> intersect<double>(const Shape<double>&,
-                                                const math::Vec3T<double>&,
-                                                const math::Vec3T<double>&,
-                                                double);
+template Intersection<double> intersect_newton<double, EvenAsphere<double>>(
+    const EvenAsphere<double>&, const math::Vec3T<double>&, const math::Vec3T<double>&, double);
+template Intersection<double> intersect<double, EvenAsphere<double>>(const EvenAsphere<double>&,
+                                                                     const math::Vec3T<double>&,
+                                                                     const math::Vec3T<double>&,
+                                                                     double);
 
 }  // namespace rtt::geom

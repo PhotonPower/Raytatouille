@@ -64,11 +64,13 @@ static_assert(!std::is_polymorphic_v<Plane<double>>);
 static_assert(!std::is_polymorphic_v<Conic<double>>);
 static_assert(!std::is_polymorphic_v<EvenAsphere<double>>);
 
-static_assert(noexcept(rtt::geom::intersect(EvenAsphere<double>(0.02, 0.0, {1e-6}),
-                                            Vec3::Zero().eval(),
-                                            Vec3::UnitZ().eval())));
-static_assert(
-    noexcept(rtt::geom::intersect_newton(Bowl{}, Vec3::Zero().eval(), Vec3::UnitZ().eval())));
+// The intersection itself is noexcept (declval: only the call, not building its arguments).
+static_assert(noexcept(rtt::geom::intersect(std::declval<const EvenAsphere<double>&>(),
+                                            std::declval<const Vec3&>(),
+                                            std::declval<const Vec3&>())));
+static_assert(noexcept(rtt::geom::intersect_newton(std::declval<const Bowl&>(),
+                                                   std::declval<const Vec3&>(),
+                                                   std::declval<const Vec3&>())));
 
 TEST_CASE("intersect forwards a shape without its own overload to intersect_newton", "[shape]") {
   const EvenAsphere<double> asphere(0.02, -0.5, {1e-5, -2e-8});

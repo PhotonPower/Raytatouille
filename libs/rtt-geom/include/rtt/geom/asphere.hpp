@@ -19,7 +19,7 @@ namespace rtt::geom {
 /// Sign conventions of c and k as for Conic. The coefficients follow the model
 /// (rtt/model/surface.hpp): coefficients[i] = A_(2 i + 4) in mm^(-(2 i + 3)).
 template <rtt::math::Real T>
-class EvenAsphere final : public Shape<T> {
+class EvenAsphere final {
  public:
   /// @param curvature      c = 1/R of the base conic in 1/mm
   /// @param conic_constant k of the base conic, dimensionless
@@ -31,16 +31,16 @@ class EvenAsphere final : public Shape<T> {
   [[nodiscard]] const std::vector<T>& coefficients() const noexcept { return coefficients_; }
 
   /// Sag z in mm at (x, y) in mm; NaN for r > max_radius().
-  [[nodiscard]] T sag(T x, T y) const override;
+  [[nodiscard]] T sag(T x, T y) const noexcept;
 
   /// Slopes (dz/dx, dz/dy); NaN for r > max_radius(), +-infinity at r = max_radius().
-  [[nodiscard]] std::pair<T, T> grad(T x, T y) const override;
+  [[nodiscard]] std::pair<T, T> grad(T x, T y) const noexcept;
 
   /// (c, k) of the base conic.
-  [[nodiscard]] std::pair<T, T> base_conic() const override { return conic_.base_conic(); }
+  [[nodiscard]] std::pair<T, T> base_conic() const { return conic_.base_conic(); }
 
   /// Domain of the base conic; the polynomial is defined everywhere.
-  [[nodiscard]] std::optional<T> max_radius() const override { return conic_.max_radius(); }
+  [[nodiscard]] std::optional<T> max_radius() const { return conic_.max_radius(); }
 
  private:
   Conic<T> conic_;
@@ -48,7 +48,7 @@ class EvenAsphere final : public Shape<T> {
 };
 
 template <rtt::math::Real T>
-T EvenAsphere<T>::sag(T x, T y) const {
+T EvenAsphere<T>::sag(T x, T y) const noexcept {
   // Polynomial part sum_i A_(2i+4) r^(2i+4) = u^2 sum_i A_(2i+4) u^i with u = r^2, evaluated
   // with Horner's scheme. Without coefficients it is exactly 0, so the sag equals the conic's.
   const T u = x * x + y * y;
@@ -60,7 +60,7 @@ T EvenAsphere<T>::sag(T x, T y) const {
 }
 
 template <rtt::math::Real T>
-std::pair<T, T> EvenAsphere<T>::grad(T x, T y) const {
+std::pair<T, T> EvenAsphere<T>::grad(T x, T y) const noexcept {
   // d/dx of A_n r^n is n A_n r^(n-2) x, so the polynomial contributes
   // x u sum_i (2i + 4) A_(2i+4) u^i (and the same with y), u = r^2.
   const T u = x * x + y * y;

@@ -329,16 +329,16 @@ Jede Physik-Bibliothek ist eine reine Funktionssammlung ohne Kenntnis von Modell
 **Geometrie (`rtt-geom`)**
 
 ```cpp
-template <rtt::math::Real T>
-class Shape {
- public:
-  virtual ~Shape() = default;
-  virtual T sag(T x, T y) const = 0;
-  virtual std::pair<T, T> grad(T x, T y) const = 0;  // dz/dx, dz/dy
-  virtual std::pair<T, T> base_conic() const = 0;    // (c, k) als Startwert
-  virtual std::optional<T> max_radius() const = 0;
+template <class S, class T>
+concept IntersectableShape = rtt::math::Real<T> && requires(const S& s, T x, T y) {
+  { s.sag(x, y) } noexcept -> std::same_as<T>;
+  { s.grad(x, y) } noexcept -> std::same_as<std::pair<T, T>>;  // dz/dx, dz/dy
+  { s.base_conic() } -> std::same_as<std::pair<T, T>>;          // (c, k) als Startwert
+  { s.max_radius() } -> std::same_as<std::optional<T>>;
 };
 ```
+
+- Formen ohne gemeinsame Basisklasse (ADR 0041, Punkt 4): Jede Form ist eine `final`-Klasse, `compile::CompiledShape` ist eine Variante der Formen, und der Tracer besucht sie statisch. `intersect` hat analytische Überladungen für `Plane` und `Conic`; jede andere Form geht an `intersect_newton<T, S>`, ein Template über den konkreten Typ (beschränkt durch das Concept, `noexcept`), also ohne virtuelle Aufrufe.
 
 - Schnitt: analytisch mit der Basis-Konik, dann Newton auf F(t) = z(t) − sag(x(t), y(t)); konvergiert bei |F| ≤ 1e−12 mm oder |Δt| ≤ 8·ε_double·(1 + |t| + ‖o‖) (Rundungsgrenze bei fernem Strahlursprung), höchstens 30 Iterationen, sonst `NoConvergence`. Die nächste Lösung mit t > ε in Ausbreitungsrichtung gilt; ε = 1e−9 mm (`kDefaultTMin` in `rtt-geom`), überall im Schnitt einheitlich zu verwenden.
 - Normale aus dem Gradienten: n = (−∂z/∂x, −∂z/∂y, 1) normiert.

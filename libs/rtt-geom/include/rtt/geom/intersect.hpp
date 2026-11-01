@@ -2,7 +2,8 @@
 
 /// @file intersect.hpp
 /// Ray-surface intersection in the local coordinate system of a surface: analytic for plane and
-/// conic, Newton iteration for general shapes.
+/// conic, Newton iteration for every other shape (ADR 0041, point 4: a template over the concrete
+/// shape, without virtual calls).
 
 #include <cmath>
 #include <cstdint>
@@ -159,8 +160,10 @@ template <rtt::math::Real T>
   return hit;
 }
 
-/// General intersection with any shape: start at the analytic hit of the base conic (or of the
+/// Newton intersection with any shape: start at the analytic hit of the base conic (or of the
 /// vertex plane if the base conic is missed), then Newton on F(t) = z(t) - sag(x(t), y(t)).
+/// Callable for every shape, also for Conic (tests of the Newton path); intersect() picks it for
+/// shapes without an analytic overload.
 /// @param shape     surface shape in local coordinates
 /// @param origin    ray origin in local coordinates, mm
 /// @param direction direction in local coordinates; must have length 1 so that t is in mm
@@ -170,11 +173,11 @@ template <rtt::math::Real T>
 ///         NoConvergence after
 ///         kMaxNewtonIterations steps, if an iterate leaves the domain, if F or the gradient is
 ///         not finite, if F'(t) = 0, or if Newton converges onto a crossing with t <= t_min.
-template <rtt::math::Real T>
-[[nodiscard]] Intersection<T> intersect(const Shape<T>& shape,
-                                        const rtt::math::Vec3T<T>& origin,
-                                        const rtt::math::Vec3T<T>& direction,
-                                        T t_min = T(kDefaultTMin)) {
+template <rtt::math::Real T, IntersectableShape<T> S>
+[[nodiscard]] Intersection<T> intersect_newton(const S& shape,
+                                               const rtt::math::Vec3T<T>& origin,
+                                               const rtt::math::Vec3T<T>& direction,
+                                               T t_min = T(kDefaultTMin)) noexcept {
   using std::abs;
   using std::isfinite;
   using Vec = rtt::math::Vec3T<T>;
@@ -244,6 +247,16 @@ template <rtt::math::Real T>
       return failed;  // iteration left the domain of the shape
     }
   }
+}
+
+/// Intersection of a ray with a shape that has no analytic overload (plane and conic have one):
+/// forwards to intersect_newton(), see there for units, conventions and status.
+template <rtt::math::Real T, IntersectableShape<T> S>
+[[nodiscard]] Intersection<T> intersect(const S& shape,
+                                        const rtt::math::Vec3T<T>& origin,
+                                        const rtt::math::Vec3T<T>& direction,
+                                        T t_min = T(kDefaultTMin)) noexcept {
+  return intersect_newton(shape, origin, direction, t_min);
 }
 
 }  // namespace rtt::geom
