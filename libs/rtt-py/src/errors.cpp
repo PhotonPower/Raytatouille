@@ -20,6 +20,7 @@
 #include "rtt/optim/merit.hpp"
 #include "rtt/paraxial/paraxial.hpp"
 #include "rtt/trace/run_control.hpp"
+#include "rtt/trace/sources.hpp"
 
 namespace nb = nanobind;
 
@@ -68,6 +69,9 @@ void register_errors(nb::module_& /*m*/) {
       // Before nanobind's std::invalid_argument -> ValueError; the Python class also derives
       // from ParaxialError and AnalysisError (ADR 0022).
       raise("NoStopError", e.what(), e.path_name(), e.location());
+    } catch (const trace::ApertureError& e) {
+      // Before nanobind's std::invalid_argument -> ValueError (ADR 0040, point 6).
+      raise("ApertureError", e.what(), e.code(), e.location());
     } catch (const paraxial::ParaxialError& e) {
       raise("ParaxialError", e.what(), optional(e.surface()), optional(e.location()));
     } catch (const material::UnknownMaterial& e) {

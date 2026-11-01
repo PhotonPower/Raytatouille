@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from ._core import (
     Absorber,
+    ApertureReading,
     Assembly,
     CircularAperture,
     Compensator,
@@ -88,6 +89,7 @@ from ._core import (
 
 __all__ = [
     "Absorber",
+    "ApertureReading",
     "Assembly",
     "CircularAperture",
     "Compensator",

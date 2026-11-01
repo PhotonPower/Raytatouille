@@ -61,6 +61,11 @@ const EnumTable<SystemApertureType> kApertureTypes = {
     {"stop_size", SystemApertureType::StopSize},
 };
 
+const EnumTable<ApertureReading> kApertureReadings = {
+    {"paraxial", ApertureReading::Paraxial},
+    {"real", ApertureReading::Real},
+};
+
 const EnumTable<PoseReference> kPoseReferences = {
     {"absolute", PoseReference::Absolute},
     {"relative_to_preceding", PoseReference::RelativeToPreceding},
@@ -634,8 +639,8 @@ struct Migration {
 ///   ideal_cylinder_lens are new.
 /// - 0.5 -> 0.6 (ADR 0035): content unchanged, only the section "tolerances" is new.
 /// - 0.6 -> 0.7 (ADR 0037): content unchanged, only "object.medium" is new.
-/// - 0.7 -> 0.8 (ADR 0038, ADR 0039): content unchanged, only "object.reference" and
-///   "aperture.stop" are new.
+/// - 0.7 -> 0.8 (ADR 0038 to 0040): content unchanged, only "object.reference", "aperture.stop"
+///   and "aperture.reading" are new.
 Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
   const std::string ours(kSchemaVersion);
   const std::string mm = major_minor(version);
@@ -1156,6 +1161,12 @@ System read_system_tree(const Json& j, std::vector<Diagnostic>* warnings) {
           .at("stop")
           .fail("a stop on a surface needs schema_version 0.8 or later (ADR 0039)");
     }
+    // ADR 0040, point 1: the reading of object_na as well.
+    if (aperture != nullptr && aperture->is_object() && find(*aperture, "reading") != nullptr) {
+      c.at("aperture")
+          .at("reading")
+          .fail("a reading of the aperture needs schema_version 0.8 or later (ADR 0040)");
+    }
   }
   if (m.before_0_5) {
     if (const Json* root = find(j, "root")) check_0_5_forms(*root, c.at("root"));
@@ -1226,7 +1237,7 @@ System read_migrated(const Json& j, const Migration& m) {
   {
     const Ctx ac = c.at("aperture");
     const Json& a = require(j, "aperture", c);
-    expect_object(a, ac, {"type", "value", "stop"});
+    expect_object(a, ac, {"type", "value", "stop", "reading"});
     s.aperture.type = read_enum(require(a, "type", ac), ac.at("type"), kApertureTypes);
     if (s.aperture.type == SystemApertureType::StopSize) {
       read_opt(a, "value", ac, s.aperture.value, read_param);
@@ -1234,6 +1245,13 @@ System read_migrated(const Json& j, const Migration& m) {
       s.aperture.value = read_param(require(a, "value", ac), ac.at("value"));
     }
     if (const Json* st = find(a, "stop")) s.aperture.stop = read_stop_surface(*st, ac.at("stop"));
+    // ADR 0040, point 1: only for object_na; also an explicit "paraxial" elsewhere is an error.
+    if (const Json* r = find(a, "reading")) {
+      if (s.aperture.type != SystemApertureType::ObjectSpaceNA) {
+        ac.at("reading").fail("a reading needs the aperture type object_na (ADR 0040)");
+      }
+      s.aperture.reading = read_enum(*r, ac.at("reading"), kApertureReadings);
+    }
   }
 
   {
@@ -1367,6 +1385,11 @@ class Writer {
       OJson st;
       st["surface"] = s.aperture.stop->str();
       ap["stop"] = std::move(st);
+    }
+    // ADR 0040, point 1: only real is written; paraxial is the default (also in the edit form:
+    // a patch adds /aperture/reading).
+    if (s.aperture.reading != ApertureReading::Paraxial) {
+      ap["reading"] = std::string(enum_name(s.aperture.reading, kApertureReadings));
     }
     o["aperture"] = std::move(ap);
 

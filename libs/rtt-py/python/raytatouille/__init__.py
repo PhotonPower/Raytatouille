@@ -59,6 +59,7 @@ from .trace import CancelToken
 from .errors import (
     AgfError,
     AnalysisError,
+    ApertureError,
     Cancelled,
     CoatingCatalogError,
     CompileError,
@@ -77,6 +78,7 @@ __version__ = "0.9.0"
 __all__ = [
     "AgfError",
     "AnalysisError",
+    "ApertureError",
     "CancelToken",
     "Cancelled",
     "CoatingCatalogError",

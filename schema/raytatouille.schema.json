@@ -64,8 +64,13 @@
         "stop": {
           "description": "Stop on a surface (ADR 0039): the aperture of this surface of a lens, mirror, plate or thin element is the system stop. Either a stop element or this; checked by rtt validate.",
           "$ref": "#/$defs/surface_reference"
+        },
+        "reading": {
+          "description": "Reading of object_na (ADR 0040): paraxial (default, u = NA / n) or real (n sin U = NA for the aiming); only with type object_na.",
+          "enum": ["paraxial", "real"]
         }
       },
+      "dependentSchemas": {"reading": {"properties": {"type": {"const": "object_na"}}}},
       "if": {"properties": {"type": {"not": {"const": "stop_size"}}}},
       "then": {"required": ["value"]}
     },

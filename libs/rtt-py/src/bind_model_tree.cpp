@@ -399,10 +399,20 @@ void bind_model_tree(nb::module_& m) {
              "n the index of object space (Greivenkamp, OPTI-502, Sec. 9, p. 9-34: "
              "NA = n sin U ~ n u). With paraxial aiming the marginal ray has tan U = NA / n; with "
              "real aiming it hits the paraxial stop edge R_s, and its tan U differs from NA / n "
-             "by the pupil aberration; "
-             "file: \"object_na\"")
+             "by the pupil aberration; SystemAperture.reading REAL reads it as n sin U = NA for "
+             "the aiming instead (ADR 0040); file: \"object_na\"")
       .value("STOP_SIZE", model::SystemApertureType::StopSize,
              "the stop aperture as defined; the value is not used (file: \"stop_size\")");
+
+  nb::enum_<model::ApertureReading>(m, "ApertureReading",
+                                    "How OBJECT_SPACE_NA is read for the aiming (ADR 0040).")
+      .value("PARAXIAL", model::ApertureReading::Paraxial,
+             "u = NA / n, the paraxial marginal slope (the default; file: no reading or "
+             "\"paraxial\")")
+      .value("REAL", model::ApertureReading::Real,
+             "n_ref sin U = NA for the real marginal ray from the axial object point in the "
+             "meridional plane at the reference wavelength; only the aiming changes, the paraxial "
+             "quantities keep u = NA / n (file: \"real\")");
 
   read_only_class<model::Param>(
       m, "Param",
@@ -765,7 +775,10 @@ void bind_model_tree(nb::module_& m) {
             return SurfaceReference{a.stop->str()};
           },
           "The surface whose aperture is the system stop, as in the file (SurfaceReference, "
-          "schema 0.8, ADR 0039); None: the stop element, if any.");
+          "schema 0.8, ADR 0039); None: the stop element, if any.")
+      .def_ro("reading", &model::SystemAperture::reading,
+              "How OBJECT_SPACE_NA is read for the aiming (ApertureReading, schema 0.8, ADR "
+              "0040); REAL only with OBJECT_SPACE_NA.");
 
   read_only_class<model::ObjectSpace>(m, "ObjectSpace", "Position of the object (read-only copy).")
       .def_ro("at_infinity", &model::ObjectSpace::at_infinity, "True for an object at infinity.")

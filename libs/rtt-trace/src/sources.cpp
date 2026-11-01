@@ -21,6 +21,7 @@
 #include "aim_continuation.hpp"
 #include "event_media.hpp"
 #include "rtt/compile/errors.hpp"
+#include "rtt/diagnostics/codes.hpp"
 #include "rtt/paraxial/paraxial.hpp"
 
 namespace rtt::trace {
@@ -100,6 +101,16 @@ struct Context {
   /// Set for the context of an AimReference with paraxial image heights (#255): the unit image
   /// height of the reference system, so make_field() does not trace the aimed system paraxially.
   std::optional<ReferenceUnit> reference_unit;
+  /// r_ep of the paraxial reading (object_na: u = NA / n), for paraxial_stop_radius(); equal to
+  /// r_ep unless object_na is read real (ADR 0040, point 5).
+  double r_ep_paraxial = 0.0;
+  /// object_na read real (ADR 0040, points 3 and 6): r_ep is then tan U |z_ep - z_obj| (or tan U),
+  /// and the stop target R_s = label_sign S is set, or na_error says why it is not. na_undefined:
+  /// NA >= n_ref, so U and r_ep do not exist and every aiming fails.
+  bool real_na = false;
+  bool na_undefined = false;
+  std::optional<double> real_r_s;
+  std::string na_error;
 };
 
 /// Ray start for one field.
@@ -157,7 +168,7 @@ void set_telecentric(Context& c) {
   }
 }
 
-Context make_context(const CompiledSystem& system, PathId path, std::uint16_t wavelength) {
+Context make_context_core(const CompiledSystem& system, PathId path, std::uint16_t wavelength) {
   if (path.index >= system.paths().size()) {
     throw std::invalid_argument("sources: path index " + std::to_string(path.index) +
                                 " does not exist");
@@ -224,7 +235,77 @@ Context make_context(const CompiledSystem& system, PathId path, std::uint16_t wa
   if (!infinite && !c.telecentric && c.z_ep < system.object_z()) {
     c.label_sign = -1.0;
   }
+  c.r_ep_paraxial = c.r_ep;
   return c;
+}
+
+/// r_ep of the real reading (ADR 0040, point 3): the radius of the object cone of angle U in the
+/// EP plane, tan U |z_ep - z_obj|; object-space telecentric the marginal slope tan U.
+double real_r_ep(const Context& c, double tan_u) {
+  return c.telecentric ? tan_u : tan_u * std::abs(c.z_ep - c.system->object_z());
+}
+
+// Defined below (aiming).
+std::optional<std::pair<double, double>> stop_hit(const Context& c, RayState ray);
+RayState ray_through(const Context& c, const FieldStart& f, double a, double b);
+
+/// object_na read real (ADR 0040, points 2, 3 and 6): n_ref sin U = NA for the marginal ray from
+/// the axial object point in the meridional plane, n_ref the index of object space at the
+/// reference wavelength. Sets r_ep to the real cone; S, the local y on the stop surface of the
+/// ray through label_sign r_ep at the reference wavelength (the start ray of p = (0, 1)), is
+/// computed once with the media of the reference wavelength, and R_s = label_sign S. Keeps an
+/// error instead of throwing (thrown before the aiming, rule 3).
+void set_real_na(Context& c) {
+  const CompiledSystem& system = *c.system;
+  const std::uint16_t ref = system.reference_wavelength();
+  c.real_na = true;
+  Context r = c.wavelength == ref ? c : make_context_core(system, c.path, ref);
+  const double na = system.aperture().value.value;
+  const double n_ref = r.first_order.object_index;
+  if (!(na < n_ref)) {
+    c.na_undefined = true;
+    c.na_error = "object_na " + std::to_string(na) + " read real needs NA < " +
+                 std::to_string(n_ref) + ", the index of object space at the reference wavelength";
+    return;
+  }
+  const double sin_u = na / n_ref;
+  const double tan_u = sin_u / std::sqrt((1.0 - sin_u) * (1.0 + sin_u));
+  c.r_ep = real_r_ep(c, tan_u);
+  r.r_ep = real_r_ep(r, tan_u);
+  FieldStart axial;
+  axial.infinite = false;
+  axial.object = Vec3(0.0, 0.0, system.object_z());
+  const auto hit = stop_hit(r, ray_through(r, axial, 0.0, r.label_sign * r.r_ep));
+  // The paraxial stop hit of that ray has the sign of label_sign stop_scale (r_ep > 0).
+  const double paraxial_sign = r.label_sign * r.stop_scale;
+  if (!hit) {
+    c.na_error = "the real marginal ray of object_na does not reach the stop";
+  } else if (!(hit->second * paraxial_sign > 0.0)) {
+    c.na_error =
+        "the real marginal ray of object_na meets the stop on the wrong side or at "
+        "its centre";
+  } else {
+    c.real_r_s = c.label_sign * hit->second;
+  }
+}
+
+Context make_context(const CompiledSystem& system, PathId path, std::uint16_t wavelength) {
+  Context c = make_context_core(system, path, wavelength);
+  if (system.aperture().type == model::SystemApertureType::ObjectSpaceNA &&
+      system.aperture().reading == model::ApertureReading::Real) {
+    set_real_na(c);
+  }
+  return c;
+}
+
+/// The checks of ADR 0040, point 6, before any ray is aimed: NA >= n_ref for every aiming, a
+/// missing S for real aiming and the radius of the aim target (`real_target`).
+void check_real_na(const Context& c, bool real_target) {
+  if (c.na_undefined || (real_target && c.real_na && !c.real_r_s)) {
+    constexpr diagnostics::DiagnosticCode kCode = "aperture.na_unreachable";
+    throw ApertureError("sources: " + c.na_error + " (ADR 0040)", std::string(kCode.str()),
+                        "/aperture/value");
+  }
 }
 
 /// Outer radius of an aperture in local x, y, mm.
@@ -499,7 +580,8 @@ AimedRay aim(const Context& c, const FieldStart& f, double px, double py, Aiming
 
   // Real aiming: Newton on the residual at the stop, central-difference Jacobian (ADR 0007;
   // Newton's method in 2D, e.g. Press et al., Numerical Recipes, 3rd ed., Sec. 9.6).
-  const double r_s = c.r_ep * c.stop_scale;
+  // object_na read real: R_s = label_sign S (ADR 0040, point 3; set if real aiming is allowed).
+  const double r_s = c.real_r_s ? *c.real_r_s : c.r_ep * c.stop_scale;
   const double tx = sx * r_s;
   const double ty = sy * r_s;
   // Step in pupil units (ADR 0007, addendum #96): sized in stop units, but with a floor in
@@ -701,6 +783,7 @@ struct Signature {
   model::SystemApertureType aperture_type = model::SystemApertureType::EntrancePupilDiameter;
   double aperture_value = 0.0;
   std::optional<std::string> aperture_stop;  ///< aperture.stop (ADR 0039, point 5)
+  model::ApertureReading aperture_reading = model::ApertureReading::Paraxial;  ///< ADR 0040
 };
 
 Signature signature(const CompiledSystem& system, PathId path) {
@@ -720,6 +803,7 @@ Signature signature(const CompiledSystem& system, PathId path) {
   s.aperture_value = system.aperture().value.value;
   const std::optional<model::SurfaceId>& stop = system.aperture().stop;
   if (stop) s.aperture_stop = stop->str();
+  s.aperture_reading = system.aperture().reading;
   return s;
 }
 
@@ -735,7 +819,7 @@ std::string mismatch(const Signature& a, const Signature& b) {
     return "the object differs";
   }
   if (a.aperture_type != b.aperture_type || a.aperture_value != b.aperture_value ||
-      a.aperture_stop != b.aperture_stop) {
+      a.aperture_stop != b.aperture_stop || a.aperture_reading != b.aperture_reading) {
     return "the system aperture differs";
   }
   return {};
@@ -877,6 +961,7 @@ AimedRay aim_ray(const compile::CompiledSystem& system,
     throw std::invalid_argument("sources: pupil coordinates must be finite");
   }
   const Context c = make_context(system, path, wavelength);
+  check_real_na(c, aiming == Aiming::Real);
   return aim(c, make_field(c, field_point(c, field)), px, py, aiming);
 }
 
@@ -894,6 +979,7 @@ AimedRay aim_ray(const compile::CompiledSystem& system,
     throw std::invalid_argument("sources: field values must be finite");
   }
   const Context c = make_context(system, path, wavelength);
+  check_real_na(c, aiming == Aiming::Real);
   return aim(c, make_field(c, field), px, py, aiming);
 }
 
@@ -936,6 +1022,7 @@ AimedRay aim_ray(const compile::CompiledSystem& system,
     throw std::invalid_argument("sources: pupil coordinates must be finite");
   }
   const Context c = context_from(reference, system, path, wavelength);
+  check_real_na(c, aiming == Aiming::Real);
   return aim(c, make_field(c, field_point(c, field)), px, py, aiming);
 }
 
@@ -954,6 +1041,7 @@ AimedRay aim_ray(const compile::CompiledSystem& system,
     throw std::invalid_argument("sources: field values must be finite");
   }
   const Context c = context_from(reference, system, path, wavelength);
+  check_real_na(c, aiming == Aiming::Real);
   return aim(c, make_field(c, field), px, py, aiming);
 }
 
@@ -977,6 +1065,7 @@ RayBatch make_rays_impl(const compile::CompiledSystem& system,
                         const RunControl* control) {
   const Context c = reference != nullptr ? context_from(*reference, system, path, wavelength)
                                          : make_context(system, path, wavelength);
+  check_real_na(c, aiming == Aiming::Real);  // before the parallel part (rule 3)
   const std::vector<PupilPoint> points = pupil_points(sampling);
   for (const PupilPoint& p : points) {
     if (!std::isfinite(p.px) || !std::isfinite(p.py)) {
@@ -1029,12 +1118,26 @@ RayBatch make_rays_impl(const compile::CompiledSystem& system,
   return rays;
 }
 
+/// |R_s| of the aim target (stop_radius()): the aim target of pupil point p is label_sign p R_s
+/// with R_s = r_ep stop_scale, or label_sign S for object_na read real (aim()); |label_sign| = 1.
+double target_radius(const Context& c) {
+  check_real_na(c, true);
+  return c.real_r_s ? std::abs(*c.real_r_s) : std::abs(c.r_ep * c.stop_scale);
+}
+
+/// The paraxial stop radius (paraxial_stop_radius()), with r_ep of the paraxial reading.
+double paraxial_radius(const Context& c) {
+  return std::abs(c.r_ep_paraxial * c.stop_scale);
+}
+
 }  // namespace
 
 double stop_radius(const CompiledSystem& system, PathId path, std::uint16_t wavelength) {
-  // The aim target of pupil point p is label_sign p r_ep stop_scale (aim()); |label_sign| = 1.
-  const Context c = make_context(system, path, wavelength);
-  return std::abs(c.r_ep * c.stop_scale);
+  return target_radius(make_context(system, path, wavelength));
+}
+
+double paraxial_stop_radius(const CompiledSystem& system, PathId path, std::uint16_t wavelength) {
+  return paraxial_radius(make_context(system, path, wavelength));
 }
 
 RayBatch make_rays(const compile::CompiledSystem& system,
@@ -1058,8 +1161,11 @@ RayBatch make_rays(const compile::CompiledSystem& system,
 
 double stop_radius(const AimReference& reference) {
   // As stop_radius() above, from the context of the reference.
-  const Context& c = reference.data().context;
-  return std::abs(c.r_ep * c.stop_scale);
+  return target_radius(reference.data().context);
+}
+
+double paraxial_stop_radius(const AimReference& reference) {
+  return paraxial_radius(reference.data().context);
 }
 
 RayBatch make_rays(const compile::CompiledSystem& system,

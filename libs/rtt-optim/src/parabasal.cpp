@@ -260,12 +260,14 @@ ParabasalValue parabasal_value(const model::FirstOrderOperand& op,
       // hit on the stop over the nominal R_s (the aim target is sigma p R_s, ADR 0007); the
       // measured hits are taken, not the requested p, because real aiming stops at a residual
       // of up to kAimTolerance = 1e-9 mm, which is 2e-7 of a parabasal offset delta R_s = 5e-3
-      // mm. The mean principal value of the map p -> u' is |u'_m| (linear in p).
+      // mm. The mean principal value of the map p -> u' is |u'_m| (linear in p). The hits are
+      // taken over the paraxial R_s (u = NA / n for object_na, as first_order), also where
+      // object_na is read real and the rays aim at the real cone (ADR 0040, point 5).
       const std::optional<std::size_t> stop = compile::stop_event(system, path);
       if (!stop) return undefined("the path has no stop");
       const compile::CompiledSurface& s =
           system.surfaces()[system.path(path).events[*stop].surface];
-      const double r_s = std::abs(trace::stop_radius(*aim));
+      const double r_s = trace::paraxial_stop_radius(*aim);
       const auto pupil_of = [&](std::size_t r) {
         const math::Vec3 local = s.to_local.apply_point(b.paths.position_at(r, *stop + 1));
         return Vec2{local.x() / r_s, local.y() / r_s};

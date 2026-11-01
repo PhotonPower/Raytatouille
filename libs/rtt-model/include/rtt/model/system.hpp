@@ -24,7 +24,7 @@ namespace rtt::model {
 /// Pose.reference and Pose.order, ADR 0028; parameter table, configurations and bounds, pickup
 /// dropped, ADR 0029; merit function, ADR 0030; 0.5: ideal lenses, ADR 0031; 0.6: tolerance
 /// set, ADR 0035; 0.7: medium of the object space, ADR 0037; 0.8: reference of the object
-/// distance, ADR 0038, and the stop on a surface, ADR 0039).
+/// distance, ADR 0038, the stop on a surface, ADR 0039, and the reading of object_na, ADR 0040).
 inline constexpr std::string_view kSchemaVersion = "0.8.0";
 
 struct Wavelength {
@@ -62,9 +62,20 @@ enum class SystemApertureType : std::uint8_t {
   /// Greivenkamp, OPTI-502, Sec. 9, p. 9-34:
   /// NA = n sin U ≈ n u; a real marginal ray with n sin U = NA differs for a large NA
   /// (docs/quellen.md). With an object-space telecentric system only ObjectSpaceNA and
-  /// StopSize define the bundle.
+  /// StopSize define the bundle. SystemAperture::reading = Real reads it as n sin U = NA for the
+  /// aiming instead (ADR 0040); the paraxial quantities keep u = NA / n.
   ObjectSpaceNA,
   StopSize,  ///< use the stop aperture as defined; the value is not used
+};
+
+/// How an ObjectSpaceNA is read for the aiming (schema 0.8, ADR 0040).
+enum class ApertureReading : std::uint8_t {
+  /// u = NA / n, the paraxial marginal slope (first_order and the aiming; the default).
+  Paraxial,
+  /// n_ref sin U = NA for the real marginal ray from the axial object point in the meridional
+  /// plane at the reference wavelength, n_ref the index of object space there; only the aiming
+  /// changes (ADR 0040, points 2 to 5), first_order keeps u = NA / n.
+  Real,
 };
 
 struct SystemAperture {
@@ -74,6 +85,9 @@ struct SystemAperture {
   /// plate or thin element is the system stop; none: the Stop element, if any. A system has
   /// either a Stop element or this (validate: stop.multiple, stop.surface_kind).
   std::optional<SurfaceId> stop = std::nullopt;
+  /// Reading of an ObjectSpaceNA (ADR 0040); Real only for that type (validate:
+  /// aperture.reading_not_na).
+  ApertureReading reading = ApertureReading::Paraxial;
   bool operator==(const SystemAperture&) const = default;
 };
 
