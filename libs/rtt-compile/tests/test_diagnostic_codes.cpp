@@ -236,6 +236,8 @@ std::vector<Case> cases() {
          s.object = {false, Param(100.0)};
          s.object.reference = SurfaceId("NOPE");
        }},
+      {"aperture.reading_not_na", "/aperture/reading",
+       [](System& s) { s.aperture.reading = rtt::model::ApertureReading::Real; }},
       {"stop.surface_unknown", "/aperture/stop",
        [](System& s) { s.aperture.stop = SurfaceId("NOPE"); }},
       {"stop.surface_kind", "/aperture/stop",

@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 __all__ = [
     "AgfError",
     "AnalysisError",
+    "ApertureError",
     "Cancelled",
     "CoatingCatalogError",
     "CompileError",
@@ -148,6 +149,20 @@ class NoStopError(ParaxialError, AnalysisError, ValueError):
         self.field = None
         self.wavelength = None
         self.code = None  # as AnalysisError: no code (ADR 0022, addendum #286)
+
+
+class ApertureError(RaytatouilleError, ValueError):
+    """The system aperture gives no aim target (ADR 0040, point 6), raised before any ray is aimed.
+
+    ``code`` is "aperture.na_unreachable": object_na read real with NA >= n of object space at
+    the reference wavelength (every aiming), or a real marginal ray that does not reach the stop
+    (real aiming and the stop radius). ``location`` is the JSON pointer "/aperture/value".
+    """
+
+    def __init__(self, message: str, code: str, location: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.location = location
 
 
 class RaytatouilleWarning(UserWarning):

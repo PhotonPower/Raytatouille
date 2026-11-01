@@ -24,6 +24,8 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <stdexcept>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -34,6 +36,27 @@
 #include "rtt/trace/run_control.hpp"
 
 namespace rtt::trace {
+
+/// The system aperture gives no aim target (ADR 0040, point 6): object_na read real with
+/// NA >= n of object space at the reference wavelength (every aiming), or a real marginal ray
+/// that does not reach the stop or meets it on the wrong side (real aiming and stop_radius()).
+/// Thrown before any ray is aimed (rule 3).
+class ApertureError : public std::invalid_argument {
+ public:
+  /// `code` a registered diagnostic code (docs/diagnostics.md), `location` the JSON pointer in
+  /// the system file, e.g. "/aperture/value".
+  ApertureError(const std::string& message, std::string code, std::string location)
+      : std::invalid_argument(message), code_(std::move(code)), location_(std::move(location)) {}
+
+  /// Diagnostic code, "aperture.na_unreachable".
+  [[nodiscard]] const std::string& code() const noexcept { return code_; }
+  /// JSON pointer of the cause in the system file, "/aperture/value".
+  [[nodiscard]] const std::string& location() const noexcept { return location_; }
+
+ private:
+  std::string code_;
+  std::string location_;
+};
 
 /// How a ray is aimed into the stop.
 enum class Aiming : std::uint8_t {
@@ -200,6 +223,10 @@ struct AimedRay {
 /// The target is sigma (px R_s, py R_s) in the local coordinates of the stop surface (first Stop
 /// event of the path), sigma = -1 for a virtual EP beyond the object, else +1, and R_s = paraxial
 /// stop radius belonging to the entrance pupil (negative where the stop sees the EP inverted).
+/// object_na read real (ADR 0040, points 2 and 3): r_ep is the radius tan U |z_ep - z_obj| of the
+/// cone with n_ref sin U = NA (tan U for an object-space telecentric system), and R_s = sigma S
+/// with S the local y on the stop of the start ray of p = (0, 1) at the reference wavelength, the
+/// same S for every wavelength; at the reference wavelength that ray has n_ref sin U = NA.
 /// Apertures are ignored while aiming; vignetting is left to the tracer.
 /// @throws std::invalid_argument if the path, field or wavelength does not exist; px or py is
 ///         not finite; the field type does not fit the object (object height at infinity); a
@@ -217,6 +244,8 @@ struct AimedRay {
 ///         by rtt::compile::require_stop before any ray is traced (ADR 0022)
 /// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric or the stop
 ///         aperture is not circular
+/// @throws ApertureError (a std::invalid_argument) for object_na read real: NA >= n_ref (every
+///         aiming), or the real marginal ray gives no S (real aiming; ADR 0040, point 6)
 [[nodiscard]] AimedRay aim_ray(const compile::CompiledSystem& system,
                                compile::PathId path,
                                std::uint16_t field,
@@ -247,11 +276,21 @@ struct AimedRay {
 /// telecentric system the marginal slope times the stop height per unit slope). With real
 /// aiming a ray of pupil point p meets the stop at |p| |R_s| within kAimTolerance, so a centred
 /// obscuration of radius r_i at the stop is the pupil circle |p| = r_i / |R_s| (ADR 0032,
-/// addendum #229).
-/// @throws as aim_ray() for the path, the wavelength, the stop and the entrance pupil
+/// addendum #229). object_na read real: |S| of the real marginal ray (ADR 0040, point 5).
+/// @throws as aim_ray() for the path, the wavelength, the stop and the entrance pupil, and
+///         ApertureError if object_na read real gives no S (as real aiming)
 [[nodiscard]] double stop_radius(const compile::CompiledSystem& system,
                                  compile::PathId path,
                                  std::uint16_t wavelength);
+
+/// Paraxial radius of the stop, mm, > 0: |r_ep stop_scale| with the entrance pupil of the
+/// paraxial reading (u = NA / n for object_na, as rtt::paraxial::first_order; ADR 0040, point 5),
+/// for the F-number from parabasal rays. Bitwise stop_radius() unless object_na is read real.
+/// @throws as aim_ray() for the path, the wavelength, the stop and the entrance pupil (not
+///         ApertureError)
+[[nodiscard]] double paraxial_stop_radius(const compile::CompiledSystem& system,
+                                          compile::PathId path,
+                                          std::uint16_t wavelength);
 
 /// Rays for the given fields and one wavelength: for every field (outer loop) every pupil point
 /// (inner loop) of `sampling`, aimed with `aiming`. Sets pos, dir, wl, field, pupil_x, pupil_y,
@@ -330,8 +369,8 @@ class AimReference {
 ///         `path` and `wavelength`; in `system` another name, number of events or surface id,
 ///         kind or order of an event of the path; other wavelength values or another reference
 ///         wavelength; other field type or field values (x, y); another object (at infinity,
-///         object_z(), ADR 0038) or system aperture (type, value, stop surface; ADR 0039) (ADR
-///         0007, addendum #252, precision #255);
+///         object_z(), ADR 0038) or system aperture (type, value, stop surface, ADR 0039;
+///         reading, ADR 0040) (ADR 0007, addendum #252, precision #255);
 ///         and as aim_ray() for px, py, the field and the start plane
 [[nodiscard]] AimedRay aim_ray(const compile::CompiledSystem& system,
                                compile::PathId path,
@@ -355,7 +394,12 @@ class AimReference {
 
 /// |R_s| of the aim target with the data of `reference`, mm (see stop_radius() above); equal to
 /// stop_radius(system, path, wavelength) of the system the reference was computed from.
+/// @throws ApertureError if the reference reads object_na real and has no S
 [[nodiscard]] double stop_radius(const AimReference& reference);
+
+/// paraxial_stop_radius() with the data of `reference`, mm; equal to
+/// paraxial_stop_radius(system, path, wavelength) of the system the reference was computed from.
+[[nodiscard]] double paraxial_stop_radius(const AimReference& reference);
 
 /// make_rays() with the aiming data of `reference` (see aim_ray() with a reference); bitwise the
 /// same for every number of threads.

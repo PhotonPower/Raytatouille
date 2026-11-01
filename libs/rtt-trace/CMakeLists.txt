@@ -22,7 +22,7 @@ if(RTT_BUILD_TESTS)
             tests/test_point_list_pupil.cpp tests/test_ideal_lens_aiming.cpp
             tests/test_obscuration.cpp tests/test_aim_reference.cpp tests/test_object_medium.cpp
             tests/test_object_reference.cpp
-            tests/test_aim_continuation.cpp tests/test_surface_stop.cpp
+            tests/test_aim_continuation.cpp tests/test_surface_stop.cpp tests/test_real_na.cpp
     LIBS rtt::trace rtt::io rtt::polar rtt::coating rtt::model_test_support TBB::tbb)
   # src/: the continuation fallback of real aiming (aim_continuation.hpp, #287) is tested directly.
   target_include_directories(rtt_trace_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)

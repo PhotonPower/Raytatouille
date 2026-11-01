@@ -22,11 +22,12 @@ enum class Severity : std::uint8_t { Error, Warning };
 
 /// One entry of the registry.
 struct CodeInfo {
-  std::string_view code;      ///< dotted name, e.g. "material.unknown"
-  Severity severity;          ///< the severity every diagnostic with this code has
-  std::string_view producer;  ///< "validate", "compile", "analysis", "agf", "edit" or "io"
-                              ///< (docs/diagnostics.md)
-  std::string_view summary;   ///< one-line meaning, as in docs/diagnostics.md
+  std::string_view code;  ///< dotted name, e.g. "material.unknown"
+  Severity severity;      ///< the severity every diagnostic with this code has
+  /// "validate", "compile", "analysis", "agf", "edit", "io", "optim", "tolerance" or "trace"
+  /// (docs/diagnostics.md)
+  std::string_view producer;
+  std::string_view summary;  ///< one-line meaning, as in docs/diagnostics.md
 };
 
 /// All registered codes, sorted by code. Iterable at run time (documentation check, Python).
@@ -40,6 +41,10 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
     {"aperture.na_exceeds_index", Severity::Warning, "compile",
      "object-space NA >= index of the object medium"},
     {"aperture.na_not_physical", Severity::Warning, "validate", "object-space NA >= 1 in air"},
+    {"aperture.na_unreachable", Severity::Error, "trace",
+     "object_na read real: NA >= n of object space, or the real marginal ray misses the stop"},
+    {"aperture.reading_not_na", Severity::Error, "validate",
+     "aperture.reading real for another type than object_na"},
     {"aperture.stop_missing", Severity::Error, "validate",
      "aperture type stop_size without a stop element or aperture.stop"},
     {"aperture.value_invalid", Severity::Error, "validate",

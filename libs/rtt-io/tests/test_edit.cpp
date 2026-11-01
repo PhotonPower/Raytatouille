@@ -264,7 +264,7 @@ void edit_form_keys(const json& e) {
   for (const json& w : e["wavelengths"]) {
     has_keys(w, {"um", "weight", "reference"}, {}, "/wavelengths");
   }
-  has_keys(e["aperture"], {"type", "value"}, {"stop"}, "/aperture");  // stop: ADR 0039
+  has_keys(e["aperture"], {"type", "value"}, {"stop", "reading"}, "/aperture");  // ADR 0039, 0040
   param(e["aperture"]["value"], "/aperture/value");
   has_keys(e["fields"], {"type", "points"}, {}, "/fields");
   for (const json& f : e["fields"]["points"]) has_keys(f, {"x", "y", "weight"}, {}, "/points");

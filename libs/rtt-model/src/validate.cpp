@@ -103,6 +103,13 @@ class Validator {
   }
 
   void check_aperture() {
+    // ADR 0040, point 1: reading real only for object_na (another type only through the
+    // C++ API: the reader rejects it in files and edits).
+    if (system_.aperture.reading != ApertureReading::Paraxial &&
+        system_.aperture.type != SystemApertureType::ObjectSpaceNA) {
+      report("aperture.reading_not_na", "/aperture/reading",
+             "a reading of the aperture needs the type object_na");
+    }
     const Param& v = system_.aperture.value;
     const bool checked = system_.aperture.type != SystemApertureType::StopSize;
     check_param(v, "/aperture/value", checked);
