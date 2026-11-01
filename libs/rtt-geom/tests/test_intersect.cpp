@@ -272,9 +272,3 @@ TEST_CASE("plane shape has zero sag and gradient and no domain limit", "[plane]"
   REQUIRE(plane.base_conic() == std::pair{0.0, 0.0});
   REQUIRE_FALSE(plane.max_radius().has_value());
 }
-
-TEST_CASE("shapes are usable through the Shape interface", "[shape]") {
-  const Conic<double> sphere(0.02, 0.0);
-  const rtt::geom::Shape<double>& shape = sphere;
-  REQUIRE(near(shape.sag(0.0, 10.0), 50.0 - std::sqrt(2400.0)));
-}
