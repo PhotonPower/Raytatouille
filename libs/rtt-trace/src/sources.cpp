@@ -700,6 +700,7 @@ struct Signature {
   double object_z = 0.0;  ///< CompiledSystem::object_z(); 0 for an object at infinity
   model::SystemApertureType aperture_type = model::SystemApertureType::EntrancePupilDiameter;
   double aperture_value = 0.0;
+  std::optional<std::string> aperture_stop;  ///< aperture.stop (ADR 0039, point 5)
 };
 
 Signature signature(const CompiledSystem& system, PathId path) {
@@ -717,6 +718,7 @@ Signature signature(const CompiledSystem& system, PathId path) {
   s.object_z = s.object_at_infinity ? 0.0 : system.object_z();
   s.aperture_type = system.aperture().type;
   s.aperture_value = system.aperture().value.value;
+  if (system.aperture().stop) s.aperture_stop = system.aperture().stop->str();
   return s;
 }
 
@@ -731,7 +733,8 @@ std::string mismatch(const Signature& a, const Signature& b) {
   if (a.object_at_infinity != b.object_at_infinity || a.object_z != b.object_z) {
     return "the object differs";
   }
-  if (a.aperture_type != b.aperture_type || a.aperture_value != b.aperture_value) {
+  if (a.aperture_type != b.aperture_type || a.aperture_value != b.aperture_value ||
+      a.aperture_stop != b.aperture_stop) {
     return "the system aperture differs";
   }
   return {};

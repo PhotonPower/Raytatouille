@@ -60,7 +60,11 @@
       "required": ["type"],
       "properties": {
         "type": {"enum": ["epd", "image_fnumber", "object_na", "stop_size"]},
-        "value": {"$ref": "#/$defs/param"}
+        "value": {"$ref": "#/$defs/param"},
+        "stop": {
+          "description": "Stop on a surface (ADR 0039): the aperture of this surface of a lens, mirror, plate or thin element is the system stop. Either a stop element or this; checked by rtt validate.",
+          "$ref": "#/$defs/surface_reference"
+        }
       },
       "if": {"properties": {"type": {"not": {"const": "stop_size"}}}},
       "then": {"required": ["value"]}
