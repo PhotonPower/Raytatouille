@@ -4,7 +4,8 @@
 #include <cstddef>
 #include <limits>
 #include <string>
-#include <variant>
+
+#include "vertex_rule.hpp"
 
 namespace rtt::paraxial {
 namespace {
@@ -90,13 +91,14 @@ std::vector<Step> prepare(const CompiledSystem& cs, PathId path, std::uint16_t w
     if (std::abs(axis.x()) > kSymmetryTolerance || std::abs(axis.y()) > kSymmetryTolerance) {
       fail("tilted against the z axis; the path is not rotationally symmetric");
     }
-    // The paraxial curvature is the vertex curvature of the base conic; its sign follows the
-    // orientation of the local z axis in global coordinates.
-    const double c_local =
-        std::visit([](const auto& shape) { return shape.base_conic().first; }, s.shape);
+    // The paraxial curvature and the vertex position come from the vertex expansion of the
+    // shape, checked in local coordinates (ADR 0041, point 2); the sign of c and of the vertex
+    // shift follows the orientation of the local z axis in global coordinates.
+    const detail::VertexRule rule = detail::vertex_rule(s);
+    if (rule.first_order_error) fail(*rule.first_order_error + " (ADR 0041)");
     Step step;
-    step.z = vertex.z();
-    step.c = axis.z() > 0.0 ? c_local : -c_local;
+    step.z = detail::vertex_z(vertex.z(), axis.z(), rule.value);
+    step.c = axis.z() > 0.0 ? rule.c : -rule.c;
     step.n_after = cs.media()[event.medium_after].index[wavelength].real();
     step.kind = event.kind;
     step.stop = event.surface == cs.stop_surface();  // ADR 0039, point 3

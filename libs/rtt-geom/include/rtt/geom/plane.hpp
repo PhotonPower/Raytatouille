@@ -26,6 +26,15 @@ class Plane final {
 
   /// Unbounded.
   [[nodiscard]] std::optional<T> max_radius() const { return std::nullopt; }
+
+  /// Flat at the origin: value 0, slope 0, Hessian 0, order 4, rotational, cap K = 0, A4 = 0
+  /// (ADR 0041, point 2).
+  [[nodiscard]] VertexExpansion<T> vertex_expansion() const noexcept {
+    VertexExpansion<T> e;
+    e.order = 4;
+    e.rotational4 = true;
+    return e;
+  }
 };
 
 }  // namespace rtt::geom

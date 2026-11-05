@@ -14,11 +14,17 @@ namespace rtt::geom {
 static_assert(IntersectableShape<Plane<double>, double>);
 static_assert(IntersectableShape<Conic<double>, double>);
 static_assert(IntersectableShape<EvenAsphere<double>, double>);
+static_assert(ParaxialShape<Plane<double>, double>);
+static_assert(ParaxialShape<Conic<double>, double>);
+static_assert(ParaxialShape<EvenAsphere<double>, double>);
 
 template class Plane<double>;
 template class Conic<double>;
 template class EvenAsphere<double>;
 template struct Intersection<double>;
+template struct VertexExpansion<double>;
+template VertexExpansion<double> stack_expansion<double>(const VertexExpansion<double>&,
+                                                         std::span<const VertexExpansion<double>>);
 template class LinearGratingPhase<double>;
 template class RadialPhasePolynomial<double>;
 template double phase<double>(std::span<const PhaseFunction<double>>, double, double) noexcept;

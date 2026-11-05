@@ -21,6 +21,7 @@
 #include "rtt/paraxial/paraxial.hpp"
 #include "rtt/trace/ray_paths.hpp"
 #include "rtt/trace/sequential.hpp"
+#include "thickness.hpp"
 
 namespace rtt::analysis {
 namespace {
@@ -96,7 +97,9 @@ SegmentDimensions segment(const compile::CompiledSystem& system,
     d.edge_thickness = kNaN;
     return d;
   }
-  d.centre_thickness = vertex.z();
+  // Between the vertices (0, 0, sag(0, 0)) of both surfaces (ADR 0041, point 6).
+  d.centre_thickness = detail::centre_thickness(first.to_local, sag(system, j, 0.0, 0.0),
+                                                second.to_global, sag(system, j + 1, 0.0, 0.0));
   // Edge at the meridional height y = h of the first surface: the line through (0, h) parallel
   // to the common axis meets the second surface at its local (x', y'); both rim points are
   // compared along the axis of the first surface.

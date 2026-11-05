@@ -133,7 +133,16 @@ Seidel seidel(const compile::CompiledSystem& system,
   double u_bar = out.chief.u;
   out.surfaces.reserve(events.size());
   for (std::size_t i = 0; i < events.size(); ++i) {
-    const ShapeData shape = shape_data(system.surfaces()[events[i].surface]);
+    const compile::CompiledSurface& surface = system.surfaces()[events[i].surface];
+    const ShapeData shape = shape_data(surface);
+    // ADR 0041, point 2: no Seidel sums without the fourth-order cap; the part that is missing is
+    // named.
+    if (shape.fourth_order_error) {
+      throw ParaxialError(
+          field_error("surface '" + surface.id.str() + "': " + *shape.fourth_order_error +
+                      "; no Seidel contribution (ADR 0041)"),
+          surface);
+    }
     SeidelSurfaceInput in;
     in.c = shape.c;
     in.conic = shape.conic;
@@ -158,7 +167,7 @@ Seidel seidel(const compile::CompiledSystem& system,
     // would give 0 here as well, since it forms u' from c = 0 and n' = n, not from the lens
     // power. The branch is redundant (checked in #178 by mutation); it makes ADR 0031, point 6
     // explicit, independently of how surface_seidel() forms u'.
-    s.terms = system.surfaces()[events[i].surface].ideal_lens ? SeidelTerms{} : surface_seidel(in);
+    s.terms = surface.ideal_lens ? SeidelTerms{} : surface_seidel(in);
     s.lagrange = marginal[i].n * (chief[i].u * marginal[i].y - marginal[i].u * chief[i].y);
     if (i == 0) out.lagrange = n * (u_bar * in.y - u * in.y_bar);  // object space
 

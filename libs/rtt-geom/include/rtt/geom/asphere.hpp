@@ -42,6 +42,14 @@ class EvenAsphere final {
   /// Domain of the base conic; the polynomial is defined everywhere.
   [[nodiscard]] std::optional<T> max_radius() const { return conic_.max_radius(); }
 
+  /// The expansion of the base conic with A4 = coefficients[0] (0 without coefficients) in the
+  /// cap; A6 and higher do not enter up to fourth order (ADR 0041, point 2).
+  [[nodiscard]] VertexExpansion<T> vertex_expansion() const noexcept {
+    VertexExpansion<T> e = conic_.vertex_expansion();
+    if (!coefficients_.empty()) e.a4 = coefficients_.front();
+    return e;
+  }
+
  private:
   Conic<T> conic_;
   std::vector<T> coefficients_;

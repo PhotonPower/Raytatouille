@@ -1,4 +1,5 @@
-add_library(rtt_paraxial src/paraxial.cpp src/seidel.cpp src/paraxial_rays.cpp src/prescription.cpp)
+add_library(rtt_paraxial src/paraxial.cpp src/seidel.cpp src/paraxial_rays.cpp src/prescription.cpp
+  src/vertex_rule.cpp)
 add_library(rtt::paraxial ALIAS rtt_paraxial)
 target_include_directories(rtt_paraxial PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)

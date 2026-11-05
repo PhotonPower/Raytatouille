@@ -97,7 +97,8 @@ struct SegmentDimensions {
   bool coaxial = true;
   /// Centre thickness: distance from the vertex of surface j to that of surface j + 1 along the
   /// z axis of surface j, mm (from the compiled geometry, so relative placement and
-  /// configurations are included).
+  /// configurations are included). A vertex is the local point (0, 0, sag(0, 0)) of its surface
+  /// (ADR 0041, point 6).
   double centre_thickness = 0.0;
   /// Semi-diameters of surfaces j and j + 1, mm: the radius of a circular aperture (the outer
   /// radius of an annulus), the half diagonal of a rectangle, the major semi-axis of an ellipse
