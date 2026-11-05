@@ -12,6 +12,7 @@ if(RTT_BUILD_TESTS)
     SOURCES tests/test_paraxial.cpp tests/test_seidel.cpp tests/test_errors.cpp
             tests/test_prescription.cpp tests/test_ideal_lens_interim.cpp
             tests/test_ideal_lens_paraxial.cpp tests/test_surface_stop.cpp
+            tests/test_vertex_rule.cpp
     LIBS rtt::paraxial rtt::io)
   # SCHOTT catalogue for the dispersive field-conversion tests (#35).
   target_compile_definitions(rtt_paraxial_tests PRIVATE
