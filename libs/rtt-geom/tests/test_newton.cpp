@@ -34,7 +34,8 @@ bool all_finite(const Intersection<double>& hit) {
   return std::isfinite(hit.t) && hit.point.allFinite() && hit.normal.allFinite();
 }
 
-double residual(const rtt::geom::Shape<double>& shape, const Vec3& p) {
+template <class S>
+double residual(const S& shape, const Vec3& p) {
   return p.z() - shape.sag(p.x(), p.y());
 }
 
@@ -43,35 +44,35 @@ double residual(const rtt::geom::Shape<double>& shape, const Vec3& p) {
 /// F' = 3 tau^2 - 2. Newton cycles: tau = 0 -> 0 - 2 / (-2) = 1 -> 1 - 1 / 1 = 0. The cycle is
 /// superattracting (F''(0) = 0), so rounding cannot break it. The plane start z = 0 lies at
 /// tau = 0, so Newton never converges.
-class NewtonCycleShape final : public rtt::geom::Shape<double> {
+class NewtonCycleShape final {
  public:
   static constexpr double kA = 0.6;
   static constexpr double kB = 0.8;
 
-  [[nodiscard]] double sag(double x, double /*y*/) const override {
+  [[nodiscard]] double sag(double x, double /*y*/) const noexcept {
     const double u = x / kA;
     return (kB + 2.0) * u - u * u * u - 2.0;
   }
-  [[nodiscard]] std::pair<double, double> grad(double x, double /*y*/) const override {
+  [[nodiscard]] std::pair<double, double> grad(double x, double /*y*/) const noexcept {
     const double u = x / kA;
     return {((kB + 2.0) - 3.0 * u * u) / kA, 0.0};
   }
-  [[nodiscard]] std::pair<double, double> base_conic() const override { return {0.0, 0.0}; }
-  [[nodiscard]] std::optional<double> max_radius() const override { return std::nullopt; }
+  [[nodiscard]] std::pair<double, double> base_conic() const { return {0.0, 0.0}; }
+  [[nodiscard]] std::optional<double> max_radius() const { return std::nullopt; }
 };
 /// Tilted plane z = slope * x with an optional domain limit, for the failure branches of Newton.
 /// F is linear in t, so Newton lands on the exact crossing in one step.
-class TiltedShape final : public rtt::geom::Shape<double> {
+class TiltedShape final {
  public:
   TiltedShape(double slope, std::optional<double> max_radius)
       : slope_(slope), max_radius_(max_radius) {}
 
-  [[nodiscard]] double sag(double x, double /*y*/) const override { return slope_ * x; }
-  [[nodiscard]] std::pair<double, double> grad(double /*x*/, double /*y*/) const override {
+  [[nodiscard]] double sag(double x, double /*y*/) const noexcept { return slope_ * x; }
+  [[nodiscard]] std::pair<double, double> grad(double /*x*/, double /*y*/) const noexcept {
     return {slope_, 0.0};
   }
-  [[nodiscard]] std::pair<double, double> base_conic() const override { return {0.0, 0.0}; }
-  [[nodiscard]] std::optional<double> max_radius() const override { return max_radius_; }
+  [[nodiscard]] std::pair<double, double> base_conic() const { return {0.0, 0.0}; }
+  [[nodiscard]] std::optional<double> max_radius() const { return max_radius_; }
 
  private:
   double slope_;
@@ -80,8 +81,8 @@ class TiltedShape final : public rtt::geom::Shape<double> {
 
 /// Independent reference: first sign change of F(t) = z(t) - sag(x(t), y(t)) on a fine scan
 /// of (t_lo, t_hi], refined by bisection.
-double first_crossing(
-    const rtt::geom::Shape<double>& shape, const Vec3& o, const Vec3& d, double t_lo, double t_hi) {
+template <class S>
+double first_crossing(const S& shape, const Vec3& o, const Vec3& d, double t_lo, double t_hi) {
   const auto f = [&](double t) { return residual(shape, o + t * d); };
   const int steps = 200000;
   double prev = t_lo;
@@ -175,12 +176,11 @@ TEST_CASE("analytic intersections report zero Newton iterations", "[newton]") {
 
 TEST_CASE("Newton that does not converge reports NoConvergence", "[newton]") {
   const NewtonCycleShape cycle;
-  const rtt::geom::Shape<double>& shape = cycle;
   const double a = NewtonCycleShape::kA;
   const double b = NewtonCycleShape::kB;
   const Vec3 o(-a, 0.0, -b);
   const Vec3 d(a, 0.0, b);
-  const auto hit = rtt::geom::intersect(shape, o, d);
+  const auto hit = rtt::geom::intersect_newton(cycle, o, d);
   REQUIRE(hit.status == HitStatus::NoConvergence);
   REQUIRE(hit.iterations == rtt::geom::kMaxNewtonIterations);
   REQUIRE(all_finite(hit));
@@ -230,7 +230,8 @@ TEST_CASE("Newton leaving the domain of the shape reports NoConvergence", "[newt
   // z = x / 2 limited to r <= 1. Ray o = (0, 0, -1), d = (0.6, 0, 0.8): the plane start is at
   // t = 1.25 (x = 0.75, inside); the crossing -1 + 0.8 t = 0.3 t lies at t = 2, x = 1.2 (outside).
   const TiltedShape tilted(0.5, 1.0);
-  const auto hit = rtt::geom::intersect<double>(tilted, Vec3(0.0, 0.0, -1.0), Vec3(0.6, 0.0, 0.8));
+  const auto hit =
+      rtt::geom::intersect_newton<double>(tilted, Vec3(0.0, 0.0, -1.0), Vec3(0.6, 0.0, 0.8));
   REQUIRE(hit.status == HitStatus::NoConvergence);
   REQUIRE(hit.iterations == 1);
   REQUIRE(all_finite(hit));
@@ -239,8 +240,8 @@ TEST_CASE("Newton leaving the domain of the shape reports NoConvergence", "[newt
 TEST_CASE("Newton with F' = 0 (ray parallel to the surface) reports NoConvergence", "[newton]") {
   // z = x / 2 and d ~ (2, 0, 1): F'(t) = d_z - d_x / 2 = 0, F = -0.1 mm everywhere.
   const TiltedShape tilted(0.5, 1.0);
-  const auto hit =
-      rtt::geom::intersect<double>(tilted, Vec3(0.0, 0.0, -0.1), Vec3(2.0, 0.0, 1.0).normalized());
+  const auto hit = rtt::geom::intersect_newton<double>(tilted, Vec3(0.0, 0.0, -0.1),
+                                                       Vec3(2.0, 0.0, 1.0).normalized());
   REQUIRE(hit.status == HitStatus::NoConvergence);
   REQUIRE(hit.iterations == 0);
   REQUIRE(all_finite(hit));
@@ -251,7 +252,8 @@ TEST_CASE("Newton converging behind the ray reports NoConvergence", "[newton]") 
   // -1 + 0.8 t = 1.2 t is at t = -2.5. Newton cannot rule out a crossing ahead, so the result
   // is NoConvergence rather than Missed.
   const TiltedShape tilted(2.0, std::nullopt);
-  const auto hit = rtt::geom::intersect<double>(tilted, Vec3(0.0, 0.0, -1.0), Vec3(0.6, 0.0, 0.8));
+  const auto hit =
+      rtt::geom::intersect_newton<double>(tilted, Vec3(0.0, 0.0, -1.0), Vec3(0.6, 0.0, 0.8));
   REQUIRE(hit.status == HitStatus::NoConvergence);
   REQUIRE(hit.iterations == 1);
   REQUIRE(all_finite(hit));
@@ -260,10 +262,10 @@ TEST_CASE("Newton converging behind the ray reports NoConvergence", "[newton]") 
 TEST_CASE("Newton converges at the rounding limit for far ray origins", "[newton]") {
   // |F| < 1e-12 mm is unreachable when o + t d carries rounding errors of that size. The second
   // criterion |dt| <= 8 eps (1 + |t| + |o|) accepts the hit at the rounding limit.
+  // intersect_newton forces the Newton path on the conic; intersect() would pick the analytic one.
   const Conic<double> sphere(0.02, 0.0);
-  const rtt::geom::Shape<double>& shape = sphere;
   // Ray parallel to the axis: t = 1e5 + sag(r) exactly, rounding of the reference ~ ulp(1e5).
-  const auto axial = rtt::geom::intersect(shape, Vec3(0.0, 3.0, -1e5), Vec3(0.0, 0.0, 1.0));
+  const auto axial = rtt::geom::intersect_newton(sphere, Vec3(0.0, 3.0, -1e5), Vec3(0.0, 0.0, 1.0));
   REQUIRE(axial.status == HitStatus::Hit);
   REQUIRE(near(axial.t, 1e5 + sphere.sag(0.0, 3.0), 1e-10));
   REQUIRE(axial.iterations <= rtt::geom::kMaxNewtonIterations);
@@ -272,7 +274,7 @@ TEST_CASE("Newton converges at the rounding limit for far ray origins", "[newton
   const Vec3 o(-2.0, 4.0, -1e5);
   const Vec3 d = Vec3(1e-5, -2e-5, 1.0).normalized();
   const auto expected = rtt::geom::intersect(sphere, o, d);
-  const auto hit = rtt::geom::intersect(shape, o, d);
+  const auto hit = rtt::geom::intersect_newton(sphere, o, d);
   REQUIRE(expected.status == HitStatus::Hit);
   REQUIRE(hit.status == HitStatus::Hit);
   REQUIRE(std::abs(hit.t - expected.t) <= 1e-12 * expected.t);

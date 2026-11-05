@@ -21,7 +21,7 @@ namespace rtt::geom {
 /// k = 0 sphere, k = -1 paraboloid, k < -1 hyperboloid, -1 < k < 0 prolate and k > 0 oblate
 /// ellipsoid. c = 1/R in 1/mm; c > 0 places the centre of curvature on the +z side.
 template <rtt::math::Real T>
-class Conic final : public Shape<T> {
+class Conic final {
  public:
   /// @param curvature      c = 1/R in 1/mm (sign convention see class comment)
   /// @param conic_constant k, dimensionless
@@ -34,16 +34,16 @@ class Conic final : public Shape<T> {
   [[nodiscard]] T conic_constant() const noexcept { return k_; }
 
   /// Sag z in mm at (x, y) in mm; NaN for r > max_radius().
-  [[nodiscard]] T sag(T x, T y) const override;
+  [[nodiscard]] T sag(T x, T y) const noexcept;
 
   /// Slopes (dz/dx, dz/dy); NaN for r > max_radius(), +-infinity at r = max_radius().
-  [[nodiscard]] std::pair<T, T> grad(T x, T y) const override;
+  [[nodiscard]] std::pair<T, T> grad(T x, T y) const noexcept;
 
   /// (c, k) of this conic.
-  [[nodiscard]] std::pair<T, T> base_conic() const override { return {c_, k_}; }
+  [[nodiscard]] std::pair<T, T> base_conic() const { return {c_, k_}; }
 
   /// 1 / (|c| sqrt(1 + k)) in mm for c != 0 and k > -1, otherwise unbounded.
-  [[nodiscard]] std::optional<T> max_radius() const override;
+  [[nodiscard]] std::optional<T> max_radius() const;
 
  private:
   T c_;
@@ -51,7 +51,7 @@ class Conic final : public Shape<T> {
 };
 
 template <rtt::math::Real T>
-T Conic<T>::sag(T x, T y) const {
+T Conic<T>::sag(T x, T y) const noexcept {
   using std::sqrt;
   // Forbes, Opt. Express 19(10), 9923-9942 (2011), Eq. (2.1). This form is used instead of the
   // equivalent (1 - phi) / ((1 + k) c) because it stays finite and accurate for c -> 0 or
@@ -65,7 +65,7 @@ T Conic<T>::sag(T x, T y) const {
 }
 
 template <rtt::math::Real T>
-std::pair<T, T> Conic<T>::grad(T x, T y) const {
+std::pair<T, T> Conic<T>::grad(T x, T y) const noexcept {
   using std::sqrt;
   // Differentiating the sag above gives dz/dr = c r / sqrt(1 - (1 + k) c^2 r^2), hence
   // dz/dx = c x / s and dz/dy = c y / s with s = sqrt(1 - (1 + k) c^2 r^2).

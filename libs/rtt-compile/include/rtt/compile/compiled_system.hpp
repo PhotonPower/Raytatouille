@@ -35,8 +35,10 @@ class CoatingLibrary;  // rtt/coating/catalog.hpp
 
 namespace rtt::compile {
 
-/// Resolved base shape of a surface in its local coordinates. Supported in M1: plane, conic
-/// and even asphere; further shapes are added to this variant as rtt-geom provides them.
+/// Resolved base shape of a surface in its local coordinates: plane, conic and even asphere;
+/// further shapes are added to this variant as rtt-geom provides them. The tracer visits it
+/// statically, so the intersection of each shape is called without virtual calls (ADR 0041,
+/// point 4).
 using CompiledShape =
     std::variant<geom::Plane<double>, geom::Conic<double>, geom::EvenAsphere<double>>;
 

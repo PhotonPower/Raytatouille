@@ -1,3 +1,14 @@
+// GCC 13 at -O3 (CI ci-linux-gcc) reports -Wmaybe-uninitialized inside std::vector when a
+// CompiledSurface is default-constructed (shape = Plane) and then assigned a Conic: the variant's
+// reset inlines the destructor of every alternative, and on the unreachable EvenAsphere branch
+// the vector would read storage the empty Plane never wrote. A false positive since the shapes
+// have no virtual base (ADR 0041, point 4); local GCC 16 does not report it. Suppressed for this
+// test translation unit only, limited to GCC as in rtt-analysis/src/fft.cpp (maintainer approval
+// under rule 2, 2026-11-05).
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
+
 #include <Eigen/Geometry>
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
