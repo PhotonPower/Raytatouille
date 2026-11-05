@@ -55,6 +55,10 @@ std::optional<std::size_t> first_event_at(const std::vector<CompiledEvent>& even
   return std::nullopt;
 }
 
+/// Dependent false for the static_assert over the BaseShape alternatives in compile_shape().
+template <class>
+inline constexpr bool kUnhandledShape = false;
+
 /// Phase layers of the model as phase functions of rtt-geom (ADR 0025, point 1): the same numbers
 /// (lines per mm; coefficients in rad, no factor 2 pi), only parameters turned into values and
 /// orientation_deg into rad. validate() guarantees lines_per_mm > 0 and normalization_radius > 0;
@@ -999,22 +1003,39 @@ class Compiler {
 
   CompiledShape compile_shape(const model::ShapeStack& shape, const std::string& location) {
     for (std::size_t k = 0; k < shape.terms.size(); ++k) {
-      report("shape.zernike_unsupported", idx(location + "/terms", k),
-             "Zernike sag terms are not supported before M8");
+      std::visit(
+          [&](const auto& term) {
+            using S = std::decay_t<decltype(term)>;
+            if constexpr (std::is_same_v<S, model::ZernikeSag>) {
+              report("shape.zernike_unsupported", idx(location + "/terms", k),
+                     "Zernike sag terms are not supported before M8");
+            } else {
+              static_assert(kUnhandledShape<S>, "compile_shape: unhandled shape term");
+            }
+          },
+          shape.terms[k]);
     }
-    if (const auto* conic = std::get_if<model::Conic>(&shape.base)) {
-      // c = 1/R (docs/architecture.md, Konventionen); validate() guarantees R finite, != 0.
-      return geom::Conic<double>(1.0 / conic->radius.value, conic->conic.value);
-    }
-    if (const auto* asphere = std::get_if<model::EvenAsphere>(&shape.base)) {
-      // Same c = 1/R as the conic; coefficients[0] = A4 in model and rtt-geom.
-      std::vector<double> coefficients;
-      coefficients.reserve(asphere->coefficients.size());
-      for (const model::Param& a : asphere->coefficients) coefficients.push_back(a.value);
-      return geom::EvenAsphere<double>(1.0 / asphere->radius.value, asphere->conic.value,
-                                       std::move(coefficients));
-    }
-    return geom::Plane<double>{};
+    // Every base type has its own branch; a new one must not become a plane (ADR 0041, point 6).
+    return std::visit(
+        [](const auto& base) -> CompiledShape {
+          using B = std::decay_t<decltype(base)>;
+          if constexpr (std::is_same_v<B, model::Plane>) {
+            return geom::Plane<double>{};
+          } else if constexpr (std::is_same_v<B, model::Conic>) {
+            // c = 1/R (docs/architecture.md, Konventionen); validate() guarantees R finite, != 0.
+            return geom::Conic<double>(1.0 / base.radius.value, base.conic.value);
+          } else if constexpr (std::is_same_v<B, model::EvenAsphere>) {
+            // Same c = 1/R as the conic; coefficients[0] = A4 in model and rtt-geom.
+            std::vector<double> coefficients;
+            coefficients.reserve(base.coefficients.size());
+            for (const model::Param& a : base.coefficients) coefficients.push_back(a.value);
+            return geom::EvenAsphere<double>(1.0 / base.radius.value, base.conic.value,
+                                             std::move(coefficients));
+          } else {
+            static_assert(kUnhandledShape<B>, "compile_shape: unhandled base shape");
+          }
+        },
+        shape.base);
   }
 
   /// `location` is the JSON pointer of the path in the system file.

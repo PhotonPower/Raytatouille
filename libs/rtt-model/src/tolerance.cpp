@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <variant>
@@ -59,6 +60,11 @@ std::uint64_t tolerance_id_hash(std::string_view id) noexcept {
 }
 
 namespace {
+
+/// Dependent false for the static_assert over the shape alternatives (ADR 0041, point 6: every
+/// base and term type has its own branch).
+template <class>
+inline constexpr bool kUnhandledShape = false;
 
 using detail::kAssemblyKinds;
 using detail::kElementKinds;
@@ -165,15 +171,26 @@ class ClassGenerator {
     t.name = s.id.str();
     ClassSkip radius = ClassSkip::Plane;
     ClassSkip conic = ClassSkip::Plane;
-    if (const auto* q = std::get_if<Conic>(&s.shape.base)) {
-      radius = bound_skip(q->radius);
-      conic = q->conic.is_bound()     ? ClassSkip::Bound
-              : q->conic.value == 0.0 ? ClassSkip::Sphere
-                                      : ClassSkip::None;
-    } else if (const auto* a = std::get_if<EvenAsphere>(&s.shape.base)) {
-      radius = bound_skip(a->radius);
-      conic = bound_skip(a->conic);
-    }
+    // Every base type decides its own skips (ADR 0041, point 6); a new type gets its kinds or
+    // its own reason with its S issue (decision F2), never ClassSkip::Plane by default.
+    std::visit(
+        [&](const auto& b) {
+          using B = std::decay_t<decltype(b)>;
+          if constexpr (std::is_same_v<B, Plane>) {
+            // No radius and no conic constant.
+          } else if constexpr (std::is_same_v<B, Conic>) {
+            radius = bound_skip(b.radius);
+            conic = b.conic.is_bound()     ? ClassSkip::Bound
+                    : b.conic.value == 0.0 ? ClassSkip::Sphere
+                                           : ClassSkip::None;
+          } else if constexpr (std::is_same_v<B, EvenAsphere>) {
+            radius = bound_skip(b.radius);
+            conic = bound_skip(b.conic);
+          } else {
+            static_assert(kUnhandledShape<B>, "tolerance classes: unhandled base shape");
+          }
+        },
+        s.shape.base);
     add(t, ToleranceKind::CurvatureRelative, ToleranceLevel::Surface, c, radius);
     add(t, ToleranceKind::Conic, ToleranceLevel::Surface, c, conic);
     // The thickness of the segment before surface j >= 1 (ADR 0035, point 5).

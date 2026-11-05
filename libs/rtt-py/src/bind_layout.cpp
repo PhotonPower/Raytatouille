@@ -37,6 +37,11 @@ namespace {
 using compile::CompiledSystem;
 using math::Vec3;
 
+/// Dependent false for the static_assert over the compile::CompiledShape alternatives in
+/// shape_data() (ADR 0041, point 6).
+template <class>
+inline constexpr bool kUnhandledShape = false;
+
 using RealIn = nb::ndarray<const double, nb::ndim<1>, nb::c_contig, nb::device::cpu>;
 template <typename T>
 using Out = nb::ndarray<nb::numpy, T>;
@@ -101,9 +106,13 @@ std::tuple<std::string, double, double, std::vector<double>> shape_data(
           return {"plane", 0.0, 0.0, {}};
         } else if constexpr (std::is_same_v<S, geom::Conic<double>>) {
           return {"conic", s.curvature(), s.conic_constant(), {}};
-        } else {
+        } else if constexpr (std::is_same_v<S, geom::EvenAsphere<double>>) {
           const auto [c, k] = s.base_conic();
           return {"even_asphere", c, k, s.coefficients()};
+        } else {
+          // Every shape has its own branch; a new one must not be labelled even_asphere
+          // (ADR 0041, point 6).
+          static_assert(kUnhandledShape<S>, "shape_data: unhandled shape");
         }
       },
       shape);

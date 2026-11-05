@@ -557,3 +557,25 @@ TEST_CASE("tolerances: a class alone never invalidates a valid file",
     CHECK(tolerance_diagnostics(s).empty());
   }
 }
+
+TEST_CASE("tolerances: target_invalid names the base type of the surface",
+          "[model][tolerances][validate]") {
+  // ADR 0041, point 6: the reason is the type of the base, not always "not a plane".
+  const auto message = [](const std::function<void(System&)>& change) {
+    System s = valid();
+    change(s);
+    for (const Diagnostic& d : tolerance_diagnostics(s)) {
+      if (d.code == "tolerances.target_invalid") return d.message;
+    }
+    return std::string();
+  };
+  const std::string at_plane =
+      message([](System& s) { s.tolerances.items[1].target = at(A::Surface, "L2.S2"); });
+  CHECK(at_plane.find("conic or even asphere base") != std::string::npos);
+  CHECK(at_plane.find("base type \"plane\"") != std::string::npos);
+  // At a node there is no base to name.
+  const std::string at_node =
+      message([](System& s) { s.tolerances.items[1].target = at(A::Node, "L1"); });
+  CHECK(at_node.find("conic or even asphere base") != std::string::npos);
+  CHECK(at_node.find("plane") == std::string::npos);
+}
