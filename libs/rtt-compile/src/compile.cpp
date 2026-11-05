@@ -1003,8 +1003,17 @@ class Compiler {
 
   CompiledShape compile_shape(const model::ShapeStack& shape, const std::string& location) {
     for (std::size_t k = 0; k < shape.terms.size(); ++k) {
-      report("shape.zernike_unsupported", idx(location + "/terms", k),
-             "Zernike sag terms are not supported before M8");
+      std::visit(
+          [&](const auto& term) {
+            using S = std::decay_t<decltype(term)>;
+            if constexpr (std::is_same_v<S, model::ZernikeSag>) {
+              report("shape.zernike_unsupported", idx(location + "/terms", k),
+                     "Zernike sag terms are not supported before M8");
+            } else {
+              static_assert(kUnhandledShape<S>, "compile_shape: unhandled shape term");
+            }
+          },
+          shape.terms[k]);
     }
     // Every base type has its own branch; a new one must not become a plane (ADR 0041, point 6).
     return std::visit(

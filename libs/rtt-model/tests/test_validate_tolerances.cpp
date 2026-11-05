@@ -572,7 +572,7 @@ TEST_CASE("tolerances: target_invalid names the base type of the surface",
   const std::string at_plane =
       message([](System& s) { s.tolerances.items[1].target = at(A::Surface, "L2.S2"); });
   CHECK(at_plane.find("conic or even asphere base") != std::string::npos);
-  CHECK(at_plane.find("the base is a plane") != std::string::npos);
+  CHECK(at_plane.find("base type \"plane\"") != std::string::npos);
   // At a node there is no base to name.
   const std::string at_node =
       message([](System& s) { s.tolerances.items[1].target = at(A::Node, "L1"); });

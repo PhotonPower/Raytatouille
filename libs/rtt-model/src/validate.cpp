@@ -1125,7 +1125,7 @@ class Validator {
           const std::string needs = "needs a surface with a conic or even asphere base";
           report(
               "tolerances.target_invalid", loc + "/kind",
-              base != nullptr ? needs + " (the base is a " + base_type_name(*base) + ")" : needs);
+              base != nullptr ? needs + " (base type \"" + base_type_name(*base) + "\")" : needs);
           return;
         }
         const Param& p = kind == ToleranceKind::Conic ? *conic : *radius;
