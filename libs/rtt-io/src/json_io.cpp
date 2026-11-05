@@ -1710,7 +1710,11 @@ class Writer {
     OJson o;
     o["id"] = s.id.str();
     put_pose(o, s.pose);
-    if (edit_ || s.shape != ShapeStack{}) o["shape"] = shape(s.shape);
+    // The default ShapeStack is a plane without terms. Tested directly rather than with
+    // `!= ShapeStack{}`: with six base types GCC 16 at -O2 reports a false
+    // -Wnull-dereference in the inlined variant comparison of the empty term lists.
+    const bool default_shape = std::holds_alternative<Plane>(s.shape.base) && s.shape.terms.empty();
+    if (edit_ || !default_shape) o["shape"] = shape(s.shape);
     if (s.aperture) o["aperture"] = aperture(*s.aperture);
     if (edit_ || !s.phases.empty()) {
       OJson a = OJson::array();
