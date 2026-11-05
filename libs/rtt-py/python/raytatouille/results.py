@@ -54,7 +54,7 @@ __all__ = [
 ]
 
 FORMAT = "raytatouille-result"
-SCHEMA_VERSION = "0.1.16"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
+SCHEMA_VERSION = "0.1.17"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
 # 0.1.3: status Evanescent, status arrays one entry longer (#127); 0.1.4: PathTransmission,
 # PathOplDifference, GhostRanking (#133); 0.1.5: RayBatch wave_x/y/z, mode_index (#134);
 # 0.1.6: RaytraceReport, SystemReport, DimensionReport (#177);
@@ -69,6 +69,7 @@ SCHEMA_VERSION = "0.1.16"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84)
 # 0.1.14: PupilFunction mapping_limit (#286)
 # 0.1.15: ToleranceItems, ToleranceSensitivity (#261)
 # 0.1.16: MonteCarloResult (#261)
+# 0.1.17: SurfaceLayout curvature_x, conic_constant_x; shapes biconic, toroid, cylinder (#315)
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a
@@ -87,6 +88,7 @@ _ADDED: dict[str, tuple[tuple[int, tuple[str, ...]], ...]] = {
     "PupilCells": ((12, ("obscuration", "inner_rim")),),  # 0.1.12 (#229 C, Python #209 P1b)
     "PupilFunction": ((12, ("obscuration",)),  # 0.1.12 (#229 C, Python #209 P1b)
                       (14, ("mapping_limit",))),  # 0.1.14 (#286)
+    "SurfaceLayout": ((17, ("curvature_x", "conic_constant_x")),),  # 0.1.17 (#315)
 }
 _FIELDS: dict[str, tuple[str, ...]] = {
     # analysis
@@ -498,9 +500,11 @@ def load_json(text: str) -> Result:
 
     A file of an older 0.1.x version may lack keys that its type gained later (RayBatch:
     wave_x, wave_y, wave_z and mode_index from 0.1.5, q from 0.1.9; RayPaths: polarization, prt
-    and q from 0.1.9); the data then contain them as the type's reading rule says (RayBatch:
-    wave = dir, mode_index 0, ADR 0026, point 3; no Q and no P per slot: q and prt None,
-    polarization False, since Q cannot be recomputed without the normals, ADR 0034).
+    and q from 0.1.9; SurfaceLayout: curvature_x and conic_constant_x from 0.1.17); the data
+    then contain them as the type's reading rule says (RayBatch: wave = dir, mode_index 0,
+    ADR 0026, point 3; no Q and no P per slot: q and prt None, polarization False, since Q
+    cannot be recomputed without the normals, ADR 0034; SurfaceLayout: the x section equals
+    the y section, ADR 0042, point 5).
     """
     envelope = json.loads(text, parse_constant=_no_constant, object_pairs_hook=_unique_keys)
     if not isinstance(envelope, dict):
@@ -551,5 +555,9 @@ def _upgrade(type_name: str, data: dict[str, Any], absent: list[str]) -> dict[st
     elif type_name == "PupilFunction":
         # Files before 0.1.14 were computed without the limit: 1 = off (ADR 0032, addendum #286).
         added = {"obscuration": 0.0, "mapping_limit": 1.0}
+    elif type_name == "SurfaceLayout":
+        # Files before 0.1.17 only have rotationally symmetric shapes (plane, conic,
+        # even_asphere): the x section is the y section (ADR 0023, addendum #315).
+        added = {"curvature_x": data["curvature"], "conic_constant_x": data["conic_constant"]}
     data = {**data, **{k: v for k, v in added.items() if k in absent and k not in data}}
     return {k: data[k] for k in _required(type_name)}
