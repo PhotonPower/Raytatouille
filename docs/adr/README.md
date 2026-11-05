@@ -50,7 +50,7 @@ Präzisierungen und Ergänzungen einer angenommenen Entscheidung kommen als dati
 | [0039](0039.md) | Blende auf einer Fläche (`aperture.stop`, Schema 0.8; Verweis auf eine Fläche einer Linse, eines Spiegels, einer Platte oder eines dünnen Elements, höchstens eine Blende; eine Stelle für die Blende in compile; Austrittspupille durch die Blendenfläche selbst; die Blende folgt bei der Toleranzierung der gestörten Fläche) | angenommen |
 | [0040](0040.md) | Objektseitige NA real gelesen (`object_na` mit `reading`, Schema 0.8; realer axialer Randstrahl bestimmt das Ziel der Zielung, paraxiale Größen bleiben bei NA/n) | angenommen |
 | [0041](0041.md) | Grundlagen für neue Flächentypen (M8 S0: Scheitelentwicklung statt `base_conic` für die Paraxialrechnung, Schnitt mit statischem Dispatch, keine stillen Rückfälle, Schemaplan Welle 3) | angenommen |
-| [0042](0042.md) | Anamorphe Flächen und Paraxialrechnung je Schnitt (M8 S2: Biconic, Toroid, Zylinder; Gebiet `in_domain`; `first_order_section` mit ausgerichteten Hauptachsen; Zielung je Schnitt) | vorgeschlagen |
+| [0042](0042.md) | Anamorphe Flächen und Paraxialrechnung je Schnitt (M8 S2: Biconic, Toroid, Zylinder; Gebiet `in_domain`; `first_order_section` mit ausgerichteten Hauptachsen; Zielung je Schnitt) | angenommen |
 
 ## Vorlage
 
