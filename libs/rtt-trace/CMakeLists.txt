@@ -15,6 +15,7 @@ if(RTT_BUILD_TESTS)
   rtt_add_test(rtt_trace_tests
     SOURCES tests/test_ray_batch.cpp tests/test_apply_event.cpp tests/test_sequential.cpp
             tests/test_sources.cpp tests/test_interactions.cpp tests/test_ray_paths.cpp
+            tests/test_start_plane.cpp
             tests/test_accumulated_q.cpp
             tests/test_run_control.cpp tests/test_parallel_aiming.cpp
             tests/test_diffraction.cpp tests/test_crystal_trace.cpp tests/test_relative_trace.cpp
@@ -24,7 +25,8 @@ if(RTT_BUILD_TESTS)
             tests/test_object_reference.cpp
             tests/test_aim_continuation.cpp tests/test_surface_stop.cpp tests/test_real_na.cpp
     LIBS rtt::trace rtt::io rtt::polar rtt::coating rtt::model_test_support TBB::tbb)
-  # src/: the continuation fallback of real aiming (aim_continuation.hpp, #287) is tested directly.
+  # src/: the continuation fallback of real aiming (aim_continuation.hpp, #287) and the start plane
+  # at the vertex (start_plane.hpp, ADR 0041, point 6) are tested directly.
   target_include_directories(rtt_trace_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_compile_definitions(rtt_trace_tests PRIVATE
     RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs")

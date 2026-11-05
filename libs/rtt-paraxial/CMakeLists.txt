@@ -1,4 +1,5 @@
-add_library(rtt_paraxial src/paraxial.cpp src/seidel.cpp src/paraxial_rays.cpp src/prescription.cpp)
+add_library(rtt_paraxial src/paraxial.cpp src/seidel.cpp src/paraxial_rays.cpp src/prescription.cpp
+  src/vertex_rule.cpp)
 add_library(rtt::paraxial ALIAS rtt_paraxial)
 target_include_directories(rtt_paraxial PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
@@ -12,6 +13,7 @@ if(RTT_BUILD_TESTS)
     SOURCES tests/test_paraxial.cpp tests/test_seidel.cpp tests/test_errors.cpp
             tests/test_prescription.cpp tests/test_ideal_lens_interim.cpp
             tests/test_ideal_lens_paraxial.cpp tests/test_surface_stop.cpp
+            tests/test_vertex_rule.cpp
     LIBS rtt::paraxial rtt::io)
   # SCHOTT catalogue for the dispersive field-conversion tests (#35).
   target_compile_definitions(rtt_paraxial_tests PRIVATE

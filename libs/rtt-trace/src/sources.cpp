@@ -23,6 +23,7 @@
 #include "rtt/compile/errors.hpp"
 #include "rtt/diagnostics/codes.hpp"
 #include "rtt/paraxial/paraxial.hpp"
+#include "start_plane.hpp"
 
 namespace rtt::trace {
 
@@ -324,69 +325,24 @@ double aperture_extent(const model::Aperture& aperture) {
       aperture);
 }
 
-/// Lowest global z of the part of `surface` that the bundle of an infinite-object field can
-/// reach. The bundle is bounded by a cylinder of radius r_bundle around the chief ray through
-/// the EP centre (slope tan_field against the axis), so at global z it is at most
-/// r_bundle + |z - z_ep| tan_field off the axis. The surface is sampled in local coordinates up
-/// to that radius, capped by its aperture and by the domain of its shape; since a surface that
-/// curves back upstream meets the bundle where it is wider, the radius is re-evaluated at the
-/// lowest z found until it no longer drops (decided for #8, start plane).
-/// Valid for the rotationally symmetric paths that rtt::paraxial::first_order accepts (the
-/// sampled disk is centred on the vertex). The bound drops monotonically. With a finite cap
-/// (outer radius of the aperture, or shape domain) it is bounded below by the lowest z of the
-/// whole cap disk (up to the sampling, hence the final std::min), but it may converge only
-/// linearly (factor tan_field |dsag/dr| close to 1); if it has not settled after kMaxRounds and
-/// the cap is below kDivergentRadius, the lowest z of the whole cap disk is returned, a safe
-/// lower bound since the bundle cannot meet the surface outside its cap (decided for #72).
-/// Without such a cap the bound can drop without limit (an unbounded surface without aperture,
-/// or with an aperture of 1 km or more, that curves back against a steep field, e.g. a concave
-/// paraboloid); then there is no safe start plane: std::invalid_argument, raised before any ray
-/// is traced.
+/// Lowest global z a bundle can reach on `surface` (detail::lowest_z(), start_plane.hpp), with
+/// the cap from its aperture and the domain of its shape.
+/// @throws std::invalid_argument if there is no safe start plane (detail::lowest_z() is empty),
+///         raised before any ray is traced
 double lowest_z(const compile::CompiledSurface& surface,
                 double z_ep,
                 double r_bundle,
                 double tan_field) {
-  constexpr int kRadialSamples = 64;
-  constexpr int kAzimuthSamples = 8;
-  constexpr int kMaxRounds = 50;
-  constexpr double kDivergentRadius = 1e6;  // mm
   double cap = std::numeric_limits<double>::infinity();
   if (surface.aperture) cap = aperture_extent(*surface.aperture);
-  const std::optional<double> domain =
-      std::visit([](const auto& shape) { return shape.max_radius(); }, surface.shape);
-  if (domain) cap = std::min(cap, *domain);
-  const double z_vertex = surface.to_global.translation().z();
-  // Lowest global z of the surface on the local disk of radius rho around the vertex.
-  const auto lowest_on_disk = [&](double rho) {
-    double low = z_vertex;
-    for (int i = 1; i <= kRadialSamples; ++i) {
-      const double r = rho * i / kRadialSamples;
-      for (int j = 0; j < kAzimuthSamples; ++j) {
-        const double phi = kTwoPi * j / kAzimuthSamples;
-        const double x = r * std::sin(phi);
-        const double y = r * std::cos(phi);
-        // NaN only at the rim of the domain (rounding); skipped.
-        const double h =
-            std::visit([x, y](const auto& shape) { return shape.sag(x, y); }, surface.shape);
-        if (!std::isfinite(h)) continue;
-        low = std::min(low, surface.to_global.apply_point(Vec3(x, y, h)).z());
-      }
-    }
-    return low;
-  };
-  double z = z_vertex;
-  for (int round = 0; round < kMaxRounds; ++round) {
-    const double rho = std::min(cap, r_bundle + std::abs(z - z_ep) * tan_field);
-    // A bundle radius beyond any optical size means the bound diverges (overflow guard).
-    if (!(rho < kDivergentRadius)) break;
-    const double low = lowest_on_disk(rho);
-    if (low >= z - 1e-9) return std::min(z, low);
-    z = low;
-  }
-  // Not settled: with a cap of optical size, the whole cap disk bounds the bundle's reach (#72).
-  // A cap beyond the divergence guard (e.g. a placeholder aperture) would place the start plane
-  // where positions and OPL lose their precision; that stays an error (review of #72).
-  if (cap < kDivergentRadius) return std::min(z, lowest_on_disk(cap));
+  const std::optional<double> low = std::visit(
+      [&](const auto& shape) {
+        const std::optional<double> domain = shape.max_radius();
+        const double shape_cap = domain ? std::min(cap, *domain) : cap;
+        return detail::lowest_z(shape, surface.to_global, shape_cap, z_ep, r_bundle, tan_field);
+      },
+      surface.shape);
+  if (low) return *low;
   throw std::invalid_argument("sources: no start plane before surface '" + surface.id.str() +
                               "' for this field (unbounded surface without aperture, or with an "
                               "aperture of 1 km or more, that curves back against the field); "

@@ -45,6 +45,17 @@ class Conic final {
   /// 1 / (|c| sqrt(1 + k)) in mm for c != 0 and k > -1, otherwise unbounded.
   [[nodiscard]] std::optional<T> max_radius() const;
 
+  /// Vertex at the origin with curvature c: value 0, slope 0, Hessian (c, 0, c), order 4,
+  /// rotational, cap (k, A4 = 0) (ADR 0041, point 2). From the sag above, z = c r^2 / 2 + O(r^4).
+  [[nodiscard]] VertexExpansion<T> vertex_expansion() const noexcept {
+    VertexExpansion<T> e;
+    e.hessian = {c_, T(0), c_};
+    e.order = 4;
+    e.rotational4 = true;
+    e.conic = k_;
+    return e;
+  }
+
  private:
   T c_;
   T k_;

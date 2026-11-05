@@ -5,6 +5,8 @@
 // (#84). Not installed, not part of the public API.
 
 #include <cstdint>
+#include <optional>
+#include <string>
 #include <string_view>
 
 #include "rtt/compile/compiled_system.hpp"
@@ -18,11 +20,15 @@ struct ShapeData {
   double c = 0.0;
   double conic = 0.0;
   double a4 = 0.0;
+  /// Why the surface has no fourth-order cap (VertexRule::fourth_order_error); conic and a4 are
+  /// then 0 and seidel() rejects the surface, prescription() needs only c.
+  std::optional<std::string> fourth_order_error;
 };
 
 /// The paraxial trace (paraxial.cpp) uses c in global orientation: 1/R times the sign of the
 /// local z axis along global z. The fourth-order sag c^3 r^4 / 8 (K + 1) + A4 r^4 changes sign
 /// with the axis as well, so A4 flips with c while K, a ratio, stays.
+/// @throws ParaxialError if the surface has no first-order model (first_order() rejects it first)
 [[nodiscard]] ShapeData shape_data(const compile::CompiledSurface& s);
 
 /// Marginal ray in object space: from the axial object point to the rim of the entrance pupil
