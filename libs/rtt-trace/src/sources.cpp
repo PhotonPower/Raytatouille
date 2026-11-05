@@ -325,9 +325,6 @@ double aperture_extent(const model::Aperture& aperture) {
       aperture);
 }
 
-/// Lowest global z of the part of `surface` that the bundle of an infinite-object field can
-/// reach. The bundle is bounded by a cylinder of radius r_bundle around the chief ray through
-/// the EP centre (slope tan_field against the axis), so at global z it is at most
 /// Lowest global z a bundle can reach on `surface` (detail::lowest_z(), start_plane.hpp), with
 /// the cap from its aperture and the domain of its shape.
 /// @throws std::invalid_argument if there is no safe start plane (detail::lowest_z() is empty),

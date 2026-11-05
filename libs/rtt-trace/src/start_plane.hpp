@@ -23,6 +23,9 @@ namespace rtt::trace::detail {
   return to_global.apply_point(math::Vec3(0.0, 0.0, sag0)).z();
 }
 
+/// Lowest global z of the part of a surface that the bundle of an infinite-object field can
+/// reach. The bundle is bounded by a cylinder of radius r_bundle around the chief ray through
+/// the EP centre (slope tan_field against the axis), so at global z it is at most
 /// r_bundle + |z - z_ep| tan_field off the axis. The surface is sampled in local coordinates up
 /// to that radius, capped by `cap` (its aperture and the domain of its shape); since a surface
 /// that curves back upstream meets the bundle where it is wider, the radius is re-evaluated at

@@ -106,6 +106,22 @@ TEST_CASE("an expansion below second order has no paraxial model", "[paraxial][v
   }
 }
 
+TEST_CASE("the order is checked before the slope, the slope before the Hessian",
+          "[paraxial][vertex]") {
+  // Slope and Hessian have no meaning for order 0 (ADR 0041, point 1), e.g. an odd asphere with
+  // A1 != 0: the message names the missing paraxial model, not the slope or the asymmetry.
+  VertexExpansion<double> cone = smooth(0.02);
+  cone.order = 0;
+  cone.slope = {1e-3, 0.0};
+  cone.hessian = {0.02, 0.0, 0.03};
+  require_first_order_error(vertex_rule(cone), "no paraxial model at the vertex");
+
+  VertexExpansion<double> tilted_toric = smooth(0.02);
+  tilted_toric.slope = {0.0, 1e-3};
+  tilted_toric.hessian = {0.02, 0.0, 0.03};
+  require_first_order_error(vertex_rule(tilted_toric), "slope at the vertex");
+}
+
 TEST_CASE("the Seidel cap needs order 4 and rotational symmetry to fourth order",
           "[paraxial][vertex]") {
   // |r|^3 (A3 != 0): order 2, first order works, Seidel does not.

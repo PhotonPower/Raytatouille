@@ -69,7 +69,7 @@ struct VertexExpansion {
   /// A4 (mm^-3), with c the vertex curvature from `hessian`. Only valid for order 4 and
   /// `rotational4`.
   T conic = T(0);
-  T a4 = T(0);
+  T a4 = T(0);  ///< A4 of the cap, mm^-3 (see `conic`)
 };
 
 /// A shape the paraxial rule can work on: `vertex_expansion()` gives its VertexExpansion<T>.
