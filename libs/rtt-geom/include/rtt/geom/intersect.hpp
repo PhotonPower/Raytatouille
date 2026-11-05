@@ -183,8 +183,10 @@ template <rtt::math::Real T, IntersectableShape<T> S>
   using Vec = rtt::math::Vec3T<T>;
   // sag() and grad() are only evaluated inside the domain of the shape (NaN outside): the shape's
   // own test if it has one (ADR 0042, point 1), otherwise the disk of max_radius().
-  const std::optional<T> max_radius = shape.max_radius();
-  const auto in_domain = [&shape, &max_radius](const Vec& p) {
+  // Unused for a shape with its own domain; the default capture keeps clang's
+  // -Wunused-lambda-capture quiet for that instantiation.
+  [[maybe_unused]] const std::optional<T> max_radius = shape.max_radius();
+  const auto in_domain = [&](const Vec& p) {
     if constexpr (DomainShape<S, T>) {
       return p.allFinite() && shape.in_domain(p.x(), p.y());
     } else {
