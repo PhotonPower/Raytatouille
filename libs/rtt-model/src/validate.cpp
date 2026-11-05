@@ -28,7 +28,8 @@ namespace {
 template <class>
 inline constexpr bool kUnhandledShape = false;
 
-/// Name of the base type as in the file format ("plane", "conic", "even_asphere").
+/// Name of the base type as in the file format ("plane", "conic", "even_asphere", "biconic",
+/// "toroid", "cylinder").
 std::string base_type_name(const BaseShape& base) {
   return std::visit(
       [](const auto& b) -> std::string {
@@ -39,6 +40,12 @@ std::string base_type_name(const BaseShape& base) {
           return "conic";
         } else if constexpr (std::is_same_v<B, EvenAsphere>) {
           return "even_asphere";
+        } else if constexpr (std::is_same_v<B, Biconic>) {
+          return "biconic";
+        } else if constexpr (std::is_same_v<B, Toroid>) {
+          return "toroid";
+        } else if constexpr (std::is_same_v<B, Cylinder>) {
+          return "cylinder";
         } else {
           static_assert(kUnhandledShape<B>, "base_type_name: unhandled base shape");
         }
@@ -554,6 +561,24 @@ class Validator {
             if (b.coefficients.empty())
               report("shape.asphere_without_coefficients", base + "/coefficients",
                      "asphere without coefficients");
+          } else if constexpr (std::is_same_v<B, Biconic>) {
+            // ADR 0042, point 1: both radii finite and non-zero, as for the conic.
+            check_radius(b.radius_x, base + "/radius_x");
+            check_radius(b.radius_y, base + "/radius_y");
+            check_param(b.conic_x, base + "/conic_x", false);
+            check_param(b.conic_y, base + "/conic_y", false);
+          } else if constexpr (std::is_same_v<B, Toroid> || std::is_same_v<B, Cylinder>) {
+            // ADR 0042, point 1: the profile radius (and the radius of rotation) finite and
+            // non-zero. Without coefficients the profile is a conic: no asphere without
+            // coefficients.
+            check_radius(b.radius, base + "/radius");
+            check_param(b.conic, base + "/conic", false);
+            for (std::size_t k = 0; k < b.coefficients.size(); ++k) {
+              check_param(b.coefficients[k], idx(base + "/coefficients", k), false);
+            }
+            if constexpr (std::is_same_v<B, Toroid>) {
+              check_radius(b.radius_of_rotation, base + "/radius_of_rotation");
+            }
           } else {
             static_assert(kUnhandledShape<B>, "check_shape: unhandled base shape");
           }

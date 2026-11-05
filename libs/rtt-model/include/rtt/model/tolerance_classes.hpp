@@ -34,6 +34,9 @@ enum class ClassSkip : std::uint8_t {
   Crystal,           ///< index or abbe at a crystal (ADR 0026)
   Metal,             ///< index or abbe at a CONST material with kappa > 0
   ConstAbbe,         ///< abbe at a real CONST material or VACUUM (n_F - n_C = 0)
+  /// curvature_relative or conic at a base type for which the kind is not defined (biconic,
+  /// toroid, cylinder; ADR 0042, point 5, decision F2 of ADR 0041)
+  ShapeType,
 };
 
 /// One kind at one target that a class would generate.

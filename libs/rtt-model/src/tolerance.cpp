@@ -186,6 +186,12 @@ class ClassGenerator {
           } else if constexpr (std::is_same_v<B, EvenAsphere>) {
             radius = bound_skip(b.radius);
             conic = bound_skip(b.conic);
+          } else if constexpr (std::is_same_v<B, Biconic> || std::is_same_v<B, Toroid> ||
+                               std::is_same_v<B, Cylinder>) {
+            // ADR 0042, point 5: the kinds are not defined for the anamorphic types (kinds per
+            // section with decision F5 later).
+            radius = ClassSkip::ShapeType;
+            conic = ClassSkip::ShapeType;
           } else {
             static_assert(kUnhandledShape<B>, "tolerance classes: unhandled base shape");
           }

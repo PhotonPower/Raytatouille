@@ -121,6 +121,20 @@ class ParamWalker {
             visit_(base + "/radius", b.radius);
             visit_(base + "/conic", b.conic);
             list(b.coefficients, base + "/coefficients");
+          } else if constexpr (std::is_same_v<B, Biconic>) {
+            visit_(base + "/radius_x", b.radius_x);
+            visit_(base + "/radius_y", b.radius_y);
+            visit_(base + "/conic_x", b.conic_x);
+            visit_(base + "/conic_y", b.conic_y);
+          } else if constexpr (std::is_same_v<B, Toroid>) {
+            visit_(base + "/radius", b.radius);
+            visit_(base + "/conic", b.conic);
+            list(b.coefficients, base + "/coefficients");
+            visit_(base + "/radius_of_rotation", b.radius_of_rotation);
+          } else if constexpr (std::is_same_v<B, Cylinder>) {
+            visit_(base + "/radius", b.radius);
+            visit_(base + "/conic", b.conic);
+            list(b.coefficients, base + "/coefficients");
           } else {
             static_assert(kUnhandledShape<B>, "for_each_param: unhandled base shape");
           }

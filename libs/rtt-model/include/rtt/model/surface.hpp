@@ -39,7 +39,41 @@ struct EvenAsphere {
   bool operator==(const EvenAsphere&) const = default;
 };
 
-using BaseShape = std::variant<Plane, Conic, EvenAsphere>;
+/// Biconic (ADR 0042, point 1): z = (c_x x^2 + c_y y^2) / (1 + sqrt(1 - (1 + k_x) c_x^2 x^2 -
+/// (1 + k_y) c_y^2 y^2)) with c_x = 1/radius_x, c_y = 1/radius_y, in the local frame of the
+/// surface (its rotation about z orients the sections). Radii in mm with the sign of Conic::radius
+/// in their section (x-z, y-z); both finite and non-zero. No asphere terms.
+struct Biconic {
+  Param radius_x;  ///< R_x, mm, section x-z
+  Param radius_y;  ///< R_y, mm, section y-z
+  Param conic_x;   ///< k_x, dimensionless
+  Param conic_y;   ///< k_y, dimensionless
+  bool operator==(const Biconic&) const = default;
+};
+
+/// Toroid (ADR 0042, point 1): the profile z_y(y) = c y^2 / (1 + sqrt(1 - (1 + k) c^2 y^2)) +
+/// A4 y^4 + A6 y^6 + ... in the local y-z plane, c = 1/radius, rotated about the axis parallel to
+/// y through (x, z) = (0, radius_of_rotation). Radii in mm, sign as Conic::radius (positive: the
+/// centre of curvature, or the axis of rotation, on the +z side of the vertex); both finite and
+/// non-zero. radius_of_rotation == radius with conic 0 and no coefficients is a sphere.
+struct Toroid {
+  Param radius;                     ///< R of the y-z profile, mm
+  Param conic;                      ///< k of the profile, dimensionless
+  std::vector<Param> coefficients;  ///< A4, A6, ... of the profile: A_n in mm^(1 - n)
+  Param radius_of_rotation;         ///< R, mm: the axis of rotation lies at z = R
+  bool operator==(const Toroid&) const = default;
+};
+
+/// Cylinder (ADR 0042, point 1): the profile z = z_y(y) of Toroid, flat in x. Radius in mm,
+/// sign as Conic::radius; finite and non-zero.
+struct Cylinder {
+  Param radius;                     ///< R of the y-z profile, mm
+  Param conic;                      ///< k of the profile, dimensionless
+  std::vector<Param> coefficients;  ///< A4, A6, ... of the profile: A_n in mm^(1 - n)
+  bool operator==(const Cylinder&) const = default;
+};
+
+using BaseShape = std::variant<Plane, Conic, EvenAsphere, Biconic, Toroid, Cylinder>;
 
 /// Additive Zernike sag term, Noll ordering (coefficients[0] = j = 1), coefficients in mm.
 struct ZernikeSag {
