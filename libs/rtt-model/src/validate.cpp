@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -21,6 +22,29 @@
 namespace rtt::model {
 
 namespace {
+
+/// Dependent false for the static_assert over the shape alternatives (ADR 0041, point 6: every
+/// base and term type has its own branch).
+template <class>
+inline constexpr bool kUnhandledShape = false;
+
+/// Name of the base type as in the file format ("plane", "conic", "even_asphere").
+std::string base_type_name(const BaseShape& base) {
+  return std::visit(
+      [](const auto& b) -> std::string {
+        using B = std::decay_t<decltype(b)>;
+        if constexpr (std::is_same_v<B, Plane>) {
+          return "plane";
+        } else if constexpr (std::is_same_v<B, Conic>) {
+          return "conic";
+        } else if constexpr (std::is_same_v<B, EvenAsphere>) {
+          return "even_asphere";
+        } else {
+          static_assert(kUnhandledShape<B>, "base_type_name: unhandled base shape");
+        }
+      },
+      base);
+}
 
 std::string idx(std::string_view base, std::size_t i) {
   return std::string(base) + "/" + std::to_string(i);
@@ -513,33 +537,51 @@ class Validator {
 
   void check_shape(const ShapeStack& shape, const std::string& loc) {
     const std::string base = loc + "/base";
-    if (const auto* c = std::get_if<Conic>(&shape.base)) {
-      check_radius(c->radius, base + "/radius");
-      check_param(c->conic, base + "/conic", false);
-    } else if (const auto* a = std::get_if<EvenAsphere>(&shape.base)) {
-      check_radius(a->radius, base + "/radius");
-      check_param(a->conic, base + "/conic", false);
-      for (std::size_t k = 0; k < a->coefficients.size(); ++k) {
-        check_param(a->coefficients[k], idx(base + "/coefficients", k), false);
-      }
-      if (a->coefficients.empty())
-        report("shape.asphere_without_coefficients", base + "/coefficients",
-               "asphere without coefficients");
-    }
+    std::visit(
+        [&](const auto& b) {
+          using B = std::decay_t<decltype(b)>;
+          if constexpr (std::is_same_v<B, Plane>) {
+            // No parameters.
+          } else if constexpr (std::is_same_v<B, Conic>) {
+            check_radius(b.radius, base + "/radius");
+            check_param(b.conic, base + "/conic", false);
+          } else if constexpr (std::is_same_v<B, EvenAsphere>) {
+            check_radius(b.radius, base + "/radius");
+            check_param(b.conic, base + "/conic", false);
+            for (std::size_t k = 0; k < b.coefficients.size(); ++k) {
+              check_param(b.coefficients[k], idx(base + "/coefficients", k), false);
+            }
+            if (b.coefficients.empty())
+              report("shape.asphere_without_coefficients", base + "/coefficients",
+                     "asphere without coefficients");
+          } else {
+            static_assert(kUnhandledShape<B>, "check_shape: unhandled base shape");
+          }
+        },
+        shape.base);
     for (std::size_t i = 0; i < shape.terms.size(); ++i) {
-      const auto& z = std::get<ZernikeSag>(shape.terms[i]);
       const std::string t = idx(loc + "/terms", i);
-      check_param(z.normalization_radius, t + "/normalization_radius", true);
-      for (std::size_t k = 0; k < z.coefficients.size(); ++k) {
-        check_param(z.coefficients[k], idx(t + "/coefficients", k), false);
-      }
-      if (!z.normalization_radius.is_bound() && !finite_positive(z.normalization_radius.value)) {
-        report("shape.zernike_radius_invalid", t + "/normalization_radius",
-               "normalization radius must be > 0 mm");
-      }
-      if (z.coefficients.empty())
-        report("shape.zernike_without_coefficients", t + "/coefficients",
-               "Zernike term without coefficients");
+      std::visit(
+          [&](const auto& term) {
+            using S = std::decay_t<decltype(term)>;
+            if constexpr (std::is_same_v<S, ZernikeSag>) {
+              check_param(term.normalization_radius, t + "/normalization_radius", true);
+              for (std::size_t k = 0; k < term.coefficients.size(); ++k) {
+                check_param(term.coefficients[k], idx(t + "/coefficients", k), false);
+              }
+              if (!term.normalization_radius.is_bound() &&
+                  !finite_positive(term.normalization_radius.value)) {
+                report("shape.zernike_radius_invalid", t + "/normalization_radius",
+                       "normalization radius must be > 0 mm");
+              }
+              if (term.coefficients.empty())
+                report("shape.zernike_without_coefficients", t + "/coefficients",
+                       "Zernike term without coefficients");
+            } else {
+              static_assert(kUnhandledShape<S>, "check_shape: unhandled shape term");
+            }
+          },
+          shape.terms[i]);
     }
   }
 
@@ -1079,8 +1121,11 @@ class Validator {
           }
         }
         if (radius == nullptr) {
-          report("tolerances.target_invalid", loc + "/kind",
-                 "needs a surface with a conic or even asphere base (not a plane)");
+          // The reason names the base type (ADR 0041, point 6); a node or row has none.
+          const std::string needs = "needs a surface with a conic or even asphere base";
+          report(
+              "tolerances.target_invalid", loc + "/kind",
+              base != nullptr ? needs + " (the base is a " + base_type_name(*base) + ")" : needs);
           return;
         }
         const Param& p = kind == ToleranceKind::Conic ? *conic : *radius;

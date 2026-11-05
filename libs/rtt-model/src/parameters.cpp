@@ -21,6 +21,11 @@
 namespace rtt::model {
 namespace {
 
+/// Dependent false for the static_assert over the shape alternatives (ADR 0041, point 6: every
+/// base and term type has its own branch).
+template <class>
+inline constexpr bool kUnhandledShape = false;
+
 constexpr double kUndefined = std::numeric_limits<double>::quiet_NaN();
 
 /// A non-finite value as text, the same on every platform ("NaN", "+inf", "-inf");
@@ -104,19 +109,36 @@ class ParamWalker {
   void surface(Sf& s, const std::string& loc) {
     pose(s.pose, loc);
     const std::string base = loc + "/shape/base";
-    if (auto* c = std::get_if<Conic>(&s.shape.base)) {
-      visit_(base + "/radius", c->radius);
-      visit_(base + "/conic", c->conic);
-    } else if (auto* a = std::get_if<EvenAsphere>(&s.shape.base)) {
-      visit_(base + "/radius", a->radius);
-      visit_(base + "/conic", a->conic);
-      list(a->coefficients, base + "/coefficients");
-    }
+    std::visit(
+        [&](auto& b) {
+          using B = std::remove_cvref_t<decltype(b)>;
+          if constexpr (std::is_same_v<B, Plane>) {
+            // No parameters.
+          } else if constexpr (std::is_same_v<B, Conic>) {
+            visit_(base + "/radius", b.radius);
+            visit_(base + "/conic", b.conic);
+          } else if constexpr (std::is_same_v<B, EvenAsphere>) {
+            visit_(base + "/radius", b.radius);
+            visit_(base + "/conic", b.conic);
+            list(b.coefficients, base + "/coefficients");
+          } else {
+            static_assert(kUnhandledShape<B>, "for_each_param: unhandled base shape");
+          }
+        },
+        s.shape.base);
     for (std::size_t t = 0; t < s.shape.terms.size(); ++t) {
       const std::string term = loc + "/shape/terms/" + std::to_string(t);
-      auto& z = std::get<ZernikeSag>(s.shape.terms[t]);
-      visit_(term + "/normalization_radius", z.normalization_radius);
-      list(z.coefficients, term + "/coefficients");
+      std::visit(
+          [&](auto& z) {
+            using Term = std::remove_cvref_t<decltype(z)>;
+            if constexpr (std::is_same_v<Term, ZernikeSag>) {
+              visit_(term + "/normalization_radius", z.normalization_radius);
+              list(z.coefficients, term + "/coefficients");
+            } else {
+              static_assert(kUnhandledShape<Term>, "for_each_param: unhandled shape term");
+            }
+          },
+          s.shape.terms[t]);
     }
     for (std::size_t k = 0; k < s.phases.size(); ++k) {
       const std::string phase = loc + "/phases/" + std::to_string(k);

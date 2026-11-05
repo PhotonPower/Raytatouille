@@ -12,6 +12,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -28,6 +29,11 @@ namespace {
 using Json = nlohmann::json;
 using OJson = nlohmann::ordered_json;
 using namespace rtt::model;
+
+/// Dependent false for the static_assert over the shape alternatives (ADR 0041, point 6: every
+/// base and term type has its own branch).
+template <class>
+inline constexpr bool kUnhandledShape = false;
 
 // ===================================================================== tables =====
 
@@ -1489,18 +1495,27 @@ class Writer {
 
   OJson base_shape(const BaseShape& b) const {
     OJson o;
-    if (std::holds_alternative<Plane>(b)) {
-      o["type"] = "plane";
-    } else if (const auto* c = std::get_if<Conic>(&b)) {
-      o["type"] = "conic";
-      o["radius"] = param(c->radius);
-      if (edit_ || c->conic != Param{}) o["conic"] = param(c->conic);
-    } else if (const auto* a = std::get_if<EvenAsphere>(&b)) {
-      o["type"] = "even_asphere";
-      o["radius"] = param(a->radius);
-      if (edit_ || a->conic != Param{}) o["conic"] = param(a->conic);
-      if (edit_ || !a->coefficients.empty()) o["coefficients"] = param_list(a->coefficients);
-    }
+    // Every base type has its own branch; a new one must not be written as {} (ADR 0041,
+    // point 6).
+    std::visit(
+        [&](const auto& s) {
+          using S = std::decay_t<decltype(s)>;
+          if constexpr (std::is_same_v<S, Plane>) {
+            o["type"] = "plane";
+          } else if constexpr (std::is_same_v<S, Conic>) {
+            o["type"] = "conic";
+            o["radius"] = param(s.radius);
+            if (edit_ || s.conic != Param{}) o["conic"] = param(s.conic);
+          } else if constexpr (std::is_same_v<S, EvenAsphere>) {
+            o["type"] = "even_asphere";
+            o["radius"] = param(s.radius);
+            if (edit_ || s.conic != Param{}) o["conic"] = param(s.conic);
+            if (edit_ || !s.coefficients.empty()) o["coefficients"] = param_list(s.coefficients);
+          } else {
+            static_assert(kUnhandledShape<S>, "base_shape: unhandled base shape");
+          }
+        },
+        b);
     return o;
   }
 
@@ -1510,12 +1525,22 @@ class Writer {
     if (edit_ || !s.terms.empty()) {
       OJson a = OJson::array();
       for (const ShapeTerm& t : s.terms) {
-        const auto& z = std::get<ZernikeSag>(t);
-        OJson zo;
-        zo["type"] = "zernike_sag";
-        zo["normalization_radius"] = param(z.normalization_radius);
-        if (edit_ || !z.coefficients.empty()) zo["coefficients"] = param_list(z.coefficients);
-        a.push_back(std::move(zo));
+        OJson to;
+        std::visit(
+            [&](const auto& term) {
+              using S = std::decay_t<decltype(term)>;
+              if constexpr (std::is_same_v<S, ZernikeSag>) {
+                to["type"] = "zernike_sag";
+                to["normalization_radius"] = param(term.normalization_radius);
+                if (edit_ || !term.coefficients.empty()) {
+                  to["coefficients"] = param_list(term.coefficients);
+                }
+              } else {
+                static_assert(kUnhandledShape<S>, "shape: unhandled shape term");
+              }
+            },
+            t);
+        a.push_back(std::move(to));
       }
       o["terms"] = std::move(a);
     }
