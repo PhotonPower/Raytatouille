@@ -55,7 +55,8 @@ template <class S>
                                              double z_ep,
                                              double r_bundle,
                                              double tan_field) {
-  constexpr double kTwoPi = 2.0 * std::numbers::pi;
+  // 2 pi rad; not named kTwoPi, which would hide that of sources.cpp (MSVC C4459).
+  constexpr double kFullTurn = 2.0 * std::numbers::pi;
   constexpr int kRadialSamples = 64;
   constexpr int kAzimuthSamples = 8;
   constexpr int kMaxRounds = 50;
@@ -67,7 +68,7 @@ template <class S>
     for (int i = 1; i <= kRadialSamples; ++i) {
       const double r = rho * i / kRadialSamples;
       for (int j = 0; j < kAzimuthSamples; ++j) {
-        const double phi = kTwoPi * j / kAzimuthSamples;
+        const double phi = kFullTurn * j / kAzimuthSamples;
         const double x = r * std::sin(phi);
         const double y = r * std::cos(phi);
         // NaN only at the rim of the domain (rounding); skipped.
