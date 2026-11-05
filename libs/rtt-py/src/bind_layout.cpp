@@ -109,8 +109,9 @@ ShapeData shape_data(const compile::CompiledShape& shape) {
         if constexpr (std::is_same_v<S, geom::Plane<double>>) {
           return {"plane", 0.0, 0.0, {}, 0.0, 0.0};
         } else if constexpr (std::is_same_v<S, geom::Conic<double>>) {
-          return {"conic", s.curvature(), s.conic_constant(), {}, s.curvature(),
-                  s.conic_constant()};
+          const double c = s.curvature();
+          const double k = s.conic_constant();
+          return {"conic", c, k, {}, c, k};
         } else if constexpr (std::is_same_v<S, geom::EvenAsphere<double>>) {
           const auto [c, k] = s.base_conic();
           return {"even_asphere", c, k, s.coefficients(), c, k};

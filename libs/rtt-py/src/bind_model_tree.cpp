@@ -596,7 +596,8 @@ void bind_model_tree(nb::module_& m) {
   read_only_class<model::ShapeStack>(
       m, "ShapeStack",
       "Total sag = base + sum of the terms, in the local xy plane (read-only copy).")
-      .def_ro("base", &model::ShapeStack::base, "Base shape: Plane, Conic, EvenAsphere, Biconic, Toroid or Cylinder.")
+      .def_ro("base", &model::ShapeStack::base,
+              "Base shape: Plane, Conic, EvenAsphere, Biconic, Toroid or Cylinder.")
       .def_ro("terms", &model::ShapeStack::terms, "Additive terms (ZernikeSag).");
 
   // ------------------------------------------------------------- aperture -----
