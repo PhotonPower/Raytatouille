@@ -50,16 +50,16 @@ const json kFinite = {{"at_infinity", false}, {"distance", 50.0}};
 
 }  // namespace
 
-TEST_CASE("schema version is 0.8.0", "[io][0.8]") {
-  REQUIRE(rtt::model::kSchemaVersion == "0.8.0");
+TEST_CASE("schema version is 0.9.0", "[io][0.8]") {
+  REQUIRE(rtt::model::kSchemaVersion == "0.9.0");
 }
 
-TEST_CASE("migration 0.7 -> 0.8: content unchanged, the version becomes 0.8.0", "[io][0.8]") {
+TEST_CASE("migration 0.7 -> 0.8: content unchanged, the version becomes 0.9.0", "[io][0.8]") {
   const System s = finite_object(std::nullopt);
   const System read = rtt::io::parse_system(with_version_and_object(s, "0.7.0", kFinite));
-  CHECK(read.schema_version == "0.8.0");
+  CHECK(read.schema_version == "0.9.0");
   CHECK(read == s);
-  CHECK(json::parse(rtt::io::to_json(read))["schema_version"] == "0.8.0");
+  CHECK(json::parse(rtt::io::to_json(read))["schema_version"] == "0.9.0");
 }
 
 TEST_CASE("object.reference: the reference form round trip", "[io][0.8]") {
