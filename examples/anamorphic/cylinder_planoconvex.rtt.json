@@ -1,0 +1,62 @@
+{
+  "schema_version": "0.9.0",
+  "name": "Plano-convex cylinder lens, power in y: R = 51.68 mm, n = 1.5168, t = 4 mm, f_y = 100 mm, afocal in x; VACUUM, image in the paraxial y focus (ADR 0042, acceptance 1)",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 10.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 10.0}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "L1",
+        "pose": {"position": [0.0, 0.0, 5.0]},
+        "material": "CONST:1.5168",
+        "surfaces": [
+          {
+            "id": "L1.S1",
+            "shape": {
+              "base": {"type": "cylinder", "radius": 51.68}
+            },
+            "aperture": {"type": "rectangular", "half_width_x": 12.7, "half_width_y": 12.7}
+          },
+          {
+            "id": "L1.S2",
+            "pose": {"position": [0.0, 0.0, 4.0]},
+            "aperture": {"type": "rectangular", "half_width_x": 12.7, "half_width_y": 12.7}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 106.36286919831225]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}

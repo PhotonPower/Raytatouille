@@ -170,3 +170,30 @@ def test_the_sensitivity_expansion_is_null_or_tolerance_items(value: object):
     doc = _broken(lambda d: d["data"].update(expansion=value), "ToleranceSensitivity.result.json")
     with pytest.raises(jsonschema.ValidationError):
         VALIDATOR.validate(doc)
+
+
+# SurfaceLayout gained curvature_x and conic_constant_x in 0.1.17 (#315, ADR 0042, point 5,
+# ADR 0023 addendum): older files stay valid without them, from 0.1.17 on they are required.
+ADDED_0_1_17 = ["curvature_x", "conic_constant_x"]
+
+
+def _surface_layout_without(key: str, version: str) -> dict:
+    doc = _broken(lambda d: None, "SurfaceLayout.result.json")
+    doc["data"].update(curvature_x=doc["data"]["curvature"],
+                       conic_constant_x=doc["data"]["conic_constant"])
+    doc["data"].pop(key)
+    doc["schema_version"] = version
+    return doc
+
+
+@pytest.mark.parametrize("key", ADDED_0_1_17)
+def test_older_surface_layouts_without_the_x_section_are_valid(key: str):
+    for version in ("0.1.0", "0.1.16"):
+        VALIDATOR.validate(_surface_layout_without(key, version))
+
+
+@pytest.mark.parametrize("key", ADDED_0_1_17)
+@pytest.mark.parametrize("version", ["0.1.17", "0.1.20"])
+def test_surface_layouts_from_0_1_17_need_the_x_section(key: str, version: str):
+    with pytest.raises(jsonschema.ValidationError):
+        VALIDATOR.validate(_surface_layout_without(key, version))

@@ -1,0 +1,67 @@
+{
+  "schema_version": "0.9.0",
+  "name": "Biconic singlet, n = 1.5168, t = 4 mm: front R_y = 51.68 mm (f_y = 100 mm), R_x = 77.52 mm (f_x = 150 mm), conic_x = -0.5, rear plane; VACUUM, image in the paraxial y focus",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 10.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 10.0}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "L1",
+        "pose": {"position": [0.0, 0.0, 5.0]},
+        "material": "CONST:1.5168",
+        "surfaces": [
+          {
+            "id": "L1.S1",
+            "shape": {
+              "base": {
+                "type": "biconic",
+                "radius_x": 77.52,
+                "radius_y": 51.68,
+                "conic_x": -0.5
+              }
+            },
+            "aperture": {"type": "circular", "radius": 12.7}
+          },
+          {
+            "id": "L1.S2",
+            "pose": {"position": [0.0, 0.0, 4.0]},
+            "aperture": {"type": "circular", "radius": 12.7}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 106.36286919831225]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}
