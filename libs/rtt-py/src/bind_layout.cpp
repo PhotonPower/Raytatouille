@@ -109,6 +109,16 @@ std::tuple<std::string, double, double, std::vector<double>> shape_data(
         } else if constexpr (std::is_same_v<S, geom::EvenAsphere<double>>) {
           const auto [c, k] = s.base_conic();
           return {"even_asphere", c, k, s.coefficients()};
+        } else if constexpr (std::is_same_v<S, geom::Biconic<double>>) {
+          // The y section (ADR 0042, point 5); curvature_x and conic_constant_x follow with the
+          // result format of the Python part of #315.
+          return {"biconic", s.curvature_y(), s.conic_y(), {}};
+        } else if constexpr (std::is_same_v<S, geom::Toroid<double>> ||
+                             std::is_same_v<S, geom::Cylinder<double>>) {
+          // The y-z profile (ADR 0042, point 5); curvature_x follows as above.
+          const auto [c, k] = s.profile().base_conic();
+          return {std::is_same_v<S, geom::Toroid<double>> ? "toroid" : "cylinder", c, k,
+                  s.profile().coefficients()};
         } else {
           // Every shape has its own branch; a new one must not be labelled even_asphere
           // (ADR 0041, point 6).

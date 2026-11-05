@@ -20,6 +20,7 @@
 #include "rtt/coating/transfer_matrix.hpp"
 #include "rtt/compile/compiled_element.hpp"
 #include "rtt/compile/perturbation.hpp"
+#include "rtt/geom/anamorphic.hpp"
 #include "rtt/geom/asphere.hpp"
 #include "rtt/geom/conic.hpp"
 #include "rtt/geom/phase.hpp"
@@ -35,12 +36,16 @@ class CoatingLibrary;  // rtt/coating/catalog.hpp
 
 namespace rtt::compile {
 
-/// Resolved base shape of a surface in its local coordinates: plane, conic and even asphere;
-/// further shapes are added to this variant as rtt-geom provides them. The tracer visits it
-/// statically, so the intersection of each shape is called without virtual calls (ADR 0041,
-/// point 4).
-using CompiledShape =
-    std::variant<geom::Plane<double>, geom::Conic<double>, geom::EvenAsphere<double>>;
+/// Resolved base shape of a surface in its local coordinates: plane, conic, even asphere and the
+/// anamorphic biconic, toroid and cylinder (ADR 0042); further shapes are added to this variant
+/// as rtt-geom provides them. The tracer visits it statically, so the intersection of each shape
+/// is called without virtual calls (ADR 0041, point 4).
+using CompiledShape = std::variant<geom::Plane<double>,
+                                   geom::Conic<double>,
+                                   geom::EvenAsphere<double>,
+                                   geom::Biconic<double>,
+                                   geom::Toroid<double>,
+                                   geom::Cylinder<double>>;
 
 /// Resolved data of an ideal lens or ideal cylinder lens (ADR 0031): Params from the parameter
 /// table already resolved for the compiled configuration.
