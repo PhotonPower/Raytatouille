@@ -2,6 +2,7 @@
 /// Explicit instantiations for double so that every template is compiled (and checked by
 /// clang-tidy) once as part of the library.
 
+#include "rtt/geom/anamorphic.hpp"
 #include "rtt/geom/asphere.hpp"
 #include "rtt/geom/conic.hpp"
 #include "rtt/geom/intersect.hpp"
@@ -17,10 +18,19 @@ static_assert(IntersectableShape<EvenAsphere<double>, double>);
 static_assert(ParaxialShape<Plane<double>, double>);
 static_assert(ParaxialShape<Conic<double>, double>);
 static_assert(ParaxialShape<EvenAsphere<double>, double>);
+static_assert(DomainShape<Biconic<double>, double>);
+static_assert(DomainShape<Toroid<double>, double>);
+static_assert(DomainShape<Cylinder<double>, double>);
+static_assert(ParaxialShape<Biconic<double>, double>);
+static_assert(ParaxialShape<Toroid<double>, double>);
+static_assert(ParaxialShape<Cylinder<double>, double>);
 
 template class Plane<double>;
 template class Conic<double>;
 template class EvenAsphere<double>;
+template class Biconic<double>;
+template class Toroid<double>;
+template class Cylinder<double>;
 template struct Intersection<double>;
 template struct VertexExpansion<double>;
 template VertexExpansion<double> stack_expansion<double>(const VertexExpansion<double>&,
@@ -46,6 +56,18 @@ template Intersection<double> intersect<double>(const Plane<double>&,
                                                 double);
 template Intersection<double> intersect_newton<double, EvenAsphere<double>>(
     const EvenAsphere<double>&, const math::Vec3T<double>&, const math::Vec3T<double>&, double);
+template Intersection<double> intersect_newton<double, Biconic<double>>(const Biconic<double>&,
+                                                                        const math::Vec3T<double>&,
+                                                                        const math::Vec3T<double>&,
+                                                                        double);
+template Intersection<double> intersect_newton<double, Toroid<double>>(const Toroid<double>&,
+                                                                       const math::Vec3T<double>&,
+                                                                       const math::Vec3T<double>&,
+                                                                       double);
+template Intersection<double> intersect_newton<double, Cylinder<double>>(const Cylinder<double>&,
+                                                                         const math::Vec3T<double>&,
+                                                                         const math::Vec3T<double>&,
+                                                                         double);
 template Intersection<double> intersect<double, EvenAsphere<double>>(const EvenAsphere<double>&,
                                                                      const math::Vec3T<double>&,
                                                                      const math::Vec3T<double>&,

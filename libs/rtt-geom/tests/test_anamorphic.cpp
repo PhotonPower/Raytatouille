@@ -179,7 +179,7 @@ TEST_CASE("biconic vertex expansion", "[anamorphic]") {
   const Biconic<double> biconic(0.04, -0.01, -1.0, 2.0);
   const auto e = biconic.vertex_expansion();
   CHECK(e.value == 0.0);
-  CHECK(e.slope == std::array<double, 2>{0.0, 0.0});
+  CHECK(e.slope == std::pair{0.0, 0.0});
   CHECK(e.hessian == std::array<double, 3>{0.04, 0.0, -0.01});
   CHECK(e.order == 4);
   CHECK_FALSE(e.rotational4);
@@ -320,7 +320,8 @@ TEST_CASE("Newton intersects strongly anamorphic biconics", "[anamorphic][newton
   }
 }
 
-TEST_CASE("Newton uses the domain of the shape, not the disk of max_radius", "[anamorphic][newton]") {
+TEST_CASE("Newton uses the domain of the shape, not the disk of max_radius",
+          "[anamorphic][newton]") {
   // Semi-axes 10 (x) and 50 (y). The point (0, 40) lies outside the inscribed disk of radius 10
   // but inside the ellipse: the ray hits (ADR 0042, acceptance 5).
   const Biconic<double> biconic(1.0 / 10.0, 1.0 / 50.0, 0.0, 0.0);

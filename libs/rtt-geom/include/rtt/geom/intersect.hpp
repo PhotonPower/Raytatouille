@@ -181,25 +181,39 @@ template <rtt::math::Real T, IntersectableShape<T> S>
   using std::abs;
   using std::isfinite;
   using Vec = rtt::math::Vec3T<T>;
+  // sag() and grad() are only evaluated inside the domain of the shape (NaN outside): the shape's
+  // own test if it has one (ADR 0042, point 1), otherwise the disk of max_radius().
+  const std::optional<T> max_radius = shape.max_radius();
+  const auto in_domain = [&shape, &max_radius](const Vec& p) {
+    if constexpr (DomainShape<S, T>) {
+      return p.allFinite() && shape.in_domain(p.x(), p.y());
+    } else {
+      return p.allFinite() &&
+             (!max_radius || p.x() * p.x() + p.y() * p.y() <= *max_radius * *max_radius);
+    }
+  };
   // Start value: analytic hit of the base conic (docs/architecture.md); if that is missed,
-  // the hit of the vertex plane z = 0.
+  // the hit of the vertex plane z = 0. For a shape with its own domain the vertex plane is also
+  // tried when the conic hit lies outside that domain (ADR 0042, point 1).
   const auto [c, k] = shape.base_conic();
   T t = T(0);
+  bool started = false;
   if (const Intersection<T> start = intersect_conic(c, k, origin, direction, t_min);
       start.status == HitStatus::Hit) {
     t = start.t;
-  } else if (const Intersection<T> plane = intersect(Plane<T>(), origin, direction, t_min);
-             plane.status == HitStatus::Hit) {
-    t = plane.t;
-  } else {
-    return {};
+    started = true;
+    if constexpr (DomainShape<S, T>) {
+      started = in_domain(origin + t * direction);
+    }
   }
-  // sag() and grad() are only evaluated inside the domain of the shape (NaN outside).
-  const std::optional<T> max_radius = shape.max_radius();
-  const auto in_domain = [&max_radius](const Vec& p) {
-    return p.allFinite() &&
-           (!max_radius || p.x() * p.x() + p.y() * p.y() <= *max_radius * *max_radius);
-  };
+  if (!started) {
+    if (const Intersection<T> plane = intersect(Plane<T>(), origin, direction, t_min);
+        plane.status == HitStatus::Hit) {
+      t = plane.t;
+    } else {
+      return {};
+    }
+  }
   Vec p = origin + t * direction;
   if (!in_domain(p)) {
     return {};  // no surface at the start point: the ray passes outside the shape
