@@ -1,8 +1,8 @@
 # Systemdateien `.rtt.json` erzeugen
 
 Kurzanleitung für das Dateiformat, das die Engine, die CLI (`rtt`) und der Raytatouille Explorer
-laden. Alle Beispiele hier wurden gegen Schema `0.8.x` geprüft (nach Bibliothek 0.9.0). Dateien mit
-Schema 0.1 bis 0.7 liest `rtt` weiter und schreibt sie mit `rtt format` als 0.8; ein `pickup` aus
+laden. Alle Beispiele hier wurden gegen Schema `0.9.x` geprüft (nach Bibliothek 0.9.0). Dateien mit
+Schema 0.1 bis 0.8 liest `rtt` weiter und schreibt sie mit `rtt format` als 0.9; ein `pickup` aus
 einer Datei vor 0.4 fällt dabei weg, mit der Warnung `io.pickup_dropped` (siehe
 „Parametertabelle“).
 Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/architecture.md`.
@@ -32,7 +32,7 @@ Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/a
 
 | Feld | Pflicht | Inhalt |
 | --- | --- | --- |
-| `schema_version` | ja | `"0.8.0"` (Muster `0.8.x`) |
+| `schema_version` | ja | `"0.9.0"` (Muster `0.9.x`) |
 | `name` | nein | Anzeigename |
 | `units` | ja | genau `{"length": "mm", "wavelength": "um"}` |
 | `environment` | nein | `temperature_c`, `pressure_atm`, `medium` (Standard: Luft nach Ciddor, 20 °C, 1 atm) |
@@ -88,7 +88,7 @@ braucht das Substrat, ohne `material` ist es ein Kompilierfehler.
 
 | Feld | Inhalt |
 | --- | --- |
-| `shape.base` | `{"type": "plane"}`, `{"type": "conic", "radius": R, "conic": k}` oder `{"type": "even_asphere", "radius": R, "conic": k, "coefficients": [A4, A6, …]}` |
+| `shape.base` | `{"type": "plane"}`, `{"type": "conic", "radius": R, "conic": k}` oder `{"type": "even_asphere", "radius": R, "conic": k, "coefficients": [A4, A6, …]}`; ab Schema 0.9 (ADR 0042) die anamorphen Formen `{"type": "biconic", "radius_x": R_x, "radius_y": R_y, "conic_x": k_x, "conic_y": k_y}`, `{"type": "toroid", "radius": R, "conic": k, "coefficients": [A4, A6, …], "radius_of_rotation": R_rot}` und `{"type": "cylinder", "radius": R, "conic": k, "coefficients": [A4, A6, …]}` (siehe unten) |
 | `aperture` | `circular` (`radius`, optional `inner_radius`), `rectangular` (`half_width_x`, `half_width_y`) oder `elliptical` (`semi_axis_x`, `semi_axis_y`) |
 | `phases` | Phasenschichten: `{"type": "linear_grating", "lines_per_mm": G, "orientation_deg": ψ}` oder `{"type": "radial_phase", "normalization_radius": R, "coefficients": [c1, c2, …]}` (ADR 0025). Einheiten: G in 1/mm, ψ in Grad von der lokalen x- zur lokalen y-Achse (ψ = 0: Rillen parallel zur lokalen y-Achse), φ = 2πG(x cos ψ + y sin ψ); R in mm, Koeffizienten c_k in **rad** (nicht in Wellen, kein Faktor 2π), c1 gehört zu ρ², φ = Σ c_k ρ^{2k} mit ρ = r/R. Die Werte gelten unverändert für jede Wellenlänge; das Vorzeichen von φ und der Ordnung nach ADR 0025, Punkte 1 bis 3 |
 | `diffraction_efficiency` | nur an Flächen mit `phases`: Leistungsanteil je Beugungsordnung, z. B. `[{"order": 1, "efficiency": 0.8}]`; fehlt das Feld, hat jede Ordnung 1, sonst haben nicht aufgeführte Ordnungen 0 |
@@ -104,6 +104,36 @@ jede Beugungsordnung `order` nach der lokalen Gittergleichung (ADR 0025) und rec
 `diffraction_efficiency` in das Gewicht ein; evaneszente Ordnungen enden mit dem Status
 `Evanescent`. Kristalle mit `ordinary` und `extraordinary` verfolgt der Tracer seit #132
 (ADR 0026).
+
+## Anamorphe Flächen (ab Schema 0.9, ADR 0042)
+
+Biconic, Toroid und Zylinder haben in den Schnitten x-z und y-z verschiedene Krümmungen. Sie
+gelten im lokalen System der Fläche; die Drehung der Fläche um z legt die Richtung der Schnitte
+fest. Alle Radien sind in mm, endlich und ≠ 0 (sonst `shape.radius_invalid`), mit dem
+Vorzeichen wie bei `conic`: positiv, wenn der Krümmungsmittelpunkt bzw. die Drehachse auf der
++z-Seite des Scheitels liegt. Alle Werte sind Params.
+
+```json
+{"type": "biconic", "radius_x": 40.0, "radius_y": -60.0, "conic_x": -0.5}
+{"type": "toroid", "radius": 48.0, "coefficients": [2e-6], "radius_of_rotation": 55.0}
+{"type": "cylinder", "radius": -75.0}
+```
+
+- `biconic`: z = (c_x x² + c_y y²) / (1 + √(1 − (1 + k_x) c_x² x² − (1 + k_y) c_y² y²)) mit
+  c_x = 1/`radius_x`, c_y = 1/`radius_y`; `conic_x` und `conic_y` sind optional (Standard 0).
+  Asphärenterme gibt es nicht.
+- `toroid`: Das Profil z_y(y) in der y-z-Ebene ist eine gerade Asphäre wie `even_asphere`
+  (`radius`, optional `conic` und `coefficients` A4, A6, …). Es dreht sich um die Achse parallel
+  zu y durch (x, z) = (0, `radius_of_rotation`). Mit `radius_of_rotation` = `radius`, ohne Konik
+  und Koeffizienten ist das eine Kugel.
+- `cylinder`: das Profil des Toroids ohne Drehung, also flach in x (`radius`, optional `conic`
+  und `coefficients`).
+
+Die rotationssymmetrische Paraxialrechnung (`first_order`, Seidel, Bericht) lehnt eine Fläche
+mit verschiedenen Schnitten ab; ein Biconic mit gleichen Schnitten und ein Toroid als Kugel
+rechnen dort wie `conic`. Die Toleranzklassen erzeugen an diesen Typen weder
+`curvature_relative` noch `conic` (Grund `ShapeType`); die Toleranzarten `radius`,
+`curvature_relative` und `conic` sind an ihnen `tolerances.target_invalid`.
 
 ## Ideale Linse und ideale Zylinderlinse (ab Schema 0.5, ADR 0031)
 
@@ -363,7 +393,7 @@ dahinter, der Detektor im paraxialen Fokus bei z = 106,442 mm.
 
 ```json
 {
-  "schema_version": "0.8.0",
+  "schema_version": "0.9.0",
   "name": "Plankonvex-Singlet",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": true}, {"um": 0.6563}],
@@ -444,7 +474,7 @@ def singlet(r1, r2, dicke, glas="CONST:1.5168", epd=20.0, bild_abstand=95.0, hal
 
     z_linse = 5.0
     return {
-        "schema_version": "0.8.0", "name": f"Singlet R1={r1} R2={r2}",
+        "schema_version": "0.9.0", "name": f"Singlet R1={r1} R2={r2}",
         "units": {"length": "mm", "wavelength": "um"},
         "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": True}, {"um": 0.6563}],
         "aperture": {"type": "epd", "value": epd},
