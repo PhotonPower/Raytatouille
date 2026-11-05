@@ -57,8 +57,8 @@ class SurfaceLayout(NamedTuple):
     profile of a toroid or cylinder, otherwise the rotationally symmetric shape.
     ``curvature_x`` (1/mm) and ``conic_constant_x`` describe the x-z section through the vertex
     in the local frame: c_x and k_x of a biconic; c_R = 1/radius_of_rotation and 0 of a toroid
-    (the circle of rotation); 0 and the conic constant of the profile of a cylinder (flat in
-    x); for plane, conic and even_asphere they equal ``curvature`` and ``conic_constant``. The
+    (the circle of rotation); 0 and 0 of a cylinder (flat in x, the section is a straight
+    line); for plane, conic and even_asphere they equal ``curvature`` and ``conic_constant``. The
     rotation of the surface about z orients the sections. ``max_radius`` is the outer extent
     of the domain of the shape in mm: the radius of the smallest disc about the vertex that
     holds the whole domain (ADR 0042, point 1), None if the domain is unbounded (plane,

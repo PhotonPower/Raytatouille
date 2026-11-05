@@ -7,7 +7,7 @@ of the y section (biconic) or of the y-z profile (toroid, cylinder) and, in curv
 curvature of the x section through the vertex: c_x = 1/R_x (biconic), c_R = 1/R of the
 rotation (toroid) and 0 (cylinder); for rotationally symmetric shapes it equals curvature.
 conic_constant_x is k_x of the biconic, 0 for the toroid (its x section through the vertex is
-the circle of rotation) and conic_constant otherwise.
+the circle of rotation), 0 for the cylinder (a straight line) and conic_constant otherwise.
 
 No test traces these systems: aiming needs the paraxial data per section, which follow with
 the second part of #315 (ADR 0042, points 2 and 3).
@@ -214,7 +214,7 @@ def test_layout_of_the_cylinder() -> None:
     assert s.curvature == pytest.approx(1.0 / 25.0, rel=1e-15)
     assert (s.conic_constant, s.coefficients) == (-2.0, [3e-6, 1e-9])
     assert s.curvature_x == 0.0
-    assert s.conic_constant_x == s.conic_constant
+    assert s.conic_constant_x == 0.0  # a straight line
     assert s.max_radius is None  # a strip, unbounded in x (ADR 0042, point 1)
 
 

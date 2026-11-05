@@ -122,9 +122,10 @@ ShapeData shape_data(const compile::CompiledShape& shape) {
           const auto [c, k] = s.profile().base_conic();
           return {"toroid", c, k, s.profile().coefficients(), s.curvature_of_rotation(), 0.0};
         } else if constexpr (std::is_same_v<S, geom::Cylinder<double>>) {
-          // Flat in x: curvature 0; the conic constant of the profile as for the others.
+          // Flat in x: the x section through the vertex is a straight line, curvature and
+          // conic constant 0.
           const auto [c, k] = s.profile().base_conic();
-          return {"cylinder", c, k, s.profile().coefficients(), 0.0, k};
+          return {"cylinder", c, k, s.profile().coefficients(), 0.0, 0.0};
         } else {
           // Every shape has its own branch; a new one must not be labelled even_asphere
           // (ADR 0041, point 6).
