@@ -585,3 +585,31 @@ def test_0_9_rotational_shapes_are_accepted(base):
 )
 def test_0_9_rotational_shape_errors_are_rejected(base):
     assert not VALIDATOR.is_valid(_base(base))
+
+
+# ---- schema 0.9 (#314, ADR 0043): Q-con and Q-bfs ----
+
+@pytest.mark.parametrize(
+    "base",
+    [{"type": "qcon", "curvature": 0.02, "normalization_radius": 12.7},
+     {"type": "qcon", "curvature": 0.0, "conic": -0.5, "normalization_radius": 5.0,
+      "coefficients": [1e-3, -2e-4]},
+     {"type": "qbfs", "curvature": {"param": "C"}, "conic": {"value": 0.2, "variable": True},
+      "normalization_radius": {"value": 12.7}, "coefficients": [{"value": 1e-3}]}],
+    ids=["qcon", "qcon-all", "qbfs-params"],
+)
+def test_0_9_forbes_shapes_are_accepted(base):
+    assert VALIDATOR.is_valid(_base(base))
+
+
+@pytest.mark.parametrize(
+    "base",
+    [{"type": "qcon", "curvature": 0.02},
+     {"type": "qbfs", "normalization_radius": 5.0},
+     {"type": "qcon", "radius": 50.0, "normalization_radius": 5.0},
+     {"type": "qbfs", "curvature": 0.02, "normalization_radius": 5.0, "angle_deg": 1.0},
+     {"type": "qcon", "curvature": 0.02, "normalization_radius": "5"}],
+    ids=["qcon-no-rho", "qbfs-no-curvature", "qcon-radius", "qbfs-angle", "qcon-string"],
+)
+def test_0_9_forbes_shape_errors_are_rejected(base):
+    assert not VALIDATOR.is_valid(_base(base))

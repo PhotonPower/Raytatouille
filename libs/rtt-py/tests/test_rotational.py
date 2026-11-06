@@ -236,7 +236,8 @@ EXAMPLES = sorted(EXAMPLE_DIR.glob("*.rtt.json"))
 
 def test_the_examples_are_there() -> None:
     assert [f.name for f in EXAMPLES] == ["axicon_planoconvex.rtt.json",
-                                          "odd_asphere_singlet.rtt.json"]
+                                          "odd_asphere_singlet.rtt.json",
+                                          "qbfs_singlet.rtt.json", "qcon_singlet.rtt.json"]
 
 
 @pytest.mark.parametrize("file", EXAMPLES, ids=lambda f: f.name)

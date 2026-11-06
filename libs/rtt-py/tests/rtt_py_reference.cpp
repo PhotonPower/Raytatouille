@@ -31,6 +31,7 @@
 #include "configuration_cases.hpp"
 #include "crystal_cases.hpp"
 #include "diffraction_cases.hpp"
+#include "forbes_cases.hpp"
 #include "ideal_lens_cases.hpp"
 #include "jones_cases.hpp"
 #include "m6_cases.hpp"
@@ -351,6 +352,7 @@ int main(int argc, char** argv) {
     rtt::py::reference::run_m7_cases(args[0], args[1], args[2], threads);
     rtt::py::reference::run_anamorphic_cases(args[0], args[2], threads);
     rtt::py::reference::run_rotational_cases(args[0], args[2], threads);
+    rtt::py::reference::run_forbes_cases(args[0], args[2], threads);
     return 0;
   } catch (const std::exception& e) {
     std::cerr << "rtt_py_reference: " << e.what() << '\n';
