@@ -25,8 +25,10 @@ enum class ToleranceLevel : std::uint8_t { Surface, Element, Assembly };
 /// Why a class does not generate a kind at a target (ADR 0035, point 5). Not an error: the
 /// reason is part of the result of the generation.
 enum class ClassSkip : std::uint8_t {
-  None,              ///< generated
-  Plane,             ///< curvature_relative or conic at a surface without a radius (plane)
+  None,  ///< generated
+  /// curvature_relative or conic at a surface without a radius (plane) or with a plane base
+  /// (odd asphere with curvature 0, ADR 0035, addendum #314)
+  Plane,
   Sphere,            ///< conic at a sphere (conic constant 0)
   Bound,             ///< the Param is bound to a row of the parameter table (ADR 0029)
   NoMaterialInBeam,  ///< index or abbe at an element other than Lens and Plate
@@ -35,7 +37,8 @@ enum class ClassSkip : std::uint8_t {
   Metal,             ///< index or abbe at a CONST material with kappa > 0
   ConstAbbe,         ///< abbe at a real CONST material or VACUUM (n_F - n_C = 0)
   /// curvature_relative or conic at a base type for which the kind is not defined (biconic,
-  /// toroid, cylinder; ADR 0042, point 5, decision F2 of ADR 0041)
+  /// toroid, cylinder, axicon; ADR 0042, point 5, decision F2 of ADR 0041; ADR 0035, addendum
+  /// #314)
   ShapeType,
 };
 

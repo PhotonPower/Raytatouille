@@ -1,0 +1,62 @@
+{
+  "schema_version": "0.9.0",
+  "name": "Plano-convex axicon: n = 1.5, t = 4 mm, cone at the back with a base angle of -5 deg; an axis-parallel ray leaves at beta = asin(n sin 5 deg) - 5 deg = 2.512 deg towards the axis (ADR 0043, acceptance 8). No paraxial model at the apex: trace own start rays",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 8.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 10.0}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "L1",
+        "pose": {"position": [0.0, 0.0, 5.0]},
+        "material": "CONST:1.5",
+        "surfaces": [
+          {
+            "id": "L1.S1",
+            "aperture": {"type": "circular", "radius": 12.7}
+          },
+          {
+            "id": "L1.S2",
+            "pose": {"position": [0.0, 0.0, 4.0]},
+            "shape": {
+              "base": {"type": "axicon", "angle_deg": -5.0}
+            },
+            "aperture": {"type": "circular", "radius": 12.7}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 40.0]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}

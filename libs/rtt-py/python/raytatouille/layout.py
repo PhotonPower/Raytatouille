@@ -51,10 +51,15 @@ class SurfaceLayout(NamedTuple):
 
     ``rotation`` (3, 3) and ``translation`` (3,) map local to global coordinates:
     p_global = rotation @ p_local + translation; ``translation`` is the global vertex.
-    ``shape`` is "plane", "conic", "even_asphere", "biconic", "toroid" or "cylinder" (ADR 0042).
+    ``shape`` is "plane", "conic", "even_asphere", "biconic", "toroid", "cylinder" (ADR 0042),
+    "odd_asphere" or "axicon" (ADR 0043).
     ``curvature`` c = 1/R in 1/mm, ``conic_constant`` k and ``coefficients`` A4, A6, ... in
     mm^(1 - n) describe the y-z section of a biconic (c_y, k_y; no coefficients) and the y-z
-    profile of a toroid or cylinder, otherwise the rotationally symmetric shape.
+    profile of a toroid or cylinder, otherwise the rotationally symmetric shape. For the odd
+    asphere they are the curvature and conic constant of the base (not the vertex curvature
+    c + 2 A2) and A1, A2, ...; for the axicon 0, 0 and no coefficients, with the base angle in
+    ``axicon_angle_deg`` (degree, None for every other shape). ``normalization_radius`` (mm)
+    belongs to Q-con and Q-bfs and is None for every shape so far (ADR 0043, point 4).
     ``curvature_x`` (1/mm) and ``conic_constant_x`` describe the x-z section through the vertex
     in the local frame: c_x and k_x of a biconic; c_R = 1/radius_of_rotation and 0 of a toroid
     (the circle of rotation); 0 and 0 of a cylinder (flat in x, the section is a straight
@@ -62,9 +67,9 @@ class SurfaceLayout(NamedTuple):
     rotation of the surface about z orients the sections. ``max_radius`` is the outer extent
     of the domain of the shape in mm: the radius of the smallest disc about the vertex that
     holds the whole domain (ADR 0042, point 1), None if the domain is unbounded (plane,
-    cylinder). ``aperture`` is None or (type, parameters in mm) with type "circular" (radius,
-    inner_radius), "rectangular" (half_width_x, half_width_y) or "elliptical" (semi_axis_x,
-    semi_axis_y), centred on the local axis.
+    cylinder, axicon, odd asphere with c = 0). ``aperture`` is None or (type, parameters in
+    mm) with type "circular" (radius, inner_radius), "rectangular" (half_width_x,
+    half_width_y) or "elliptical" (semi_axis_x, semi_axis_y), centred on the local axis.
 
     ``medium_front`` and ``medium_back`` index CompiledSystem.media: the media before and after
     the surface in the surface order of its element, as a refraction through the element's
@@ -87,6 +92,8 @@ class SurfaceLayout(NamedTuple):
     aperture: tuple[str, dict[str, float]] | None
     medium_front: int
     medium_back: int
+    normalization_radius: float | None
+    axicon_angle_deg: float | None
     curvature_x: float
     conic_constant_x: float
 
@@ -111,11 +118,14 @@ def surfaces(system: CompiledSystem) -> list[SurfaceLayout]:
     """All surfaces in tree order (index = surface index)."""
     out = []
     for entry in _core.layout_surfaces(system):
-        (sid, element, kind, rotation, translation, (shape, c, k, coefficients, c_x, k_x),
-         max_radius, aperture, front, back) = entry
+        (sid, element, kind, rotation, translation,
+         (shape, c, k, coefficients, c_x, k_x, rho, angle), max_radius, aperture, front,
+         back) = entry
         out.append(SurfaceLayout(sid, int(element), kind, rotation, translation, shape, float(c),
                                  float(k), list(coefficients), max_radius, aperture, int(front),
-                                 int(back), float(c_x), float(k_x)))
+                                 int(back), None if rho is None else float(rho),
+                                 None if angle is None else float(angle), float(c_x),
+                                 float(k_x)))
     return out
 
 

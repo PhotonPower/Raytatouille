@@ -999,6 +999,44 @@
           },
           "schema_version": {
             "not": {
+              "pattern": "^0\\.1\\.([0-9]|1[0-7])$"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "normalization_radius",
+              "axicon_angle_deg"
+            ],
+            "properties": {
+              "normalization_radius": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "axicon_angle_deg": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "SurfaceLayout"
+          },
+          "schema_version": {
+            "not": {
               "pattern": "^0\\.1\\.([0-9]|1[0-6])$"
             }
           }

@@ -25,7 +25,8 @@ namespace rtt::model {
 /// dropped, ADR 0029; merit function, ADR 0030; 0.5: ideal lenses, ADR 0031; 0.6: tolerance
 /// set, ADR 0035; 0.7: medium of the object space, ADR 0037; 0.8: reference of the object
 /// distance, ADR 0038, the stop on a surface, ADR 0039, and the reading of object_na, ADR 0040;
-/// 0.9: the base shapes biconic, toroid and cylinder, ADR 0042).
+/// 0.9: the base shapes biconic, toroid and cylinder, ADR 0042, and odd_asphere and axicon,
+/// ADR 0043).
 inline constexpr std::string_view kSchemaVersion = "0.9.0";
 
 struct Wavelength {

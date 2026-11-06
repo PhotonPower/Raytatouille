@@ -38,10 +38,13 @@ namespace detail {
 struct ItemAction {
   enum class Kind : std::uint8_t {
     ParamAdd,    ///< (a) offset on a Param: radius, conic, thickness, param
-    ParamScale,  ///< (a) curvature_relative: R' = R / (1 + delta)
-    RowAdd,      ///< (a) parameter: the row in every configuration (K6)
-    Rigid,       ///< (b) one component of the rigid motion of a node or surface
-    Material,    ///< (c) Delta n_d or Delta nu_d of an element segment
+    ParamScale,  ///< (a) curvature_relative on a radius: R' = R / (1 + delta)
+    /// (a) curvature_relative on a curvature (odd asphere): C' = C (1 + delta) (ADR 0035,
+    /// addendum #314)
+    CurvatureScale,
+    RowAdd,    ///< (a) parameter: the row in every configuration (K6)
+    Rigid,     ///< (b) one component of the rigid motion of a node or surface
+    Material,  ///< (c) Delta n_d or Delta nu_d of an element segment
   };
   Kind kind = Kind::ParamAdd;
   std::size_t index = 0;  ///< Param (for_each_param order) or row
@@ -52,7 +55,9 @@ struct ItemAction {
   compile::MaterialTarget material;
   bool abbe = false;  ///< Material: Delta nu_d, else Delta n_d
   /// ParamAdd, ParamScale: the Param is the base radius of a surface (radius,
-  /// curvature_relative, param at /shape/base/radius); its nominal value in mm.
+  /// curvature_relative, param at /shape/base/radius); its nominal value in mm. Not set for a
+  /// curvature (CurvatureScale and param at /shape/base/curvature): c may reach 0 or change its
+  /// sign (ADR 0036, addendum #314).
   std::optional<double> radius_mm;
 };
 
@@ -63,12 +68,13 @@ struct CompensatorTarget {
   std::string pointer;    ///< optim::Variable::pointer of the variable it becomes
 };
 
-/// A base radius of the nominal system in one configuration (ADR 0036, addendum #293).
+/// A base radius of the nominal system in one configuration (ADR 0036, addendum #293), or the
+/// angle of an axicon (ADR 0036, addendum #314; its values in degree).
 struct NominalRadius {
-  std::string pointer;               ///< .../shape/base/<field> (edit form, ADR 0024)
-  std::string field;                 ///< radius, radius_x, radius_y or radius_of_rotation
-  std::string surface;               ///< its SurfaceId
-  std::optional<std::string> row;    ///< the row it is bound to, if any
+  std::string pointer;             ///< .../shape/base/<field> (edit form, ADR 0024)
+  std::string field;               ///< radius, radius_x, radius_y, radius_of_rotation or angle_deg
+  std::string surface;             ///< its SurfaceId
+  std::optional<std::string> row;  ///< the row it is bound to, if any
   std::optional<std::size_t> index;  ///< that row's index in System::parameters
   std::vector<double> value;         ///< mm per configuration, finite and non-zero (validate)
 };
@@ -208,10 +214,19 @@ ItemAction action_of(const model::ToleranceItem& item,
       if (item.target.anchor != model::ToleranceAnchor::Surface) {
         throw std::invalid_argument("tolerance: " + what + " needs a surface");
       }
+      const std::string& anchor = anchors.of(item.target);
+      // A base with a curvature instead of a radius (odd asphere, ADR 0043, F10):
+      // curvature_relative scales it, C' = C (1 + delta), without the radius check (ADR 0035,
+      // addendum #314). The kind radius finds no Param there.
+      if (item.kind == K::CurvatureRelative && params.contains(anchor + "/shape/base/curvature")) {
+        a.kind = ItemAction::Kind::CurvatureScale;
+        a.index = param_index(params, s, anchor + "/shape/base/curvature", what);
+        return a;
+      }
       const std::string field = item.kind == K::Conic ? "/shape/base/conic" : "/shape/base/radius";
       a.kind = item.kind == K::CurvatureRelative ? ItemAction::Kind::ParamScale
                                                  : ItemAction::Kind::ParamAdd;
-      a.index = param_index(params, s, anchors.of(item.target) + field, what);
+      a.index = param_index(params, s, anchor + field, what);
       if (item.kind != K::Conic) a.radius_mm = 0.0;  // the nominal value: prepare()
       return a;
     }
@@ -362,6 +377,11 @@ Applied applied(const ContextData& d, std::span<const double> values) {
         // makes such a trial Invalid (radius_invalid, ADR 0036, addendum #257).
         params[a.index]->value /= 1.0 + v;
         break;
+      case ItemAction::Kind::CurvatureScale:
+        // C' = C (1 + delta) (ADR 0035, point 2 and addendum #314): C' = 0 is a plane base and
+        // a change of sign another bending, both valid; a nominal C = 0 stays 0.
+        params[a.index]->value *= 1.0 + v;
+        break;
       case ItemAction::Kind::RowAdd: {
         model::ParameterForm& form = out.system.parameters[a.index].form;
         if (auto* value = std::get_if<double>(&form)) {
@@ -447,21 +467,27 @@ constexpr std::string_view kBase = "/shape/base/";
 
 /// The radius fields of the base shapes (ADR 0036, addendum #293; ADR 0042): radius of conic,
 /// even asphere, toroid and cylinder, radius_x and radius_y of the biconic, radius_of_rotation of
-/// the toroid. Each is finite and non-zero in a valid model.
+/// the toroid. Each is finite and non-zero in a valid model. The curvature of the odd asphere is
+/// not one of them (ADR 0036, addendum #314).
 constexpr std::array<std::string_view, 4> kRadiusFields = {"radius", "radius_x", "radius_y",
                                                            "radius_of_rotation"};
 
-/// The radius field of a base shape that `pointer` names, or empty.
+/// The angle of the axicon (ADR 0036, addendum #314): finite with |alpha| < 90 deg in a valid
+/// model; a trial keeps its sign and stays below 90 deg.
+constexpr std::string_view kAngleField = "angle_deg";
+
+/// The radius field, or the angle field, of a base shape that `pointer` names, or empty.
 std::string_view radius_field(std::string_view pointer) {
   const std::size_t at = pointer.rfind(kBase);
   if (at == std::string_view::npos) return {};
   const std::string_view field = pointer.substr(at + kBase.size());
-  return std::find(kRadiusFields.begin(), kRadiusFields.end(), field) != kRadiusFields.end()
-             ? field
-             : std::string_view{};
+  const bool radius =
+      std::find(kRadiusFields.begin(), kRadiusFields.end(), field) != kRadiusFields.end();
+  return radius || field == kAngleField ? field : std::string_view{};
 }
 
-/// The base radius Params of `system` in tree order, with their pointers (edit form).
+/// The base radius Params (and axicon angles) of `system` in tree order, with their pointers
+/// (edit form).
 std::vector<std::pair<std::string, const model::Param*>> base_radii(const model::System& system) {
   std::vector<std::pair<std::string, const model::Param*>> out;
   model::for_each_param(system, [&](std::string_view pointer, const model::Param& p) {
@@ -527,14 +553,25 @@ std::optional<std::string> radius_sign_invalid(const ContextData& d,
       const detail::NominalRadius& n = d.radii[k];
       const double r = n.index ? table.at(*n.index, c) : radii[k].second->value;
       if (std::isnan(r)) continue;  // an undefined row: compile reports the table error
-      if (std::isfinite(r) && r != 0.0 && std::signbit(r) == std::signbit(n.value[c])) continue;
+      const bool angle = n.field == kAngleField;
+      if (angle) {
+        // ADR 0036, addendum #314: the angle keeps its sign (0 is the plane, no change of sign)
+        // and stays below 90 deg in magnitude.
+        const double nominal = n.value[c];
+        const bool flipped = (r > 0.0 && nominal < 0.0) || (r < 0.0 && nominal > 0.0);
+        if (std::isfinite(r) && std::abs(r) < 90.0 && !flipped) continue;
+      } else if (std::isfinite(r) && r != 0.0 && std::signbit(r) == std::signbit(n.value[c])) {
+        continue;
+      }
+      const char* unit = angle ? " deg" : " mm";
       std::ostringstream why;
       why << std::setprecision(std::numeric_limits<double>::max_digits10);  // 50.00000012 != 50
       why << stage << "surface '" << n.surface << "'";
       if (configurations > 1) why << ", configuration '" << system.configurations[c].name << "'";
-      why << ": the " << n.field << " " << r << " mm (nominal " << n.value[c] << " mm";
+      why << ": the " << n.field << " " << r << unit << " (nominal " << n.value[c] << unit;
       if (n.row) why << ", row '" << *n.row << "'";
-      why << ") is zero, infinite or of the other sign";
+      why << (angle ? ") changes its sign or reaches 90 deg in magnitude"
+                    : ") is zero, infinite or of the other sign");
       return why.str();
     }
   }

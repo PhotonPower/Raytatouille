@@ -1,0 +1,68 @@
+{
+  "schema_version": "0.9.0",
+  "name": "Singlet with an odd asphere front: c = 0.02/mm, k = -0.5, A2 = 1e-4/mm, A3 = 2e-6/mm^2, A4 = -1e-7/mm^3, n = 1.5168, t = 4 mm; vertex curvature c + 2 A2 = 0.0202/mm (ADR 0043, point 3), first order but no Seidel sums (A3); VACUUM, image near the paraxial focus",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 10.0},
+  "fields": {
+    "points": [
+      {},
+      {"y": 2.0}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 10.0}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "L1",
+        "pose": {"position": [0.0, 0.0, 5.0]},
+        "material": "CONST:1.5168",
+        "surfaces": [
+          {
+            "id": "L1.S1",
+            "shape": {
+              "base": {
+                "type": "odd_asphere",
+                "curvature": 0.02,
+                "conic": -0.5,
+                "coefficients": [0.0, 0.0001, 2e-06, -1e-07]
+              }
+            },
+            "aperture": {"type": "circular", "radius": 12.7}
+          },
+          {
+            "id": "L1.S2",
+            "pose": {"position": [0.0, 0.0, 4.0]},
+            "aperture": {"type": "circular", "radius": 12.7}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 102.0]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}

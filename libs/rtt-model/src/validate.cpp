@@ -29,7 +29,7 @@ template <class>
 inline constexpr bool kUnhandledShape = false;
 
 /// Name of the base type as in the file format ("plane", "conic", "even_asphere", "biconic",
-/// "toroid", "cylinder").
+/// "toroid", "cylinder", "odd_asphere", "axicon").
 std::string base_type_name(const BaseShape& base) {
   return std::visit(
       [](const auto& b) -> std::string {
@@ -46,6 +46,10 @@ std::string base_type_name(const BaseShape& base) {
           return "toroid";
         } else if constexpr (std::is_same_v<B, Cylinder>) {
           return "cylinder";
+        } else if constexpr (std::is_same_v<B, OddAsphere>) {
+          return "odd_asphere";
+        } else if constexpr (std::is_same_v<B, Axicon>) {
+          return "axicon";
         } else {
           static_assert(kUnhandledShape<B>, "base_type_name: unhandled base shape");
         }
@@ -578,6 +582,34 @@ class Validator {
             }
             if constexpr (std::is_same_v<B, Toroid>) {
               check_radius(b.radius_of_rotation, base + "/radius_of_rotation");
+            }
+          } else if constexpr (std::is_same_v<B, OddAsphere>) {
+            // ADR 0043, point 4: c finite, 0 allowed (a plane base); a conic constant at c = 0
+            // has no effect.
+            check_param(b.curvature, base + "/curvature", true);
+            const bool c_known = !b.curvature.is_bound();
+            if (c_known && !std::isfinite(b.curvature.value)) {
+              report("shape.curvature_invalid", base + "/curvature", "curvature must be finite");
+            }
+            check_param(b.conic, base + "/conic", false);
+            if (c_known && b.curvature.value == 0.0 && !b.conic.is_bound() &&
+                b.conic.value != 0.0) {
+              report("shape.conic_without_curvature", base + "/conic",
+                     "conic constant without effect: the curvature is 0 (a plane base)");
+            }
+            for (std::size_t k = 0; k < b.coefficients.size(); ++k) {
+              check_param(b.coefficients[k], idx(base + "/coefficients", k), false);
+            }
+            if (b.coefficients.empty())
+              report("shape.asphere_without_coefficients", base + "/coefficients",
+                     "asphere without coefficients");
+          } else if constexpr (std::is_same_v<B, Axicon>) {
+            // ADR 0043, point 4 (F5): alpha finite with |alpha| < 90 deg.
+            check_param(b.angle_deg, base + "/angle_deg", true);
+            if (!b.angle_deg.is_bound() &&
+                !(std::isfinite(b.angle_deg.value) && std::abs(b.angle_deg.value) < 90.0)) {
+              report("shape.axicon_angle_invalid", base + "/angle_deg",
+                     "axicon angle must be finite and below 90 deg in magnitude");
             }
           } else {
             static_assert(kUnhandledShape<B>, "check_shape: unhandled base shape");
@@ -1134,6 +1166,9 @@ class Validator {
         const BaseShape* base = t.anchor == ToleranceAnchor::Surface
                                     ? &index.surface(t.name)->surface->shape.base
                                     : nullptr;
+        // The Param that the kind perturbs: the radius (radius, curvature_relative) or the conic
+        // of conic and even asphere, the curvature (curvature_relative) or the conic of the odd
+        // asphere (ADR 0035, addendum #314).
         const Param* radius = nullptr;
         const Param* conic = nullptr;
         if (base != nullptr) {
@@ -1143,11 +1178,18 @@ class Validator {
           } else if (const auto* a = std::get_if<EvenAsphere>(base)) {
             radius = &a->radius;
             conic = &a->conic;
+          } else if (const auto* o = std::get_if<OddAsphere>(base);
+                     o != nullptr && kind != ToleranceKind::Radius) {
+            radius = &o->curvature;
+            conic = &o->conic;
           }
         }
         if (radius == nullptr) {
           // The reason names the base type (ADR 0041, point 6); a node or row has none.
-          const std::string needs = "needs a surface with a conic or even asphere base";
+          const std::string needs =
+              kind == ToleranceKind::Radius
+                  ? "needs a surface with a conic or even asphere base"
+                  : "needs a surface with a conic, even asphere or odd asphere base";
           report(
               "tolerances.target_invalid", loc + "/kind",
               base != nullptr ? needs + " (base type \"" + base_type_name(*base) + "\")" : needs);

@@ -586,6 +586,28 @@ void bind_model_tree(nb::module_& m) {
       .def_ro("coefficients", &model::Cylinder::coefficients,
               "A4, A6, A8, ... of the profile: A_n in mm^(1 - n) for the term A_n y^n (Param "
               "each).");
+  // The rotationally symmetric shapes of ADR 0043 (point 1).
+  read_only_class<model::OddAsphere>(
+      m, "OddAsphere",
+      "Odd asphere z = c r^2 / (1 + sqrt(1 - (1 + k) c^2 r^2)) + A1 r + A2 r^2 + A3 r^3 + ... "
+      "(ADR 0043; read-only copy). The base carries its curvature c, not a radius: c = 0 is a "
+      "plane base. The vertex curvature is c + 2 A2; A1 != 0 makes a cone at the vertex without "
+      "a paraxial model.")
+      .def_ro("curvature", &model::OddAsphere::curvature,
+              "Curvature c of the base conic in 1/mm, finite, 0 allowed; positive with the "
+              "centre of curvature on the +z side (Param).")
+      .def_ro("conic", &model::OddAsphere::conic,
+              "Conic constant k of the base, dimensionless; without effect at c = 0 (Param).")
+      .def_ro("coefficients", &model::OddAsphere::coefficients,
+              "A1, A2, A3, ...: A_n in mm^(1 - n) for the term A_n r^n (Param each).");
+  read_only_class<model::Axicon>(
+      m, "Axicon",
+      "Axicon z = r tan(alpha), a cone with its apex at the vertex (ADR 0043; read-only copy). "
+      "alpha > 0 lets the mantle rise towards +z; alpha = 0 is the plane. No paraxial model at "
+      "the apex.")
+      .def_ro("angle_deg", &model::Axicon::angle_deg,
+              "Base angle alpha between mantle and the plane z = 0 in degree, |alpha| < 90 "
+              "(Param).");
   read_only_class<model::ZernikeSag>(
       m, "ZernikeSag",
       "Additive Zernike sag term in Noll ordering, coefficients[0] is j = 1 (read-only copy).")
@@ -597,7 +619,8 @@ void bind_model_tree(nb::module_& m) {
       m, "ShapeStack",
       "Total sag = base + sum of the terms, in the local xy plane (read-only copy).")
       .def_ro("base", &model::ShapeStack::base,
-              "Base shape: Plane, Conic, EvenAsphere, Biconic, Toroid or Cylinder.")
+              "Base shape: Plane, Conic, EvenAsphere, Biconic, Toroid, Cylinder, OddAsphere "
+              "or Axicon.")
       .def_ro("terms", &model::ShapeStack::terms, "Additive terms (ZernikeSag).");
 
   // ------------------------------------------------------------- aperture -----

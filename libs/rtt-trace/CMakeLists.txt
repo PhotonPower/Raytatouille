@@ -25,6 +25,7 @@ if(RTT_BUILD_TESTS)
             tests/test_object_reference.cpp
             tests/test_aim_continuation.cpp tests/test_surface_stop.cpp tests/test_real_na.cpp
             tests/test_anamorphic_trace.cpp tests/test_anamorphic_aiming.cpp
+            tests/test_rotational_trace.cpp
     LIBS rtt::trace rtt::io rtt::polar rtt::coating rtt::model_test_support TBB::tbb)
   # src/: the continuation fallback of real aiming (aim_continuation.hpp, #287) and the start plane
   # at the vertex (start_plane.hpp, ADR 0041, point 6) are tested directly.

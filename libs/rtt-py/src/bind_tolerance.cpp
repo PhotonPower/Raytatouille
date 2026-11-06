@@ -64,7 +64,8 @@ void bind_enums(nb::module_& m) {
                               "5); not an error.")
       .value("NONE", model::ClassSkip::None, "generated")
       .value("PLANE", model::ClassSkip::Plane,
-             "curvature_relative or conic at a surface without a radius")
+             "curvature_relative or conic at a surface without a radius (plane) or with a plane "
+             "base (odd asphere with curvature 0)")
       .value("SPHERE", model::ClassSkip::Sphere, "conic at a sphere (conic constant 0)")
       .value("BOUND", model::ClassSkip::Bound, "the Param is bound to a row of the parameter table")
       .value("NO_MATERIAL_IN_BEAM", model::ClassSkip::NoMaterialInBeam,
@@ -77,7 +78,7 @@ void bind_enums(nb::module_& m) {
              "abbe without dispersion (CONST, VACUUM or a glass with n_F = n_C)")
       .value("SHAPE_TYPE", model::ClassSkip::ShapeType,
              "curvature_relative or conic at a base type without the kind (biconic, toroid, "
-             "cylinder)");
+             "cylinder, axicon)");
   nb::enum_<model::OverrideEffect>(m, "OverrideEffect",
                                    "What became of a single-value override (ADR 0035, point 5).")
       .value("APPLIED", model::OverrideEffect::Applied,
