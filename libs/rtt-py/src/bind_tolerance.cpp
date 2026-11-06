@@ -77,7 +77,7 @@ void bind_enums(nb::module_& m) {
              "abbe without dispersion (CONST, VACUUM or a glass with n_F = n_C)")
       .value("SHAPE_TYPE", model::ClassSkip::ShapeType,
              "curvature_relative or conic at a base type without the kind (biconic, toroid, "
-             "cylinder)");
+             "cylinder, axicon)");
   nb::enum_<model::OverrideEffect>(m, "OverrideEffect",
                                    "What became of a single-value override (ADR 0035, point 5).")
       .value("APPLIED", model::OverrideEffect::Applied,

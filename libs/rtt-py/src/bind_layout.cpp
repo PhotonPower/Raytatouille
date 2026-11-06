@@ -27,6 +27,7 @@
 #include "bindings.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/compile/layout.hpp"
+#include "rtt/math/units.hpp"
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -96,36 +97,64 @@ std::vector<Out<double>> polylines(const std::vector<compile::Polyline>& lines) 
   return out;
 }
 
-/// (shape type, curvature 1/mm, conic constant, polynomial coefficients A4, A6, ...,
-/// curvature_x 1/mm, conic_constant_x). The first three describe the y-z section or profile,
-/// the last two the x-z section through the vertex (ADR 0042, point 5): for the rotationally
-/// symmetric shapes they equal curvature and conic constant.
-using ShapeData = std::tuple<std::string, double, double, std::vector<double>, double, double>;
+/// (shape type, curvature 1/mm, conic constant, polynomial coefficients, curvature_x 1/mm,
+/// conic_constant_x, normalization_radius mm, axicon_angle_deg). The first three describe the y-z
+/// section or profile, curvature_x and conic_constant_x the x-z section through the vertex (ADR
+/// 0042, point 5): for the rotationally symmetric shapes they equal curvature and conic constant.
+/// The coefficients are A4, A6, ... of even asphere, toroid and cylinder, A1, A2, ... of the odd
+/// asphere. normalization_radius belongs to Q-con and Q-bfs, axicon_angle_deg to the axicon
+/// (ADR 0043, point 4); none for every other shape.
+using ShapeData = std::tuple<std::string,
+                             double,
+                             double,
+                             std::vector<double>,
+                             double,
+                             double,
+                             std::optional<double>,
+                             std::optional<double>>;
 
 ShapeData shape_data(const compile::CompiledShape& shape) {
   return std::visit(
       [](const auto& s) -> ShapeData {
         using S = std::decay_t<decltype(s)>;
         if constexpr (std::is_same_v<S, geom::Plane<double>>) {
-          return {"plane", 0.0, 0.0, {}, 0.0, 0.0};
+          return {"plane", 0.0, 0.0, {}, 0.0, 0.0, std::nullopt, std::nullopt};
         } else if constexpr (std::is_same_v<S, geom::Conic<double>>) {
           const double c = s.curvature();
           const double k = s.conic_constant();
-          return {"conic", c, k, {}, c, k};
+          return {"conic", c, k, {}, c, k, std::nullopt, std::nullopt};
         } else if constexpr (std::is_same_v<S, geom::EvenAsphere<double>>) {
           const auto [c, k] = s.base_conic();
-          return {"even_asphere", c, k, s.coefficients(), c, k};
+          return {"even_asphere", c, k, s.coefficients(), c, k, std::nullopt, std::nullopt};
         } else if constexpr (std::is_same_v<S, geom::Biconic<double>>) {
-          return {"biconic", s.curvature_y(), s.conic_y(), {}, s.curvature_x(), s.conic_x()};
+          return {"biconic",       s.curvature_y(), s.conic_y(),  {},
+                  s.curvature_x(), s.conic_x(),     std::nullopt, std::nullopt};
         } else if constexpr (std::is_same_v<S, geom::Toroid<double>>) {
           // The x section through the vertex is the circle of rotation: c_R, conic 0.
           const auto [c, k] = s.profile().base_conic();
-          return {"toroid", c, k, s.profile().coefficients(), s.curvature_of_rotation(), 0.0};
+          return {"toroid",
+                  c,
+                  k,
+                  s.profile().coefficients(),
+                  s.curvature_of_rotation(),
+                  0.0,
+                  std::nullopt,
+                  std::nullopt};
         } else if constexpr (std::is_same_v<S, geom::Cylinder<double>>) {
           // Flat in x: the x section through the vertex is a straight line, curvature and
           // conic constant 0.
           const auto [c, k] = s.profile().base_conic();
-          return {"cylinder", c, k, s.profile().coefficients(), 0.0, 0.0};
+          return {"cylinder",   c,           k, s.profile().coefficients(), 0.0, 0.0,
+                  std::nullopt, std::nullopt};
+        } else if constexpr (std::is_same_v<S, geom::OddAsphere<double>>) {
+          // The curvature and conic of the base, not the vertex curvature c + 2 A2 (ADR 0043,
+          // point 4); coefficients A1, A2, ...
+          const auto [c, k] = s.base_conic();
+          return {"odd_asphere", c, k, s.coefficients(), c, k, std::nullopt, std::nullopt};
+        } else if constexpr (std::is_same_v<S, geom::Axicon<double>>) {
+          // A cone without a base conic; the angle back in degree from the compiled rad (exact
+          // up to the rounding of the two conversions).
+          return {"axicon", 0.0, 0.0, {}, 0.0, 0.0, std::nullopt, math::rad_to_deg(s.angle())};
         } else {
           // Every shape has its own branch; a new one must not be labelled even_asphere
           // (ADR 0041, point 6).
