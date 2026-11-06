@@ -63,9 +63,15 @@ std::vector<double> even_points(int n) {
 /// message of the error that unit_image_height() gave for the reference system, thrown where
 /// make_field() needs the value (as without reference).
 struct ReferenceUnit {
-  double value = 0.0;
+  double value = 0.0;    ///< section y for an anamorphic path (ADR 0042, point 3)
+  double value_x = 0.0;  ///< section x; equal to value for a path that is not anamorphic
   std::string error;
 };
+
+/// Relative tolerance of the comparison of the stop radius of the two sections (stop_radius(),
+/// ADR 0042, point 3): the value of the paraxial symmetry checks (kSymmetryTolerance of
+/// rtt-paraxial, ADR 0042, point 2).
+constexpr double kSectionTolerance = 1e-12;
 
 /// Everything that is the same for all rays of one path and wavelength.
 struct Context {
@@ -112,7 +118,36 @@ struct Context {
   bool na_undefined = false;
   std::optional<double> real_r_s;
   std::string na_error;
+  /// Anamorphic path (rtt::paraxial::is_anamorphic, ADR 0042, point 3): the pupil data per
+  /// section. The fields above (first_order, z_ep, r_ep, stop_scale, first_order_ref, z_ep_ref)
+  /// then hold section y, the fields below section x; telecentric, telecentric_ref and
+  /// label_sign are the same in both sections (else make_context() throws). Unused (and not
+  /// read) for a path that is not anamorphic, whose aiming is that of before bit for bit.
+  bool anamorphic = false;
+  double z_ep_x = 0.0;
+  double r_ep_x = 0.0;
+  double stop_scale_x = 1.0;
+  paraxial::FirstOrder first_order_ref_x;
+  double z_ep_ref_x = 0.0;
+  /// Anamorphic path with the system aperture stop_size: r_stop, the stop radius of
+  /// stop_radius() (kept here, because the context of an AimReference has no system).
+  std::optional<double> r_stop;
 };
+
+// Pupil data of section x (ADR 0042, point 3); for a path that is not anamorphic the one
+// (rotationally symmetric) value, so formulas over both sections reduce to those of before.
+double z_ep_x(const Context& c) {
+  return c.anamorphic ? c.z_ep_x : c.z_ep;
+}
+double r_ep_x(const Context& c) {
+  return c.anamorphic ? c.r_ep_x : c.r_ep;
+}
+
+/// Largest r_ep of the two sections: the scalar measure of the bundle (ADR 0042, point 3, "Wo
+/// heute ein Skalar r_ep als Maß dient ... steht das Maximum der r_ep,s").
+double r_ep_max(const Context& c) {
+  return c.anamorphic ? std::max(c.r_ep_x, c.r_ep) : c.r_ep;
+}
 
 /// Ray start for one field.
 struct FieldStart {
@@ -169,6 +204,169 @@ void set_telecentric(Context& c) {
   }
 }
 
+/// Radius of the circular aperture of the stop surface of the path, mm. The paraxial
+/// computation (first_order(), first_order_section()) has checked that it is circular.
+double stop_aperture_radius(const Context& c) {
+  const CompiledSystem& system = *c.system;
+  const auto& events = system.path(c.path).events;
+  const auto& aperture = system.surfaces()[events[c.stop_event].surface].aperture;
+  const auto* circle = aperture ? std::get_if<model::CircularAperture>(&*aperture) : nullptr;
+  if (circle == nullptr) {
+    throw std::invalid_argument("sources: the stop needs a circular aperture");
+  }
+  return circle->radius;
+}
+
+/// Whether the entrance pupil of `fo` is at infinity (the stop exists, its image does not).
+bool pupil_at_infinity(const paraxial::FirstOrder& fo) {
+  return fo.entrance_pupil && !fo.entrance_pupil->z;
+}
+
+/// Field conversion at the reference wavelength (decided for #31): only paraxial image heights
+/// and angles with a finite object need paraxial data for it.
+bool needs_reference_data(const CompiledSystem& system) {
+  return system.fields().type == model::FieldType::ParaxialImageHeight ||
+         (system.fields().type == model::FieldType::AngleDeg && !system.object().at_infinity);
+}
+
+/// The context of an anamorphic path (ADR 0042, point 3): the entrance pupil per section from
+/// first_order_section() and trace_ray_section(), with the same definitions as for a
+/// rotationally symmetric path (make_context_core(), set_telecentric()) in each section.
+/// - Both sections have a finite EP, or (finite object) both have it at infinity
+///   (object-space telecentric); else an error, also separately at the reference wavelength.
+/// - System aperture: EPD/2 in both sections (the EP is round by definition), r_stop /
+///   |stop_scale_s| for stop_size, u_m |z_ep,s - z_obj| (telecentric u_m) for object_na read
+///   paraxially; these are the EP diameters of first_order_section(). object_na read real and an
+///   image-space F-number are errors (ADR 0042, point 3, table).
+/// - label_sign (ADR 0007, addendum #35 B) must be the same in both sections.
+/// Object index, image index and image direction are the same in both sections and come from
+/// section y (c.first_order).
+void set_anamorphic(Context& c) {
+  using paraxial::Section;
+  const CompiledSystem& system = *c.system;
+  c.anamorphic = true;
+  const model::SystemAperture& aperture = system.aperture();
+  if (aperture.type == model::SystemApertureType::ImageSpaceFNumber) {
+    throw std::invalid_argument(
+        "sources: an image-space F-number does not define the entrance pupil of an anamorphic "
+        "path (EPD = EFL / F# differs between the sections; ADR 0042); give the system aperture "
+        "as epd, object_na or stop_size");
+  }
+  if (aperture.type == model::SystemApertureType::ObjectSpaceNA &&
+      aperture.reading == model::ApertureReading::Real) {
+    throw std::invalid_argument(
+        "sources: object_na read real is not for anamorphic systems (ADR 0042): the real "
+        "marginal ray lies in one meridian, and the stop figure is no disk; read it paraxially");
+  }
+  const paraxial::FirstOrder fx =
+      paraxial::first_order_section(system, c.path, c.wavelength, Section::x);
+  c.first_order = paraxial::first_order_section(system, c.path, c.wavelength, Section::y);
+  const paraxial::FirstOrder& fy = c.first_order;
+  const bool infinite = system.object().at_infinity;
+  if (aperture.type == model::SystemApertureType::StopSize) c.r_stop = stop_aperture_radius(c);
+  if (pupil_at_infinity(fx) != pupil_at_infinity(fy)) {
+    throw std::invalid_argument(std::string("sources: the entrance pupil is at infinity in one "
+                                            "section only (section ") +
+                                (pupil_at_infinity(fx) ? "x" : "y") +
+                                "; anamorphic path, ADR 0042)");
+  }
+  // Stop height of a paraxial ray of section s.
+  const auto stop_height = [&](Section s, double z0, double h0, double u0) {
+    return paraxial::trace_ray_section(system, c.path, c.wavelength, z0, h0, u0, s)[c.stop_event].y;
+  };
+  if (pupil_at_infinity(fy) && !infinite) {
+    // Object-space telecentric in both sections: set_telecentric() per section.
+    c.telecentric = true;
+    const double z_obj = system.object_z();
+    c.stop_scale_x = stop_height(Section::x, z_obj, 0.0, 1.0);
+    c.stop_scale = stop_height(Section::y, z_obj, 0.0, 1.0);
+    if (c.stop_scale_x == 0.0 || c.stop_scale == 0.0) {
+      throw std::invalid_argument("sources: telecentric object space, but no ray reaches the stop");
+    }
+    const double value = aperture.value.value;
+    switch (aperture.type) {
+      case model::SystemApertureType::ObjectSpaceNA:
+        c.r_ep_x = value / fy.object_index;
+        c.r_ep = c.r_ep_x;
+        break;
+      case model::SystemApertureType::StopSize:
+        c.r_ep_x = c.r_stop.value() / std::abs(c.stop_scale_x);
+        c.r_ep = c.r_stop.value() / std::abs(c.stop_scale);
+        break;
+      case model::SystemApertureType::EntrancePupilDiameter:
+      case model::SystemApertureType::ImageSpaceFNumber:
+        throw std::invalid_argument(
+            "sources: the entrance pupil is at infinity (object-space telecentric); give the "
+            "system aperture as object_na or stop_size");
+    }
+    if (!(c.r_ep_x > 0.0) || !(c.r_ep > 0.0)) {
+      throw std::invalid_argument("sources: the system aperture gives no bundle (u_m <= 0)");
+    }
+  } else {
+    for (const paraxial::FirstOrder* fo : {&fx, &fy}) {
+      const auto& ep = fo->entrance_pupil;
+      if (!ep || !ep->z || !ep->diameter || !(*ep->diameter > 0.0)) {
+        throw std::invalid_argument(
+            "sources: the entrance pupil is not defined (pupil at infinity with the object at "
+            "infinity, or the system aperture gives no diameter for this object)");
+      }
+    }
+    c.z_ep_x = *fx.entrance_pupil->z;
+    c.r_ep_x = *fx.entrance_pupil->diameter / 2.0;
+    c.z_ep = *fy.entrance_pupil->z;
+    c.r_ep = *fy.entrance_pupil->diameter / 2.0;
+    // EP plane and stop plane are conjugate in each section (make_context_core()).
+    c.stop_scale_x = stop_height(Section::x, c.z_ep_x, 1.0, 0.0);
+    c.stop_scale = stop_height(Section::y, c.z_ep, 1.0, 0.0);
+  }
+  // Field conversion at the reference wavelength (#31), per section.
+  const std::uint16_t ref = system.reference_wavelength();
+  if (c.wavelength == ref || !needs_reference_data(system)) {
+    c.first_order_ref_x = fx;
+    c.first_order_ref = fy;
+    c.z_ep_ref_x = c.z_ep_x;
+    c.z_ep_ref = c.z_ep;
+    c.telecentric_ref = c.telecentric;
+  } else {
+    c.first_order_ref_x = paraxial::first_order_section(system, c.path, ref, Section::x);
+    c.first_order_ref = paraxial::first_order_section(system, c.path, ref, Section::y);
+    const bool at_infinity_x = pupil_at_infinity(c.first_order_ref_x);
+    const bool at_infinity_y = pupil_at_infinity(c.first_order_ref);
+    if (at_infinity_x != at_infinity_y) {
+      throw std::invalid_argument(
+          std::string("sources: the entrance pupil at the reference wavelength is at infinity in "
+                      "one section only (section ") +
+          (at_infinity_x ? "x" : "y") + "; anamorphic path, ADR 0042)");
+    }
+    if (at_infinity_y && !infinite) {
+      c.telecentric_ref = true;
+    } else if (!c.first_order_ref_x.entrance_pupil || !c.first_order_ref.entrance_pupil ||
+               at_infinity_y) {
+      throw std::invalid_argument(
+          "sources: the entrance pupil at the reference wavelength is at infinity");
+    } else {
+      c.z_ep_ref_x = *c.first_order_ref_x.entrance_pupil->z;
+      c.z_ep_ref = *c.first_order_ref.entrance_pupil->z;
+    }
+  }
+  // Pupil labels (ADR 0007, addendum #35 B): sigma = -1 for an EP beyond a finite object. Each
+  // section has its own EP, so sigma would differ between the sections if only one of them lies
+  // beyond the object; the pupil coordinates would then mean opposite directions in x and y.
+  if (!infinite && !c.telecentric) {
+    const double z_obj = system.object_z();
+    const bool beyond_x = c.z_ep_x < z_obj;
+    const bool beyond_y = c.z_ep < z_obj;
+    if (beyond_x != beyond_y) {
+      throw std::invalid_argument(
+          std::string("sources: the pupil labels differ between the sections: the entrance "
+                      "pupil lies beyond the object (z_ep < z_obj) in section ") +
+          (beyond_x ? "x" : "y") + " only (ADR 0007, addendum #35 B; ADR 0042)");
+    }
+    if (beyond_y) c.label_sign = -1.0;
+  }
+  c.r_ep_paraxial = c.r_ep;
+}
+
 Context make_context_core(const CompiledSystem& system, PathId path, std::uint16_t wavelength) {
   if (path.index >= system.paths().size()) {
     throw std::invalid_argument("sources: path index " + std::to_string(path.index) +
@@ -185,6 +383,13 @@ Context make_context_core(const CompiledSystem& system, PathId path, std::uint16
   compile::require_stop(system, path);  // the one check for all users of the stop (ADR 0022)
   // require_stop guarantees the stop event (ADR 0039, point 3).
   c.stop_event = compile::stop_event(system, path).value_or(0);
+  // An anamorphic path aims per section (ADR 0042, point 3). The way is decided up front with
+  // is_anamorphic(), never by catching the ParaxialError of first_order(); every other path
+  // takes the code below, bit for bit as before.
+  if (paraxial::is_anamorphic(system, path)) {
+    set_anamorphic(c);
+    return c;
+  }
   c.first_order = paraxial::first_order(system, path, wavelength);
   const auto& ep = c.first_order.entrance_pupil;
   const bool infinite = system.object().at_infinity;
@@ -205,10 +410,7 @@ Context make_context_core(const CompiledSystem& system, PathId path, std::uint16
   // Field conversion at the reference wavelength (decided for #31, fix of #8). Only paraxial
   // image heights and angles with a finite object need paraxial data for the conversion; other
   // field types skip the extra first-order computation.
-  const bool needs_ref =
-      system.fields().type == model::FieldType::ParaxialImageHeight ||
-      (system.fields().type == model::FieldType::AngleDeg && !system.object().at_infinity);
-  if (wavelength == system.reference_wavelength() || !needs_ref) {
+  if (wavelength == system.reference_wavelength() || !needs_reference_data(system)) {
     c.first_order_ref = c.first_order;
     c.z_ep_ref = c.z_ep;
     c.telecentric_ref = c.telecentric;
@@ -380,6 +582,57 @@ double unit_image_height(const Context& c) {
   return y;
 }
 
+/// Unit image heights of the sections x and y (field type paraxial image height).
+struct UnitHeights {
+  double x = 0.0;
+  double y = 0.0;
+};
+
+/// unit_image_height() of both sections (ADR 0042, point 3, "Paraxiale Bildhöhe"): the chief
+/// ray of unit field value traced in section s with trace_ray_section() at the reference
+/// wavelength, to the paraxial image plane of that section (first_order_section()). Both
+/// sections need a finite paraxial image, whatever the field point (the field type holds for
+/// the whole system). A path that is not anamorphic has one unit, unit_image_height().
+UnitHeights unit_image_heights(const Context& c) {
+  if (!c.anamorphic) {
+    const double unit = unit_image_height(c);
+    return {unit, unit};
+  }
+  if (!c.first_order_ref_x.image_z || !c.first_order_ref.image_z) {
+    throw std::invalid_argument(
+        "sources: paraxial image height needs a finite paraxial image in both sections "
+        "(anamorphic path, ADR 0042)");
+  }
+  const CompiledSystem& system = *c.system;
+  const std::uint16_t ref = system.reference_wavelength();
+  const auto unit = [&](paraxial::Section s) {
+    const bool in_x = s == paraxial::Section::x;
+    const double z_image = in_x ? *c.first_order_ref_x.image_z : *c.first_order_ref.image_z;
+    const double z_ep = in_x ? c.z_ep_ref_x : c.z_ep_ref;
+    std::vector<paraxial::RayAtEvent> ray;
+    if (system.object().at_infinity) {
+      ray = paraxial::trace_ray_section(system, c.path, ref, z_ep, 0.0, 1.0, s);
+    } else {
+      const double z_obj = system.object_z();
+      if (c.telecentric_ref) {
+        ray = paraxial::trace_ray_section(system, c.path, ref, z_obj, 1.0, 0.0, s);
+      } else {
+        if (z_ep == z_obj) {
+          throw std::invalid_argument(
+              "sources: entrance pupil in the object (reference wavelength)");
+        }
+        ray =
+            paraxial::trace_ray_section(system, c.path, ref, z_obj, 1.0, -1.0 / (z_ep - z_obj), s);
+      }
+    }
+    const auto& last = ray.back();
+    const double h = last.y + (z_image - last.z) * last.u;
+    if (h == 0.0) throw std::invalid_argument("sources: chief ray does not reach the image");
+    return h;
+  };
+  return {unit(paraxial::Section::x), unit(paraxial::Section::y)};
+}
+
 /// Field point `field` of the system.
 const model::Field& field_point(const Context& c, std::uint16_t field) {
   const auto& points = c.system->fields().points;
@@ -416,10 +669,13 @@ FieldStart make_field(const Context& c, const model::Field& f) {
             "sources: a field angle with a finite object needs a finite entrance pupil (object "
             "space telecentric: give object heights or paraxial image heights)");
       }
-      if (!infinite && c.z_ep_ref == z_obj) {
+      // Anamorphic path: each component in its own section, with z_ep,ref,s (ADR 0042,
+      // point 3, "Felder").
+      const double z_ep_ref_x = c.anamorphic ? c.z_ep_ref_x : c.z_ep_ref;
+      if (!infinite && (c.z_ep_ref == z_obj || z_ep_ref_x == z_obj)) {
         throw std::invalid_argument("sources: entrance pupil in the object (reference wavelength)");
       }
-      hx = (z_obj - c.z_ep_ref) * tx;
+      hx = (z_obj - z_ep_ref_x) * tx;
       hy = (z_obj - c.z_ep_ref) * ty;
       break;
     }
@@ -436,9 +692,13 @@ FieldStart make_field(const Context& c, const model::Field& f) {
       if (c.reference_unit && !c.reference_unit->error.empty()) {
         throw std::invalid_argument(c.reference_unit->error);
       }
-      const double unit = c.reference_unit ? c.reference_unit->value : unit_image_height(c);
-      tx = f.x / unit;
-      ty = f.y / unit;
+      // An anamorphic path has a unit per section (ADR 0042, point 3); else both are the one
+      // unit of before.
+      const UnitHeights unit = c.reference_unit
+                                   ? UnitHeights{c.reference_unit->value_x, c.reference_unit->value}
+                                   : unit_image_heights(c);
+      tx = f.x / unit.x;
+      ty = f.y / unit.y;
       hx = tx;
       hy = ty;
       break;
@@ -448,7 +708,7 @@ FieldStart make_field(const Context& c, const model::Field& f) {
   FieldStart start;
   start.infinite = infinite;
   if (!infinite) {
-    if (!c.telecentric && c.z_ep == z_obj) {
+    if (!c.telecentric && (c.z_ep == z_obj || z_ep_x(c) == z_obj)) {
       throw std::invalid_argument("sources: entrance pupil in the object");
     }
     start.object = Vec3(hx, hy, z_obj);
@@ -457,6 +717,27 @@ FieldStart make_field(const Context& c, const model::Field& f) {
   start.direction = Vec3(tx, ty, 1.0).normalized();
   const Vec3& d = start.direction;
   const double d_xy = std::hypot(d.x(), d.y());
+  if (c.anamorphic) {
+    // ADR 0042, point 3, "Startebene": the line of a start ray passes (z_ep,x; a) in x and
+    // (z_ep,y; b) in y with |(a, b)| <= kBundleReserve max r_ep,s, so at E = max(z_ep,x, z_ep,y)
+    // it is off the axis by at most r_bundle = kBundleReserve max r_ep,s + |z_ep,x - z_ep,y|
+    // tan_field, and at any z by at most r_bundle + |z - z_ep,s| tan_field for either s. The
+    // search of lowest_z() runs with each z_ep,s; the start plane lies before the lowest result.
+    const double tan_field = d_xy / d.z();
+    const double r_bundle =
+        detail::kBundleReserve * r_ep_max(c) + std::abs(c.z_ep_x - c.z_ep) * tan_field;
+    double z_min = std::min(c.z_ep_x, c.z_ep);
+    for (const auto& e : system.path(c.path).events) {
+      const compile::CompiledSurface& surface = system.surfaces()[e.surface];
+      z_min = std::min({z_min, lowest_z(surface, c.z_ep_x, r_bundle, tan_field),
+                        lowest_z(surface, c.z_ep, r_bundle, tan_field)});
+    }
+    z_min -= 1.0;
+    // As below with E = (0, 0, max(z_ep,x, z_ep,y)) and |q_xy| <= r_bundle at E (ray_through()).
+    const double e_z = std::max(c.z_ep_x, c.z_ep);
+    start.plane_offset = (e_z - z_min) / d.z() + r_bundle * d_xy;
+    return start;
+  }
   // The bundle reaches at most 3 EP radii off the chief ray (reserve for real aiming); every
   // ray must start at least 1 mm before the EP and before every surface of the path it can
   // reach (lowest_z).
@@ -473,9 +754,40 @@ FieldStart make_field(const Context& c, const model::Field& f) {
   return start;
 }
 
+/// ray_through() of an anamorphic path (ADR 0042, point 3, "Paraxialer Startstrahl"): the line
+/// whose x passes a at z_ep,x and whose y passes b at z_ep,y.
+/// - Object at infinity: direction d of the field; at E = max(z_ep,x, z_ep,y) the line is at
+///   q = (a + d_x/d_z (E - z_ep,x), b + d_y/d_z (E - z_ep,y), E), and it starts on the plane of
+///   make_field() perpendicular to d through (0, 0, E) - L d, as for one EP plane.
+/// - Finite object P: slopes (a - P_x)/(z_ep,x - z_obj) and (b - P_y)/(z_ep,y - z_obj), into +z
+///   (with z_ep,x = z_ep,y the line of ray_through() through P and Q).
+/// - Object-space telecentric: slopes (a, b), as ray_through().
+RayState ray_through_sections(const Context& c, const FieldStart& f, double a, double b) {
+  RayState ray;
+  if (f.infinite) {
+    const Vec3& d = f.direction;
+    const double e_z = std::max(c.z_ep_x, c.z_ep);
+    const Vec3 q(a + d.x() / d.z() * (e_z - c.z_ep_x), b + d.y() / d.z() * (e_z - c.z_ep), e_z);
+    const Vec3 e(0.0, 0.0, e_z);
+    const double s = d.dot(q - e) + f.plane_offset;
+    ray.pos = q - s * d;
+    ray.dir = d;
+  } else if (c.telecentric) {
+    ray.pos = f.object;
+    ray.dir = Vec3(a, b, 1.0).normalized();
+  } else {
+    const double mx = (a - f.object.x()) / (c.z_ep_x - f.object.z());
+    const double my = (b - f.object.y()) / (c.z_ep - f.object.z());
+    ray.pos = f.object;
+    ray.dir = Vec3(mx, my, 1.0).normalized();
+  }
+  return ray;
+}
+
 /// Ray through the point (a, b, z_ep) on the EP plane; object-space telecentric: the ray from
-/// the object point with slopes (a, b).
+/// the object point with slopes (a, b). An anamorphic path: ray_through_sections().
 RayState ray_through(const Context& c, const FieldStart& f, double a, double b) {
+  if (c.anamorphic) return ray_through_sections(c, f, a, b);
   const Vec3 q(a, b, c.z_ep);
   RayState ray;
   if (f.infinite) {
@@ -528,7 +840,9 @@ AimedRay aim(const Context& c, const FieldStart& f, double px, double py, Aiming
   const double sy = c.label_sign * py;
   // Paraxial solution: straight through the EP point (sx, sy) * r_ep, or with the slopes
   // (sx, sy) * u_m for an object-space telecentric system.
-  double a = sx * c.r_ep;
+  // An anamorphic path has its own EP per section: a = s_x r_ep,x, b = s_y r_ep,y (ADR 0042,
+  // point 3); r_ep_x(c) is r_ep otherwise.
+  double a = sx * r_ep_x(c);
   double b = sy * c.r_ep;
   AimedRay out;
   out.ray = ray_through(c, f, a, b);
@@ -538,15 +852,22 @@ AimedRay aim(const Context& c, const FieldStart& f, double px, double py, Aiming
   // Newton's method in 2D, e.g. Press et al., Numerical Recipes, 3rd ed., Sec. 9.6).
   // object_na read real: R_s = label_sign S (ADR 0040, point 3; set if real aiming is allowed).
   const double r_s = c.real_r_s ? *c.real_r_s : c.r_ep * c.stop_scale;
-  const double tx = sx * r_s;
+  // Anamorphic: the target (s_x r_ep,x stop_scale_x, s_y r_ep,y stop_scale_y) (ADR 0042,
+  // point 3; object_na is never read real there).
+  const double r_s_x = c.anamorphic ? c.r_ep_x * c.stop_scale_x : r_s;
+  const double tx = sx * r_s_x;
   const double ty = sy * r_s;
   // Step in pupil units (ADR 0007, addendum #96): sized in stop units, but with a floor in
   // pupil units for a very distant entrance pupil, where |r_s / r_ep| = |stop_scale| -> 0.
   // Object-space telecentric (#96): the pupil coordinates are slopes, so the step is taken
-  // relative to u_m directly (new path, no earlier results to keep).
-  const double h = c.telecentric
-                       ? kAimStepRelative * c.r_ep
-                       : std::max(kAimStepRelative * std::abs(r_s), kAimStepPupilFloor * c.r_ep);
+  // relative to u_m directly (new path, no earlier results to keep). Anamorphic: the larger
+  // step of the two sections (ADR 0042, point 3).
+  const auto step = [&c](double r_ep, double r_stop) {
+    return c.telecentric ? kAimStepRelative * r_ep
+                         : std::max(kAimStepRelative * std::abs(r_stop), kAimStepPupilFloor * r_ep);
+  };
+  const double h =
+      c.anamorphic ? std::max(step(c.r_ep_x, r_s_x), step(c.r_ep, r_s)) : step(c.r_ep, r_s);
   // Residual hit - target on the stop for the pupil point (u, v) and the target (gx, gy).
   const auto residual = [&](double u, double v, double gx,
                             double gy) -> std::optional<std::pair<double, double>> {
@@ -613,7 +934,10 @@ AimedRay aim(const Context& c, const FieldStart& f, double px, double py, Aiming
   out.residual = primary.residual;
   out.ray = ray_through(c, f, a, b);
   if (converged) return out;
-  if (const auto fallback = detail::continuation(newton, jacobian_at, f.infinite, c.r_ep, tx, ty)) {
+  // The bundle reserve of the continuation is a scalar measure: max r_ep,s for an anamorphic
+  // path (ADR 0042, point 3).
+  if (const auto fallback =
+          detail::continuation(newton, jacobian_at, f.infinite, r_ep_max(c), tx, ty)) {
     out.ray = ray_through(c, f, fallback->a, fallback->b);
     out.iterations = primary.steps + fallback->steps;
     out.residual = fallback->residual;
@@ -621,7 +945,7 @@ AimedRay aim(const Context& c, const FieldStart& f, double px, double py, Aiming
   }
   out.ray.status = RayStatus::NoConvergence;
   if (!out.ray.pos.allFinite() || !out.ray.dir.allFinite()) {
-    out.ray = ray_through(c, f, sx * c.r_ep, sy * c.r_ep);
+    out.ray = ray_through(c, f, sx * r_ep_x(c), sy * c.r_ep);
     out.ray.status = RayStatus::NoConvergence;
   }
   // ADR 0007, addendum #310: a target outside the outer rim of the stop aperture cannot be passed
@@ -955,7 +1279,11 @@ AimReference aim_reference(const CompiledSystem& system, PathId path, std::uint1
   if (system.fields().type == model::FieldType::ParaxialImageHeight) {
     ReferenceUnit unit;
     try {
-      unit.value = unit_image_height(data->context);
+      // Per section for an anamorphic path (ADR 0042, point 3, "AimReference"); else both are
+      // the one unit.
+      const UnitHeights heights = unit_image_heights(data->context);
+      unit.value = heights.y;
+      unit.value_x = heights.x;
     } catch (const std::invalid_argument& e) {
       unit.error = e.what();
     }
@@ -1076,13 +1404,35 @@ RayBatch make_rays_impl(const compile::CompiledSystem& system,
 
 /// |R_s| of the aim target (stop_radius()): the aim target of pupil point p is label_sign p R_s
 /// with R_s = r_ep stop_scale, or label_sign S for object_na read real (aim()); |label_sign| = 1.
+/// Stop radius of an anamorphic path (ADR 0042, point 3, "stop_radius und
+/// paraxial_stop_radius"): r_stop directly for stop_size (not via r_ep,s stop_scale_s, which
+/// may differ by an ulp per section); else the radius |r_ep,s stop_scale_s| of section y if the
+/// two sections agree to kSectionTolerance relative, and an error if they do not (the aim target
+/// is then an ellipse, ADR 0042, point 3, "Reale Zielung").
+double section_radius(const Context& c) {
+  if (c.r_stop) return *c.r_stop;
+  const double rx = std::abs(c.r_ep_x * c.stop_scale_x);
+  const double ry = std::abs(c.r_ep * c.stop_scale);
+  if (!(std::abs(rx - ry) <= kSectionTolerance * std::max(rx, ry))) {
+    throw std::invalid_argument(
+        "sources: the stop radius of the aim target differs between the "
+        "sections (" +
+        std::to_string(rx) + " mm in x, " + std::to_string(ry) +
+        " mm in y; anamorphic path, ADR 0042)");
+  }
+  return ry;
+}
+
 double target_radius(const Context& c) {
   check_real_na(c, true);
+  if (c.anamorphic) return section_radius(c);
   return c.real_r_s ? std::abs(*c.real_r_s) : std::abs(c.r_ep * c.stop_scale);
 }
 
 /// The paraxial stop radius (paraxial_stop_radius()), with r_ep of the paraxial reading.
 double paraxial_radius(const Context& c) {
+  // An anamorphic path reads object_na only paraxially, so r_ep_paraxial == r_ep there.
+  if (c.anamorphic) return section_radius(c);
   return std::abs(c.r_ep_paraxial * c.stop_scale);
 }
 

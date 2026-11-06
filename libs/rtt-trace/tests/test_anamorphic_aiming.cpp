@@ -331,7 +331,9 @@ TEST_CASE("toroid in front of the stop: chief rays hit the stop centre, marginal
       const double tx = 4.0 * pupil_points[i].px;
       const double ty = 4.0 * pupil_points[i].py;
       CHECK(std::hypot(hit.x() - tx, hit.y() - ty) <= rtt::trace::kAimTolerance);
-      REQUIRE(p.paths.count[i] == p.paths.slots);
+      // A paraxial start ray may be vignetted at the stop (outside r = 4); its hit there is
+      // recorded all the same (count = stop event + 2).
+      REQUIRE(p.paths.count[i] > stop_slot);
       const Vec3 q = p.paths.position_at(i, stop_slot);
       paraxial_miss = std::max(paraxial_miss, std::hypot(q.x() - tx, q.y() - ty));
     }

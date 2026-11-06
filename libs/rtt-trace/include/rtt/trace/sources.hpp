@@ -228,6 +228,13 @@ struct AimedRay {
 /// with S the local y on the stop of the start ray of p = (0, 1) at the reference wavelength, the
 /// same S for every wavelength; at the reference wavelength that ray has n_ref sin U = NA.
 /// Apertures are ignored while aiming; vignetting is left to the tracer.
+/// Anamorphic path (rtt::paraxial::is_anamorphic; ADR 0042, point 3): the entrance pupil is
+/// computed per section x-z and y-z (rtt::paraxial::first_order_section), z_ep,s and r_ep,s. The
+/// start ray is the line whose x passes px r_ep,x at z_ep,x and whose y passes py r_ep,y at
+/// z_ep,y (sigma as above, the same in both sections), the target is
+/// sigma (px r_ep,x stop_scale_x, py r_ep,y stop_scale_y), an ellipse in the stop for an EPD
+/// (stop_size: the stop disk). A field angle with a finite object and a paraxial image height
+/// convert each component in its own section. Every other path aims bit for bit as before.
 /// @throws std::invalid_argument if the path, field or wavelength does not exist; px or py is
 ///         not finite; the field type does not fit the object (object height at infinity); a
 ///         field angle is not in (-90, 90) degree; no start plane exists before an unbounded
@@ -239,11 +246,18 @@ struct AimedRay {
 ///         object-space telecentric with an entrance pupil diameter or image F-number as system
 ///         aperture) or, for paraxial image heights and angles with a finite object, at the
 ///         reference wavelength (pupil in the object plane; a field angle with a finite object
-///         and the pupil at infinity)
+///         and the pupil at infinity); for an anamorphic path also if the entrance pupil is at
+///         infinity in one section only (at the ray's or the reference wavelength), the pupil
+///         labels differ between the sections (the EP beyond a finite object in one section
+///         only), the system aperture is an image-space F-number or object_na read real, or a
+///         paraxial image height needs a section without a finite paraxial image (ADR 0042,
+///         point 3)
 /// @throws rtt::compile::NoStopError (a std::invalid_argument) if the path has no stop; checked
 ///         by rtt::compile::require_stop before any ray is traced (ADR 0022)
-/// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric or the stop
-///         aperture is not circular
+/// @throws rtt::paraxial::ParaxialError if the path is not rotationally symmetric (an anamorphic
+///         path: a surface or ideal cylinder lens whose principal axes do not lie along x and y,
+///         or another reason of rtt::paraxial::first_order_section) or the stop aperture is not
+///         circular
 /// @throws ApertureError (a std::invalid_argument) for object_na read real: NA >= n_ref (every
 ///         aiming), or the real marginal ray gives no S (real aiming; ADR 0040, point 6)
 [[nodiscard]] AimedRay aim_ray(const compile::CompiledSystem& system,
@@ -277,17 +291,22 @@ struct AimedRay {
 /// aiming a ray of pupil point p meets the stop at |p| |R_s| within kAimTolerance, so a centred
 /// obscuration of radius r_i at the stop is the pupil circle |p| = r_i / |R_s| (ADR 0032,
 /// addendum #229). object_na read real: |S| of the real marginal ray (ADR 0040, point 5).
+/// Anamorphic path (ADR 0042, point 3): r_stop for stop_size; else |r_ep,y stop_scale_y| if it
+/// agrees with |r_ep,x stop_scale_x| to 1e-12 relative.
 /// @throws as aim_ray() for the path, the wavelength, the stop and the entrance pupil, and
-///         ApertureError if object_na read real gives no S (as real aiming)
+///         ApertureError if object_na read real gives no S (as real aiming); for an anamorphic
+///         path std::invalid_argument if the two sections give different radii (the target is
+///         an ellipse)
 [[nodiscard]] double stop_radius(const compile::CompiledSystem& system,
                                  compile::PathId path,
                                  std::uint16_t wavelength);
 
 /// Paraxial radius of the stop, mm, > 0: |r_ep stop_scale| with the entrance pupil of the
 /// paraxial reading (u = NA / n for object_na, as rtt::paraxial::first_order; ADR 0040, point 5),
-/// for the F-number from parabasal rays. Bitwise stop_radius() unless object_na is read real.
+/// for the F-number from parabasal rays. Bitwise stop_radius() unless object_na is read real
+/// (an anamorphic path: as stop_radius()).
 /// @throws as aim_ray() for the path, the wavelength, the stop and the entrance pupil (not
-///         ApertureError)
+///         ApertureError), and as stop_radius() for an anamorphic path
 [[nodiscard]] double paraxial_stop_radius(const compile::CompiledSystem& system,
                                           compile::PathId path,
                                           std::uint16_t wavelength);
@@ -326,10 +345,11 @@ struct AimData;  // sources.cpp
 /// Paraxial aiming data of one path at one wavelength, computed from a compiled system (ADR 0007,
 /// addendum #252; ADR 0036, point 2): entrance pupil (position and radius, or the marginal slope
 /// of an object-space telecentric system), stop scale, orientation sigma of the pupil labels, the
-/// stop event and the data of the field conversion at the reference wavelength. For the
-/// perturbed trials of a tolerance analysis, which are not rotationally symmetric, these data
-/// come from the nominal system (rtt::paraxial::first_order rejects the trials). An immutable
-/// value: cheap to copy, safe to read from many threads. Created with aim_reference().
+/// stop event and the data of the field conversion at the reference wavelength; for an anamorphic
+/// path these per section x-z and y-z (ADR 0042, point 3). For the perturbed trials of a
+/// tolerance analysis, which are not rotationally symmetric, these data come from the nominal
+/// system (rtt::paraxial::first_order rejects the trials). An immutable value: cheap to copy,
+/// safe to read from many threads. Created with aim_reference().
 class AimReference {
  public:
   /// Path the data belong to.
@@ -350,7 +370,8 @@ class AimReference {
 /// The aiming data of `path` at `wavelength` of `system` (usually the nominal system), computed
 /// once: the same paraxial computation that aim_ray() and make_rays() do without a reference.
 /// @throws as aim_ray() for the path, the wavelength, the stop and the entrance pupil (also
-///         rtt::paraxial::ParaxialError for a path that is not rotationally symmetric)
+///         rtt::paraxial::ParaxialError for a path that is not rotationally symmetric and not
+///         anamorphic with principal axes along x and y)
 [[nodiscard]] AimReference aim_reference(const compile::CompiledSystem& system,
                                          compile::PathId path,
                                          std::uint16_t wavelength);
