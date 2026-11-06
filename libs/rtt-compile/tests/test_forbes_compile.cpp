@@ -116,5 +116,7 @@ TEST_CASE("layout: Q-con beyond rho extrapolates; c = 0 with a conic is flat",
   const CompiledSystem flat =
       compiled(lens(rtt::model::QCon{Param(0.0), Param(-1.0), Param(5.0), {Param(0.0)}},
                     rtt::model::CircularAperture{10.0, 0.0}));
-  for (const Vec3& p : rtt::compile::surface_profile(flat, 0, yz, 11)[0]) CHECK(p.z() == 0.0);
+  const std::vector<Polyline> flat_cut = rtt::compile::surface_profile(flat, 0, yz, 11);
+  REQUIRE(flat_cut.size() == 1);
+  for (const Vec3& p : flat_cut[0]) CHECK(p.z() == 0.0);
 }
