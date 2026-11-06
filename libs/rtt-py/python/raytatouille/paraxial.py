@@ -2,6 +2,10 @@
 
 Indices are absolute: in AIR (Ciddor air, n about 1.00027) EFL = 1/power is smaller by the
 factor n_air than in programs that compute relative to air.
+
+Anamorphic paths (biconic, toroid, cylinder, ideal cylinder lens; is_anamorphic()) have no
+first_order(); first_order_section() and trace_ray_section() compute them per section x-z or
+y-z (Section.X, Section.Y; ADR 0042).
 """
 
 from __future__ import annotations
@@ -14,11 +18,16 @@ from ._core import (
     Prescription,
     PrescriptionSurfaces,
     Pupil,
+    RayAtEvent,
     RayStart,
+    Section,
     Seidel,
     SeidelSurfaces,
     SeidelTerms,
     first_order,
+    first_order_section,
+    is_anamorphic,
+    trace_ray_section,
 )
 from ._util import SystemLike, chromatic_pair, compiled
 
@@ -28,13 +37,18 @@ __all__ = [
     "Prescription",
     "PrescriptionSurfaces",
     "Pupil",
+    "RayAtEvent",
     "RayStart",
+    "Section",
     "Seidel",
     "SeidelSurfaces",
     "SeidelTerms",
     "first_order",
+    "first_order_section",
+    "is_anamorphic",
     "prescription",
     "seidel",
+    "trace_ray_section",
 ]
 
 

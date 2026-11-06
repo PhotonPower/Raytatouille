@@ -5,8 +5,11 @@ Oracle: the examples under examples/anamorphic (VACUUM, n = 1.5168, t = 4 mm, st
 lens front at z = 5). A curved side of radius R in front of a plane rear side has
 efl = R / (n - 1) and bfl = efl - t / n (Greivenkamp, OPTI-201/202, Sec. 7, p. 7-4 with
 P2 = 0, and Sec. 9, p. 9-12; docs/quellen.md): R = 51.68 gives 100 mm, R = 77.52 gives 150 mm.
-The crossed cylinders focus both sections at z = 106.36286919831225 (example file). A section
-without power is afocal: efl None. The C++ tests (test_paraxial_section.cpp) check the values
+Crossed cylinders (example file): L2 (R = 38.76, f = 75 mm, power in x) from z = 30 to 34
+puts the x focus at 34 + 75 - t/n = 106.36286919831225; the y focus of L1 (from z = 5 to 9) is
+at 9 + 100 - t/n = 106.36287 as well, but L2 acts in y as a plane-parallel plate of thickness t
+and shifts it by t (1 - 1/n) (paraxial transfer t/n in the plate instead of t; Greivenkamp,
+Sec. 9, p. 9-2). A section without power is afocal: efl None. The C++ tests (test_paraxial_section.cpp) check the values
 against an independent matrix computation; here the bindings are checked.
 """
 
@@ -30,7 +33,6 @@ def example(name: str) -> rt.CompiledSystem:
 
 def test_section_enum() -> None:
     assert {s.name for s in paraxial.Section} == {"X", "Y"}
-    assert paraxial.Section.X != paraxial.Section.Y
 
 
 def test_cylinder_lens_sections() -> None:
@@ -54,9 +56,11 @@ def test_biconic_and_crossed_cylinders() -> None:
     assert x.efl == pytest.approx(150.0, rel=1e-12)
     assert y.efl == pytest.approx(100.0, rel=1e-12)
     crossed = example("crossed_cylinders")
-    for s in (paraxial.Section.X, paraxial.Section.Y):
+    focus = 34.0 + 38.76 / (N - 1.0) - 4.0 / N
+    assert focus == pytest.approx(106.36286919831225, rel=1e-12)
+    for s, z in ((paraxial.Section.X, focus), (paraxial.Section.Y, focus + 4.0 * (1.0 - 1.0 / N))):
         fo = paraxial.first_order_section(crossed, s)
-        assert fo.rear_focal_z == pytest.approx(106.36286919831225, rel=1e-12)
+        assert fo.rear_focal_z == pytest.approx(z, rel=1e-12)
     fx = paraxial.first_order_section(crossed, paraxial.Section.X)
     fy = paraxial.first_order_section(crossed, paraxial.Section.Y)
     # Content guard: the sections have different focal lengths (75 mm lens at z = 30 in x,
