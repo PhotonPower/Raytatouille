@@ -237,6 +237,26 @@ TEST_CASE("an axicon angle that changes its sign or reaches 90 deg makes the tri
   }
 }
 
+TEST_CASE("an axicon with a flat nominal: any sign below 90 deg is valid",
+          "[tolerance][trial][rotational]") {
+  // ADR 0043, addendum PR B: a nominal alpha = 0 (the plane) has no sign to change; only
+  // |alpha| >= 90 deg makes the trial invalid.
+  const System s = singlet(rtt::model::Axicon{Param(0.0)}, false);
+  const TrialContext ctx = context(s, param_item("/shape/base/angle_deg", 100.0));
+  REQUIRE(ctx.nominal().status == TrialStatus::Valid);
+  for (const double offset : {3.0, -3.0}) {
+    const TrialResult r = rtt::tolerance::evaluate(ctx, std::vector<double>{offset});
+    INFO("offset " << offset << ", reason: " << r.reason);
+    CHECK(r.status == TrialStatus::Valid);
+  }
+  for (const double offset : {95.0, -95.0}) {
+    const TrialResult r = rtt::tolerance::evaluate(ctx, std::vector<double>{offset});
+    INFO("offset " << offset << ", reason: " << r.reason);
+    CHECK(r.status == TrialStatus::Invalid);
+    CHECK(contains(r.reason, "angle_deg"));
+  }
+}
+
 TEST_CASE("an axicon angle bound to a row is checked per row value",
           "[tolerance][trial][rotational]") {
   System s = singlet(rtt::model::Axicon{Param::bound("A")}, false);

@@ -557,7 +557,9 @@ std::optional<std::string> radius_sign_invalid(const ContextData& d,
       if (angle) {
         // ADR 0036, addendum #314: the angle keeps its sign (0 is the plane, no change of sign)
         // and stays below 90 deg in magnitude.
-        if (std::isfinite(r) && std::abs(r) < 90.0 && !(r * n.value[c] < 0.0)) continue;
+        const double nominal = n.value[c];
+        const bool flipped = (r > 0.0 && nominal < 0.0) || (r < 0.0 && nominal > 0.0);
+        if (std::isfinite(r) && std::abs(r) < 90.0 && !flipped) continue;
       } else if (std::isfinite(r) && r != 0.0 && std::signbit(r) == std::signbit(n.value[c])) {
         continue;
       }
