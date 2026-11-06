@@ -61,7 +61,8 @@ class Biconic final {
   /// Slopes (dz/dx, dz/dy), derived from the sag (ADR 0042, point 1):
   ///   dz/dx = 2 c_x x / (1 + S) + a x N / (S (1 + S)^2),  N = c_x x^2 + c_y y^2,
   /// and dz/dy likewise with c_y and b. For equal sections this is c x / S, the conic's.
-  /// NaN outside the domain, +-infinity on its rim (S = 0).
+  /// NaN outside the domain, +-infinity on its rim (S = 0), except in a section with a = 0 (b = 0),
+  /// whose second term vanishes there: its slope stays 2 c_x x (2 c_y y).
   [[nodiscard]] std::pair<T, T> grad(T x, T y) const noexcept {
     using std::sqrt;
     const T s2 = radicand(x, y);
@@ -72,7 +73,8 @@ class Biconic final {
     const T s = sqrt(s2);
     const T n = cx_ * (x * x) + cy_ * (y * y);
     if (s == T(0)) {
-      return {detail::vertical_slope(a() * x * n), detail::vertical_slope(b() * y * n)};
+      return {a() == T(0) ? T(2) * cx_ * x : detail::vertical_slope(a() * x * n),
+              b() == T(0) ? T(2) * cy_ * y : detail::vertical_slope(b() * y * n)};
     }
     const T p = T(1) + s;
     const T q = s * p * p;
@@ -180,7 +182,8 @@ class Cylinder final {
 ///   z = z_y + c' x^2 / (1 + sqrt(1 - c'^2 x^2)),  c' = c_R / (1 - c_R z_y(y)),
 /// from x^2 + (z - R)^2 = (R - z_y)^2 on the branch through the vertex. c_R = 0 is the
 /// cylinder. Defined where the profile is, where the profile has not crossed the axis
-/// (1 - c_R z_y > 0) and where |x| <= |R - z_y|.
+/// (1 - c_R z_y > 0; the domain ends at the first crossing, |y| <= y_end) and where
+/// |x| <= |R - z_y|.
 template <rtt::math::Real T>
 class Toroid final {
  public:
@@ -192,6 +195,7 @@ class Toroid final {
   Toroid(T curvature, T conic_constant, std::vector<T> coefficients, T curvature_of_rotation)
       : profile_(curvature, conic_constant, std::move(coefficients)),
         cr_(curvature_of_rotation),
+        y_end_(domain_end()),
         max_radius_(outer_extent()) {}
 
   /// The profile as an even asphere; its sag at (0, y) is z_y(y).
@@ -202,7 +206,9 @@ class Toroid final {
 
   /// Sag z in mm at (x, y) in mm; NaN outside the domain.
   [[nodiscard]] T sag(T x, T y) const noexcept {
+    using std::abs;
     using std::sqrt;
+    if (!(abs(y) <= y_end_)) return std::numeric_limits<T>::quiet_NaN();
     const T zy = profile_.sag(T(0), y);
     const T g = T(1) - cr_ * zy;
     if (!(g > T(0))) return std::numeric_limits<T>::quiet_NaN();
@@ -215,8 +221,10 @@ class Toroid final {
   /// Slopes (ADR 0042, point 1): dz/dx = c' x / s, dz/dy = z_y'(y) / s, s = sqrt(1 - c'^2 x^2).
   /// NaN outside the domain, +-infinity where the surface is vertical (s = 0).
   [[nodiscard]] std::pair<T, T> grad(T x, T y) const noexcept {
+    using std::abs;
     using std::sqrt;
     const T nan = std::numeric_limits<T>::quiet_NaN();
+    if (!(abs(y) <= y_end_)) return {nan, nan};
     const T zy = profile_.sag(T(0), y);
     const T g = T(1) - cr_ * zy;
     if (!(g > T(0))) return {nan, nan};
@@ -300,23 +308,36 @@ class Toroid final {
     return limit;
   }
 
+  /// |y| up to which the domain reaches (ADR 0042, point 1): the end of the profile or its first
+  /// crossing of the axis of rotation; +infinity for c_R = 0 or an unbounded profile that never
+  /// meets the axis. Computed once, before max_radius_.
+  [[nodiscard]] T domain_end() const noexcept {
+    using std::abs;
+    using std::isfinite;
+    const T inf = std::numeric_limits<T>::infinity();
+    if (cr_ == T(0)) {
+      const std::optional<T> y_lim = profile_.max_radius();
+      return y_lim ? *y_lim : inf;
+    }
+    if (const std::optional<T> y_lim = profile_.max_radius()) return end_of_profile(*y_lim);
+    // Unbounded profile: double y until the profile meets the axis. It is defined for every y,
+    // so a gap that is not a number, or a y whose square overflows, means the search ran out of
+    // range without a crossing: unbounded.
+    T y = T(1) / abs(cr_);
+    for (;;) {
+      const T g = gap(y);
+      if (!isfinite(g) || !isfinite(y * y)) return inf;
+      if (!(g > T(0))) return end_of_profile(y);
+      y *= T(2);
+    }
+  }
+
   [[nodiscard]] std::optional<T> outer_extent() const {
     using std::abs;
+    using std::isfinite;
     using std::sqrt;
-    if (cr_ == T(0)) return std::nullopt;
-    T y_end = T(0);
-    if (const std::optional<T> y_lim = profile_.max_radius()) {
-      y_end = end_of_profile(*y_lim);
-    } else {
-      // Unbounded profile: double y until the profile meets the axis; never meeting it leaves
-      // the toroid unbounded.
-      T y = T(1) / abs(cr_);
-      while (gap(y) > T(0)) {
-        y *= T(2);
-        if (!std::isfinite(y)) return std::nullopt;
-      }
-      y_end = end_of_profile(y);
-    }
+    if (!isfinite(y_end_)) return std::nullopt;
+    const T y_end = y_end_;
     T sup = T(0);
     for (int i = 0; i <= kSamples; ++i) {
       const T y = y_end * static_cast<T>(i) / static_cast<T>(kSamples);
@@ -329,6 +350,7 @@ class Toroid final {
 
   EvenAsphere<T> profile_;
   T cr_;
+  T y_end_;
   std::optional<T> max_radius_;
 };
 
