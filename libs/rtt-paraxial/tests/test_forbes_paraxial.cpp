@@ -101,47 +101,6 @@ void same(const Prescription& a, const Prescription& b) {
   same(a.first_order, b.first_order);
 }
 
-void same(const rtt::paraxial::SeidelTerms& a, const rtt::paraxial::SeidelTerms& b) {
-  CHECK(a.s1 == b.s1);
-  CHECK(a.s2 == b.s2);
-  CHECK(a.s3 == b.s3);
-  CHECK(a.s4 == b.s4);
-  CHECK(a.s5 == b.s5);
-  CHECK(a.c_l == b.c_l);
-  CHECK(a.c_t == b.c_t);
-}
-
-void same(const Seidel& a, const Seidel& b) {
-  REQUIRE(a.surfaces.size() == b.surfaces.size());
-  for (std::size_t i = 0; i < a.surfaces.size(); ++i) {
-    INFO("event " << i);
-    CHECK(a.surfaces[i].surface == b.surfaces[i].surface);
-    CHECK(a.surfaces[i].a == b.surfaces[i].a);
-    CHECK(a.surfaces[i].a_bar == b.surfaces[i].a_bar);
-    same(a.surfaces[i].terms, b.surfaces[i].terms);
-  }
-  same(a.sum, b.sum);
-  CHECK(a.lagrange == b.lagrange);
-}
-
-template <typename F>
-ParaxialError paraxial_error(F&& f) {
-  try {
-    f();
-  } catch (const ParaxialError& e) {
-    return e;
-  }
-  FAIL("no ParaxialError");
-  return ParaxialError("unreachable");
-}
-
-void at_front_surface(const ParaxialError& e, const std::string& part) {
-  INFO(e.what());
-  CHECK(std::string(e.what()).find(part) != std::string::npos);
-  REQUIRE(e.surface() == rtt::model::SurfaceId("L1.S1"));
-  CHECK(e.location() == "/root/children/1/surfaces/0");
-}
-
 }  // namespace
 
 TEST_CASE("Q-con represents an even asphere exactly", "[paraxial][forbes]") {
@@ -207,6 +166,7 @@ TEST_CASE("Q-bfs: the first order follows c + 2 S_0 / rho^2", "[paraxial][forbes
   const double a0 = 0.1;
   const double a1 = -0.02;
   System s = singlet(rtt::model::QBfs{Param(c), Param(-0.3), Param(rho), {Param(a0), Param(a1)}});
+  s.environment.medium = "VACUUM";  // n = 1 outside, so the power is (n - 1) c_v
   std::get<Element>(s.root.children[1].value).surfaces[1].shape.base = rtt::model::Plane{};
   const CompiledSystem cs = compiled(s);
   const double s0 = a0 + 13.0 * a1 / std::sqrt(19.0);

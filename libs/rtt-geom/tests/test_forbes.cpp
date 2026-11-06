@@ -261,8 +261,10 @@ TEST_CASE("Q-con vertex expansion: A4 from S(0) with Q_m(0) = (-1)^m C(m + 4, 4)
 TEST_CASE("Q-bfs vertex expansion: c + 2 S_0 / rho^2 and the cap with native K",
           "[geom][forbes][vertex]") {
   // ADR 0043, point 3 and acceptance 4: S_0 and S_1 from the tables ([F10b], Eq. (3.16) for
-  // c_v); then a fit of the sag r^2, r^4, r^6 at r = 1/4, 1/2, 1 as independent check of the
-  // cap K c_v^3 + 8 A4 = 8 b4 - c_v^3 (ADR 0041, point 1).
+  // c_v); then a fit of the sag r^2, r^4, r^6 at r = 1/8, 1/4, 1/2 as independent check of the
+  // cap K c_v^3 + 8 A4 = 8 b4 - c_v^3 (ADR 0041, point 1). The neglected r^8 terms bias b4 by
+  // about 1e-7 relative here (1.5e-6 with r up to 1; a 60-digit fit agrees with the closed
+  // form to 1e-37), the rounding of the sag contributes 1e-10.
   const double c = 1.0 / 30.0;
   const double k = -0.6;
   const double rho = 12.0;
@@ -290,7 +292,7 @@ TEST_CASE("Q-bfs vertex expansion: c + 2 S_0 / rho^2 and the cap with native K",
                     c * c * s0 / (2.0 * rho2);
   CHECK(std::abs(e.a4 - a4) <= 1e-12 * std::abs(a4));
   // Independent: the r^4 coefficient of the sag by a three-term fit.
-  const std::array<double, 3> h = {0.25, 0.5, 1.0};
+  const std::array<double, 3> h = {0.125, 0.25, 0.5};
   std::array<std::array<double, 3>, 3> m{};
   std::array<double, 3> z{};
   for (std::size_t i = 0; i < 3; ++i) {
@@ -375,9 +377,15 @@ TEST_CASE("[F07] Table 1 as Q-con data against the exact Cartesian oval", "[geom
     worst = std::max(worst, std::abs(qcon.sag(0.0, r) - oval(r)));
   }
   CHECK(worst <= 12e-6);
-  // Content guard: the polynomial part matters, the conic alone is off by tens of um ([F07],
-  // Section 4: 60 um).
-  CHECK(std::abs(Conic<double>(-0.5, 0.156284 - 1.0).sag(0.0, 3.5) - oval(3.5)) > 30e-3);
+  // Content guard: the polynomial part matters; the conic alone (it meets the oval at the rim
+  // r = 3.5 mm) departs from it by up to tens of um inside ([F07], Section 4: 60 um).
+  double conic_only = 0.0;
+  for (int i = 0; i <= 35; ++i) {
+    const double r = 0.1 * i;
+    conic_only =
+        std::max(conic_only, std::abs(Conic<double>(-0.5, 0.156284 - 1.0).sag(0.0, r) - oval(r)));
+  }
+  CHECK(conic_only > 30e-3);
 }
 
 TEST_CASE("[F10b] Eq. (4.8) as Q-bfs data against the parabola", "[geom][forbes]") {
