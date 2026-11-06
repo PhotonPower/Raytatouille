@@ -153,7 +153,7 @@ struct FirstOrder {
 
 /// Section of a path for the paraxial computation of anamorphic systems (ADR 0042, point 2):
 /// the plane x-z or y-z of the global frame through the z axis.
-enum class Section {
+enum class Section : std::uint8_t {
   x,  ///< the x-z plane; the ray height is the global x, the slope dx/dz
   y,  ///< the y-z plane; the ray height is the global y, the slope dy/dz
 };

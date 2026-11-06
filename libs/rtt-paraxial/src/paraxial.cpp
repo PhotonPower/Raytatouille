@@ -105,7 +105,7 @@ std::vector<Step> prepare(const CompiledSystem& cs,
     // shift follows the orientation of the local z axis in global coordinates. Per section, an
     // anamorphic surface takes its curvature from the global Hessian (ADR 0042, point 2).
     Step step;
-    std::optional<detail::SectionFrame> frame;
+    const detail::SectionFrame frame = detail::section_frame(s.to_global.rotation());
     if (!section) {
       const detail::VertexRule rule = detail::vertex_rule(s);
       if (rule.first_order_error) fail(*rule.first_order_error + " (ADR 0041)");
@@ -113,9 +113,8 @@ std::vector<Step> prepare(const CompiledSystem& cs,
       step.c = axis.z() > 0.0 ? rule.c : -rule.c;
       step.c_scale = step.c;
     } else {
-      frame = detail::section_frame(s.to_global.rotation());
       const detail::SectionRule rule =
-          detail::section_rule(detail::vertex_expansion(s), *frame, *section);
+          detail::section_rule(detail::vertex_expansion(s), frame, *section);
       if (rule.error) fail(*rule.error);
       step.z = detail::vertex_z(vertex.z(), axis.z(), rule.value);
       step.c = rule.c;
@@ -128,10 +127,10 @@ std::vector<Step> prepare(const CompiledSystem& cs,
     if (s.ideal_lens) {
       step.inverse_focal_length = 1.0 / s.ideal_lens->focal_length;
       step.inverse_focal_length_scale = step.inverse_focal_length;
-      if (s.ideal_lens->power_axis && frame) {
+      if (s.ideal_lens->power_axis && section) {
         // Section x or y of the power tensor phi b b^T: phi b_s^2 (ADR 0042, point 2).
         const detail::CylinderLensSection cylinder =
-            detail::cylinder_lens_section(*s.ideal_lens->power_axis, *frame, *section);
+            detail::cylinder_lens_section(*s.ideal_lens->power_axis, frame, *section);
         if (cylinder.error) fail(*cylinder.error);
         step.inverse_focal_length = cylinder.factor / s.ideal_lens->focal_length;
       }
