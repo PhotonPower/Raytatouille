@@ -6,6 +6,7 @@
 #include "rtt/geom/asphere.hpp"
 #include "rtt/geom/axicon.hpp"
 #include "rtt/geom/conic.hpp"
+#include "rtt/geom/forbes.hpp"
 #include "rtt/geom/intersect.hpp"
 #include "rtt/geom/odd_asphere.hpp"
 #include "rtt/geom/phase.hpp"
@@ -30,6 +31,10 @@ static_assert(IntersectableShape<OddAsphere<double>, double>);
 static_assert(IntersectableShape<Axicon<double>, double>);
 static_assert(ParaxialShape<OddAsphere<double>, double>);
 static_assert(ParaxialShape<Axicon<double>, double>);
+static_assert(IntersectableShape<QCon<double>, double>);
+static_assert(DomainShape<QBfs<double>, double>);
+static_assert(ParaxialShape<QCon<double>, double>);
+static_assert(ParaxialShape<QBfs<double>, double>);
 
 template class Plane<double>;
 template class Conic<double>;
@@ -39,6 +44,13 @@ template class Toroid<double>;
 template class Cylinder<double>;
 template class OddAsphere<double>;
 template class Axicon<double>;
+template class QCon<double>;
+template class QBfs<double>;
+template struct QBfsMatrix<double>;
+template QBfsMatrix<double> qbfs_matrix<double>(std::size_t);
+template std::vector<double> qbfs_auxiliary<double>(std::span<const double>);
+template std::pair<double, double> qbfs_sum<double>(std::span<const double>, double);
+template std::pair<double, double> qcon_sum<double>(std::span<const double>, double);
 template struct Intersection<double>;
 template struct VertexExpansion<double>;
 template VertexExpansion<double> stack_expansion<double>(const VertexExpansion<double>&,
@@ -86,6 +98,14 @@ template Intersection<double> intersect_newton<double, Axicon<double>>(const Axi
                                                                        const math::Vec3T<double>&,
                                                                        const math::Vec3T<double>&,
                                                                        double);
+template Intersection<double> intersect_newton<double, QCon<double>>(const QCon<double>&,
+                                                                     const math::Vec3T<double>&,
+                                                                     const math::Vec3T<double>&,
+                                                                     double);
+template Intersection<double> intersect_newton<double, QBfs<double>>(const QBfs<double>&,
+                                                                     const math::Vec3T<double>&,
+                                                                     const math::Vec3T<double>&,
+                                                                     double);
 template Intersection<double> intersect<double, EvenAsphere<double>>(const EvenAsphere<double>&,
                                                                      const math::Vec3T<double>&,
                                                                      const math::Vec3T<double>&,
