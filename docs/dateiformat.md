@@ -88,7 +88,7 @@ braucht das Substrat, ohne `material` ist es ein Kompilierfehler.
 
 | Feld | Inhalt |
 | --- | --- |
-| `shape.base` | `{"type": "plane"}`, `{"type": "conic", "radius": R, "conic": k}` oder `{"type": "even_asphere", "radius": R, "conic": k, "coefficients": [A4, A6, …]}`; ab Schema 0.9 (ADR 0042) die anamorphen Formen `{"type": "biconic", "radius_x": R_x, "radius_y": R_y, "conic_x": k_x, "conic_y": k_y}`, `{"type": "toroid", "radius": R, "conic": k, "coefficients": [A4, A6, …], "radius_of_rotation": R_rot}` und `{"type": "cylinder", "radius": R, "conic": k, "coefficients": [A4, A6, …]}` (siehe unten) |
+| `shape.base` | `{"type": "plane"}`, `{"type": "conic", "radius": R, "conic": k}` oder `{"type": "even_asphere", "radius": R, "conic": k, "coefficients": [A4, A6, …]}`; ab Schema 0.9 (ADR 0042) die anamorphen Formen `{"type": "biconic", "radius_x": R_x, "radius_y": R_y, "conic_x": k_x, "conic_y": k_y}`, `{"type": "toroid", "radius": R, "conic": k, "coefficients": [A4, A6, …], "radius_of_rotation": R_rot}` und `{"type": "cylinder", "radius": R, "conic": k, "coefficients": [A4, A6, …]}` sowie (ADR 0043) `{"type": "odd_asphere", "curvature": c, "conic": k, "coefficients": [A1, A2, A3, …]}` und `{"type": "axicon", "angle_deg": α}` (siehe unten) |
 | `aperture` | `circular` (`radius`, optional `inner_radius`), `rectangular` (`half_width_x`, `half_width_y`) oder `elliptical` (`semi_axis_x`, `semi_axis_y`) |
 | `phases` | Phasenschichten: `{"type": "linear_grating", "lines_per_mm": G, "orientation_deg": ψ}` oder `{"type": "radial_phase", "normalization_radius": R, "coefficients": [c1, c2, …]}` (ADR 0025). Einheiten: G in 1/mm, ψ in Grad von der lokalen x- zur lokalen y-Achse (ψ = 0: Rillen parallel zur lokalen y-Achse), φ = 2πG(x cos ψ + y sin ψ); R in mm, Koeffizienten c_k in **rad** (nicht in Wellen, kein Faktor 2π), c1 gehört zu ρ², φ = Σ c_k ρ^{2k} mit ρ = r/R. Die Werte gelten unverändert für jede Wellenlänge; das Vorzeichen von φ und der Ordnung nach ADR 0025, Punkte 1 bis 3 |
 | `diffraction_efficiency` | nur an Flächen mit `phases`: Leistungsanteil je Beugungsordnung, z. B. `[{"order": 1, "efficiency": 0.8}]`; fehlt das Feld, hat jede Ordnung 1, sonst haben nicht aufgeführte Ordnungen 0 |
@@ -134,6 +134,42 @@ mit verschiedenen Schnitten ab; ein Biconic mit gleichen Schnitten und ein Toroi
 rechnen dort wie `conic`. Die Toleranzklassen erzeugen an diesen Typen weder
 `curvature_relative` noch `conic` (Grund `ShapeType`); die Toleranzarten `radius`,
 `curvature_relative` und `conic` sind an ihnen `tolerances.target_invalid`.
+
+## Ungerade Asphäre und Axicon (ab Schema 0.9, ADR 0043)
+
+Beide sind rotationssymmetrisch um die lokale z-Achse; alle Werte sind Params. Wie die
+anamorphen Formen sind sie in einer Datei vor Schema 0.9 ein Lesefehler.
+
+```json
+{"type": "odd_asphere", "curvature": 0.02, "conic": -0.5, "coefficients": [0.0, 1e-4, 2e-6]}
+{"type": "axicon", "angle_deg": -5.0}
+```
+
+- `odd_asphere` (OpticStudio „Odd Asphere“): z = c r²/(1 + √(1 − (1 + k) c² r²)) + A1 r +
+  A2 r² + A3 r³ + … mit r² = x² + y², A_n in mm^(1−n).
+  - Die Basis trägt ihre **Krümmung** `curvature` c in mm⁻¹, keinen Radius: c ist endlich
+    (sonst `shape.curvature_invalid`), 0 ist eine ebene Basis, und c bleibt als Variable auch
+    durch 0 hindurch stetig. Bei einem Import ist c = 1/R; ein ZMX-Radius 0 heißt c = 0.
+  - `conic` (Standard 0) wirkt bei c = 0 nicht und gibt dann die Warnung
+    `shape.conic_without_curvature`. `coefficients` beginnen bei A1 und schließen A2 ein; eine
+    leere Liste gibt `shape.asphere_without_coefficients`.
+  - Die Scheitelkrümmung ist c + 2 A2, nicht c. Mit A1 ≠ 0 ist der Scheitel eine Kegelspitze
+    ohne paraxiales Modell (`first_order` wirft); mit A3 ≠ 0 gibt es die erste Ordnung, aber
+    keine Seidel-Summen.
+- `axicon`: der Kegel z = r tan α mit der Spitze im Scheitel. `angle_deg` ist der Basiswinkel α
+  zwischen Mantel und der Ebene z = 0, mit dem Vorzeichen einer Krümmung: α > 0 heißt, der
+  Mantel steigt nach +z; α = 0 ist die Ebene. |α| < 90° (sonst `shape.axicon_angle_invalid`).
+  Ein Kegel mit Konik ist eine `odd_asphere` mit A1 = tan α.
+  - Die Spitze hat kein paraxiales Modell: Zielung, Pupillen, OPD und die paraxialen Operanden
+    werfen für einen Pfad mit Axicon; eigene Startstrahlen mit `trace` laufen.
+
+Toleranzen (ADR 0035, Nachtrag #314): An `odd_asphere` stört `curvature_relative` die Krümmung,
+C′ = C (1 + δ), und `conic` die Konik; `radius` ist dort `tolerances.target_invalid`. Die
+Klassen überspringen beide bei c = 0 mit `Plane`. Eine Krümmung, die 0 erreicht oder das
+Vorzeichen wechselt, macht den Prüfling nicht ungültig. Am Axicon sind `radius`,
+`curvature_relative` und `conic` `tolerances.target_invalid` (Klassen: Grund `ShapeType`); der
+Winkel geht über die Art `param` auf `/shape/base/angle_deg`, und ein Prüfling, dessen Winkel
+das Vorzeichen wechselt oder |α| ≥ 90° erreicht, ist ungültig.
 
 ## Ideale Linse und ideale Zylinderlinse (ab Schema 0.5, ADR 0031)
 
