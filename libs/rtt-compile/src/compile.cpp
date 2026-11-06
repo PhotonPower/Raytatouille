@@ -1053,6 +1053,14 @@ class Compiler {
           } else if constexpr (std::is_same_v<B, model::Cylinder>) {
             return geom::Cylinder<double>(1.0 / base.radius.value, base.conic.value,
                                           values(base.coefficients));
+          } else if constexpr (std::is_same_v<B, model::OddAsphere>) {
+            // The curvature itself, not 1/R (ADR 0043, point 1, F10); validate() guarantees it
+            // finite, 0 is a plane base.
+            return geom::OddAsphere<double>(base.curvature.value, base.conic.value,
+                                            values(base.coefficients));
+          } else if constexpr (std::is_same_v<B, model::Axicon>) {
+            // angle_deg in rad; validate() guarantees |alpha| < 90 deg.
+            return geom::Axicon<double>(math::deg_to_rad(base.angle_deg.value));
           } else {
             static_assert(kUnhandledShape<B>, "compile_shape: unhandled base shape");
           }

@@ -73,7 +73,30 @@ struct Cylinder {
   bool operator==(const Cylinder&) const = default;
 };
 
-using BaseShape = std::variant<Plane, Conic, EvenAsphere, Biconic, Toroid, Cylinder>;
+/// Odd asphere (ADR 0043, point 1; OpticStudio "Odd Asphere"): z = c r^2 / (1 + sqrt(1 - (1 + k)
+/// c^2 r^2)) + A1 r + A2 r^2 + A3 r^3 + ... with r^2 = x^2 + y^2. The base carries its curvature
+/// c (finite, 0 allowed: a plane base) instead of a radius (decision F10), so that c stays a
+/// variable also through 0; a conic constant != 0 has no effect at c = 0. The vertex curvature is
+/// c + 2 A2, not c. A1 != 0 makes a cone at the vertex (no paraxial model there, ADR 0043,
+/// point 3).
+struct OddAsphere {
+  Param curvature;                  ///< c of the base conic, 1/mm, positive as 1/Conic::radius
+  Param conic;                      ///< k of the base conic, dimensionless
+  std::vector<Param> coefficients;  ///< A1, A2, A3, ...: A_n in mm^(1 - n) for the term A_n r^n
+  bool operator==(const OddAsphere&) const = default;
+};
+
+/// Axicon (ADR 0043, point 1, derived there): the cone z = r tan(alpha) about the local z axis,
+/// apex at the vertex. alpha is the base angle between the mantle and the plane z = 0, with the
+/// sign of a curvature: alpha > 0 lets the mantle rise towards +z; alpha = 0 is the plane;
+/// |alpha| < 90 deg (decision F5). No paraxial model at the apex (F6).
+struct Axicon {
+  Param angle_deg;  ///< base angle alpha, degree
+  bool operator==(const Axicon&) const = default;
+};
+
+using BaseShape =
+    std::variant<Plane, Conic, EvenAsphere, Biconic, Toroid, Cylinder, OddAsphere, Axicon>;
 
 /// Additive Zernike sag term, Noll ordering (coefficients[0] = j = 1), coefficients in mm.
 struct ZernikeSag {

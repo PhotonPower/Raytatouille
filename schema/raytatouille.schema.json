@@ -578,6 +578,22 @@
             "conic": {"$ref": "#/$defs/param"},
             "coefficients": {"$ref": "#/$defs/param_list"}
           }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "curvature"],
+          "properties": {
+            "type": {"const": "odd_asphere"},
+            "curvature": {"$ref": "#/$defs/param"},
+            "conic": {"$ref": "#/$defs/param"},
+            "coefficients": {"$ref": "#/$defs/param_list"}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "angle_deg"],
+          "properties": {
+            "type": {"const": "axicon"},
+            "angle_deg": {"$ref": "#/$defs/param"}
+          }
         }
       ]
     },

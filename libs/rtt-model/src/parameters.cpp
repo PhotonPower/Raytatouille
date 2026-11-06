@@ -131,6 +131,12 @@ class ParamWalker {
             visit_(base + "/conic", b.conic);
             list(b.coefficients, base + "/coefficients");
             visit_(base + "/radius_of_rotation", b.radius_of_rotation);
+          } else if constexpr (std::is_same_v<B, OddAsphere>) {
+            visit_(base + "/curvature", b.curvature);
+            visit_(base + "/conic", b.conic);
+            list(b.coefficients, base + "/coefficients");
+          } else if constexpr (std::is_same_v<B, Axicon>) {
+            visit_(base + "/angle_deg", b.angle_deg);
           } else {
             static_assert(kUnhandledShape<B>, "for_each_param: unhandled base shape");
           }

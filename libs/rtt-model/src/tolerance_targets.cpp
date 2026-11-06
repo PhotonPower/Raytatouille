@@ -115,9 +115,16 @@ std::optional<std::string> quantity(const TargetIndex& index,
   if (!anchor) return std::nullopt;
   switch (kind) {
     case ToleranceKind::Radius:
-    case ToleranceKind::CurvatureRelative:
+    case ToleranceKind::CurvatureRelative: {
       if (target.anchor != ToleranceAnchor::Surface) return std::nullopt;
+      // curvature_relative perturbs the curvature of an odd asphere (ADR 0035, addendum #314).
+      const SurfaceEntry* s = index.surface(target.name);
+      if (kind == ToleranceKind::CurvatureRelative && s != nullptr &&
+          std::holds_alternative<OddAsphere>(s->surface->shape.base)) {
+        return *anchor + "/shape/base/curvature";
+      }
       return *anchor + "/shape/base/radius";
+    }
     case ToleranceKind::Conic:
       if (target.anchor != ToleranceAnchor::Surface) return std::nullopt;
       return *anchor + "/shape/base/conic";

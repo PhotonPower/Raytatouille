@@ -187,11 +187,22 @@ class ClassGenerator {
             radius = bound_skip(b.radius);
             conic = bound_skip(b.conic);
           } else if constexpr (std::is_same_v<B, Biconic> || std::is_same_v<B, Toroid> ||
-                               std::is_same_v<B, Cylinder>) {
+                               std::is_same_v<B, Cylinder> || std::is_same_v<B, Axicon>) {
             // ADR 0042, point 5: the kinds are not defined for the anamorphic types (kinds per
-            // section with decision F5 later).
+            // section with decision F5 later). ADR 0035, addendum #314: nor for the axicon,
+            // whose angle is toleranced through the kind param.
             radius = ClassSkip::ShapeType;
             conic = ClassSkip::ShapeType;
+          } else if constexpr (std::is_same_v<B, OddAsphere>) {
+            // ADR 0035, addendum #314: curvature_relative on the curvature and conic, as for the
+            // even asphere; a plane base (c = 0) has neither.
+            if (!b.curvature.is_bound() && b.curvature.value == 0.0) {
+              radius = ClassSkip::Plane;
+              conic = ClassSkip::Plane;
+            } else {
+              radius = bound_skip(b.curvature);
+              conic = bound_skip(b.conic);
+            }
           } else {
             static_assert(kUnhandledShape<B>, "tolerance classes: unhandled base shape");
           }

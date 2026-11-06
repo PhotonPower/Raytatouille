@@ -355,8 +355,25 @@ BaseShape read_base_shape(const Json& j, const Ctx& c) {
     read_opt(j, "coefficients", c, s.coefficients, read_param_list);
     return s;
   }
+  // ADR 0043, point 4: the curvature of the odd asphere and the angle of the axicon are
+  // required, conic constant and coefficients optional as for even_asphere.
+  if (type == "odd_asphere") {
+    expect_object(j, c, {"type", "curvature", "conic", "coefficients"});
+    OddAsphere s;
+    s.curvature = read_param(require(j, "curvature", c), c.at("curvature"));
+    read_opt(j, "conic", c, s.conic, read_param);
+    read_opt(j, "coefficients", c, s.coefficients, read_param_list);
+    return s;
+  }
+  if (type == "axicon") {
+    expect_object(j, c, {"type", "angle_deg"});
+    Axicon s;
+    s.angle_deg = read_param(require(j, "angle_deg", c), c.at("angle_deg"));
+    return s;
+  }
   c.at("type").fail("unknown shape type '" + type +
-                    "', expected plane, conic, even_asphere, biconic, toroid or cylinder");
+                    "', expected plane, conic, even_asphere, biconic, toroid, cylinder, "
+                    "odd_asphere or axicon");
 }
 
 ShapeTerm read_shape_term(const Json& j, const Ctx& c) {
@@ -659,7 +676,7 @@ struct Migration {
   bool before_0_6 = false;  ///< no tolerance set (ADR 0035)
   bool before_0_7 = false;  ///< no medium of the object space (ADR 0037)
   bool before_0_8 = false;  ///< no reference of the object distance (ADR 0038)
-  bool before_0_9 = false;  ///< no anamorphic base shapes (ADR 0042)
+  bool before_0_9 = false;  ///< no anamorphic base shapes (ADR 0042), no odd asphere, no axicon
 };
 
 /// Checks the schema version of `j` and tells which migrations to the current version it needs.
@@ -678,8 +695,8 @@ struct Migration {
 /// - 0.6 -> 0.7 (ADR 0037): content unchanged, only "object.medium" is new.
 /// - 0.7 -> 0.8 (ADR 0038 to 0040): content unchanged, only "object.reference", "aperture.stop"
 ///   and "aperture.reading" are new.
-/// - 0.8 -> 0.9 (ADR 0042): content unchanged, only the base shapes biconic, toroid and
-///   cylinder are new.
+/// - 0.8 -> 0.9 (ADR 0042, ADR 0043): content unchanged, only the base shapes biconic, toroid,
+///   cylinder, odd_asphere and axicon are new.
 Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
   const std::string ours(kSchemaVersion);
   const std::string mm = major_minor(version);
@@ -700,8 +717,9 @@ Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
          " and migrates 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7 and 0.8");
 }
 
-/// Files before 0.9 (ADR 0042): a biconic, toroid or cylinder base is an error at the type of
-/// its base shape, so that a version is never silently upgraded.
+/// Files before 0.9 (ADR 0042, ADR 0043, point 4): a biconic, toroid, cylinder, odd_asphere or
+/// axicon base is an error at the type of its base shape, so that a version is never silently
+/// upgraded.
 void check_0_9_forms(const Json& node, const Ctx& c) {
   if (!node.is_object()) return;  // structural errors are reported by the reader
   if (const Json* surfaces = find(node, "surfaces"); surfaces != nullptr && surfaces->is_array()) {
@@ -709,15 +727,18 @@ void check_0_9_forms(const Json& node, const Ctx& c) {
       const Json* shape = find((*surfaces)[i], "shape");
       const Json* base = shape != nullptr ? find(*shape, "base") : nullptr;
       const Json* type = base != nullptr ? find(*base, "type") : nullptr;
-      if (type != nullptr && type->is_string() &&
-          (*type == "biconic" || *type == "toroid" || *type == "cylinder")) {
+      if (type == nullptr || !type->is_string()) continue;
+      const bool anamorphic = *type == "biconic" || *type == "toroid" || *type == "cylinder";
+      const bool rotational = *type == "odd_asphere" || *type == "axicon";
+      if (anamorphic || rotational) {
         c.at("surfaces")
             .at(i)
             .at("shape")
             .at("base")
             .at("type")
             .fail("the shape '" + type->get<std::string>() +
-                  "' needs schema_version 0.9 or later (ADR 0042)");
+                  "' needs schema_version 0.9 or later (" + (anamorphic ? "ADR 0042" : "ADR 0043") +
+                  ")");
       }
     }
   }
@@ -1593,6 +1614,14 @@ class Writer {
             o["radius"] = param(s.radius);
             if (edit_ || s.conic != Param{}) o["conic"] = param(s.conic);
             if (edit_ || !s.coefficients.empty()) o["coefficients"] = param_list(s.coefficients);
+          } else if constexpr (std::is_same_v<S, OddAsphere>) {
+            o["type"] = "odd_asphere";
+            o["curvature"] = param(s.curvature);
+            if (edit_ || s.conic != Param{}) o["conic"] = param(s.conic);
+            if (edit_ || !s.coefficients.empty()) o["coefficients"] = param_list(s.coefficients);
+          } else if constexpr (std::is_same_v<S, Axicon>) {
+            o["type"] = "axicon";
+            o["angle_deg"] = param(s.angle_deg);
           } else {
             static_assert(kUnhandledShape<S>, "base_shape: unhandled base shape");
           }
