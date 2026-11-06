@@ -125,14 +125,15 @@ std::vector<Step> prepare(const CompiledSystem& cs,
     step.stop = event.surface == cs.stop_surface();  // ADR 0039, point 3
     step.surface = event.surface;
     if (s.ideal_lens) {
-      step.inverse_focal_length = 1.0 / s.ideal_lens->focal_length;
+      const compile::CompiledIdealLens& lens = *s.ideal_lens;
+      step.inverse_focal_length = 1.0 / lens.focal_length;
       step.inverse_focal_length_scale = step.inverse_focal_length;
-      if (s.ideal_lens->power_axis && section) {
+      if (lens.power_axis && section) {
         // Section x or y of the power tensor phi b b^T: phi b_s^2 (ADR 0042, point 2).
         const detail::CylinderLensSection cylinder =
-            detail::cylinder_lens_section(*s.ideal_lens->power_axis, frame, *section);
+            detail::cylinder_lens_section(*lens.power_axis, frame, *section);
         if (cylinder.error) fail(*cylinder.error);
-        step.inverse_focal_length = cylinder.factor / s.ideal_lens->focal_length;
+        step.inverse_focal_length = cylinder.factor / lens.focal_length;
       }
     }
     steps.push_back(step);

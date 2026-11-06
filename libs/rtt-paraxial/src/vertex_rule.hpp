@@ -97,7 +97,8 @@ struct SectionRule {
 struct CylinderLensSection {
   /// Why the lens has no model per section (ends with the ADR); empty if it has one.
   std::optional<std::string> error;
-  /// b_s^2 with b = Q b_l: the power of the section is phi b_s^2, phi = |n|/f.
+  /// b_s^2 with b = Q b_l: the power of the section is phi b_s^2, phi = |n|/f; exactly 0 for
+  /// b_s^2 <= kSymmetryTolerance (the section without power, ADR 0042, Nachtrag #315 PR C1).
   double factor = 0.0;
 };
 

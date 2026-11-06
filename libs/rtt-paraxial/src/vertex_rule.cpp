@@ -109,7 +109,13 @@ CylinderLensSection cylinder_lens_section(const math::Vec3& power_axis,
         "lens lies along neither; no paraxial model per section (ADR 0042)";
     return r;
   }
-  r.factor = section == Section::x ? bx * bx : by * by;
+  // The alignment check leaves one component at most about kSymmetryTolerance in magnitude
+  // (|b| = 1: |b_small| sqrt(1 - b_small^2) <= kSymmetryTolerance), so its square is at most
+  // about 1e-24 and the other square at least 1 - 1e-24. A square below kSymmetryTolerance is
+  // the rounding of psi or Q (cos 90 degree = 6.1e-17 gives 3.7e-33), not power: it is 0, so the
+  // lens is no vertex of that section (ADR 0042, Nachtrag #315 PR C1).
+  const double b_s = section == Section::x ? bx : by;
+  r.factor = b_s * b_s <= kSymmetryTolerance ? 0.0 : b_s * b_s;
   return r;
 }
 
