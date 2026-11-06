@@ -332,7 +332,11 @@ TEST_CASE("toroid in front of the stop: chief rays hit the stop centre, marginal
       const double ty = 4.0 * pupil_points[i].py;
       CHECK(std::hypot(hit.x() - tx, hit.y() - ty) <= rtt::trace::kAimTolerance);
       // A paraxial start ray may be vignetted at the stop (outside r = 4); its hit there is
-      // recorded all the same (count = stop event + 2).
+      // recorded all the same (count = stop event + 2). Any other loss must not feed the guard.
+      const bool passed = p.end.status()[i] == RayStatus::Alive;
+      const bool vignetted_at_stop = p.end.status()[i] == RayStatus::Vignetted &&
+                                     p.paths.lost_at[i] == static_cast<std::int32_t>(stop_slot - 1);
+      REQUIRE((passed || vignetted_at_stop));
       REQUIRE(p.paths.count[i] > stop_slot);
       const Vec3 q = p.paths.position_at(i, stop_slot);
       paraxial_miss = std::max(paraxial_miss, std::hypot(q.x() - tx, q.y() - ty));
@@ -406,7 +410,9 @@ TEST_CASE("paraxial start ray per section: through (z_ep,x; a) and (z_ep,y; b)",
     o.fields = R"({"type": "paraxial_image_height", "points": [{"x": 1.0, "y": 2.0}]})";
     const CompiledSystem cs = toroid_system(o);
     // Unit image height per section: the chief ray of unit slope through the EP centre, at the
-    // paraxial image plane of that section (ADR 0042, point 3, "Paraxiale Bildhöhe").
+    // paraxial image plane of that section (ADR 0042, point 3, "Paraxiale Bildhöhe"). It uses
+    // first_order_section and trace_ray_section, which test_paraxial_section.cpp verifies
+    // independently against a 2x2 matrix computation.
     const auto unit = [&](Section s) {
       const SectionPupil ep = pupil(cs, s);
       const FirstOrder fo = rtt::paraxial::first_order_section(cs, kMain, 0, s);

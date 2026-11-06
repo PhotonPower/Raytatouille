@@ -21,6 +21,7 @@
 #include "rtt/analysis/nominal_reference.hpp"
 #include "rtt/analysis/opd.hpp"
 #include "rtt/compile/compiled_system.hpp"
+#include "rtt/compile/errors.hpp"
 #include "rtt/io/json_io.hpp"
 #include "rtt/material/material.hpp"
 #include "rtt/model/model.hpp"
@@ -132,7 +133,7 @@ void check_real_ray_operands(const System& s, const TrialOverlay* overlay) {
   CHECK(e.values[0] != e.values[1]);
   // The ray operand: py = 0.7 of field 1 lands near the paraxial image height f_y tan(1 deg)
   // in y (f_y = 100 mm, detector in the paraxial y focus).
-  CHECK(std::abs(e.values[2] - 100.0 * std::tan(std::numbers::pi / 180.0)) < 0.5);
+  CHECK(std::abs(e.values[2] - 100.0 * std::tan(std::numbers::pi / 180.0)) < 0.05);
   REQUIRE(e.generators.size() == 1);
   CHECK(e.valid());
 }
@@ -204,4 +205,16 @@ TEST_CASE("merit on an anamorphic path: the error of the aiming context is the r
     CHECK_THAT(d[0].message, ContainsSubstring("the path is not supported"));
     CHECK_THAT(d[0].message, ContainsSubstring("F-number"));
   }
+}
+
+TEST_CASE("merit on an anamorphic path without a stop: NoStopError with and without overlay",
+          "[optim][anamorphic]") {
+  // ADR 0030, addendum #315: a path without a stop is not a reason of the path check; the
+  // NoStopError of the aiming is thrown on, with the overlay as without it.
+  System s = cylinder_lens();
+  s.root.children.erase(s.root.children.begin());  // the stop element
+  s.optimization.operands = {spot(0)};
+  const TrialOverlay overlay = overlay_of(s);
+  CHECK_THROWS_AS(MeritFunction(s, library(), nullptr, nullptr), rtt::compile::NoStopError);
+  CHECK_THROWS_AS(MeritFunction(s, library(), nullptr, &overlay), rtt::compile::NoStopError);
 }
