@@ -214,7 +214,7 @@ ItemAction action_of(const model::ToleranceItem& item,
       if (item.target.anchor != model::ToleranceAnchor::Surface) {
         throw std::invalid_argument("tolerance: " + what + " needs a surface");
       }
-      const std::string anchor = anchors.of(item.target);
+      const std::string& anchor = anchors.of(item.target);
       // A base with a curvature instead of a radius (odd asphere, ADR 0043, F10):
       // curvature_relative scales it, C' = C (1 + delta), without the radius check (ADR 0035,
       // addendum #314). The kind radius finds no Param there.
