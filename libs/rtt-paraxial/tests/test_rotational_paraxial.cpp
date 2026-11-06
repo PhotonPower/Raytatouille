@@ -178,11 +178,11 @@ TEST_CASE("an odd asphere with only even terms is the even asphere in the paraxi
 
 TEST_CASE("an odd asphere with A2 has the first order of a conic with c + 2 A2",
           "[paraxial][rotational]") {
-  // ADR 0043, acceptance 6: c = 1/64 and A2 = 1/256 give c_v = 1/32 exactly, the curvature of
+  // ADR 0043, acceptance 6: c = 1/64 and A2 = 1/128 give c_v = 1/32 exactly, the curvature of
   // the conic R = 32. The first order depends only on c_v, so it is the conic's bit for bit.
   const System conic = singlet(rtt::model::Conic{Param(32.0), Param(-0.5)});
   const System odd = singlet(
-      rtt::model::OddAsphere{Param(1.0 / 64.0), Param(-0.5), {Param(0.0), Param(1.0 / 256.0)}});
+      rtt::model::OddAsphere{Param(1.0 / 64.0), Param(-0.5), {Param(0.0), Param(1.0 / 128.0)}});
   const CompiledSystem a = compiled(conic);
   const CompiledSystem b = compiled(odd);
   for (std::uint16_t w = 0; w < 3; ++w) {

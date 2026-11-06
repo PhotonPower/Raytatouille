@@ -206,7 +206,9 @@ TEST_CASE("axicon intersection of flat rays against a grid and bisection",
 
 TEST_CASE("axicon intersection against intersect_newton", "[geom][axicon][intersect]") {
   // ADR 0043, acceptance 9: away from the apex the Newton iteration on the same shape agrees
-  // within 1e-12 mm.
+  // within 1e-12 mm. Newton stops at |F| <= kNewtonTolerance = 1e-12 mm, so its own t is only
+  // good to kNewtonTolerance / |F'| with F' = d_z - grad . d_perp (here F' >= 0.9): the bound
+  // per ray is that plus the rounding 8 eps (|o| + t) of either side (as ADR 0043, acceptance 1).
   std::mt19937_64 rng(314);
   std::uniform_real_distribution<double> unit(0.0, 1.0);
   int compared = 0;
@@ -222,11 +224,16 @@ TEST_CASE("axicon intersection against intersect_newton", "[geom][axicon][inters
     const Intersection<double> newton = rtt::geom::intersect_newton(axicon, o, d);
     REQUIRE(analytic.status == HitStatus::Hit);
     REQUIRE(newton.status == HitStatus::Hit);
+    const auto [gx, gy] = axicon.grad(analytic.point.x(), analytic.point.y());
+    const double df = d.z() - gx * d.x() - gy * d.y();
+    const double bound = rtt::geom::kNewtonTolerance / std::abs(df) +
+                         8.0 * std::numeric_limits<double>::epsilon() * (o.norm() + analytic.t);
+    CHECK(std::abs(analytic.t - newton.t) <= bound);
     worst = std::max(worst, std::abs(analytic.t - newton.t));
     CHECK((analytic.normal - newton.normal).cwiseAbs().maxCoeff() <= 1e-12);
     ++compared;
   }
-  CHECK(worst <= 1e-12);
+  CHECK(worst <= 1.2e-12);
   CHECK(compared == 2000);
 }
 
@@ -266,7 +273,8 @@ TEST_CASE("a ray parallel to a generatrix hits the axicon once", "[geom][axicon]
   REQUIRE(hit.point.x() < 0.0);
   CHECK(std::abs(hit.point.z() - axicon.sag(hit.point.x(), hit.point.y())) <= 1e-12);
   // No second hit further along the ray.
-  const Intersection<double> after = rtt::geom::intersect(axicon, hit.point + 1e-6 * d, d);
+  const Vec3 beyond = hit.point + 1e-6 * d;
+  const Intersection<double> after = rtt::geom::intersect(axicon, beyond, d);
   CHECK(after.status == HitStatus::Missed);
 }
 

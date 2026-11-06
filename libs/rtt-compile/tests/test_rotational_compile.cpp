@@ -15,6 +15,7 @@
 #include "rtt/geom/axicon.hpp"
 #include "rtt/geom/odd_asphere.hpp"
 #include "rtt/material/material.hpp"
+#include "rtt/math/units.hpp"
 #include "rtt/model/model.hpp"
 
 using rtt::compile::compile;
