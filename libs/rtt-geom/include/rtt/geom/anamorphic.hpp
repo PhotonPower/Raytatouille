@@ -309,8 +309,9 @@ class Toroid final {
   }
 
   /// |y| up to which the domain reaches (ADR 0042, point 1): the end of the profile or its first
-  /// crossing of the axis of rotation; +infinity for c_R = 0 or an unbounded profile that never
-  /// meets the axis. Computed once, before max_radius_.
+  /// crossing of the axis of rotation; for c_R = 0 the end of the profile (+infinity if it is
+  /// unbounded), and +infinity for an unbounded profile that never meets the axis. Computed once,
+  /// before max_radius_.
   [[nodiscard]] T domain_end() const noexcept {
     using std::abs;
     using std::isfinite;
@@ -336,7 +337,8 @@ class Toroid final {
     using std::abs;
     using std::isfinite;
     using std::sqrt;
-    if (!isfinite(y_end_)) return std::nullopt;
+    // c_R = 0 is flat in x, so unbounded whatever the profile.
+    if (cr_ == T(0) || !isfinite(y_end_)) return std::nullopt;
     const T y_end = y_end_;
     T sup = T(0);
     for (int i = 0; i <= kSamples; ++i) {
