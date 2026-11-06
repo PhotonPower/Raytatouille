@@ -102,9 +102,20 @@ NominalBasis nominal_basis(const model::System& nominal,
     for (std::uint32_t p = 0; p < cs.paths().size(); ++p) {
       const compile::PathId path{p};
       detail::PathData pd{cs.path(path).name, analysis::nominal_reference(cs, path), {}};
+      // ADR 0042, point 4: an anamorphic nominal path aims per section (its NominalReference);
+      // its first_order stays unsupported.
+      const bool anamorphic = paraxial::is_anamorphic(cs, path);
       for (std::size_t w = 0; w < cs.wavelengths_um().size(); ++w) {
         const auto wl = static_cast<std::uint16_t>(w);
         detail::WavelengthData wd;
+        wd.anamorphic = anamorphic;
+        if (anamorphic) {
+          try {
+            static_cast<void>(pd.reference.aim(wl));
+          } catch (...) {
+            wd.aim_unsupported = message_of(std::current_exception());
+          }
+        }
         try {
           const paraxial::FirstOrder fo = paraxial::first_order(cs, path, wl);
           wd.efl = fo.efl;

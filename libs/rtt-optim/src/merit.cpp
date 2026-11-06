@@ -19,6 +19,7 @@
 #include "rtt/analysis/opd.hpp"
 #include "rtt/analysis/spot.hpp"
 #include "rtt/compile/compiled_system.hpp"
+#include "rtt/compile/errors.hpp"
 #include "rtt/diagnostics/codes.hpp"
 #include "rtt/math/types.hpp"
 #include "rtt/model/optimization.hpp"
@@ -219,6 +220,47 @@ Value ray_value(const compile::CompiledSystem& cs,
   return {op.coordinate == model::RayCoordinate::X ? local.x() : local.y(), {}};
 }
 
+// ADR 0042, point 4: on an anamorphic path (rtt::paraxial::is_anamorphic) the operands from real
+// rays run if the aiming context per section builds; the paraxial operands and everything that
+// needs the paraxial exit pupil stay unsupported.
+constexpr const char* kAnamorphicParaxial =
+    "the path is anamorphic: the paraxial operands (efl, bfl, magnification, image_fnumber) need "
+    "the first order of a rotationally symmetric path (ADR 0042, point 4)";
+constexpr const char* kAnamorphicExitPupil =
+    "the path is anamorphic: the operand needs the paraxial exit pupil (reference sphere), which "
+    "is not defined per section (ADR 0042, point 4)";
+
+/// Why `op` does not run on an anamorphic path whatever the aiming; empty if it may run.
+std::string anamorphic_reason(const model::Operand& op) {
+  if (std::holds_alternative<model::FirstOrderOperand>(op)) return kAnamorphicParaxial;
+  if (std::holds_alternative<model::OpdRmsOperand>(op)) return kAnamorphicExitPupil;
+  return {};
+}
+
+/// Why `g` does not run on an anamorphic path whatever the aiming; empty if it may run.
+std::string anamorphic_reason(const model::Generator& g) {
+  if (std::holds_alternative<model::WavefrontGenerator>(g)) return kAnamorphicExitPupil;
+  return {};
+}
+
+/// The error of the aiming context of an anamorphic path (trace::aim_reference(); ADR 0042,
+/// point 3), empty if it builds. A path without a stop is not a matter of the path check: its
+/// NoStopError is thrown on, as the analyses throw it for every other path.
+std::string aiming_error(const compile::CompiledSystem& cs,
+                         compile::PathId path,
+                         std::uint16_t wavelength) {
+  try {
+    static_cast<void>(trace::aim_reference(cs, path, wavelength));
+  } catch (const compile::NoStopError&) {
+    throw;
+  } catch (const paraxial::ParaxialError& e) {
+    return e.what();
+  } catch (const std::invalid_argument& e) {
+    return e.what();
+  }
+  return {};
+}
+
 void add_warnings(std::vector<model::Diagnostic>& out, const std::vector<model::Diagnostic>& in) {
   for (const model::Diagnostic& d : in) {
     const bool known = std::any_of(out.begin(), out.end(), [&d](const model::Diagnostic& o) {
@@ -329,6 +371,18 @@ MeritFunction::MeritFunction(const model::System& system,
       if (overlay != nullptr) {
         const detail::PathData& nominal = nominal_path(*overlay, k, cs, path_id(cs, *path_of(op)));
         const detail::WavelengthData& w = nominal.wavelengths.at(wl);
+        if (w.anamorphic) {
+          // ADR 0042, point 4: the nominal system is anamorphic; its aiming per section, not its
+          // first_order, decides.
+          if (std::string why = anamorphic_reason(op); !why.empty()) {
+            unsupported.push_back(
+                diagnostic("merit.operand_unsupported", operand_pointer(i), std::move(why)));
+          } else if (!w.aim_unsupported.empty()) {
+            unsupported.push_back(diagnostic("merit.operand_unsupported", operand_pointer(i),
+                                             "the path is not supported: " + w.aim_unsupported));
+          }
+          continue;
+        }
         if (!w.unsupported.empty()) {
           unsupported.push_back(diagnostic("merit.operand_unsupported", operand_pointer(i),
                                            "the path is not supported: " + w.unsupported));
@@ -349,8 +403,20 @@ MeritFunction::MeritFunction(const model::System& system,
         }
         continue;
       }
+      const compile::PathId path = path_id(cs, *path_of(op));
+      if (paraxial::is_anamorphic(cs, path)) {
+        // ADR 0042, point 4: aimable if the aiming context per section builds.
+        if (std::string why = anamorphic_reason(op); !why.empty()) {
+          unsupported.push_back(
+              diagnostic("merit.operand_unsupported", operand_pointer(i), std::move(why)));
+        } else if (const std::string error = aiming_error(cs, path, wl); !error.empty()) {
+          unsupported.push_back(diagnostic("merit.operand_unsupported", operand_pointer(i),
+                                           "the path is not supported: " + error));
+        }
+        continue;
+      }
       try {
-        static_cast<void>(paraxial::first_order(cs, path_id(cs, *path_of(op)), wl));
+        static_cast<void>(paraxial::first_order(cs, path, wl));
       } catch (const paraxial::ParaxialError& e) {
         unsupported.push_back(diagnostic("merit.operand_unsupported", operand_pointer(i),
                                          std::string("the path is not supported: ") + e.what()));
@@ -372,14 +438,39 @@ MeritFunction::MeritFunction(const model::System& system,
       for (const std::uint16_t wl : wavelengths) {
         if (overlay != nullptr) {
           const detail::PathData& nominal = nominal_path(*overlay, k, cs, path_id(cs, *gc.path));
-          const std::string& why = nominal.wavelengths.at(wl).unsupported;
+          const detail::WavelengthData& w = nominal.wavelengths.at(wl);
+          if (w.anamorphic) {
+            // ADR 0042, point 4, as for the operands above.
+            std::string why = anamorphic_reason(gen);
+            if (why.empty() && !w.aim_unsupported.empty()) {
+              why = "the path is not supported: " + w.aim_unsupported;
+            }
+            if (why.empty()) continue;
+            unsupported.push_back(
+                diagnostic("merit.operand_unsupported", generator_pointer(g), std::move(why)));
+            break;
+          }
+          const std::string& why = w.unsupported;
           if (why.empty()) continue;
           unsupported.push_back(diagnostic("merit.operand_unsupported", generator_pointer(g),
                                            "the path is not supported: " + why));
           break;
         }
+        const compile::PathId path = path_id(cs, *gc.path);
+        if (paraxial::is_anamorphic(cs, path)) {
+          std::string why = anamorphic_reason(gen);
+          if (why.empty()) {
+            if (const std::string error = aiming_error(cs, path, wl); !error.empty()) {
+              why = "the path is not supported: " + error;
+            }
+          }
+          if (why.empty()) continue;
+          unsupported.push_back(
+              diagnostic("merit.operand_unsupported", generator_pointer(g), std::move(why)));
+          break;
+        }
         try {
-          static_cast<void>(paraxial::first_order(cs, path_id(cs, *gc.path), wl));
+          static_cast<void>(paraxial::first_order(cs, path, wl));
         } catch (const paraxial::ParaxialError& e) {
           unsupported.push_back(diagnostic("merit.operand_unsupported", generator_pointer(g),
                                            std::string("the path is not supported: ") + e.what()));
