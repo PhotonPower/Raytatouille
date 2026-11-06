@@ -52,14 +52,16 @@ class SurfaceLayout(NamedTuple):
     ``rotation`` (3, 3) and ``translation`` (3,) map local to global coordinates:
     p_global = rotation @ p_local + translation; ``translation`` is the global vertex.
     ``shape`` is "plane", "conic", "even_asphere", "biconic", "toroid", "cylinder" (ADR 0042),
-    "odd_asphere" or "axicon" (ADR 0043).
+    "odd_asphere", "axicon", "qcon" or "qbfs" (ADR 0043).
     ``curvature`` c = 1/R in 1/mm, ``conic_constant`` k and ``coefficients`` A4, A6, ... in
     mm^(1 - n) describe the y-z section of a biconic (c_y, k_y; no coefficients) and the y-z
     profile of a toroid or cylinder, otherwise the rotationally symmetric shape. For the odd
     asphere they are the curvature and conic constant of the base (not the vertex curvature
     c + 2 A2) and A1, A2, ...; for the axicon 0, 0 and no coefficients, with the base angle in
-    ``axicon_angle_deg`` (degree, None for every other shape). ``normalization_radius`` (mm)
-    belongs to Q-con and Q-bfs and is None for every shape so far (ADR 0043, point 4).
+    ``axicon_angle_deg`` (degree, None for every other shape). For Q-con and Q-bfs they are
+    the curvature and conic constant of the base (for Q-bfs not the vertex curvature) and
+    a_0, a_1, ... in mm, with ``normalization_radius`` rho in mm (None for every other shape;
+    ADR 0043, point 4).
     ``curvature_x`` (1/mm) and ``conic_constant_x`` describe the x-z section through the vertex
     in the local frame: c_x and k_x of a biconic; c_R = 1/radius_of_rotation and 0 of a toroid
     (the circle of rotation); 0 and 0 of a cylinder (flat in x, the section is a straight
