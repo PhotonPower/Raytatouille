@@ -151,4 +151,80 @@ struct FirstOrder {
                                      compile::PathId path,
                                      std::uint16_t wavelength);
 
+/// Section of a path for the paraxial computation of anamorphic systems (ADR 0042, point 2):
+/// the plane x-z or y-z of the global frame through the z axis.
+enum class Section : std::uint8_t {
+  x,  ///< the x-z plane; the ray height is the global x, the slope dx/dz
+  y,  ///< the y-z plane; the ray height is the global y, the slope dy/dz
+};
+
+/// Traces one paraxial ray along a path in one section (ADR 0042, point 2), with the same y-nu
+/// trace as trace_ray(). Conventions as in the file comment, with x in place of y for
+/// Section::x.
+///
+/// Per surface (axis +-z and position on the z axis as in first_order()):
+/// - rotationally symmetric to second order (d2z/dx2 = d2z/dy2, d2z/dxdy = 0 in its local
+///   frame): c exactly as in trace_ray(), the same in both sections;
+/// - anamorphic: the global Hessian H_g = sigma Q H_l Q^T, with Q the 2x2 transverse block of
+///   the rotation of the surface and sigma = +-1 the sign of its local z axis along global z;
+///   the principal axes must be aligned with x and y (|H_g,xy| <= 1e-12 max(|H_g,xx|,
+///   |H_g,yy|)), and c = H_g,xx in section x, H_g,yy in section y (1/mm);
+/// - ideal cylinder lens (ADR 0031, point 4): power phi b_s^2 with phi = |n|/f and b = Q b_l
+///   the global direction of power (b_l = (-sin psi, cos psi) in the local frame); b must lie
+///   along x or y (|b_x b_y| <= 1e-12).
+/// @param system     compiled system
+/// @param path       path to follow
+/// @param wavelength index into system.wavelengths_um()
+/// @param z0         global z where the ray starts, mm; the ray starts in the medium before the
+///                   first event and travels towards +z
+/// @param h0         height at z0 in the section (global x or y), mm
+/// @param u0         slope dh/dz at z0 in the global frame
+/// @param section    the section
+/// @return the ray after each event of the path, in path order; RayAtEvent::y is the height h
+/// @throws ParaxialError as trace_ray(), except for anamorphic surfaces and the ideal cylinder
+///         lens, and at a surface whose principal axes (or direction of power) are not aligned
+///         with x and y
+[[nodiscard]] std::vector<RayAtEvent> trace_ray_section(const compile::CompiledSystem& system,
+                                                        compile::PathId path,
+                                                        std::uint16_t wavelength,
+                                                        double z0,
+                                                        double h0,
+                                                        double u0,
+                                                        Section section);
+
+/// First-order data of a path in one section (ADR 0042, point 2): the same computation as
+/// first_order() with the curvatures and powers of trace_ray_section(). Pupils, magnification
+/// and the afocal threshold are defined as there; a section without power is afocal (`efl`
+/// empty). Positions are global z coordinates in mm, heights and pupil diameters are measured
+/// along x (Section::x) or y (Section::y).
+///
+/// For a path without anamorphic surfaces (is_anamorphic() false) both sections are bit for
+/// bit first_order(). For an anamorphic surface the curvature of a section is rounded relative
+/// to the whole Hessian, not to the section alone (a cylinder rotated by 90 degree about z
+/// gets the curvature cos^2(90 degree) c ~ 3.7e-33 c in the section without power); the
+/// afocal threshold counts its magnitude as |H_xx| + 2 |H_xy| + |H_yy| of the local Hessian
+/// (resp. |n|/|f| for the ideal cylinder lens) instead of |c|, and a factor b_s^2 <= 1e-12 of
+/// the ideal cylinder lens is 0 (ADR 0042, point 2 and addendum #315 PR C1).
+/// @param system     compiled system
+/// @param path       path to evaluate
+/// @param wavelength index into system.wavelengths_um()
+/// @param section    the section
+/// @throws ParaxialError as trace_ray_section(), or if the stop aperture is not circular
+[[nodiscard]] FirstOrder first_order_section(const compile::CompiledSystem& system,
+                                             compile::PathId path,
+                                             std::uint16_t wavelength,
+                                             Section section);
+
+/// True if an event of the path is at a surface with d2z/dx2 != d2z/dy2 or d2z/dxdy != 0 at
+/// its vertex in its local frame (biconic, toroid, cylinder, ...), or at an ideal cylinder lens
+/// (ADR 0042, point 2, "Erkennung"). Such a path has no first_order(); first_order_section()
+/// may compute it. The comparisons are exact, as in the vertex rule of ADR 0041, point 2.
+/// Surfaces with order < 2 (a cone at the vertex: axicon, odd asphere with A1 != 0) do not
+/// count, because their Hessian has no meaning; first_order() and first_order_section() reject
+/// them alike ("no paraxial model at the vertex").
+/// @param system compiled system
+/// @param path   path to inspect
+/// @throws ParaxialError if the path id does not exist
+[[nodiscard]] bool is_anamorphic(const compile::CompiledSystem& system, compile::PathId path);
+
 }  // namespace rtt::paraxial

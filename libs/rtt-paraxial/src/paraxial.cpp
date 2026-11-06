@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <optional>
 #include <string>
 
 #include "vertex_rule.hpp"
@@ -12,11 +13,8 @@ namespace {
 
 using compile::CompiledSystem;
 using compile::PathId;
+using detail::kSymmetryTolerance;
 using model::EventKind;
-
-/// Largest off-axis vertex position (mm) and largest transverse component of a surface's local
-/// z axis that still count as rotationally symmetric (decided for #7).
-constexpr double kSymmetryTolerance = 1e-12;
 
 /// Factor k of the afocal threshold |Phi| <= k N u (S + E) (power_scale(), #35 B9, #280).
 constexpr double kAfocalFactor = 16.0;
@@ -32,6 +30,12 @@ struct Step {
   /// 1/f of an ideal lens (ADR 0031, point 6), 1/mm; 0 for every other surface. The power of the
   /// step is then phi = |n| / f with n the index of the surrounding medium.
   double inverse_focal_length = 0.0;
+  /// Magnitudes of c and of inverse_focal_length for the afocal threshold (magnitude_trace()):
+  /// the values themselves, except in a section of an anamorphic surface or an ideal cylinder
+  /// lens, where the value of the section is rounded relative to the whole Hessian or to 1/f
+  /// (detail::SectionRule::c_scale, ADR 0042, point 2).
+  double c_scale = 0.0;
+  double inverse_focal_length_scale = 0.0;
 };
 
 /// Paraxial ray in reduced form: height y and optical direction cosine nu = n * u (signed n).
@@ -53,7 +57,12 @@ std::string surface_name(const CompiledSystem& cs, std::uint32_t surface) {
   return "'" + cs.surfaces()[surface].id.str() + "'";
 }
 
-std::vector<Step> prepare(const CompiledSystem& cs, PathId path, std::uint16_t wavelength) {
+/// The steps of a path: rotationally symmetric (first_order(), section empty) or in one section
+/// (first_order_section(), ADR 0042, point 2).
+std::vector<Step> prepare(const CompiledSystem& cs,
+                          PathId path,
+                          std::uint16_t wavelength,
+                          std::optional<Section> section) {
   if (path.index >= cs.paths().size()) {
     throw ParaxialError("paraxial: path index " + std::to_string(path.index) + " does not exist");
   }
@@ -79,8 +88,8 @@ std::vector<Step> prepare(const CompiledSystem& cs, PathId path, std::uint16_t w
     // (point 2); other orders have no paraxial model in M4.
     if (event.order != 0) fail("diffraction orders other than 0 have no paraxial model");
     // ADR 0031, point 6: the ideal lens is a y-nu step with phi = |n| / f; the cylinder lens is
-    // not rotationally symmetric (an anamorphic model is a later extension).
-    if (s.ideal_lens && s.ideal_lens->power_axis) {
+    // not rotationally symmetric; it has a model per section (ADR 0042, point 2).
+    if (!section && s.ideal_lens && s.ideal_lens->power_axis) {
       fail("the ideal cylinder lens is not rotationally symmetric; no paraxial model (ADR 0031)");
     }
     const math::Vec3 vertex = s.to_global.translation();
@@ -93,17 +102,40 @@ std::vector<Step> prepare(const CompiledSystem& cs, PathId path, std::uint16_t w
     }
     // The paraxial curvature and the vertex position come from the vertex expansion of the
     // shape, checked in local coordinates (ADR 0041, point 2); the sign of c and of the vertex
-    // shift follows the orientation of the local z axis in global coordinates.
-    const detail::VertexRule rule = detail::vertex_rule(s);
-    if (rule.first_order_error) fail(*rule.first_order_error + " (ADR 0041)");
+    // shift follows the orientation of the local z axis in global coordinates. Per section, an
+    // anamorphic surface takes its curvature from the global Hessian (ADR 0042, point 2).
     Step step;
-    step.z = detail::vertex_z(vertex.z(), axis.z(), rule.value);
-    step.c = axis.z() > 0.0 ? rule.c : -rule.c;
+    const detail::SectionFrame frame = detail::section_frame(s.to_global.rotation());
+    if (!section) {
+      const detail::VertexRule rule = detail::vertex_rule(s);
+      if (rule.first_order_error) fail(*rule.first_order_error + " (ADR 0041)");
+      step.z = detail::vertex_z(vertex.z(), axis.z(), rule.value);
+      step.c = axis.z() > 0.0 ? rule.c : -rule.c;
+      step.c_scale = step.c;
+    } else {
+      const detail::SectionRule rule =
+          detail::section_rule(detail::vertex_expansion(s), frame, *section);
+      if (rule.error) fail(*rule.error);
+      step.z = detail::vertex_z(vertex.z(), axis.z(), rule.value);
+      step.c = rule.c;
+      step.c_scale = rule.c_scale;
+    }
     step.n_after = cs.media()[event.medium_after].index[wavelength].real();
     step.kind = event.kind;
     step.stop = event.surface == cs.stop_surface();  // ADR 0039, point 3
     step.surface = event.surface;
-    if (s.ideal_lens) step.inverse_focal_length = 1.0 / s.ideal_lens->focal_length;
+    if (s.ideal_lens) {
+      const compile::CompiledIdealLens& lens = *s.ideal_lens;
+      step.inverse_focal_length = 1.0 / lens.focal_length;
+      step.inverse_focal_length_scale = step.inverse_focal_length;
+      if (lens.power_axis && section) {
+        // Section x or y of the power tensor phi b b^T: phi b_s^2 (ADR 0042, point 2).
+        const detail::CylinderLensSection cylinder =
+            detail::cylinder_lens_section(*lens.power_axis, frame, *section);
+        if (cylinder.error) fail(*cylinder.error);
+        step.inverse_focal_length = cylinder.factor / lens.focal_length;
+      }
+    }
     steps.push_back(step);
   }
   return steps;
@@ -198,7 +230,8 @@ Magnitudes magnitude_trace(const std::vector<Step>& steps,
     z = step.z;
     const double direction = n > 0.0 ? 1.0 : -1.0;
     const double n_after = step.kind == EventKind::Reflect ? -n : direction * step.n_after;
-    const double phi = std::abs(step.c * (n_after - n)) + std::abs(n * step.inverse_focal_length);
+    const double phi =
+        std::abs(step.c_scale * (n_after - n)) + std::abs(n * step.inverse_focal_length_scale);
     e_nu += e_y * phi;
     nu += y * phi;
     n = n_after;
@@ -227,7 +260,13 @@ Magnitudes magnitude_trace(const std::vector<Step>& steps,
 /// Counting n with an error u |n| instead would put u |n| into |n' - n|, which S does not hold
 /// for nearly index-matched cemented surfaces. To first order every term of the computed Phi
 /// then carries a relative error of at most 8 u per step, so the arithmetic adds at most
-/// 8 N u S for N steps.
+/// 8 N u S for N steps. Per section (first_order_section()), the curvature of an anamorphic
+/// surface sigma sum q_si q_sj h_ij rounds relative to its scale |h_xx| + 2 |h_xy| + |h_yy|, not
+/// relative to itself, and so does b_s^2 of the ideal cylinder lens relative to |b|^2 = 1; S and
+/// E therefore take that scale (Step::c_scale, inverse_focal_length_scale; ADR 0042, addendum
+/// #315 PR C1). The rounding of Q itself (entries known to about delta_q ~ u for a single
+/// rotation) adds at most about 2 delta_q times the scale per surface, which the factor 2 of the
+/// threshold covers for simple rotations; deeply nested poses round Q more.
 /// (b) Coordinates. z comes from composed poses and is known only to about u |z|, so t carries
 /// an absolute error of up to u (|z'| + |z|) / |n|, which can be far more than u |t|. Phi is
 /// affine in each t, so to first order this adds sum_i |dPhi/dt_i| u (|z_i| + |z_i-1|) / |n|,
@@ -266,15 +305,14 @@ bool changes_ray(const Step& step, double n_before) {
          step.inverse_focal_length != 0.0;
 }
 
-}  // namespace
-
-std::vector<RayAtEvent> trace_ray(const compile::CompiledSystem& system,
-                                  compile::PathId path,
-                                  std::uint16_t wavelength,
-                                  double z0,
-                                  double y0,
-                                  double u0) {
-  const std::vector<Step> steps = prepare(system, path, wavelength);
+std::vector<RayAtEvent> trace_ray_impl(const compile::CompiledSystem& system,
+                                       compile::PathId path,
+                                       std::uint16_t wavelength,
+                                       double z0,
+                                       double y0,
+                                       double u0,
+                                       std::optional<Section> section) {
+  const std::vector<Step> steps = prepare(system, path, wavelength, section);
   const double n0 = object_index(system, path, wavelength);
   State st{z0, y0, n0 * u0, n0};
   std::vector<RayAtEvent> out;
@@ -286,10 +324,11 @@ std::vector<RayAtEvent> trace_ray(const compile::CompiledSystem& system,
   return out;
 }
 
-FirstOrder first_order(const compile::CompiledSystem& system,
-                       compile::PathId path,
-                       std::uint16_t wavelength) {
-  const std::vector<Step> steps = prepare(system, path, wavelength);
+FirstOrder first_order_impl(const compile::CompiledSystem& system,
+                            compile::PathId path,
+                            std::uint16_t wavelength,
+                            std::optional<Section> section) {
+  const std::vector<Step> steps = prepare(system, path, wavelength, section);
   const double n1 = object_index(system, path, wavelength);
   const double z_first = steps.front().z;
   const double z_last = steps.back().z;
@@ -471,6 +510,52 @@ FirstOrder first_order(const compile::CompiledSystem& system,
     fo.angular_magnification = n1 * back.d / (fo.image_index * front.a);
   }
   return fo;
+}
+
+}  // namespace
+
+std::vector<RayAtEvent> trace_ray(const compile::CompiledSystem& system,
+                                  compile::PathId path,
+                                  std::uint16_t wavelength,
+                                  double z0,
+                                  double y0,
+                                  double u0) {
+  return trace_ray_impl(system, path, wavelength, z0, y0, u0, std::nullopt);
+}
+
+std::vector<RayAtEvent> trace_ray_section(const compile::CompiledSystem& system,
+                                          compile::PathId path,
+                                          std::uint16_t wavelength,
+                                          double z0,
+                                          double h0,
+                                          double u0,
+                                          Section section) {
+  return trace_ray_impl(system, path, wavelength, z0, h0, u0, section);
+}
+
+FirstOrder first_order(const compile::CompiledSystem& system,
+                       compile::PathId path,
+                       std::uint16_t wavelength) {
+  return first_order_impl(system, path, wavelength, std::nullopt);
+}
+
+FirstOrder first_order_section(const compile::CompiledSystem& system,
+                               compile::PathId path,
+                               std::uint16_t wavelength,
+                               Section section) {
+  return first_order_impl(system, path, wavelength, section);
+}
+
+bool is_anamorphic(const compile::CompiledSystem& system, compile::PathId path) {
+  if (path.index >= system.paths().size()) {
+    throw ParaxialError("paraxial: path index " + std::to_string(path.index) + " does not exist");
+  }
+  for (const auto& event : system.path(path).events) {
+    const compile::CompiledSurface& s = system.surfaces()[event.surface];
+    if (s.ideal_lens && s.ideal_lens->power_axis) return true;
+    if (detail::is_anamorphic(detail::vertex_expansion(s))) return true;
+  }
+  return false;
 }
 
 }  // namespace rtt::paraxial
