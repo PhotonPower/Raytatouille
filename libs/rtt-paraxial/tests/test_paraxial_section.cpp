@@ -190,12 +190,15 @@ Expected expected(const std::vector<Ev>& ev,
     }
     n = ev[i].n_after;
   }
-  REQUIRE(v1.has_value());
-  const Abcd m = matrix(ev, *v1, vk + 1, ev[*v1].z, 1.0, ev[vk].z);
-  const double phi = -m.c;
-  if (std::abs(phi) > 1e-14) {
-    e.efl = 1.0 / phi;
-    e.bfl = m.a * ev[vk].n_after / phi;
+  // Without a vertex nothing changes the ray: afocal (the afocal section of an ideal cylinder
+  // lens in air).
+  if (v1) {
+    const Abcd m = matrix(ev, *v1, vk + 1, ev[*v1].z, 1.0, ev[vk].z);
+    const double phi = -m.c;
+    if (std::abs(phi) > 1e-14) {
+      e.efl = 1.0 / phi;
+      e.bfl = m.a * ev[vk].n_after / phi;
+    }
   }
   const Abcd front = matrix(ev, 0, stop, ev.front().z, 1.0, ev[stop].z);
   e.z_ep = ev.front().z + front.b * 1.0 / front.a;
@@ -505,8 +508,9 @@ TEST_CASE("rotationally symmetric paths: both sections bit for bit as first_orde
     INFO(r.file);
     const CompiledSystem cs = load_reference(r.file);
     const PathId path = r.path ? *cs.find_path(r.path) : PathId{0};
-    // Content guard: the path is focal.
-    REQUIRE(rtt::paraxial::first_order(cs, path, cs.reference_wavelength()).efl.has_value());
+    // Content guard: the path is focal except for the afocal 4f system.
+    const FirstOrder ref = rtt::paraxial::first_order(cs, path, cs.reference_wavelength());
+    REQUIRE(ref.efl.has_value() == (std::string(r.file) != "m2/telecentric_4f.rtt.json"));
     CHECK_FALSE(rtt::paraxial::is_anamorphic(cs, path));
     for (std::uint16_t w = 0; w < cs.wavelengths_um().size(); ++w) {
       INFO("wavelength " << w);
