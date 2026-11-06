@@ -193,7 +193,8 @@ class ClassGenerator {
             // whose angle is toleranced through the kind param.
             radius = ClassSkip::ShapeType;
             conic = ClassSkip::ShapeType;
-          } else if constexpr (std::is_same_v<B, OddAsphere>) {
+          } else if constexpr (std::is_same_v<B, OddAsphere> || std::is_same_v<B, QCon> ||
+                               std::is_same_v<B, QBfs>) {
             // ADR 0035, addendum #314: curvature_relative on the curvature and conic, as for the
             // even asphere; a plane base (c = 0) has neither.
             if (!b.curvature.is_bound() && b.curvature.value == 0.0) {

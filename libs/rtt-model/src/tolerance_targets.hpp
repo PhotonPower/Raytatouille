@@ -67,6 +67,11 @@ class TargetIndex {
 /// the name for a row, the anchor pointer plus kind for the rigid kinds, and the element pointer
 /// plus kind and segment for the material kinds. None if the target does not resolve or does not
 /// fit the kind (validate reports that).
+/// True for a base that carries a curvature instead of a radius (odd asphere, Q-con, Q-bfs;
+/// ADR 0043, F10): curvature_relative perturbs /shape/base/curvature there, and C' may reach 0
+/// or change its sign (ADR 0035, addendum #314).
+[[nodiscard]] bool curvature_base(const BaseShape& base) noexcept;
+
 [[nodiscard]] std::optional<std::string> quantity(const TargetIndex& index,
                                                   const ToleranceTarget& target,
                                                   ToleranceKind kind);
