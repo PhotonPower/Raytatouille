@@ -222,6 +222,12 @@ bool pupil_at_infinity(const paraxial::FirstOrder& fo) {
   return fo.entrance_pupil && !fo.entrance_pupil->z;
 }
 
+/// Global z of the entrance pupil of `fo`; none if it is at infinity or there is no stop.
+std::optional<double> pupil_z(const paraxial::FirstOrder& fo) {
+  if (!fo.entrance_pupil) return std::nullopt;
+  return fo.entrance_pupil->z;
+}
+
 /// Field conversion at the reference wavelength (decided for #31): only paraxial image heights
 /// and angles with a finite object need paraxial data for it.
 bool needs_reference_data(const CompiledSystem& system) {
@@ -289,10 +295,12 @@ void set_anamorphic(Context& c) {
         c.r_ep_x = value / fy.object_index;
         c.r_ep = c.r_ep_x;
         break;
-      case model::SystemApertureType::StopSize:
-        c.r_ep_x = c.r_stop.value() / std::abs(c.stop_scale_x);
-        c.r_ep = c.r_stop.value() / std::abs(c.stop_scale);
+      case model::SystemApertureType::StopSize: {
+        const double r_stop = stop_aperture_radius(c);
+        c.r_ep_x = r_stop / std::abs(c.stop_scale_x);
+        c.r_ep = r_stop / std::abs(c.stop_scale);
         break;
+      }
       case model::SystemApertureType::EntrancePupilDiameter:
       case model::SystemApertureType::ImageSpaceFNumber:
         throw std::invalid_argument(
@@ -303,18 +311,20 @@ void set_anamorphic(Context& c) {
       throw std::invalid_argument("sources: the system aperture gives no bundle (u_m <= 0)");
     }
   } else {
-    for (const paraxial::FirstOrder* fo : {&fx, &fy}) {
-      const auto& ep = fo->entrance_pupil;
-      if (!ep || !ep->z || !ep->diameter || !(*ep->diameter > 0.0)) {
+    // (z_ep, r_ep) of one section, as make_context_core().
+    const auto finite_pupil = [](const paraxial::FirstOrder& fo) {
+      const std::optional<double> z = pupil_z(fo);
+      const std::optional<double> diameter =
+          fo.entrance_pupil ? fo.entrance_pupil->diameter : std::nullopt;
+      if (!z || !diameter || !(*diameter > 0.0)) {
         throw std::invalid_argument(
             "sources: the entrance pupil is not defined (pupil at infinity with the object at "
             "infinity, or the system aperture gives no diameter for this object)");
       }
-    }
-    c.z_ep_x = *fx.entrance_pupil->z;
-    c.r_ep_x = *fx.entrance_pupil->diameter / 2.0;
-    c.z_ep = *fy.entrance_pupil->z;
-    c.r_ep = *fy.entrance_pupil->diameter / 2.0;
+      return std::pair{*z, *diameter / 2.0};
+    };
+    std::tie(c.z_ep_x, c.r_ep_x) = finite_pupil(fx);
+    std::tie(c.z_ep, c.r_ep) = finite_pupil(fy);
     // EP plane and stop plane are conjugate in each section (make_context_core()).
     c.stop_scale_x = stop_height(Section::x, c.z_ep_x, 1.0, 0.0);
     c.stop_scale = stop_height(Section::y, c.z_ep, 1.0, 0.0);
@@ -340,13 +350,15 @@ void set_anamorphic(Context& c) {
     }
     if (at_infinity_y && !infinite) {
       c.telecentric_ref = true;
-    } else if (!c.first_order_ref_x.entrance_pupil || !c.first_order_ref.entrance_pupil ||
-               at_infinity_y) {
-      throw std::invalid_argument(
-          "sources: the entrance pupil at the reference wavelength is at infinity");
     } else {
-      c.z_ep_ref_x = *c.first_order_ref_x.entrance_pupil->z;
-      c.z_ep_ref = *c.first_order_ref.entrance_pupil->z;
+      const std::optional<double> z_x = pupil_z(c.first_order_ref_x);
+      const std::optional<double> z_y = pupil_z(c.first_order_ref);
+      if (!z_x || !z_y) {
+        throw std::invalid_argument(
+            "sources: the entrance pupil at the reference wavelength is at infinity");
+      }
+      c.z_ep_ref_x = *z_x;
+      c.z_ep_ref = *z_y;
     }
   }
   // Pupil labels (ADR 0007, addendum #35 B): sigma = -1 for an EP beyond a finite object. Each
