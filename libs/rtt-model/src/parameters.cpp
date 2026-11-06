@@ -117,7 +117,7 @@ class ParamWalker {
           } else if constexpr (std::is_same_v<B, Conic>) {
             visit_(base + "/radius", b.radius);
             visit_(base + "/conic", b.conic);
-          } else if constexpr (std::is_same_v<B, EvenAsphere>) {
+          } else if constexpr (std::is_same_v<B, EvenAsphere> || std::is_same_v<B, Cylinder>) {
             visit_(base + "/radius", b.radius);
             visit_(base + "/conic", b.conic);
             list(b.coefficients, base + "/coefficients");
@@ -131,10 +131,6 @@ class ParamWalker {
             visit_(base + "/conic", b.conic);
             list(b.coefficients, base + "/coefficients");
             visit_(base + "/radius_of_rotation", b.radius_of_rotation);
-          } else if constexpr (std::is_same_v<B, Cylinder>) {
-            visit_(base + "/radius", b.radius);
-            visit_(base + "/conic", b.conic);
-            list(b.coefficients, base + "/coefficients");
           } else {
             static_assert(kUnhandledShape<B>, "for_each_param: unhandled base shape");
           }
