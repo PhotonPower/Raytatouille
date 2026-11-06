@@ -67,9 +67,9 @@ class SurfaceLayout(NamedTuple):
     rotation of the surface about z orients the sections. ``max_radius`` is the outer extent
     of the domain of the shape in mm: the radius of the smallest disc about the vertex that
     holds the whole domain (ADR 0042, point 1), None if the domain is unbounded (plane,
-    cylinder, axicon, odd asphere with c = 0). ``aperture`` is None or (type, parameters in mm) with type "circular" (radius,
-    inner_radius), "rectangular" (half_width_x, half_width_y) or "elliptical" (semi_axis_x,
-    semi_axis_y), centred on the local axis.
+    cylinder, axicon, odd asphere with c = 0). ``aperture`` is None or (type, parameters in
+    mm) with type "circular" (radius, inner_radius), "rectangular" (half_width_x,
+    half_width_y) or "elliptical" (semi_axis_x, semi_axis_y), centred on the local axis.
 
     ``medium_front`` and ``medium_back`` index CompiledSystem.media: the media before and after
     the surface in the surface order of its element, as a refraction through the element's
