@@ -31,6 +31,9 @@ struct WavelengthData {
   /// For an anamorphic nominal path: the error of its aiming data per section
   /// (trace::aim_reference(), kept in the NominalReference), empty if they exist.
   std::string aim_unsupported;
+  /// For an anamorphic nominal path without a stop: the compile::NoStopError of its aiming, which
+  /// the merit function throws on as without overlay (not a reason of the path check).
+  std::exception_ptr aim_no_stop;
   std::optional<double> efl;            ///< nominal EFL, mm (sign of efl; none: afocal)
   std::optional<double> magnification;  ///< nominal lateral magnification (sign of magnification)
   /// Whether rtt::paraxial::prescription defines the working F-number of the nominal path (it

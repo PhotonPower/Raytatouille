@@ -4,11 +4,13 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <limits>
 #include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -230,17 +232,45 @@ constexpr const char* kAnamorphicExitPupil =
     "the path is anamorphic: the operand needs the paraxial exit pupil (reference sphere), which "
     "is not defined per section (ADR 0042, point 4)";
 
-/// Why `op` does not run on an anamorphic path whatever the aiming; empty if it may run.
+/// Dependent false for the static_asserts over the operand and generator alternatives.
+template <class>
+inline constexpr bool kUnhandledAlternative = false;
+
+/// Why `op` does not run on an anamorphic path whatever the aiming; empty if it may run. Every
+/// alternative is decided explicitly; a new one must be added here (#313).
 std::string anamorphic_reason(const model::Operand& op) {
-  if (std::holds_alternative<model::FirstOrderOperand>(op)) return kAnamorphicParaxial;
-  if (std::holds_alternative<model::OpdRmsOperand>(op)) return kAnamorphicExitPupil;
-  return {};
+  return std::visit(
+      [](const auto& o) -> std::string {
+        using O = std::decay_t<decltype(o)>;
+        if constexpr (std::is_same_v<O, model::FirstOrderOperand>) {
+          return kAnamorphicParaxial;
+        } else if constexpr (std::is_same_v<O, model::OpdRmsOperand>) {
+          return kAnamorphicExitPupil;
+        } else if constexpr (std::is_same_v<O, model::RayOperand> ||
+                             std::is_same_v<O, model::SpotRmsOperand> ||
+                             std::is_same_v<O, model::ParamValueOperand>) {
+          return {};  // real rays (param_value never reaches the path check)
+        } else {
+          static_assert(kUnhandledAlternative<O>, "anamorphic_reason: unhandled operand");
+        }
+      },
+      op);
 }
 
 /// Why `g` does not run on an anamorphic path whatever the aiming; empty if it may run.
 std::string anamorphic_reason(const model::Generator& g) {
-  if (std::holds_alternative<model::WavefrontGenerator>(g)) return kAnamorphicExitPupil;
-  return {};
+  return std::visit(
+      [](const auto& x) -> std::string {
+        using G = std::decay_t<decltype(x)>;
+        if constexpr (std::is_same_v<G, model::WavefrontGenerator>) {
+          return kAnamorphicExitPupil;
+        } else if constexpr (std::is_same_v<G, model::SpotGenerator>) {
+          return {};
+        } else {
+          static_assert(kUnhandledAlternative<G>, "anamorphic_reason: unhandled generator");
+        }
+      },
+      g);
 }
 
 /// The error of the aiming context of an anamorphic path (trace::aim_reference(); ADR 0042,
@@ -377,6 +407,8 @@ MeritFunction::MeritFunction(const model::System& system,
           if (std::string why = anamorphic_reason(op); !why.empty()) {
             unsupported.push_back(
                 diagnostic("merit.operand_unsupported", operand_pointer(i), std::move(why)));
+          } else if (w.aim_no_stop) {
+            std::rethrow_exception(w.aim_no_stop);  // as without overlay (aiming_error())
           } else if (!w.aim_unsupported.empty()) {
             unsupported.push_back(diagnostic("merit.operand_unsupported", operand_pointer(i),
                                              "the path is not supported: " + w.aim_unsupported));
@@ -442,6 +474,7 @@ MeritFunction::MeritFunction(const model::System& system,
           if (w.anamorphic) {
             // ADR 0042, point 4, as for the operands above.
             std::string why = anamorphic_reason(gen);
+            if (why.empty() && w.aim_no_stop) std::rethrow_exception(w.aim_no_stop);
             if (why.empty() && !w.aim_unsupported.empty()) {
               why = "the path is not supported: " + w.aim_unsupported;
             }

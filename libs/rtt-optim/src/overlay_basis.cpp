@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "rtt/compile/compiled_system.hpp"
+#include "rtt/compile/errors.hpp"
 #include "rtt/model/parameters.hpp"
 #include "rtt/paraxial/paraxial.hpp"
 #include "rtt/paraxial/prescription.hpp"
@@ -112,6 +113,8 @@ NominalBasis nominal_basis(const model::System& nominal,
         if (anamorphic) {
           try {
             static_cast<void>(pd.reference.aim(wl));
+          } catch (const compile::NoStopError&) {
+            wd.aim_no_stop = std::current_exception();
           } catch (...) {
             wd.aim_unsupported = message_of(std::current_exception());
           }
