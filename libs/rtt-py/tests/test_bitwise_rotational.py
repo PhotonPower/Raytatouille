@@ -96,8 +96,9 @@ def test_rotational_equal_cpp_bitwise(name: str, threads: int, cpp_dir: Path) ->
 
 
 def test_the_odd_asphere_cases_have_content() -> None:
-    """Every ray is aimed and arrives, the fields are tilted, real aiming moves the start rays
-    away from the paraxial ones, and the bundle is not trivial."""
+    """Every ray is aimed and arrives, the fields are tilted in y and in x, and the bundle is
+    not trivial. (The stop lies in front of the lens, so real and paraxial aiming start alike;
+    the two cases differ in the aiming code they run.)"""
     alive = int(rt.trace.RayStatus.ALIVE)
     real = flatten("rotational_odd_asphere_real", 1)
     paraxial = flatten("rotational_odd_asphere_paraxial", 1)
@@ -106,7 +107,7 @@ def test_the_odd_asphere_cases_have_content() -> None:
         assert set(r["status"].tolist()) == {alive}
         assert np.ptp(r["pos_x"]) > 0.1 and np.ptp(r["pos_y"]) > 0.1
     assert np.all(np.abs(real["start_dir_y"][real["field"] == 1]) > 0.02)
-    assert np.max(np.abs(real["start_pos_y"] - paraxial["start_pos_y"])) > 1e-9
+    assert np.all(np.abs(real["start_dir_x"][real["field"] == 2]) > 0.02)
 
 
 def test_the_axicon_case_has_content() -> None:
