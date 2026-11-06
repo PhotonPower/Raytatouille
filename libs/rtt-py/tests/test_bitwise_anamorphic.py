@@ -28,6 +28,8 @@ pytestmark = pytest.mark.skipif(
 Arrays = dict[str, npt.NDArray[Any]]
 EXAMPLE_DIR = REPO_ROOT / "examples" / "anamorphic"
 STEMS = ("biconic_singlet", "crossed_cylinders", "cylinder_planoconvex")
+#: Built in code from the cylinder example (toroid_before_stop()), as in anamorphic_cases.cpp.
+TOROID = "toroid_before_stop"
 #: Field angles in degree, as in anamorphic_cases.cpp.
 FIELDS = ((0.0, 0.0), (1.5, 0.0), (0.0, 1.5), (-1.0, 0.5))
 COLUMNS = ("pos_x", "pos_y", "pos_z", "dir_x", "dir_y", "dir_z", "opl", "field",
@@ -35,9 +37,25 @@ COLUMNS = ("pos_x", "pos_y", "pos_z", "dir_x", "dir_y", "dir_z", "opl", "field",
 START = ("pos_x", "pos_y", "pos_z", "dir_x", "dir_y", "dir_z")
 
 
+def toroid_before_stop(data: dict[str, Any]) -> None:
+    """As make_toroid_before_stop() in anamorphic_cases.cpp: the cylinder example with a toroid
+    (profile R = 51.68, radius of rotation 77.52) as L1.S1 and the stop (r = 4) moved behind the
+    lens to z = 20, system aperture stop_size; the entrance pupil differs per section."""
+    children = data["root"]["children"]
+    children[0], children[1] = children[1], children[0]  # lens, stop, detector
+    children[0]["surfaces"][0]["shape"]["base"] = {
+        "type": "toroid", "radius": 51.68, "radius_of_rotation": 77.52}
+    children[1]["pose"] = {"position": [0.0, 0.0, 20.0]}
+    children[1]["surfaces"][0]["aperture"]["radius"] = 4.0
+    data["aperture"] = {"type": "stop_size"}
+
+
 def compiled(stem: str) -> rt.CompiledSystem:
-    data = json.loads((EXAMPLE_DIR / f"{stem}.rtt.json").read_text(encoding="utf-8"))
+    file = "cylinder_planoconvex" if stem == TOROID else stem
+    data = json.loads((EXAMPLE_DIR / f"{file}.rtt.json").read_text(encoding="utf-8"))
     data["fields"]["points"] = [{"x": x, "y": y} for x, y in FIELDS]
+    if stem == TOROID:
+        toroid_before_stop(data)
     return rt.compile(rt.System.from_json(json.dumps(data)))
 
 
@@ -53,7 +71,7 @@ def flatten(stem: str, aiming: Aiming, threads: int) -> Arrays:
 
 CASES: dict[str, tuple[str, Aiming]] = {
     f"anamorphic_{stem}_{label}": (stem, aiming)
-    for stem in STEMS
+    for stem in (*STEMS, TOROID)
     for label, aiming in (("real", Aiming.REAL), ("paraxial", Aiming.PARAXIAL))
 }
 
@@ -88,3 +106,19 @@ def test_the_cases_have_content(stem: str) -> None:
         assert np.all(np.abs(r["start_dir_y"][f2]) > 0.02)
         assert np.all(r["start_dir_x"][f2] == 0.0)
         assert np.ptp(r["pos_x"]) > 0.1 and np.ptp(r["pos_y"]) > 0.1
+
+
+def test_the_toroid_case_aims_per_section() -> None:
+    """Toroid in front of the stop: real aiming reaches every target (ALIVE) and moves the rays
+    away from the paraxial start rays (separate pupil planes, elliptic image of the round EP in
+    the stop, Newton at work), so the bitwise case covers more than the paraxial line."""
+    alive = int(rt.trace.RayStatus.ALIVE)
+    real = flatten(TOROID, Aiming.REAL, 1)
+    paraxial = flatten(TOROID, Aiming.PARAXIAL, 1)
+    assert real["status"].size == 4 * 37
+    assert set(real["status"].tolist()) == {alive}
+    moved = (np.abs(real["start_pos_x"] - paraxial["start_pos_x"])
+             + np.abs(real["start_pos_y"] - paraxial["start_pos_y"])
+             + np.abs(real["start_dir_x"] - paraxial["start_dir_x"])
+             + np.abs(real["start_dir_y"] - paraxial["start_dir_y"]))
+    assert np.max(moved) > 1e-6

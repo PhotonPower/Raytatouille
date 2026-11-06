@@ -7,9 +7,11 @@
 
 #include <oneapi/tbb/task_arena.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "npy_writer.hpp"
@@ -26,6 +28,22 @@ namespace {
 
 namespace fs = std::filesystem;
 using trace::RayBatch;
+
+/// The case "toroid_before_stop", as toroid_before_stop() in test_bitwise_anamorphic.py: the
+/// cylinder example with a toroid (profile R = 51.68, radius of rotation 77.52) as L1.S1 and the
+/// stop (r = 4) moved behind the lens to z = 20, system aperture stop_size. The entrance pupil
+/// then differs per section in position and size (ADR 0042, acceptance 6 and 8).
+void make_toroid_before_stop(model::System& s) {
+  auto& children = s.root.children;
+  std::rotate(children.begin(), children.begin() + 1, children.begin() + 2);  // lens, stop, ...
+  auto& lens = std::get<model::Element>(children[0].value);
+  lens.surfaces[0].shape.base =
+      model::Toroid{model::Param(51.68), model::Param(0.0), {}, model::Param(77.52)};
+  auto& stop = std::get<model::Element>(children[1].value);
+  stop.pose = model::Pose::along_z(20.0);
+  stop.surfaces[0].aperture = model::CircularAperture{4.0, 0.0};
+  s.aperture = {model::SystemApertureType::StopSize, model::Param(0.0)};
+}
 
 void write_case(const fs::path& out,
                 const std::string& name,
@@ -57,11 +75,21 @@ void write_case(const fs::path& out,
 
 void run_anamorphic_cases(const fs::path& reference_dir, const fs::path& out, int threads) {
   const fs::path examples = reference_dir / ".." / ".." / "examples" / "anamorphic";
-  const char* const files[] = {"biconic_singlet", "crossed_cylinders", "cylinder_planoconvex"};
+  // The three examples, and the cylinder example turned into a toroid in front of the stop.
+  struct File {
+    const char* stem;
+    const char* file;
+  };
+  const File files[] = {{"biconic_singlet", "biconic_singlet"},
+                        {"crossed_cylinders", "crossed_cylinders"},
+                        {"cylinder_planoconvex", "cylinder_planoconvex"},
+                        {"toroid_before_stop", "cylinder_planoconvex"}};
   oneapi::tbb::task_arena arena(threads);
   arena.execute([&] {
-    for (const char* stem : files) {
-      model::System s = io::load_system(examples / (std::string(stem) + ".rtt.json"));
+    for (const File& f : files) {
+      const std::string stem = f.stem;
+      model::System s = io::load_system(examples / (std::string(f.file) + ".rtt.json"));
+      if (stem == "toroid_before_stop") make_toroid_before_stop(s);
       // Field angles in x and y (degree), as FIELDS in test_bitwise_anamorphic.py.
       s.fields.points = {{0.0, 0.0, 1.0}, {1.5, 0.0, 1.0}, {0.0, 1.5, 1.0}, {-1.0, 0.5, 1.0}};
       const compile::CompiledSystem cs = compile::compile(s, material::MaterialLibrary{});
@@ -73,8 +101,8 @@ void run_anamorphic_cases(const fs::path& reference_dir, const fs::path& out, in
         RayBatch rays = start;
         const trace::TraceStats stats =
             trace::SequentialTracer{}.trace(cs, compile::PathId{0}, rays);
-        const std::string name = std::string("anamorphic_") + stem +
-                                 (aiming == trace::Aiming::Real ? "_real" : "_paraxial");
+        const std::string name =
+            "anamorphic_" + stem + (aiming == trace::Aiming::Real ? "_real" : "_paraxial");
         write_case(out, name, stats, start, rays);
       }
     }
