@@ -9,8 +9,9 @@ Crossed cylinders (example file): L2 (R = 38.76, f = 75 mm, power in x) from z =
 puts the x focus at 34 + 75 - t/n = 106.36286919831225; the y focus of L1 (from z = 5 to 9) is
 at 9 + 100 - t/n = 106.36287 as well, but L2 acts in y as a plane-parallel plate of thickness t
 and shifts it by t (1 - 1/n) (paraxial transfer t/n in the plate instead of t; Greivenkamp,
-Sec. 9, p. 9-2). A section without power is afocal: efl None. The C++ tests (test_paraxial_section.cpp) check the values
-against an independent matrix computation; here the bindings are checked.
+Sec. 9, p. 9-2). A section without power is afocal: efl None. The C++ tests
+(test_paraxial_section.cpp) check the values against an independent matrix computation; here
+the bindings are checked.
 """
 
 from __future__ import annotations

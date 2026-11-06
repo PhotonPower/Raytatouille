@@ -260,7 +260,13 @@ Magnitudes magnitude_trace(const std::vector<Step>& steps,
 /// Counting n with an error u |n| instead would put u |n| into |n' - n|, which S does not hold
 /// for nearly index-matched cemented surfaces. To first order every term of the computed Phi
 /// then carries a relative error of at most 8 u per step, so the arithmetic adds at most
-/// 8 N u S for N steps.
+/// 8 N u S for N steps. Per section (first_order_section()), the curvature of an anamorphic
+/// surface sigma sum q_si q_sj h_ij rounds relative to its scale |h_xx| + 2 |h_xy| + |h_yy|, not
+/// relative to itself, and so does b_s^2 of the ideal cylinder lens relative to |b|^2 = 1; S and
+/// E therefore take that scale (Step::c_scale, inverse_focal_length_scale; ADR 0042, addendum
+/// #315 PR C1). The rounding of Q itself (entries known to about delta_q ~ u for a single
+/// rotation) adds at most about 2 delta_q times the scale per surface, which the factor 2 of the
+/// threshold covers for simple rotations; deeply nested poses round Q more.
 /// (b) Coordinates. z comes from composed poses and is known only to about u |z|, so t carries
 /// an absolute error of up to u (|z'| + |z|) / |n|, which can be far more than u |t|. Phi is
 /// affine in each t, so to first order this adds sum_i |dPhi/dt_i| u (|z_i| + |z_i-1|) / |n|,

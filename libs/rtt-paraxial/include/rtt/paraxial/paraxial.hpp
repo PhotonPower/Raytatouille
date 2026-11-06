@@ -203,7 +203,8 @@ enum class Section : std::uint8_t {
 /// to the whole Hessian, not to the section alone (a cylinder rotated by 90 degree about z
 /// gets the curvature cos^2(90 degree) c ~ 3.7e-33 c in the section without power); the
 /// afocal threshold counts its magnitude as |H_xx| + 2 |H_xy| + |H_yy| of the local Hessian
-/// (resp. |n|/|f| for the ideal cylinder lens) instead of |c| (ADR 0042, point 2).
+/// (resp. |n|/|f| for the ideal cylinder lens) instead of |c|, and a factor b_s^2 <= 1e-12 of
+/// the ideal cylinder lens is 0 (ADR 0042, point 2 and addendum #315 PR C1).
 /// @param system     compiled system
 /// @param path       path to evaluate
 /// @param wavelength index into system.wavelengths_um()
@@ -218,6 +219,9 @@ enum class Section : std::uint8_t {
 /// its vertex in its local frame (biconic, toroid, cylinder, ...), or at an ideal cylinder lens
 /// (ADR 0042, point 2, "Erkennung"). Such a path has no first_order(); first_order_section()
 /// may compute it. The comparisons are exact, as in the vertex rule of ADR 0041, point 2.
+/// Surfaces with order < 2 (a cone at the vertex: axicon, odd asphere with A1 != 0) do not
+/// count, because their Hessian has no meaning; first_order() and first_order_section() reject
+/// them alike ("no paraxial model at the vertex").
 /// @param system compiled system
 /// @param path   path to inspect
 /// @throws ParaxialError if the path id does not exist
