@@ -305,7 +305,8 @@ def test_the_example_shapes() -> None:
     # L2 is turned by 90 degree about z: its local y axis (the profile) is the global -x axis.
     assert np.max(np.abs(first.rotation - np.eye(3))) == 0.0
     assert np.max(np.abs(second.rotation[:, 1] - np.array([-1.0, 0.0, 0.0]))) <= 1e-15
-    # Thin-lens check of the design: both sections focus at the image (z = 106.363 mm).
+    # Thin-lens check of the design: the image (z = 106.363 mm) is the x focus of L2 and the y
+    # focus of L1 alone; L2 acts as a plate in y and moves the y focus to 107.726 mm (#315).
     image = crossed["IMG"].translation[2]
     assert 9.0 + 100.0 - 4.0 / n == pytest.approx(image, abs=1e-12)
     assert 34.0 + 75.0 - 4.0 / n == pytest.approx(image, abs=1e-12)
