@@ -408,3 +408,12 @@ TEST_CASE("biconic gradient on the rim of a parabolic x section", "[anamorphic]"
   CHECK(gx == 2.0 * cx * 3.0);
   CHECK(std::isinf(gy));
 }
+
+TEST_CASE("toroid with c_R = 0 is unbounded in x also for a bounded profile", "[anamorphic]") {
+  // c_R = 0 is the cylinder: flat in x, so the domain is a strip |y| <= y_lim of the profile
+  // (here the circle R = 35), unbounded in x (ADR 0042, point 1).
+  const Toroid<double> t(1.0 / 35.0, 0.0, {}, 0.0);
+  CHECK(!t.max_radius().has_value());
+  CHECK(t.in_domain(1e6, 10.0));
+  CHECK(!t.in_domain(0.0, 36.0));
+}
