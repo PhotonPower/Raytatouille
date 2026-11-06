@@ -74,7 +74,10 @@ void bind_enums(nb::module_& m) {
       .value("CRYSTAL", model::ClassSkip::Crystal, "index or abbe at a crystal")
       .value("METAL", model::ClassSkip::Metal, "index or abbe at a CONST material with kappa > 0")
       .value("CONST_ABBE", model::ClassSkip::ConstAbbe,
-             "abbe without dispersion (CONST, VACUUM or a glass with n_F = n_C)");
+             "abbe without dispersion (CONST, VACUUM or a glass with n_F = n_C)")
+      .value("SHAPE_TYPE", model::ClassSkip::ShapeType,
+             "curvature_relative or conic at a base type without the kind (biconic, toroid, "
+             "cylinder)");
   nb::enum_<model::OverrideEffect>(m, "OverrideEffect",
                                    "What became of a single-value override (ADR 0035, point 5).")
       .value("APPLIED", model::OverrideEffect::Applied,

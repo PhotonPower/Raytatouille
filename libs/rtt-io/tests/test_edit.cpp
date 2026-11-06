@@ -143,7 +143,10 @@ void surface_keys(const json& s, const std::string& at) {
   variant(s["shape"]["base"],
           {{"plane", {"type"}},
            {"conic", {"type", "radius", "conic"}},
-           {"even_asphere", {"type", "radius", "conic", "coefficients"}}},
+           {"even_asphere", {"type", "radius", "conic", "coefficients"}},
+           {"biconic", {"type", "radius_x", "radius_y", "conic_x", "conic_y"}},
+           {"toroid", {"type", "radius", "conic", "coefficients", "radius_of_rotation"}},
+           {"cylinder", {"type", "radius", "conic", "coefficients"}}},
           at + "/shape/base");
   for (const json& t : s["shape"]["terms"]) {
     variant(t, {{"zernike_sag", {"type", "normalization_radius", "coefficients"}}},

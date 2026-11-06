@@ -13,6 +13,8 @@
 #include <variant>
 #include <vector>
 
+#include "rtt/geom/shape.hpp"
+
 namespace rtt::compile {
 namespace {
 
@@ -161,8 +163,71 @@ Line section_line(const CompiledSurface& s, const SectionPlane& plane) {
   return {d * mx, d * my, -my, mx, d * d};
 }
 
+/// Upper bound on the bisection steps for a boundary of in_domain; a relative bracket of 1e-12
+/// takes about 40 steps from a sample spacing, a boundary at parameter 0 stops when the midpoint
+/// no longer differs from an end.
+constexpr int kMaxBisections = 200;
+
+/// Parameter of the boundary of in_domain between `inside` (in the domain) and `outside` (not),
+/// refined by bisection until the bracket is at most kDomainMargin relative to the larger end
+/// (ADR 0042, point 1, "Layout"); the end inside the domain.
+template <class S>
+double domain_boundary(const S& shape, const Line& line, double inside, double outside) {
+  for (int i = 0; i < kMaxBisections; ++i) {
+    if (!(std::abs(outside - inside) >
+          kDomainMargin * std::max(std::abs(inside), std::abs(outside)))) {
+      break;
+    }
+    const double mid = inside + (outside - inside) / 2.0;
+    if (mid == inside || mid == outside) break;
+    if (shape.in_domain(line.x(mid), line.y(mid))) {
+      inside = mid;
+    } else {
+      outside = mid;
+    }
+  }
+  return inside;
+}
+
+/// The parts of `piece` where a shape with in_domain (geom::DomainShape) is defined: the piece
+/// is sampled at `samples` points as sample_piece() does, split where in_domain changes and each
+/// boundary refined by domain_boundary() (ADR 0042, point 1, "Layout"). A piece entirely inside
+/// is returned unchanged.
+template <class S>
+std::vector<Interval> domain_pieces(const S& shape,
+                                    const Line& line,
+                                    const Interval& piece,
+                                    std::size_t samples) {
+  const auto last = static_cast<double>(samples - 1);
+  const auto at = [&](std::size_t k) {
+    return k + 1 == samples ? piece.hi
+                            : piece.lo + (piece.hi - piece.lo) * static_cast<double>(k) / last;
+  };
+  std::vector<Interval> out;
+  std::optional<double> start;  // lower end of the open part, if inside
+  double previous = at(0);
+  for (std::size_t k = 0; k < samples; ++k) {
+    const double param = at(k);
+    const bool inside = shape.in_domain(line.x(param), line.y(param));
+    if (inside && !start) {
+      start = k == 0 ? param : domain_boundary(shape, line, param, previous);
+    } else if (!inside && start) {
+      // The previous sample was inside: the part ends between the last two samples.
+      out.push_back({*start, domain_boundary(shape, line, previous, param)});
+      start.reset();
+    }
+    previous = param;
+  }
+  if (start) out.push_back({*start, piece.hi});  // the last sample is inside
+  // A part that shrank to a point (rounding at a tangent) has no profile.
+  std::erase_if(out, [](const Interval& i) { return !(i.hi > i.lo); });
+  return out;
+}
+
 /// Parameter intervals of the profile of `s` on `line`: aperture and shape domain.
-std::vector<Interval> profile_pieces(const CompiledSurface& s, const Line& line) {
+std::vector<Interval> profile_pieces(const CompiledSurface& s,
+                                     const Line& line,
+                                     std::size_t samples) {
   const std::optional<double> r_max = max_radius(s.shape);
   if (!s.aperture && !r_max) {
     throw std::invalid_argument("surface " + s.id.str() +
@@ -178,7 +243,24 @@ std::vector<Interval> profile_pieces(const CompiledSurface& s, const Line& line)
     const std::optional<Interval> domain = disc(line, *r_max * (1.0 - kDomainMargin));
     pieces = domain ? intersect(pieces, {*domain}) : std::vector<Interval>{};
   }
-  return pieces;
+  // A domain that is not a disk (ADR 0042, point 1): split each piece where in_domain changes.
+  // Shapes without in_domain keep their pieces unchanged.
+  return std::visit(
+      [&](const auto& shape) -> std::vector<Interval> {
+        using S = std::decay_t<decltype(shape)>;
+        if constexpr (geom::DomainShape<S, double>) {
+          std::vector<Interval> out;
+          for (const Interval& piece : pieces) {
+            for (const Interval& part : domain_pieces(shape, line, piece, samples)) {
+              out.push_back(part);
+            }
+          }
+          return out;
+        } else {
+          return pieces;
+        }
+      },
+      s.shape);
 }
 
 /// Point of the profile at parameter s, local coordinates.
@@ -289,7 +371,7 @@ std::vector<Polyline> surface_profile(const CompiledSystem& system,
   if (samples < 2) throw std::invalid_argument("a profile needs at least 2 samples");
   const Line line = section_line(s, plane);
   std::vector<Polyline> profile;
-  for (const Interval& piece : profile_pieces(s, line)) {
+  for (const Interval& piece : profile_pieces(s, line, samples)) {
     profile.push_back(sample_piece(s, line, piece, samples));
   }
   return profile;

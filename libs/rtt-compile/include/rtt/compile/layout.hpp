@@ -63,7 +63,11 @@ void surface_normal(const CompiledSystem& system,
 /// equally spaced along the line in the direction t = z_local x n (local), from one end to the
 /// other; ends on the aperture edge are exact. Where the domain of the shape (max_radius, e.g.
 /// the hemisphere of a sphere) limits the piece, it ends 1e-12 max_radius inside it, since the
-/// sag is NaN beyond and has an infinite slope there. No piece if the line misses the aperture.
+/// sag is NaN beyond and has an infinite slope there. A shape whose domain is not a disk (biconic,
+/// toroid, cylinder: in_domain, ADR 0042) is sampled at the same `samples` points, split where
+/// in_domain changes and each boundary is bisected to 1e-12 relative, so no point is NaN; a part
+/// of the domain between two samples outside it is missed. No piece if the line misses the
+/// aperture.
 /// A surface without aperture is cut at the domain of its shape, which is rarely what a drawing
 /// wants: give lens surfaces apertures (semi-diameters).
 /// @throws std::out_of_range if `surface` is not a surface index

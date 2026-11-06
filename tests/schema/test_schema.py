@@ -511,3 +511,44 @@ def test_0_8_object_reference_is_accepted():
 )
 def test_0_8_object_reference_errors_are_rejected(mutate):
     assert not VALIDATOR.is_valid(_obj(mutate))
+
+
+# ---- schema 0.9 (#315, ADR 0042): the anamorphic base shapes ----
+
+def _base(base):
+    doc = copy.deepcopy(load(ROOT / "tests" / "reference" / "m0" / "singlet.rtt.json"))
+    _lens(doc)["surfaces"][0]["shape"]["base"] = base
+    return doc
+
+
+@pytest.mark.parametrize(
+    "base",
+    [{"type": "biconic", "radius_x": 40.0, "radius_y": -60.0},
+     {"type": "biconic", "radius_x": 40.0, "radius_y": {"param": "RX"}, "conic_x": -0.5,
+      "conic_y": {"value": 0.2, "variable": True}},
+     {"type": "toroid", "radius": 48.0, "radius_of_rotation": 55.0},
+     {"type": "toroid", "radius": 48.0, "conic": -1.2, "coefficients": [2e-6, -3e-9],
+      "radius_of_rotation": -30.0},
+     {"type": "cylinder", "radius": -75.0},
+     {"type": "cylinder", "radius": -75.0, "conic": 0.3, "coefficients": [1e-6]}],
+    ids=["biconic", "biconic-all", "toroid", "toroid-all", "cylinder", "cylinder-all"],
+)
+def test_0_9_anamorphic_shapes_are_accepted(base):
+    assert VALIDATOR.is_valid(_base(base))
+
+
+@pytest.mark.parametrize(
+    "base",
+    [{"type": "biconic", "radius_x": 40.0},
+     {"type": "biconic", "radius_x": 40.0, "radius_y": 40.0, "radius": 40.0},
+     {"type": "biconic", "radius_x": 40.0, "radius_y": 40.0, "coefficients": [1e-6]},
+     {"type": "toroid", "radius": 48.0},
+     {"type": "toroid", "radius_of_rotation": 48.0},
+     {"type": "toroid", "radius": 48.0, "radius_of_rotation": 55.0, "conic_x": 0.0},
+     {"type": "cylinder"},
+     {"type": "cylinder", "radius": 10.0, "radius_of_rotation": 55.0}],
+    ids=["biconic-no-y", "biconic-radius", "biconic-coefficients", "toroid-no-rotation",
+         "toroid-no-radius", "toroid-conic-x", "cylinder-no-radius", "cylinder-rotation"],
+)
+def test_0_9_anamorphic_shape_errors_are_rejected(base):
+    assert not VALIDATOR.is_valid(_base(base))

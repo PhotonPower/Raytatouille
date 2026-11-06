@@ -34,14 +34,26 @@ namespace rtt::geom {
 /// - `base_conic()`: best-fit base conic (curvature c in 1/mm, conic constant k), the starting
 ///   value of the intersection; not the paraxial curvature (ADR 0041, point 1). Must not throw
 ///   (called from the noexcept intersection).
-/// - `max_radius()`: largest radial distance r = sqrt(x^2 + y^2) in mm on which the shape is
-///   defined, or std::nullopt if it is defined for all r. Must not throw (as base_conic()).
+/// - `max_radius()`: outer extent of the domain (ADR 0042, point 1): the radius r = sqrt(x^2 +
+///   y^2) in mm of the smallest disk about the vertex that contains every point where the shape
+///   is defined, or std::nullopt if the domain is unbounded. For a round domain this is its
+///   radius, and the shape is defined exactly for r <= max_radius(). Must not throw (as
+///   base_conic()).
 template <class S, class T>
 concept IntersectableShape = rtt::math::Real<T> && requires(const S& shape, T x, T y) {
   { shape.sag(x, y) } noexcept -> std::same_as<T>;
   { shape.grad(x, y) } noexcept -> std::same_as<std::pair<T, T>>;
   { shape.base_conic() } -> std::same_as<std::pair<T, T>>;
   { shape.max_radius() } -> std::same_as<std::optional<T>>;
+};
+
+/// A shape whose domain is not a disk about the vertex (ADR 0042, point 1): `in_domain(x, y)` is
+/// true exactly where `sag` is defined (not NaN). intersect_newton() then checks the start point
+/// and the iterates with it instead of the disk of max_radius(), and the layout ends its profiles
+/// on it. Plane, Conic and EvenAsphere do not have it.
+template <class S, class T>
+concept DomainShape = IntersectableShape<S, T> && requires(const S& shape, T x, T y) {
+  { shape.in_domain(x, y) } noexcept -> std::same_as<bool>;
 };
 
 /// Taylor expansion of the sag z(x, y) at the vertex (x, y) = (0, 0) in the local coordinates of

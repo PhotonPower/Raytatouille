@@ -995,6 +995,30 @@
       "if": {
         "properties": {
           "type": {
+            "const": "SurfaceLayout"
+          },
+          "schema_version": {
+            "not": {
+              "pattern": "^0\\.1\\.([0-9]|1[0-6])$"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "curvature_x",
+              "conic_constant_x"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
             "const": "TraceStats"
           }
         }

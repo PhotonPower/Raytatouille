@@ -71,7 +71,8 @@ template <class S>
         const double phi = kFullTurn * j / kAzimuthSamples;
         const double x = r * std::sin(phi);
         const double y = r * std::cos(phi);
-        // NaN only at the rim of the domain (rounding); skipped.
+        // NaN at the rim of the domain (rounding) and outside a domain that is not a disk
+        // (biconic, toroid, cylinder: max_radius is only the outer extent, ADR 0042); skipped.
         const double h = shape.sag(x, y);
         if (!std::isfinite(h)) continue;
         low = std::min(low, to_global.apply_point(math::Vec3(x, y, h)).z());

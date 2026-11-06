@@ -539,6 +539,53 @@ void bind_model_tree(nb::module_& m) {
       .def_ro("conic", &model::EvenAsphere::conic, "Conic constant, dimensionless (Param).")
       .def_ro("coefficients", &model::EvenAsphere::coefficients,
               "A4, A6, A8, ...: A_n in mm^(1 - n) for the term A_n r^n (Param each).");
+  // The anamorphic base shapes (ADR 0042, point 1): local frame of the surface, the rotation of
+  // the surface about z orients their sections.
+  read_only_class<model::Biconic>(
+      m, "Biconic",
+      "Biconic z = (c_x x^2 + c_y y^2) / (1 + sqrt(1 - (1 + k_x) c_x^2 x^2 - (1 + k_y) c_y^2 "
+      "y^2)), c_x = 1/radius_x, c_y = 1/radius_y, in the local frame of the surface (ADR 0042; "
+      "read-only copy). Each radius has the sign of Conic.radius in its section; no asphere "
+      "terms.")
+      .def_ro("radius_x", &model::Biconic::radius_x,
+              "Vertex radius of curvature R_x of the x-z section in mm, finite and non-zero "
+              "(Param).")
+      .def_ro("radius_y", &model::Biconic::radius_y,
+              "Vertex radius of curvature R_y of the y-z section in mm, finite and non-zero "
+              "(Param).")
+      .def_ro("conic_x", &model::Biconic::conic_x,
+              "Conic constant k_x of the x-z section, dimensionless (Param).")
+      .def_ro("conic_y", &model::Biconic::conic_y,
+              "Conic constant k_y of the y-z section, dimensionless (Param).");
+  read_only_class<model::Toroid>(
+      m, "Toroid",
+      "Toroid (ADR 0042; read-only copy): the profile z_y(y) = c y^2 / (1 + sqrt(1 - (1 + k) "
+      "c^2 y^2)) + A4 y^4 + A6 y^6 + ... in the local y-z plane, c = 1/radius, rotated about "
+      "the axis parallel to y through (x, z) = (0, radius_of_rotation). Both radii have the "
+      "sign of Conic.radius (positive: centre of curvature or axis of rotation on the +z side "
+      "of the vertex); radius_of_rotation == radius with conic 0 and no coefficients is a "
+      "sphere.")
+      .def_ro("radius", &model::Toroid::radius,
+              "Vertex radius of curvature of the y-z profile in mm, finite and non-zero (Param).")
+      .def_ro("conic", &model::Toroid::conic,
+              "Conic constant of the profile, dimensionless (Param).")
+      .def_ro("coefficients", &model::Toroid::coefficients,
+              "A4, A6, A8, ... of the profile: A_n in mm^(1 - n) for the term A_n y^n (Param "
+              "each).")
+      .def_ro("radius_of_rotation", &model::Toroid::radius_of_rotation,
+              "Radius of rotation R in mm, finite and non-zero: the axis of rotation lies at "
+              "z = R (Param).");
+  read_only_class<model::Cylinder>(
+      m, "Cylinder",
+      "Cylinder (ADR 0042; read-only copy): the profile z = z_y(y) of Toroid in the local y-z "
+      "plane, flat in x; the radius has the sign of Conic.radius.")
+      .def_ro("radius", &model::Cylinder::radius,
+              "Vertex radius of curvature of the y-z profile in mm, finite and non-zero (Param).")
+      .def_ro("conic", &model::Cylinder::conic,
+              "Conic constant of the profile, dimensionless (Param).")
+      .def_ro("coefficients", &model::Cylinder::coefficients,
+              "A4, A6, A8, ... of the profile: A_n in mm^(1 - n) for the term A_n y^n (Param "
+              "each).");
   read_only_class<model::ZernikeSag>(
       m, "ZernikeSag",
       "Additive Zernike sag term in Noll ordering, coefficients[0] is j = 1 (read-only copy).")
@@ -549,7 +596,8 @@ void bind_model_tree(nb::module_& m) {
   read_only_class<model::ShapeStack>(
       m, "ShapeStack",
       "Total sag = base + sum of the terms, in the local xy plane (read-only copy).")
-      .def_ro("base", &model::ShapeStack::base, "Base shape: Plane, Conic or EvenAsphere.")
+      .def_ro("base", &model::ShapeStack::base,
+              "Base shape: Plane, Conic, EvenAsphere, Biconic, Toroid or Cylinder.")
       .def_ro("terms", &model::ShapeStack::terms, "Additive terms (ZernikeSag).");
 
   // ------------------------------------------------------------- aperture -----

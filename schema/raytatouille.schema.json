@@ -7,7 +7,7 @@
   "additionalProperties": false,
   "required": ["schema_version", "units", "wavelengths", "aperture", "fields", "root", "paths"],
   "properties": {
-    "schema_version": {"type": "string", "pattern": "^0\\.8\\.[0-9]+$"},
+    "schema_version": {"type": "string", "pattern": "^0\\.9\\.[0-9]+$"},
     "name": {"type": "string"},
     "units": {
       "type": "object",
@@ -543,6 +543,37 @@
           "type": "object", "additionalProperties": false, "required": ["type", "radius"],
           "properties": {
             "type": {"const": "even_asphere"},
+            "radius": {"$ref": "#/$defs/param"},
+            "conic": {"$ref": "#/$defs/param"},
+            "coefficients": {"$ref": "#/$defs/param_list"}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "radius_x", "radius_y"],
+          "properties": {
+            "type": {"const": "biconic"},
+            "radius_x": {"$ref": "#/$defs/param"},
+            "radius_y": {"$ref": "#/$defs/param"},
+            "conic_x": {"$ref": "#/$defs/param"},
+            "conic_y": {"$ref": "#/$defs/param"}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "radius", "radius_of_rotation"],
+          "properties": {
+            "type": {"const": "toroid"},
+            "radius": {"$ref": "#/$defs/param"},
+            "conic": {"$ref": "#/$defs/param"},
+            "coefficients": {"$ref": "#/$defs/param_list"},
+            "radius_of_rotation": {"$ref": "#/$defs/param"}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "radius"],
+          "properties": {
+            "type": {"const": "cylinder"},
             "radius": {"$ref": "#/$defs/param"},
             "conic": {"$ref": "#/$defs/param"},
             "coefficients": {"$ref": "#/$defs/param_list"}

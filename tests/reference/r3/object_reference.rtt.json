@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.8.0",
+  "schema_version": "0.9.0",
   "name": "Ideal lens f = 50 mm at z = 20 mm, object 75 mm in front of its vertex (object.reference, ADR 0038)",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},

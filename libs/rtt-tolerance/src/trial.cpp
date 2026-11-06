@@ -1,6 +1,7 @@
 #include "rtt/tolerance/trial.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -64,11 +65,12 @@ struct CompensatorTarget {
 
 /// A base radius of the nominal system in one configuration (ADR 0036, addendum #293).
 struct NominalRadius {
-  std::string pointer;               ///< .../shape/base/radius (edit form, ADR 0024)
+  std::string pointer;               ///< .../shape/base/<field> (edit form, ADR 0024)
+  std::string field;                 ///< radius, radius_x, radius_y or radius_of_rotation
   std::string surface;               ///< its SurfaceId
   std::optional<std::string> row;    ///< the row it is bound to, if any
   std::optional<std::size_t> index;  ///< that row's index in System::parameters
-  std::vector<double> value;         ///< mm per configuration, finite and non-zero (model::Conic)
+  std::vector<double> value;         ///< mm per configuration, finite and non-zero (validate)
 };
 
 struct ContextData {
@@ -441,13 +443,29 @@ std::optional<std::string> radius_invalid(const ContextData& d, model::System& t
   return std::nullopt;
 }
 
-constexpr std::string_view kRadiusSuffix = "/shape/base/radius";
+constexpr std::string_view kBase = "/shape/base/";
+
+/// The radius fields of the base shapes (ADR 0036, addendum #293; ADR 0042): radius of conic,
+/// even asphere, toroid and cylinder, radius_x and radius_y of the biconic, radius_of_rotation of
+/// the toroid. Each is finite and non-zero in a valid model.
+constexpr std::array<std::string_view, 4> kRadiusFields = {"radius", "radius_x", "radius_y",
+                                                           "radius_of_rotation"};
+
+/// The radius field of a base shape that `pointer` names, or empty.
+std::string_view radius_field(std::string_view pointer) {
+  const std::size_t at = pointer.rfind(kBase);
+  if (at == std::string_view::npos) return {};
+  const std::string_view field = pointer.substr(at + kBase.size());
+  return std::find(kRadiusFields.begin(), kRadiusFields.end(), field) != kRadiusFields.end()
+             ? field
+             : std::string_view{};
+}
 
 /// The base radius Params of `system` in tree order, with their pointers (edit form).
 std::vector<std::pair<std::string, const model::Param*>> base_radii(const model::System& system) {
   std::vector<std::pair<std::string, const model::Param*>> out;
   model::for_each_param(system, [&](std::string_view pointer, const model::Param& p) {
-    if (pointer.ends_with(kRadiusSuffix)) out.emplace_back(std::string(pointer), &p);
+    if (!radius_field(pointer).empty()) out.emplace_back(std::string(pointer), &p);
   });
   return out;
 }
@@ -463,7 +481,8 @@ std::vector<detail::NominalRadius> nominal_radii(const model::System& nominal,
   for (const auto& [pointer, param] : base_radii(nominal)) {
     detail::NominalRadius r;
     r.pointer = pointer;
-    const std::string owner = pointer.substr(0, pointer.size() - kRadiusSuffix.size());
+    r.field = std::string(radius_field(pointer));
+    const std::string owner = pointer.substr(0, pointer.size() - kBase.size() - r.field.size());
     if (const auto it = surfaces.find(owner); it != surfaces.end()) r.surface = it->second;
     if (param->param) {
       r.row = *param->param;
@@ -513,7 +532,7 @@ std::optional<std::string> radius_sign_invalid(const ContextData& d,
       why << std::setprecision(std::numeric_limits<double>::max_digits10);  // 50.00000012 != 50
       why << stage << "surface '" << n.surface << "'";
       if (configurations > 1) why << ", configuration '" << system.configurations[c].name << "'";
-      why << ": the radius " << r << " mm (nominal " << n.value[c] << " mm";
+      why << ": the " << n.field << " " << r << " mm (nominal " << n.value[c] << " mm";
       if (n.row) why << ", row '" << *n.row << "'";
       why << ") is zero, infinite or of the other sign";
       return why.str();

@@ -59,6 +59,14 @@ std::optional<std::size_t> first_event_at(const std::vector<CompiledEvent>& even
 template <class>
 inline constexpr bool kUnhandledShape = false;
 
+/// The values of `params` in order (polynomial coefficients of a shape).
+std::vector<double> values(const std::vector<model::Param>& params) {
+  std::vector<double> out;
+  out.reserve(params.size());
+  for (const model::Param& p : params) out.push_back(p.value);
+  return out;
+}
+
 /// Phase layers of the model as phase functions of rtt-geom (ADR 0025, point 1): the same numbers
 /// (lines per mm; coefficients in rad, no factor 2 pi), only parameters turned into values and
 /// orientation_deg into rad. validate() guarantees lines_per_mm > 0 and normalization_radius > 0;
@@ -1031,6 +1039,20 @@ class Compiler {
             for (const model::Param& a : base.coefficients) coefficients.push_back(a.value);
             return geom::EvenAsphere<double>(1.0 / base.radius.value, base.conic.value,
                                              std::move(coefficients));
+          } else if constexpr (std::is_same_v<B, model::Biconic>) {
+            // c_x = 1/R_x, c_y = 1/R_y (ADR 0042, point 1); validate() guarantees both finite
+            // and non-zero.
+            return geom::Biconic<double>(1.0 / base.radius_x.value, 1.0 / base.radius_y.value,
+                                         base.conic_x.value, base.conic_y.value);
+          } else if constexpr (std::is_same_v<B, model::Toroid>) {
+            // Profile c = 1/R as the even asphere, c_R = 1/radius_of_rotation (ADR 0042,
+            // point 1).
+            return geom::Toroid<double>(1.0 / base.radius.value, base.conic.value,
+                                        values(base.coefficients),
+                                        1.0 / base.radius_of_rotation.value);
+          } else if constexpr (std::is_same_v<B, model::Cylinder>) {
+            return geom::Cylinder<double>(1.0 / base.radius.value, base.conic.value,
+                                          values(base.coefficients));
           } else {
             static_assert(kUnhandledShape<B>, "compile_shape: unhandled base shape");
           }

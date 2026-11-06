@@ -326,7 +326,37 @@ BaseShape read_base_shape(const Json& j, const Ctx& c) {
     read_opt(j, "coefficients", c, s.coefficients, read_param_list);
     return s;
   }
-  c.at("type").fail("unknown shape type '" + type + "', expected plane, conic or even_asphere");
+  // ADR 0042, point 1: the anamorphic types; conic constants and coefficients are optional as
+  // for even_asphere, the radii are required.
+  if (type == "biconic") {
+    expect_object(j, c, {"type", "radius_x", "radius_y", "conic_x", "conic_y"});
+    Biconic s;
+    s.radius_x = read_param(require(j, "radius_x", c), c.at("radius_x"));
+    s.radius_y = read_param(require(j, "radius_y", c), c.at("radius_y"));
+    read_opt(j, "conic_x", c, s.conic_x, read_param);
+    read_opt(j, "conic_y", c, s.conic_y, read_param);
+    return s;
+  }
+  if (type == "toroid") {
+    expect_object(j, c, {"type", "radius", "conic", "coefficients", "radius_of_rotation"});
+    Toroid s;
+    s.radius = read_param(require(j, "radius", c), c.at("radius"));
+    read_opt(j, "conic", c, s.conic, read_param);
+    read_opt(j, "coefficients", c, s.coefficients, read_param_list);
+    s.radius_of_rotation =
+        read_param(require(j, "radius_of_rotation", c), c.at("radius_of_rotation"));
+    return s;
+  }
+  if (type == "cylinder") {
+    expect_object(j, c, {"type", "radius", "conic", "coefficients"});
+    Cylinder s;
+    s.radius = read_param(require(j, "radius", c), c.at("radius"));
+    read_opt(j, "conic", c, s.conic, read_param);
+    read_opt(j, "coefficients", c, s.coefficients, read_param_list);
+    return s;
+  }
+  c.at("type").fail("unknown shape type '" + type +
+                    "', expected plane, conic, even_asphere, biconic, toroid or cylinder");
 }
 
 ShapeTerm read_shape_term(const Json& j, const Ctx& c) {
@@ -629,6 +659,7 @@ struct Migration {
   bool before_0_6 = false;  ///< no tolerance set (ADR 0035)
   bool before_0_7 = false;  ///< no medium of the object space (ADR 0037)
   bool before_0_8 = false;  ///< no reference of the object distance (ADR 0038)
+  bool before_0_9 = false;  ///< no anamorphic base shapes (ADR 0042)
 };
 
 /// Checks the schema version of `j` and tells which migrations to the current version it needs.
@@ -647,6 +678,8 @@ struct Migration {
 /// - 0.6 -> 0.7 (ADR 0037): content unchanged, only "object.medium" is new.
 /// - 0.7 -> 0.8 (ADR 0038 to 0040): content unchanged, only "object.reference", "aperture.stop"
 ///   and "aperture.reading" are new.
+/// - 0.8 -> 0.9 (ADR 0042): content unchanged, only the base shapes biconic, toroid and
+///   cylinder are new.
 Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
   const std::string ours(kSchemaVersion);
   const std::string mm = major_minor(version);
@@ -655,15 +688,44 @@ Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
     if (const Json* root = find(j, "root")) {
       check_material_forms(*root, Ctx().at("root"), mm == "0.2");
     }
-    return {true, true, true, true, true, true};
+    return {true, true, true, true, true, true, true};
   }
-  if (mm == "0.3") return {false, true, true, true, true, true};
-  if (mm == "0.4") return {false, false, true, true, true, true};
-  if (mm == "0.5") return {false, false, false, true, true, true};
-  if (mm == "0.6") return {false, false, false, false, true, true};
-  if (mm == "0.7") return {false, false, false, false, false, true};
+  if (mm == "0.3") return {false, true, true, true, true, true, true};
+  if (mm == "0.4") return {false, false, true, true, true, true, true};
+  if (mm == "0.5") return {false, false, false, true, true, true, true};
+  if (mm == "0.6") return {false, false, false, false, true, true, true};
+  if (mm == "0.7") return {false, false, false, false, false, true, true};
+  if (mm == "0.8") return {false, false, false, false, false, false, true};
   c.fail("incompatible schema_version '" + version + "', this build reads " + ours +
-         " and migrates 0.1, 0.2, 0.3, 0.4, 0.5, 0.6 and 0.7");
+         " and migrates 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7 and 0.8");
+}
+
+/// Files before 0.9 (ADR 0042): a biconic, toroid or cylinder base is an error at the type of
+/// its base shape, so that a version is never silently upgraded.
+void check_0_9_forms(const Json& node, const Ctx& c) {
+  if (!node.is_object()) return;  // structural errors are reported by the reader
+  if (const Json* surfaces = find(node, "surfaces"); surfaces != nullptr && surfaces->is_array()) {
+    for (std::size_t i = 0; i < surfaces->size(); ++i) {
+      const Json* shape = find((*surfaces)[i], "shape");
+      const Json* base = shape != nullptr ? find(*shape, "base") : nullptr;
+      const Json* type = base != nullptr ? find(*base, "type") : nullptr;
+      if (type != nullptr && type->is_string() &&
+          (*type == "biconic" || *type == "toroid" || *type == "cylinder")) {
+        c.at("surfaces")
+            .at(i)
+            .at("shape")
+            .at("base")
+            .at("type")
+            .fail("the shape '" + type->get<std::string>() +
+                  "' needs schema_version 0.9 or later (ADR 0042)");
+      }
+    }
+  }
+  if (const Json* children = find(node, "children"); children != nullptr && children->is_array()) {
+    for (std::size_t i = 0; i < children->size(); ++i) {
+      check_0_9_forms((*children)[i], c.at("children").at(i));
+    }
+  }
 }
 
 /// Files before 0.5 (ADR 0031): an ideal lens or ideal cylinder lens is an error at the type of
@@ -1177,6 +1239,9 @@ System read_system_tree(const Json& j, std::vector<Diagnostic>* warnings) {
   if (m.before_0_5) {
     if (const Json* root = find(j, "root")) check_0_5_forms(*root, c.at("root"));
   }
+  if (m.before_0_9) {
+    if (const Json* root = find(j, "root")) check_0_9_forms(*root, c.at("root"));
+  }
   if (!m.before_0_4) return read_migrated(j, m);
   Json current = j;
   migrate_0_4(current, c, warnings, true);
@@ -1511,6 +1576,23 @@ class Writer {
             o["radius"] = param(s.radius);
             if (edit_ || s.conic != Param{}) o["conic"] = param(s.conic);
             if (edit_ || !s.coefficients.empty()) o["coefficients"] = param_list(s.coefficients);
+          } else if constexpr (std::is_same_v<S, Biconic>) {
+            o["type"] = "biconic";
+            o["radius_x"] = param(s.radius_x);
+            o["radius_y"] = param(s.radius_y);
+            if (edit_ || s.conic_x != Param{}) o["conic_x"] = param(s.conic_x);
+            if (edit_ || s.conic_y != Param{}) o["conic_y"] = param(s.conic_y);
+          } else if constexpr (std::is_same_v<S, Toroid>) {
+            o["type"] = "toroid";
+            o["radius"] = param(s.radius);
+            if (edit_ || s.conic != Param{}) o["conic"] = param(s.conic);
+            if (edit_ || !s.coefficients.empty()) o["coefficients"] = param_list(s.coefficients);
+            o["radius_of_rotation"] = param(s.radius_of_rotation);
+          } else if constexpr (std::is_same_v<S, Cylinder>) {
+            o["type"] = "cylinder";
+            o["radius"] = param(s.radius);
+            if (edit_ || s.conic != Param{}) o["conic"] = param(s.conic);
+            if (edit_ || !s.coefficients.empty()) o["coefficients"] = param_list(s.coefficients);
           } else {
             static_assert(kUnhandledShape<S>, "base_shape: unhandled base shape");
           }
@@ -1628,7 +1710,11 @@ class Writer {
     OJson o;
     o["id"] = s.id.str();
     put_pose(o, s.pose);
-    if (edit_ || s.shape != ShapeStack{}) o["shape"] = shape(s.shape);
+    // The default ShapeStack is a plane without terms. Tested directly rather than with
+    // `!= ShapeStack{}`: with six base types GCC 16 at -O2 reports a false
+    // -Wnull-dereference in the inlined variant comparison of the empty term lists.
+    const bool default_shape = std::holds_alternative<Plane>(s.shape.base) && s.shape.terms.empty();
+    if (edit_ || !default_shape) o["shape"] = shape(s.shape);
     if (s.aperture) o["aperture"] = aperture(*s.aperture);
     if (edit_ || !s.phases.empty()) {
       OJson a = OJson::array();

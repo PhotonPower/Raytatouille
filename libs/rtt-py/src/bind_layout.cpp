@@ -96,19 +96,36 @@ std::vector<Out<double>> polylines(const std::vector<compile::Polyline>& lines) 
   return out;
 }
 
-/// (shape type, curvature 1/mm, conic constant, polynomial coefficients A4, A6, ...).
-std::tuple<std::string, double, double, std::vector<double>> shape_data(
-    const compile::CompiledShape& shape) {
+/// (shape type, curvature 1/mm, conic constant, polynomial coefficients A4, A6, ...,
+/// curvature_x 1/mm, conic_constant_x). The first three describe the y-z section or profile,
+/// the last two the x-z section through the vertex (ADR 0042, point 5): for the rotationally
+/// symmetric shapes they equal curvature and conic constant.
+using ShapeData = std::tuple<std::string, double, double, std::vector<double>, double, double>;
+
+ShapeData shape_data(const compile::CompiledShape& shape) {
   return std::visit(
-      [](const auto& s) -> std::tuple<std::string, double, double, std::vector<double>> {
+      [](const auto& s) -> ShapeData {
         using S = std::decay_t<decltype(s)>;
         if constexpr (std::is_same_v<S, geom::Plane<double>>) {
-          return {"plane", 0.0, 0.0, {}};
+          return {"plane", 0.0, 0.0, {}, 0.0, 0.0};
         } else if constexpr (std::is_same_v<S, geom::Conic<double>>) {
-          return {"conic", s.curvature(), s.conic_constant(), {}};
+          const double c = s.curvature();
+          const double k = s.conic_constant();
+          return {"conic", c, k, {}, c, k};
         } else if constexpr (std::is_same_v<S, geom::EvenAsphere<double>>) {
           const auto [c, k] = s.base_conic();
-          return {"even_asphere", c, k, s.coefficients()};
+          return {"even_asphere", c, k, s.coefficients(), c, k};
+        } else if constexpr (std::is_same_v<S, geom::Biconic<double>>) {
+          return {"biconic", s.curvature_y(), s.conic_y(), {}, s.curvature_x(), s.conic_x()};
+        } else if constexpr (std::is_same_v<S, geom::Toroid<double>>) {
+          // The x section through the vertex is the circle of rotation: c_R, conic 0.
+          const auto [c, k] = s.profile().base_conic();
+          return {"toroid", c, k, s.profile().coefficients(), s.curvature_of_rotation(), 0.0};
+        } else if constexpr (std::is_same_v<S, geom::Cylinder<double>>) {
+          // Flat in x: the x section through the vertex is a straight line, curvature and
+          // conic constant 0.
+          const auto [c, k] = s.profile().base_conic();
+          return {"cylinder", c, k, s.profile().coefficients(), 0.0, 0.0};
         } else {
           // Every shape has its own branch; a new one must not be labelled even_asphere
           // (ADR 0041, point 6).
