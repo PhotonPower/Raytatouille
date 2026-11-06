@@ -1,15 +1,16 @@
 #pragma once
 
 /// @file intersect.hpp
-/// Ray-surface intersection in the local coordinate system of a surface: analytic for plane and
-/// conic, Newton iteration for every other shape (ADR 0041, point 4: a template over the concrete
-/// shape, without virtual calls).
+/// Ray-surface intersection in the local coordinate system of a surface: analytic for plane,
+/// conic and axicon, Newton iteration for every other shape (ADR 0041, point 4: a template over
+/// the concrete shape, without virtual calls).
 
 #include <cmath>
 #include <cstdint>
 #include <limits>
 #include <optional>
 
+#include "rtt/geom/axicon.hpp"
 #include "rtt/geom/conic.hpp"
 #include "rtt/geom/plane.hpp"
 #include "rtt/geom/shape.hpp"
@@ -158,6 +159,97 @@ template <rtt::math::Real T>
   hit.t = t;
   hit.normal = rtt::math::Vec3T<T>::UnitZ();
   return hit;
+}
+
+/// Intersection of a ray with the axicon z = s r, s = tan(alpha) (ADR 0043, point 2, derived
+/// there). The cone is the quadric s^2 (x^2 + y^2) - z^2 = 0 on the sheet z s >= 0; with
+/// p = o + t d, |d| = 1, it gives a t^2 + 2 b t + g = 0 with a = s^2 |d_perp|^2 - d_z^2,
+/// b = s^2 o_perp . d_perp - o_z d_z and g = s^2 |o_perp|^2 - o_z^2.
+/// - Discriminant without cancellation: b^2 - a g = s^2 (|o_z d_perp - d_z o_perp|^2 -
+///   s^2 (o x d)_z^2), from the Lagrange identity for |d| = 1; it also holds for d_z = 0.
+/// - Shift: for a direction inside the cone (|d_z| > |s| |d_perp|) the origin first moves along
+///   the ray into the vertex plane, o' = o + t0 d with t0 = -o_z / d_z and o'_z := 0, so that b
+///   is no difference of two large terms; otherwise the origin stays.
+/// - Roots without cancellation as intersect_conic(); for a = 0 (the ray parallel to a
+///   generatrix) the linear solution. a counts as 0 within its rounding,
+///   |a| <= 4 eps (s^2 |d_perp|^2 + d_z^2): the second root would lie at |t| ~ 1/eps and is no
+///   crossing of the cone.
+/// - Sheet test with a tolerance of rounding size: z s >= -4 eps (|o'| + |t'|) |s|.
+/// alpha = 0 is the plane (intersect() of Plane). The normal is (-s x / r, -s y / r, 1)
+/// normalized, (0, 0, 1) at the apex (F8).
+/// @param axicon    the cone in local coordinates
+/// @param origin    ray origin in local coordinates, mm
+/// @param direction direction in local coordinates; must have length 1 so that t is in mm
+/// @param t_min     smallest accepted ray parameter in mm
+/// @return nearest hit with t > t_min on the sheet z s >= 0, or Missed.
+template <rtt::math::Real T>
+[[nodiscard]] Intersection<T> intersect(const Axicon<T>& axicon,
+                                        const rtt::math::Vec3T<T>& origin,
+                                        const rtt::math::Vec3T<T>& direction,
+                                        T t_min = T(kDefaultTMin)) noexcept {
+  using std::abs;
+  using std::hypot;
+  using std::sqrt;
+  using Vec = rtt::math::Vec3T<T>;
+  const T s = axicon.slope();
+  if (s == T(0)) {
+    return intersect(Plane<T>(), origin, direction, t_min);
+  }
+  const T eps = std::numeric_limits<T>::epsilon();
+  const T s2 = s * s;
+  const T dx = direction.x();
+  const T dy = direction.y();
+  const T dz = direction.z();
+  const T d_perp2 = dx * dx + dy * dy;
+  T t0 = T(0);
+  Vec o = origin;
+  if (abs(dz) > abs(s) * sqrt(d_perp2)) {
+    t0 = -origin.z() / dz;
+    o = origin + t0 * direction;
+    o.z() = T(0);
+  }
+  T a = s2 * d_perp2 - dz * dz;
+  if (abs(a) <= T(4) * eps * (s2 * d_perp2 + dz * dz)) {
+    a = T(0);
+  }
+  const T b = s2 * (o.x() * dx + o.y() * dy) - o.z() * dz;
+  const T g = s2 * (o.x() * o.x() + o.y() * o.y()) - o.z() * o.z();
+  const T wx = o.z() * dx - dz * o.x();
+  const T wy = o.z() * dy - dz * o.y();
+  const T cz = o.x() * dy - o.y() * dx;
+  const T disc = s2 * (wx * wx + wy * wy - s2 * cz * cz);
+  if (!(disc >= T(0))) {  // also catches NaN input
+    return {};
+  }
+  // Press et al., Numerical Recipes, 3rd ed., Sec. 5.6, Eqs. 5.6.4-5.6.5, as intersect_conic().
+  const T q = -(b + (b < T(0) ? -sqrt(disc) : sqrt(disc)));
+  const T o_norm = o.norm();
+  Intersection<T> best;
+  const auto consider = [&](T tp) {
+    const T t = t0 + tp;
+    if (!(t > t_min) || (best.status == HitStatus::Hit && t >= best.t)) {
+      return;
+    }
+    const Vec p = o + tp * direction;
+    if (!(p.z() * s >= -T(4) * eps * (o_norm + abs(tp)) * abs(s)) || !p.allFinite()) {
+      return;  // the other sheet of the quadric, z s < 0
+    }
+    const T r = hypot(p.x(), p.y());
+    best.status = HitStatus::Hit;
+    best.t = t;
+    best.point = p;
+    best.normal = r > T(0) ? Vec(-s * (p.x() / r), -s * (p.y() / r), T(1)).normalized()
+                           : Vec(T(0), T(0), T(1));
+  };
+  if (a != T(0)) {
+    consider(q / a);
+  }
+  if (q != T(0)) {
+    consider(g / q);
+  } else if (b == T(0) && g == T(0)) {
+    consider(T(0));  // the ray passes through the apex in the vertex plane
+  }
+  return best;
 }
 
 /// Newton intersection with any shape: start at the analytic hit of the base conic (or of the
