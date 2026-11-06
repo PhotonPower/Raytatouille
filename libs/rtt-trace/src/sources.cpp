@@ -136,10 +136,10 @@ struct Context {
 
 // Pupil data of section x (ADR 0042, point 3); for a path that is not anamorphic the one
 // (rotationally symmetric) value, so formulas over both sections reduce to those of before.
-double z_ep_x(const Context& c) {
+double section_x_z_ep(const Context& c) {
   return c.anamorphic ? c.z_ep_x : c.z_ep;
 }
-double r_ep_x(const Context& c) {
+double section_x_r_ep(const Context& c) {
   return c.anamorphic ? c.r_ep_x : c.r_ep;
 }
 
@@ -615,12 +615,13 @@ UnitHeights unit_image_heights(const Context& c) {
         "sources: paraxial image height needs a finite paraxial image in both sections "
         "(anamorphic path, ADR 0042)");
   }
+  // Bound once after the check (the lambda body is analysed on its own).
+  const double z_image_x = *c.first_order_ref_x.image_z;
+  const double z_image_y = *c.first_order_ref.image_z;
   const CompiledSystem& system = *c.system;
   const std::uint16_t ref = system.reference_wavelength();
-  const auto unit = [&](paraxial::Section s) {
-    const bool in_x = s == paraxial::Section::x;
-    const double z_image = in_x ? *c.first_order_ref_x.image_z : *c.first_order_ref.image_z;
-    const double z_ep = in_x ? c.z_ep_ref_x : c.z_ep_ref;
+  const auto unit = [&](paraxial::Section s, double z_image) {
+    const double z_ep = s == paraxial::Section::x ? c.z_ep_ref_x : c.z_ep_ref;
     std::vector<paraxial::RayAtEvent> ray;
     if (system.object().at_infinity) {
       ray = paraxial::trace_ray_section(system, c.path, ref, z_ep, 0.0, 1.0, s);
@@ -642,7 +643,7 @@ UnitHeights unit_image_heights(const Context& c) {
     if (h == 0.0) throw std::invalid_argument("sources: chief ray does not reach the image");
     return h;
   };
-  return {unit(paraxial::Section::x), unit(paraxial::Section::y)};
+  return {unit(paraxial::Section::x, z_image_x), unit(paraxial::Section::y, z_image_y)};
 }
 
 /// Field point `field` of the system.
@@ -720,7 +721,7 @@ FieldStart make_field(const Context& c, const model::Field& f) {
   FieldStart start;
   start.infinite = infinite;
   if (!infinite) {
-    if (!c.telecentric && (c.z_ep == z_obj || z_ep_x(c) == z_obj)) {
+    if (!c.telecentric && (c.z_ep == z_obj || section_x_z_ep(c) == z_obj)) {
       throw std::invalid_argument("sources: entrance pupil in the object");
     }
     start.object = Vec3(hx, hy, z_obj);
@@ -853,8 +854,8 @@ AimedRay aim(const Context& c, const FieldStart& f, double px, double py, Aiming
   // Paraxial solution: straight through the EP point (sx, sy) * r_ep, or with the slopes
   // (sx, sy) * u_m for an object-space telecentric system.
   // An anamorphic path has its own EP per section: a = s_x r_ep,x, b = s_y r_ep,y (ADR 0042,
-  // point 3); r_ep_x(c) is r_ep otherwise.
-  double a = sx * r_ep_x(c);
+  // point 3); section_x_r_ep(c) is r_ep otherwise.
+  double a = sx * section_x_r_ep(c);
   double b = sy * c.r_ep;
   AimedRay out;
   out.ray = ray_through(c, f, a, b);
@@ -957,7 +958,7 @@ AimedRay aim(const Context& c, const FieldStart& f, double px, double py, Aiming
   }
   out.ray.status = RayStatus::NoConvergence;
   if (!out.ray.pos.allFinite() || !out.ray.dir.allFinite()) {
-    out.ray = ray_through(c, f, sx * r_ep_x(c), sy * c.r_ep);
+    out.ray = ray_through(c, f, sx * section_x_r_ep(c), sy * c.r_ep);
     out.ray.status = RayStatus::NoConvergence;
   }
   // ADR 0007, addendum #310: a target outside the outer rim of the stop aperture cannot be passed
