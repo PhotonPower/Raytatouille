@@ -148,6 +148,9 @@ struct Ev {
 struct Expected {
   std::optional<double> efl;
   std::optional<double> bfl;
+  std::optional<double> ffl;                ///< first vertex -> F, positive upstream
+  std::optional<double> front_principal_z;  ///< global z of H
+  std::optional<double> rear_principal_z;   ///< global z of H'
   std::optional<double> z_ep;
   std::optional<double> r_ep;
 };
@@ -196,8 +199,16 @@ Expected expected(const std::vector<Ev>& ev,
     const Abcd m = matrix(ev, *v1, vk + 1, ev[*v1].z, 1.0, ev[vk].z);
     const double phi = -m.c;
     if (std::abs(phi) > 1e-14) {
+      // Front side (Greivenkamp, Sec. 9, p. 9-14: f_F = -n/phi, FFD = -y_1/u_1): a ray from F
+      // with slope u reaches V1 with (y, nu) = ((z_V1 - z_F) u, u) and leaves parallel:
+      // C (z_V1 - z_F) + D = 0, so ffl = z_V1 - z_F = D/phi (n = 1 in object space).
+      // Principal planes at the focal lengths n/phi and n'/phi from F and F' (p. 9-12, 9-14).
+      const double n_img = ev[vk].n_after;
       e.efl = 1.0 / phi;
-      e.bfl = m.a * ev[vk].n_after / phi;
+      e.bfl = m.a * n_img / phi;
+      e.ffl = m.d / phi;
+      e.front_principal_z = ev[*v1].z - *e.ffl + 1.0 / phi;
+      e.rear_principal_z = ev[vk].z + *e.bfl - n_img / phi;
     }
   }
   const Abcd front = matrix(ev, 0, stop, ev.front().z, 1.0, ev[stop].z);
@@ -218,8 +229,14 @@ void check(const FirstOrder& fo, const Expected& e) {
     REQUIRE(fo.bfl.has_value());
     INFO("bfl " << *fo.bfl << " expected " << *e.bfl);
     CHECK(close(*fo.bfl, *e.bfl));
+    REQUIRE(fo.ffl.has_value());
+    INFO("ffl " << *fo.ffl << " expected " << *e.ffl);
+    CHECK(close(*fo.ffl, *e.ffl));
+    CHECK(close(fo.front_principal_z.value(), *e.front_principal_z));
+    CHECK(close(fo.rear_principal_z.value(), *e.rear_principal_z));
   } else {
     CHECK_FALSE(fo.bfl.has_value());
+    CHECK_FALSE(fo.ffl.has_value());
   }
   REQUIRE(fo.entrance_pupil.has_value());
   REQUIRE(fo.entrance_pupil->z.has_value());
@@ -607,4 +624,48 @@ TEST_CASE("is_anamorphic", "[paraxial][section]") {
              detector(110.0)}),
       PathId{0}));
   CHECK_THROWS_AS(rtt::paraxial::is_anamorphic(ideal, PathId{7}), ParaxialError);
+}
+
+TEST_CASE("ideal cylinder lens in its section without power is no vertex", "[paraxial][section]") {
+  // Review of C1 (P2-2): for psi = 90 degree, b_l = (-1, cos 90 degree) = (-1, 6.1e-17), and
+  // psi = 0 on a surface rotated by 90 degree gives b_g,y of the same size, so b_y^2 = 3.7e-33.
+  // That factor is rounding, not power: in the y section the lens must not count as a vertex
+  // that changes the ray, or bfl, ffl and the principal planes would be measured from it. The
+  // oracle (expected()) has no power there (thin_phi = 0). Singlet: sphere R = 51.68 at z = 5,
+  // plane rear side at z = 9, stop at z = 0; the cylinder lens (f = 50) behind it at z = 20 or
+  // in front of the first vertex at z = 2.
+  const std::string sphere = R"({"type": "conic", "radius": 51.68})";
+  struct Case {
+    const char* name;
+    std::string element_pose;
+    double psi_deg;
+  };
+  for (const double z_lens : {20.0, 2.0}) {
+    for (const Case& c : {Case{"psi = 90", pose(z_lens), 90.0},
+                          Case{"psi = 0, rotated 90 about z", pose(z_lens, 0.0, 0.0, 90.0), 0.0}}) {
+      INFO(c.name << ", lens at z = " << z_lens);
+      const std::string cylinder =
+          thin(c.element_pose, R"({"type": "ideal_cylinder_lens", "focal_length": 50.0,)"
+                               R"( "axis_deg": )" +
+                                   json_number(c.psi_deg) + "}");
+      const std::string singlet = lens("L1", pose(5.0), sphere, pose(0.0), 4.0);
+      const CompiledSystem cs = z_lens > 9.0
+                                    ? build({stop(0.0, 10.0), singlet, cylinder, detector(110.0)})
+                                    : build({stop(0.0, 10.0), cylinder, singlet, detector(110.0)});
+      const auto events = [z_lens](double phi) {
+        std::vector<Ev> ev = {{0.0, 0.0, 1.0}, {5.0, 1.0 / kRy, kN}, {9.0, 0.0, 1.0}};
+        const Ev il{z_lens, 0.0, 1.0, phi};
+        ev.insert(z_lens > 9.0 ? ev.end() : ev.begin() + 1, il);
+        ev.push_back({110.0, 0.0, 1.0});
+        return ev;
+      };
+      // Content guard: in y the singlet alone (bfl from z = 9, ffl from z = 5); in x both.
+      const Expected ey = expected(events(0.0), 0, std::nullopt);
+      const Expected ex = expected(events(1.0 / 50.0), 0, std::nullopt);
+      REQUIRE(close(*ey.bfl, 100.0 - 4.0 / kN, 1e-12));
+      REQUIRE(std::abs(*ex.efl - *ey.efl) > 1.0);
+      check(section(cs, Section::y), ey);
+      check(section(cs, Section::x), ex);
+    }
+  }
 }
