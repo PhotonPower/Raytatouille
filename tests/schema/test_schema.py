@@ -552,3 +552,36 @@ def test_0_9_anamorphic_shapes_are_accepted(base):
 )
 def test_0_9_anamorphic_shape_errors_are_rejected(base):
     assert not VALIDATOR.is_valid(_base(base))
+
+
+# ---- schema 0.9 (#314, ADR 0043): odd asphere and axicon ----
+
+@pytest.mark.parametrize(
+    "base",
+    [{"type": "odd_asphere", "curvature": 0.02},
+     {"type": "odd_asphere", "curvature": 0.0, "conic": -0.5, "coefficients": [1e-3, 0.0, 2e-6]},
+     {"type": "odd_asphere", "curvature": {"param": "C"},
+      "conic": {"value": 0.2, "variable": True}, "coefficients": [{"value": 1e-3}]},
+     {"type": "axicon", "angle_deg": -5.0},
+     {"type": "axicon", "angle_deg": {"value": 10.0, "variable": True}}],
+    ids=["odd", "odd-all", "odd-params", "axicon", "axicon-param"],
+)
+def test_0_9_rotational_shapes_are_accepted(base):
+    assert VALIDATOR.is_valid(_base(base))
+
+
+@pytest.mark.parametrize(
+    "base",
+    [{"type": "odd_asphere"},
+     {"type": "odd_asphere", "radius": 50.0},
+     {"type": "odd_asphere", "curvature": 0.02, "radius": 50.0},
+     {"type": "odd_asphere", "curvature": "0.02"},
+     {"type": "odd_asphere", "curvature": 0.02, "coefficients": 1e-3},
+     {"type": "axicon"},
+     {"type": "axicon", "angle": 5.0},
+     {"type": "axicon", "angle_deg": 5.0, "conic": 0.0}],
+    ids=["odd-empty", "odd-radius", "odd-both", "odd-string", "odd-scalar-coefficients",
+         "axicon-empty", "axicon-angle", "axicon-conic"],
+)
+def test_0_9_rotational_shape_errors_are_rejected(base):
+    assert not VALIDATOR.is_valid(_base(base))

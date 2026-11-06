@@ -303,6 +303,17 @@ std::vector<Case> cases() {
        [](System& s) {
          element(s, 1).surfaces[0].shape.base = EvenAsphere{Param(51.68), Param(0.0), {}};
        }},
+      // --- schema 0.9 (#314): odd asphere and axicon (ADR 0043, point 4)
+      {"shape.curvature_invalid", "/root/children/1/surfaces/0/shape/base/curvature",
+       [](System& s) {
+         element(s, 1).surfaces[0].shape.base = OddAsphere{Param(kNaN), Param(0.0), {Param(1e-3)}};
+       }},
+      {"shape.conic_without_curvature", "/root/children/1/surfaces/0/shape/base/conic",
+       [](System& s) {
+         element(s, 1).surfaces[0].shape.base = OddAsphere{Param(0.0), Param(-1.0), {Param(1e-3)}};
+       }},
+      {"shape.axicon_angle_invalid", "/root/children/1/surfaces/0/shape/base/angle_deg",
+       [](System& s) { element(s, 1).surfaces[0].shape.base = Axicon{Param(90.0)}; }},
       {"shape.zernike_radius_invalid",
        "/root/children/1/surfaces/0/shape/terms/0/normalization_radius",
        [](System& s) {

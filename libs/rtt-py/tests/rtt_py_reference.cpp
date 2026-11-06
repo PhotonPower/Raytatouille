@@ -43,6 +43,7 @@
 #include "pupil_cases.hpp"
 #include "q_cases.hpp"
 #include "reports_cases.hpp"
+#include "rotational_cases.hpp"
 #include "rtt/coating/catalog.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/io/json_io.hpp"
@@ -349,6 +350,7 @@ int main(int argc, char** argv) {
     rtt::py::reference::run_tolerance_cases(args[0], args[1], args[2], threads);
     rtt::py::reference::run_m7_cases(args[0], args[1], args[2], threads);
     rtt::py::reference::run_anamorphic_cases(args[0], args[2], threads);
+    rtt::py::reference::run_rotational_cases(args[0], args[2], threads);
     return 0;
   } catch (const std::exception& e) {
     std::cerr << "rtt_py_reference: " << e.what() << '\n';

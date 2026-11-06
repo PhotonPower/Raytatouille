@@ -19,6 +19,7 @@ if(RTT_BUILD_TESTS)
   rtt_add_test(rtt_tolerance_tests
     SOURCES tests/test_classes.cpp tests/test_m7_acceptance.cpp tests/test_monte_carlo.cpp
       tests/test_anamorphic_radius_sign.cpp tests/test_object_reference.cpp
+      tests/test_rotational_tolerance.cpp
       tests/test_radius_sign.cpp tests/test_random.cpp
       tests/test_sensitivity.cpp tests/test_trial.cpp
     LIBS rtt::tolerance rtt::io TBB::tbb)

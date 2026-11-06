@@ -197,3 +197,45 @@ def test_older_surface_layouts_without_the_x_section_are_valid(key: str):
 def test_surface_layouts_from_0_1_17_need_the_x_section(key: str, version: str):
     with pytest.raises(jsonschema.ValidationError):
         VALIDATOR.validate(_surface_layout_without(key, version))
+
+
+# SurfaceLayout gained normalization_radius and axicon_angle_deg in 0.1.18 (#314, ADR 0043,
+# point 4, ADR 0023 addendum): older files stay valid without them, from 0.1.18 on they are
+# required; both are a number or null.
+ADDED_0_1_18 = ["normalization_radius", "axicon_angle_deg"]
+
+
+def _surface_layout_0_1_18(version: str) -> dict:
+    doc = _broken(lambda d: None, "SurfaceLayout.result.json")
+    doc["data"].update(curvature_x=doc["data"]["curvature"],
+                       conic_constant_x=doc["data"]["conic_constant"],
+                       normalization_radius=None, axicon_angle_deg=None)
+    doc["schema_version"] = version
+    return doc
+
+
+@pytest.mark.parametrize("key", ADDED_0_1_18)
+def test_older_surface_layouts_without_the_rotational_values_are_valid(key: str):
+    for version in ("0.1.0", "0.1.17"):
+        doc = _surface_layout_0_1_18(version)
+        doc["data"].pop(key)
+        VALIDATOR.validate(doc)
+
+
+@pytest.mark.parametrize("key", ADDED_0_1_18)
+@pytest.mark.parametrize("version", ["0.1.18", "0.1.20"])
+def test_surface_layouts_from_0_1_18_need_the_rotational_values(key: str, version: str):
+    doc = _surface_layout_0_1_18(version)
+    VALIDATOR.validate(doc)
+    doc["data"].pop(key)
+    with pytest.raises(jsonschema.ValidationError):
+        VALIDATOR.validate(doc)
+
+
+def test_the_rotational_values_are_numbers_or_null():
+    doc = _surface_layout_0_1_18("0.1.18")
+    doc["data"].update(shape="axicon", axicon_angle_deg=-5.0)
+    VALIDATOR.validate(doc)
+    doc["data"]["axicon_angle_deg"] = "-5"
+    with pytest.raises(jsonschema.ValidationError):
+        VALIDATOR.validate(doc)

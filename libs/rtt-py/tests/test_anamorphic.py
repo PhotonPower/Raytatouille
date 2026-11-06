@@ -236,7 +236,7 @@ def test_the_surface_layout_result_has_the_new_keys_at_the_end() -> None:
     for s in layouts().values():
         text = s.to_json()
         envelope = json.loads(text)
-        assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.17"
+        assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.18"
         assert list(envelope["data"])[-2:] == ["curvature_x", "conic_constant_x"]
         validator.validate(envelope)
         loaded = rt.results.load_json(text)
