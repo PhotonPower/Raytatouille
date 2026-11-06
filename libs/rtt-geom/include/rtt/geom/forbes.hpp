@@ -113,21 +113,27 @@ struct QBfsMatrix {
 template <rtt::math::Real T>
 [[nodiscard]] QBfsMatrix<T> qbfs_matrix(std::size_t m_max) {
   using std::sqrt;
-  QBfsMatrix<T> l{std::vector<T>(m_max + 1, T(0)), std::vector<T>(m_max + 1, T(0)),
-                  std::vector<T>(m_max + 1, T(0))};
-  l.f[0] = T(2);
-  if (m_max >= 1) {
-    l.f[1] = sqrt(T(19)) / T(2);
-    l.g[0] = T(-1) / T(2);
-  }
+  // Built with push_back: GCC at -O2 reports a false -Wnull-dereference for element stores
+  // into the vector members of a freshly constructed aggregate.
+  std::vector<T> f;
+  std::vector<T> g;
+  std::vector<T> h;
+  f.reserve(m_max + 1);
+  g.reserve(m_max + 1);
+  h.reserve(m_max + 1);
+  f.push_back(T(2));
+  g.push_back(m_max >= 1 ? T(-1) / T(2) : T(0));
+  if (m_max >= 1) f.push_back(sqrt(T(19)) / T(2));
   for (std::size_t m = 2; m <= m_max; ++m) {
     const auto mm = static_cast<long long>(m);
-    l.h[m - 2] = -static_cast<T>(mm * (mm - 1)) / (T(2) * l.f[m - 2]);
-    l.g[m - 1] = -(T(1) + l.g[m - 2] * l.h[m - 2]) / l.f[m - 1];
-    l.f[m] =
-        sqrt(static_cast<T>(mm * (mm + 1) + 3) - l.g[m - 1] * l.g[m - 1] - l.h[m - 2] * l.h[m - 2]);
+    h.push_back(-static_cast<T>(mm * (mm - 1)) / (T(2) * f[m - 2]));  // h_(m-2)
+    g.push_back(-(T(1) + g[m - 2] * h[m - 2]) / f[m - 1]);            // g_(m-1)
+    f.push_back(sqrt(static_cast<T>(mm * (mm + 1) + 3) - g[m - 1] * g[m - 1] -
+                     h[m - 2] * h[m - 2]));  // f_m
   }
-  return l;
+  g.resize(m_max + 1, T(0));
+  h.resize(m_max + 1, T(0));
+  return {std::move(f), std::move(g), std::move(h)};
 }
 
 /// The coefficients b_m of S = sum b_m P_m in the auxiliary basis from a_m of S = sum a_m Q_m
@@ -257,9 +263,10 @@ class QCon final {
     T s0 = T(0);
     for (std::size_t m = 0; m < coefficients_.size(); ++m) {
       const auto mm = static_cast<long long>(m);
-      const T binomial =
-          static_cast<T>((mm + 1) * (mm + 2) * (mm + 3) * (mm + 4) / 24);  // C(m + 4, 4)
-      s0 += (m % 2 == 0 ? binomial : -binomial) * coefficients_[m];
+      // C(m + 4, 4): the product of four consecutive integers is divisible by 4! = 24.
+      const long long binomial = (mm + 1) * (mm + 2) * (mm + 3) * (mm + 4) / 24;
+      const T q0 = static_cast<T>(m % 2 == 0 ? binomial : -binomial);
+      s0 += q0 * coefficients_[m];
     }
     const T rho2 = rho_ * rho_;
     e.a4 = s0 / (rho2 * rho2);
