@@ -366,3 +366,45 @@ TEST_CASE("Newton on a cylinder and a toroid, grid of rays", "[anamorphic][newto
   }
   REQUIRE(hits == 9);
 }
+
+TEST_CASE("toroid whose profile never meets the axis is unbounded", "[anamorphic]") {
+  // Parabolic profile (c = 0.1, k = -1, z_y = y^2 / 20 >= 0) and the axis of rotation on the -z
+  // side (R = -30): 1 - c_R z_y = 1 + z_y / 30 stays > 0 for every y, so the domain has no outer
+  // extent (ADR 0042, point 1). The search must not take an overflow of y for the axis.
+  const Toroid<double> t(0.1, -1.0, {}, -1.0 / 30.0);
+  CHECK(!t.max_radius().has_value());
+  CHECK(t.in_domain(0.0, 1e6));
+}
+
+TEST_CASE("toroid domain ends at the first crossing of the axis, not at a later return",
+          "[anamorphic]") {
+  // Profile z_y = 1e-3 y^2 / (1 + ...) + y^4 - 0.1 y^6 and the axis at z = 10 (c_R = 0.1): the
+  // profile rises above 10 near y = 2.03, peaks near y = 2.58 (z ~ 14.8) and falls back below 10
+  // near y = 2.95, then to large negative z. ADR 0042, point 1: the domain ends at the first
+  // crossing, so (0, 12) is outside although 1 - c_R z_y > 0 there, and max_radius (~10 mm) is
+  // the outer extent of what in_domain accepts.
+  const Toroid<double> t(1e-3, 0.0, {1.0, -0.1}, 0.1);
+  REQUIRE(t.max_radius().has_value());
+  const double r = *t.max_radius();
+  CHECK(r > 10.0);
+  CHECK(r < 10.5);
+  CHECK(t.in_domain(0.0, 1.0));
+  CHECK(t.in_domain(0.0, -1.0));
+  REQUIRE(1.0 - 0.1 * t.profile().sag(0.0, 12.0) > 0.0);  // the profile is back below the axis
+  CHECK(!t.in_domain(0.0, 12.0));
+  CHECK(!t.in_domain(0.0, -12.0));
+  CHECK(std::isnan(t.sag(0.0, 12.0)));
+  CHECK(std::isnan(t.grad(0.0, 12.0).first));
+}
+
+TEST_CASE("biconic gradient on the rim of a parabolic x section", "[anamorphic]") {
+  // k_x = -1 makes a = 0: the domain is the strip |y| <= 1/c_y, and on its rim (S = 0) the x
+  // slope is 2 c_x x / (1 + S) = 2 c_x x, finite (the term a x N / (S (1 + S)^2) is 0 for a = 0),
+  // while the y slope is vertical.
+  const double cx = 0.02;
+  const double cy = 0.0625;  // 1/16: b y^2 = 1 exactly at y = 16
+  const Biconic<double> b(cx, cy, -1.0, 0.0);
+  const auto [gx, gy] = b.grad(3.0, 1.0 / cy);
+  CHECK(gx == 2.0 * cx * 3.0);
+  CHECK(std::isinf(gy));
+}
