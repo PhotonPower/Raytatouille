@@ -2,4 +2,4 @@
 *.rtt.json text eol=lf
 tests/catalogs/** -text
 # ZMX test cases keep the CRLF line ends OpticStudio writes (ADR 0044); the tests edit them.
-tests/reference/m8/zmx/*.zmx -text
+libs/rtt-io/tests/zmx/*.zmx -text

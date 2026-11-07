@@ -1,4 +1,4 @@
-// ZMX import (ADR 0044). The cases under tests/reference/m8/zmx come from make_zmx_cases.py,
+// ZMX import (ADR 0044). The cases under libs/rtt-io/tests/zmx come from make_zmx_cases.py,
 // which writes each .zmx file together with the expected system (built in Python from the
 // prescription, not with this code) and the first order from an own y-nu trace (acceptance 1
 // and 3). The error and warning cases change single lines of those files.
@@ -36,7 +36,7 @@ using rtt::io::ZmxError;
 using rtt::io::ZmxImport;
 using rtt::model::System;
 
-const std::string kZmxDir = std::string(RTT_REFERENCE_DIR) + "/m8/zmx/";
+const std::string kZmxDir = std::string(RTT_ZMX_DIR) + "/";
 
 std::string read_file(const std::string& path) {
   std::ifstream in(path, std::ios::binary);
@@ -124,8 +124,9 @@ TEST_CASE("each ZMX case imports to the independently built system", "[zmx]") {
   }
 }
 
-TEST_CASE("a file in inches or metres gives the system of its own expected file", "[zmx]") {
-  for (const char* name : {"singlet_in", "singlet_m"}) {
+TEST_CASE("a file in inches, centimetres or metres gives the system of its expected file",
+          "[zmx]") {
+  for (const char* name : {"singlet_in", "singlet_m", "asphere_in", "asphere_cm"}) {
     INFO(name);
     const ZmxImport r = import_case(name);
     REQUIRE(r.warnings.empty());
@@ -153,6 +154,42 @@ TEST_CASE("inches and metres agree with the millimetre file to the printed digit
   }
 }
 
+TEST_CASE("asphere coefficients in inches and centimetres agree with the mm file", "[zmx]") {
+  // alpha_i in L^(1 - 2i) scaled by (2i - 1) multiplications with 1/s (ADR 0044, point 3); the
+  // files print 13 significant digits, so 1e-12 relative leaves room.
+  const auto coefficients = [](const System& s, std::size_t element) {
+    const auto& e = std::get<rtt::model::Element>(s.root.children[element].value);
+    std::vector<double> out;
+    for (const rtt::model::Surface& surface : e.surfaces) {
+      if (const auto* odd = std::get_if<rtt::model::OddAsphere>(&surface.shape.base)) {
+        for (const rtt::model::Param& p : odd->coefficients) out.push_back(p.value);
+      }
+      if (const auto* even = std::get_if<rtt::model::EvenAsphere>(&surface.shape.base)) {
+        for (const rtt::model::Param& p : even->coefficients) out.push_back(p.value);
+      }
+    }
+    return out;
+  };
+  const System mm = import_case("asphere").system;
+  for (const char* name : {"asphere_in", "asphere_cm"}) {
+    INFO(name);
+    const System other = import_case(name).system;
+    for (const std::size_t element : {std::size_t{0}, std::size_t{1}}) {
+      const std::vector<double> a = coefficients(mm, element);
+      const std::vector<double> b = coefficients(other, element);
+      REQUIRE(a.size() == b.size());
+      REQUIRE(!a.empty());
+      for (std::size_t i = 0; i < a.size(); ++i) {
+        if (a[i] == 0.0) {
+          REQUIRE(b[i] == 0.0);
+        } else {
+          REQUIRE(rel(b[i], a[i]) <= 1e-12);
+        }
+      }
+    }
+  }
+}
+
 TEST_CASE("UTF-16 LE with BOM imports like the ASCII file", "[zmx]") {
   const std::string ascii = read_file(kZmxDir + "singlet.zmx");
   std::string utf16 = "\xFF\xFE";
@@ -169,8 +206,8 @@ TEST_CASE("first order of each case agrees with the independent y-nu trace", "[z
   // make_zmx_cases.py: own Sellmeier and Ciddor, absolute and relative to air. Bound 1e-12
   // relative times the condition sum|y_i phi_i| / |y_1 Phi| (ADR 0044, acceptance 3).
   const nlohmann::json fo = nlohmann::json::parse(read_file(kZmxDir + "first_order.json"));
-  for (const char* name :
-       {"singlet", "singlet_in", "singlet_m", "doublet", "mirror", "finite", "asphere", "sasian"}) {
+  for (const char* name : {"singlet", "singlet_in", "singlet_m", "doublet", "mirror", "finite",
+                           "asphere", "asphere_in", "asphere_cm", "sasian"}) {
     INFO(name);
     const auto& e = fo.at(name);
     const System s = import_case(name).system;

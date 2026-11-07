@@ -13,7 +13,7 @@ Each case is described once below, as an optical prescription. From it the scrip
   to air (acceptance 3).
 
 Only the Python standard library. Run from anywhere; it rewrites the files next to it:
-    python tests/reference/m8/zmx/make_zmx_cases.py
+    python libs/rtt-io/tests/zmx/make_zmx_cases.py
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ import math
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-CATALOGS = HERE.parents[2] / "catalogs"
+CATALOGS = HERE.parents[3] / "tests" / "catalogs"
 
 # ----------------------------------------------------------------------------- air and glass
 
@@ -95,7 +95,7 @@ def n_rel(coeffs: list[float], lam_um: float) -> float:
 
 # ---------------------------------------------------------------------------- the cases
 
-UNITS = {"MM": 1.0, "IN": 25.4, "METER": 1000.0}
+UNITS = {"MM": 1.0, "CM": 10.0, "IN": 25.4, "METER": 1000.0}
 
 
 def surf(**kw):
@@ -117,6 +117,25 @@ def singlet(unit: str) -> dict:
             surf(),
         ],
         merit=True, thic=(3, 45.0))
+
+
+def asphere(unit: str) -> dict:
+    # Even asphere with c != 0 (even_asphere) and a plane asphere (odd_asphere, c = 0); the stop
+    # is the front of the plate with a fixed semi-diameter and a FLAP; aperture float by stop.
+    return dict(
+        name="Aspheres", unit=unit, catalog="schott.agf", aperture=("FLOA",), ftyp=0,
+        fields=[(0.0, 0.0, 1.0), (0.0, 3.0, 1.0), (0.0, 5.0, 1.0)],
+        waves=[(0.5875618, 1.0)], pwav=1, object=None,
+        surfaces=[
+            surf(type="EVENASPH", parm=[0.0, 2.0e-6, -1.0e-9], disz=2.0, glas="N-BK7",
+                 diam=(6.0, 1, 0), flap=6.0, stop=True),
+            surf(disz=10.0, diam=(6.0, 0, 0)),
+            surf(type="EVENASPH", curv=1.0 / 30.0, coni=-0.8, parm=[0.0, -1.5e-6, 3.0e-10, -2e-13],
+                 disz=4.0, glas="N-BK7", diam=(8.0, 0, 0)),
+            surf(curv=-1.0 / 120.0, disz=40.0, diam=(8.0, 0, 0)),
+            surf(),
+        ],
+        merit=False, thic=None)
 
 
 CASES = {
@@ -162,22 +181,9 @@ CASES = {
             surf(),
         ],
         merit=False, thic=None),
-    # Even asphere with c != 0 (even_asphere) and a plane asphere (odd_asphere, c = 0); the stop
-    # is the front of the plate with a fixed semi-diameter and a FLAP; aperture float by stop.
-    "asphere": dict(
-        name="Aspheres", unit="MM", catalog="schott.agf", aperture=("FLOA",), ftyp=0,
-        fields=[(0.0, 0.0, 1.0), (0.0, 3.0, 1.0), (0.0, 5.0, 1.0)],
-        waves=[(0.5875618, 1.0)], pwav=1, object=None,
-        surfaces=[
-            surf(type="EVENASPH", parm=[0.0, 2.0e-6, -1.0e-9], disz=2.0, glas="N-BK7",
-                 diam=(6.0, 1, 0), flap=6.0, stop=True),
-            surf(disz=10.0, diam=(6.0, 0, 0)),
-            surf(type="EVENASPH", curv=1.0 / 30.0, coni=-0.8, parm=[0.0, -1.5e-6, 3.0e-10, -2e-13],
-                 disz=4.0, glas="N-BK7", diam=(8.0, 0, 0)),
-            surf(curv=-1.0 / 120.0, disz=40.0, diam=(8.0, 0, 0)),
-            surf(),
-        ],
-        merit=False, thic=None),
+    "asphere": asphere("MM"),
+    "asphere_in": asphere("IN"),
+    "asphere_cm": asphere("CM"),
     # Cooke triplet after Geiser (Sasian, OPTI 517, L20; docs/quellen.md), stop on L2.S1 with
     # radius 10 as tests/reference/m2/cooke_triplet_surface_stop.rtt.json (acceptance 4).
     "sasian": dict(
