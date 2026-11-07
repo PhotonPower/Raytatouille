@@ -1,6 +1,6 @@
 """Forbes Q-con and Q-bfs in Python (ADR 0043, points 1 and 4; #314): the read-only classes QCon
 and QBfs, their edit form, the layout with normalization_radius in the result format 0.1.18, and
-the examples qcon_singlet and qbfs_singlet under examples/rotational.
+the examples qcon_singlet and qbfs_singlet under examples/forbes.
 
 Oracle: the parameters written into the test systems. The layout gives the curvature c and the
 conic constant k of the base (not the vertex curvature of Q-bfs), the coefficients a_0, a_1, ...
@@ -25,7 +25,7 @@ SYSTEM_SCHEMA = json.loads(
     (REPO_ROOT / "schema" / "raytatouille.schema.json").read_text(encoding="utf-8"))
 RESULT_SCHEMA = json.loads(
     (REPO_ROOT / "schema" / "raytatouille-result.schema.json").read_text(encoding="utf-8"))
-EXAMPLE_DIR = REPO_ROOT / "examples" / "rotational"
+EXAMPLE_DIR = REPO_ROOT / "examples" / "forbes"
 
 #: The first surface of lens Li has BASES[i]; the second surface is plane.
 BASES: list[dict[str, Any]] = [
@@ -163,7 +163,7 @@ def test_an_aperture_beyond_the_normalization_radius_warns() -> None:
     assert found[0].location.endswith("/shape/base/normalization_radius")
 
 
-EXAMPLES = sorted(EXAMPLE_DIR.glob("q*.rtt.json"))
+EXAMPLES = sorted(EXAMPLE_DIR.glob("*.rtt.json"))
 
 
 def test_the_forbes_examples_are_there() -> None:

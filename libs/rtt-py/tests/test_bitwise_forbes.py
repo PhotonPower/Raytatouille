@@ -1,6 +1,6 @@
 """Q-con and Q-bfs traced from Python are bitwise equal to C++ (#314, ADR 0043, acceptance 12).
 
-rtt_py_reference (forbes_cases.cpp) loads qcon_singlet and qbfs_singlet under examples/rotational,
+rtt_py_reference (forbes_cases.cpp) loads qcon_singlet and qbfs_singlet under examples/forbes,
 aims a hexapolar pupil at FIELDS, real and paraxial, and traces it. The start rays and the traced
 columns are written as named .npy arrays. Both sides run with 1 and with 4 threads.
 """
@@ -25,7 +25,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 Arrays = dict[str, npt.NDArray[Any]]
-EXAMPLE_DIR = REPO_ROOT / "examples" / "rotational"
+EXAMPLE_DIR = REPO_ROOT / "examples" / "forbes"
 #: Field angles in degree, as in forbes_cases.cpp.
 FIELDS = ((0.0, 0.0), (0.0, 2.0), (1.5, -1.0))
 COLUMNS = ("pos_x", "pos_y", "pos_z", "dir_x", "dir_y", "dir_z", "opl", "field",

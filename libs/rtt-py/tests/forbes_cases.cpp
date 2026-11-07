@@ -1,5 +1,5 @@
 // Q-con and Q-bfs cases of rtt_py_reference (#314, ADR 0043, acceptance 12): qcon_singlet and
-// qbfs_singlet under examples/rotational, aimed with a hexapolar pupil, real and paraxial, at three
+// qbfs_singlet under examples/forbes, aimed with a hexapolar pupil, real and paraxial, at three
 // fields and traced. Written as named .npy arrays, as in test_bitwise_forbes.py.
 
 #include "forbes_cases.hpp"
@@ -55,7 +55,7 @@ void write_case(const fs::path& out,
 }  // namespace
 
 void run_forbes_cases(const fs::path& reference_dir, const fs::path& out, int threads) {
-  const fs::path examples = reference_dir / ".." / ".." / "examples" / "rotational";
+  const fs::path examples = reference_dir / ".." / ".." / "examples" / "forbes";
   oneapi::tbb::task_arena arena(threads);
   arena.execute([&] {
     for (const std::string stem : {"qcon_singlet", "qbfs_singlet"}) {

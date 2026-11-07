@@ -8,7 +8,7 @@
 namespace rtt::py::reference {
 
 /// Cases of test_bitwise_forbes.py; writes <out>/<case>.<name>.npy. The systems are the
-/// examples under <reference_dir>/../../examples/rotational.
+/// examples under <reference_dir>/../../examples/forbes.
 void run_forbes_cases(const std::filesystem::path& reference_dir,
                       const std::filesystem::path& out,
                       int threads);
