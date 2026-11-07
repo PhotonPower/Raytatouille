@@ -239,10 +239,20 @@ TEST_CASE("curvature_relative >= 1 is allowed on a curvature, not on a radius",
     v.tolerances.overrides = {o};
     CHECK_FALSE(has_code(with_severity(v, Severity::Error), "tolerances.limit_invalid"));
   }
-  System s = make_singlet();  // L1.S1 is a conic
-  ToleranceItem i = item("c", at(A::Surface, "L1.S1"), K::CurvatureRelative);
-  i.limit = 1.5;
-  s.tolerances.items = {i};
-  CHECK(has(with_severity(s, Severity::Error), "tolerances.limit_invalid",
-            "/tolerances/items/0/limit"));
+  for (const BaseShape& base : {BaseShape{Conic{Param(51.68), Param(0.0)}},
+                                BaseShape{EvenAsphere{Param(51.68), Param(-0.5), {Param(1e-6)}}}}) {
+    System s = with_base(base);
+    ToleranceItem i = item("c", at(A::Surface, "L1.S1"), K::CurvatureRelative);
+    i.limit = 1.5;
+    s.tolerances.items = {i};
+    CHECK(has(with_severity(s, Severity::Error), "tolerances.limit_invalid",
+              "/tolerances/items/0/limit"));
+    System v = with_base(base);
+    v.tolerances.tolerance_class = ToleranceClass::Normal;
+    ToleranceValueOverride o = value(A::Surface, "L1.S1", K::CurvatureRelative);
+    o.limit = 2.0;
+    v.tolerances.overrides = {o};
+    CHECK(has(with_severity(v, Severity::Error), "tolerances.limit_invalid",
+              "/tolerances/overrides/0/limit"));
+  }
 }

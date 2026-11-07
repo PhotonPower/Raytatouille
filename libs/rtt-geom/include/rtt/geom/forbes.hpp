@@ -32,8 +32,9 @@ namespace rtt::geom {
 /// Coefficients of the three-term recurrence of Q-con, Q_(n+1) = (a_n + b_n x) Q_n - c_n Q_(n-1)
 /// ([F10a], Eq. (5.2a,b,c)): a_n = -(2n + 5)(n^2 + 5n + 10) / ((n + 1)(n + 2)(n + 5)),
 /// b_n = 2(n + 3)(2n + 5) / ((n + 1)(n + 5)), c_n = (n + 3)(n + 4) n / ((n + 1)(n + 2)(n + 5)).
-/// For n = 0 they give Q_1 = 6x - 5 from Q_0 = 1 ([F07], Eq. (9)). Each is one rounded division
-/// of two exact integers.
+/// For n = 0 they give Q_1 = 6x - 5 from Q_0 = 1 ([F07], Eq. (9)). The products are formed in T
+/// (exact while below 2^53 for double, n up to about 1.6e5), each coefficient is then one rounded
+/// division; no integer overflow for any n.
 template <rtt::math::Real T>
 struct QConRecurrence {
   T a;
@@ -44,11 +45,11 @@ struct QConRecurrence {
 /// The coefficients of [F10a], Eq. (5.2a,b,c) for n >= 0.
 template <rtt::math::Real T>
 [[nodiscard]] QConRecurrence<T> qcon_recurrence(std::size_t n) noexcept {
-  const auto m = static_cast<long long>(n);
-  const T den = static_cast<T>((m + 1) * (m + 2) * (m + 5));
-  return {static_cast<T>(-(2 * m + 5) * (m * m + 5 * m + 10)) / den,
-          static_cast<T>(2 * (m + 3) * (2 * m + 5)) / static_cast<T>((m + 1) * (m + 5)),
-          static_cast<T>((m + 3) * (m + 4) * m) / den};
+  const T m = static_cast<T>(n);
+  const T den = (m + T(1)) * (m + T(2)) * (m + T(5));
+  return {-(T(2) * m + T(5)) * (m * m + T(5) * m + T(10)) / den,
+          T(2) * (m + T(3)) * (T(2) * m + T(5)) / ((m + T(1)) * (m + T(5))),
+          (m + T(3)) * (m + T(4)) * m / den};
 }
 
 namespace detail {
@@ -125,11 +126,10 @@ template <rtt::math::Real T>
   g.push_back(m_max >= 1 ? T(-1) / T(2) : T(0));
   if (m_max >= 1) f.push_back(sqrt(T(19)) / T(2));
   for (std::size_t m = 2; m <= m_max; ++m) {
-    const auto mm = static_cast<long long>(m);
-    h.push_back(-static_cast<T>(mm * (mm - 1)) / (T(2) * f[m - 2]));  // h_(m-2)
-    g.push_back(-(T(1) + g[m - 2] * h[m - 2]) / f[m - 1]);            // g_(m-1)
-    f.push_back(sqrt(static_cast<T>(mm * (mm + 1) + 3) - g[m - 1] * g[m - 1] -
-                     h[m - 2] * h[m - 2]));  // f_m
+    const T mm = static_cast<T>(m);                         // products in T: no integer overflow
+    h.push_back(-(mm * (mm - T(1))) / (T(2) * f[m - 2]));   // h_(m-2)
+    g.push_back(-(T(1) + g[m - 2] * h[m - 2]) / f[m - 1]);  // g_(m-1)
+    f.push_back(sqrt(mm * (mm + T(1)) + T(3) - g[m - 1] * g[m - 1] - h[m - 2] * h[m - 2]));  // f_m
   }
   g.resize(m_max + 1, T(0));
   h.resize(m_max + 1, T(0));
@@ -262,10 +262,11 @@ class QCon final {
     if (!has_polynomial_) return e;
     T s0 = T(0);
     for (std::size_t m = 0; m < coefficients_.size(); ++m) {
-      const auto mm = static_cast<long long>(m);
-      // C(m + 4, 4): the product of four consecutive integers is divisible by 4! = 24.
-      const long long binomial = (mm + 1) * (mm + 2) * (mm + 3) * (mm + 4) / 24;
-      const T q0 = static_cast<T>(m % 2 == 0 ? binomial : -binomial);
+      // C(m + 4, 4) in T: exact while the product of the four factors stays below 2^53 (m up to
+      // about 9000 for double; the product is divisible by 4! = 24), no integer overflow beyond.
+      const T mm = static_cast<T>(m);
+      const T binomial = (mm + T(1)) * (mm + T(2)) * (mm + T(3)) * (mm + T(4)) / T(24);
+      const T q0 = m % 2 == 0 ? binomial : -binomial;
       s0 += q0 * coefficients_[m];
     }
     const T rho2 = rho_ * rho_;

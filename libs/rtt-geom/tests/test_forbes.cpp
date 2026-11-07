@@ -111,7 +111,8 @@ double oval(double r) {
 TEST_CASE("Q-con polynomials and their derivatives against exact values", "[geom][forbes]") {
   // ADR 0043, acceptance 2: Clenshaw with [F10a], Eqs. (2.2), (2.3), (5.2) against the exact
   // values of forbes_tables.py (Gram-Schmidt with the weight x^4, [F07]) at x = k/64, rounded
-  // once. Bound 4 (m + 1) eps max_x |Q_m| (and the same with Q'_m); measured 0.29 and 0.23 of it.
+  // once. Empirical bound of the form n eps max_x |Q_m| with n = 4 (m + 1), for the derivative
+  // with max(1, max_x |Q'_m|); measured 0.29 (value) and 0.23 (derivative) of it.
   double worst = 0.0;
   for (std::size_t m = 0; m <= 20; ++m) {
     INFO("m = " << m);
@@ -136,7 +137,8 @@ TEST_CASE("Q-con polynomials and their derivatives against exact values", "[geom
 TEST_CASE("Q-bfs polynomials and their derivatives against exact values", "[geom][forbes]") {
   // ADR 0043, acceptance 2: [F10b], Eqs. (3.4), (3.5), (3.7)-(3.12) against the exact values of
   // forbes_tables.py (Gram-Schmidt in the slope, [F10b], Eqs. (2.2)-(2.4)), m <= 16. Bound
-  // 8 (m + 1) eps max_x |Q_m| (and with Q'_m); measured 0.67 and 0.29 of it.
+  // empirical, n eps max_x |Q_m| with n = 8 (m + 1), for the derivative with max(1, max_x |Q'_m|);
+  // measured 0.67 (value) and 0.29 (derivative) of it.
   for (std::size_t m = 0; m <= 16; ++m) {
     INFO("m = " << m);
     const std::vector<double> e = unit(m);

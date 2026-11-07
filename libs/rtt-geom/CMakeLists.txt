@@ -9,7 +9,7 @@ if(RTT_BUILD_TESTS)
   rtt_add_test(rtt_geom_tests
     SOURCES tests/test_conic.cpp tests/test_intersect.cpp tests/test_asphere.cpp
             tests/test_newton.cpp tests/test_phase.cpp tests/test_shape_concept.cpp
-            tests/test_vertex_expansion.cpp tests/test_anamorphic.cpp tests/test_odd_asphere.cpp tests/test_forbes.cpp
-            tests/test_axicon.cpp
+            tests/test_vertex_expansion.cpp tests/test_anamorphic.cpp tests/test_odd_asphere.cpp
+            tests/test_forbes.cpp tests/test_axicon.cpp
     LIBS rtt::geom)
 endif()

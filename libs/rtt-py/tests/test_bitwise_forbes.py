@@ -73,7 +73,8 @@ def test_forbes_equal_cpp_bitwise(name: str, threads: int, cpp_dir: Path) -> Non
 @pytest.mark.parametrize("stem", ["qcon_singlet", "qbfs_singlet"])
 def test_the_forbes_cases_have_content(stem: str) -> None:
     """Every ray is aimed and arrives, the fields are tilted in y and in x, and the bundle is
-    not trivial; the polynomial part matters (the two systems end in different places)."""
+    not trivial; the polynomial part matters: with all coefficients 0 (the base conic alone) the
+    rays end elsewhere."""
     alive = int(rt.trace.RayStatus.ALIVE)
     for label in ("real", "paraxial"):
         r = flatten(f"forbes_{stem}_{label}", 1)
@@ -82,6 +83,12 @@ def test_the_forbes_cases_have_content(stem: str) -> None:
         assert np.ptp(r["pos_x"]) > 0.1 and np.ptp(r["pos_y"]) > 0.1
         assert np.all(np.abs(r["start_dir_y"][r["field"] == 1]) > 0.02)
         assert np.all(np.abs(r["start_dir_x"][r["field"] == 2]) > 0.02)
-    a = flatten("forbes_qcon_singlet_real", 1)
-    b = flatten("forbes_qbfs_singlet_real", 1)
-    assert np.max(np.abs(a["pos_y"] - b["pos_y"])) > 1e-3
+    data = json.loads((EXAMPLE_DIR / f"{stem}.rtt.json").read_text(encoding="utf-8"))
+    data["fields"]["points"] = [{"x": x, "y": y} for x, y in FIELDS]
+    base = data["root"]["children"][1]["surfaces"][0]["shape"]["base"]
+    base["coefficients"] = [0.0 for _ in base["coefficients"]]
+    cs = rt.compile(rt.System.from_json(json.dumps(data)))
+    rays = rt.trace.make_rays(cs, rt.trace.HexapolarPupil(3), aiming=Aiming.REAL)
+    rt.trace.trace(cs, rays)
+    real = flatten(f"forbes_{stem}_real", 1)
+    assert np.max(np.abs(np.array(rays.pos_y) - real["pos_y"])) > 1e-3

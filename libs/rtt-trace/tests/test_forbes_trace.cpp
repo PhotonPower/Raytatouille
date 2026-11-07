@@ -33,8 +33,6 @@ using rtt::trace::SequentialTracer;
 
 namespace {
 
-const double kPi = std::acos(-1.0);
-
 /// m1/singlet_const in vacuum (stop at z = 0, L1.S1 at z = 5, L1.S2 at z = 9, image at
 /// z = 106.363) with the bases `front` and `back` and the index `material`.
 System singlet(const rtt::model::BaseShape& front,
