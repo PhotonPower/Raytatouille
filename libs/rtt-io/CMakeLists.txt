@@ -21,6 +21,17 @@ if(RTT_BUILD_TESTS)
 endif()
 
 if(RTT_BUILD_TESTS)
+  # ZMX import (ADR 0044): the cases of tests/reference/m8/zmx against the expected systems, the
+  # first order and a spot per field, so the test needs the tracing and analysis libraries.
+  rtt_add_test(rtt_io_zmx_tests
+    SOURCES tests/test_zmx.cpp
+    LIBS rtt::io rtt::material rtt::compile rtt::paraxial rtt::analysis rtt::diagnostics
+         nlohmann_json::nlohmann_json)
+  target_compile_definitions(rtt_io_zmx_tests PRIVATE
+    RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs")
+endif()
+
+if(RTT_BUILD_TESTS)
   # src/: the JSON Patch engine (json_patch.hpp) is tested directly on generic JSON.
   target_include_directories(rtt_io_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 endif()
