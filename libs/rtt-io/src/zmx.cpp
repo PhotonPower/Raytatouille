@@ -16,7 +16,6 @@
 #include <string>
 #include <string_view>
 #include <system_error>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -227,7 +226,7 @@ model::Pose chain_pose(const FrameChain& chain, const std::optional<math::Mat3>&
     pose.position[2] = sum_t(true);
     return pose;
   }
-  if (!own_tilt && !chain.untilt && breaks == 1) {
+  if (!own_tilt && !chain.untilt && breaks == 1 && cb != nullptr) {
     const int tilts = static_cast<int>(cb->tilt[0] != 0.0) + static_cast<int>(cb->tilt[1] != 0.0) +
                       static_cast<int>(cb->tilt[2] != 0.0);
     if (!cb->tilts_first || tilts <= 1) {
@@ -671,15 +670,18 @@ std::optional<model::Aperture> Importer::aperture(const ZSurface& s) {
     fail("zmx.aperture_conflict", std::max({s.clap_line, s.flap_line, s.sqap_line, s.elap_line}),
          "a surface with more than one aperture (CLAP, FLAP, SQAP, ELAP)");
   }
-  for (const auto& [box, line, kind] :
-       {std::tuple{s.sqap, s.sqap_line, "SQAP"}, std::tuple{s.elap, s.elap_line, "ELAP"}}) {
-    if (!box) continue;
-    const auto [x, y] = *box;
-    if (!(x > 0.0) || !(y > 0.0)) {
-      fail("zmx.aperture_invalid", line, std::string(kind) + " needs half widths > 0");
-    }
-    // half widths in x and y, local to the surface (UG "Aperture surface properties")
-    if (s.sqap) return model::RectangularAperture{length(x), length(y)};
+  // SQAP and ELAP: half widths in x and y, local to the surface (UG "Aperture surface
+  // properties")
+  if (s.sqap) {
+    const auto [x, y] = *s.sqap;
+    if (!(x > 0.0) || !(y > 0.0))
+      fail("zmx.aperture_invalid", s.sqap_line, "SQAP needs widths > 0");
+    return model::RectangularAperture{length(x), length(y)};
+  }
+  if (s.elap) {
+    const auto [x, y] = *s.elap;
+    if (!(x > 0.0) || !(y > 0.0))
+      fail("zmx.aperture_invalid", s.elap_line, "ELAP needs widths > 0");
     return model::EllipticalAperture{length(x), length(y)};
   }
   if (s.clap) {

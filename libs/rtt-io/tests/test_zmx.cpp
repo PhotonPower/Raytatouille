@@ -490,6 +490,10 @@ std::vector<ErrorCase> error_cases() {
        in_surface(2, "FLAP", "  CLAP 0 7.0E+000 0\r\n  SQAP 4.0E+000 4.0E+000 0"), "SQAP 4"},
       {"zmx.keyword_unsupported", in_surface(2, "HIDE", "  ZZZZ 1"), "ZZZZ 1"},
       {"zmx.keyword_unsupported", in_surface(2, "HIDE", "  VDSZ 1.0E+000 0 0"), "VDSZ 1"},
+      {"zmx.keyword_unsupported", in_surface(2, "HIDE", "  FIMP x"), "FIMP x"},
+      {"zmx.parse", in_surface(par, 1, "PARM 2", "  PARM 2 4.0E+000"), "PARM 2 4.0E+000"},
+      {"zmx.surface_unsupported", in_surface(plate, 2, "CURV", "  CURV 1.0E-002 0 0 0 0"),
+       "CURV 1.0E-002"},
   };
 }
 
@@ -967,4 +971,29 @@ TEST_CASE("variants of PR C that import like the case they come from", "[zmx]") 
   const ZmxImport mode0 = import_zmx(in_surface(par, 1, "PARM 2", "  PARM 2 0"), schott());
   REQUIRE(codes_of(mode0.warnings) == std::vector<std::string>{"zmx.paraxial_opd"});
   REQUIRE(mode0.system == import_case("paraxial").system);
+}
+
+TEST_CASE("the stop on a mirror tilted by a coordinate break", "[zmx]") {
+  // fold.zmx with the STOP moved from the paraxial lens to the 45 deg mirror (DIAM 5, fixed):
+  // aperture.stop on the mirror surface, its radius exactly 5 (rule 2 of point 8), no paraxial
+  // model and so no stop_radius_small check. A ray through the mirror at 4.9 mm passes, one at
+  // 5.1 mm (in the mirror plane) is vignetted there.
+  const std::string fold = read_file(kZmxDir + "fold.zmx");
+  const std::string text =
+      in_surface(in_surface(fold, 1, "STOP", ""), 3, "DIAM", "  STOP\r\n  DIAM 5.0E+000 1 0 0 1");
+  const ZmxImport r = import_zmx(text, schott());
+  REQUIRE(codes_of(r.warnings) == std::vector<std::string>{"zmx.paraxial_unavailable"});
+  REQUIRE(r.system.aperture.stop);
+  REQUIRE(r.system.aperture.stop->str() == "S3");
+  const rtt::model::Element* mirror = element_of(r.system, "S3");
+  REQUIRE(mirror->kind == rtt::model::ElementKind::Mirror);
+  REQUIRE(std::get<rtt::model::CircularAperture>(*mirror->surfaces[0].aperture).radius == 5.0);
+  const auto cs = rtt::compile::compile(r.system, schott());
+  // Rays along +z (the ideal lens in front is f = 50; at 20 mm the ray at height h is at
+  // h (1 - 20/50)). On the mirror the local x is the global x: h_x = 0.6 h.
+  const RayBatch b = trace_rays(cs, {{Vec3(4.9 / 0.6, 0.0, -1.0), Vec3(0.0, 0.0, 1.0)},
+                                     {Vec3(5.1 / 0.6, 0.0, -1.0), Vec3(0.0, 0.0, 1.0)}});
+  CHECK(b.status()[0] == RayStatus::Alive);
+  CHECK(b.status()[1] == RayStatus::Vignetted);
+  CHECK(b.last_surface()[1] == 1);
 }
