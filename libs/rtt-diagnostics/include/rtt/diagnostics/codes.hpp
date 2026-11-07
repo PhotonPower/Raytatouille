@@ -24,8 +24,8 @@ enum class Severity : std::uint8_t { Error, Warning };
 struct CodeInfo {
   std::string_view code;  ///< dotted name, e.g. "material.unknown"
   Severity severity;      ///< the severity every diagnostic with this code has
-  /// "validate", "compile", "analysis", "agf", "edit", "io", "optim", "tolerance" or "trace"
-  /// (docs/diagnostics.md)
+  /// "validate", "compile", "analysis", "agf", "edit", "io", "optim", "tolerance", "trace" or
+  /// "zmx" (docs/diagnostics.md)
   std::string_view producer;
   std::string_view summary;  ///< one-line meaning, as in docs/diagnostics.md
 };
@@ -342,6 +342,50 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "wavelength weight not finite or < 0"},
     {"zernike.pupil_incomplete", Severity::Warning, "analysis",
      "Zernike fit on an incomplete pupil: the coefficients are a fit, not a decomposition"},
+    {"zmx.afocal_image_space", Severity::Warning, "zmx",
+     "FTYP afocal image space ignored; it only changes the units of analyses"},
+    {"zmx.aperture_conflict", Severity::Error, "zmx", "a ZMX surface with both CLAP and FLAP"},
+    {"zmx.aperture_decenter", Severity::Error, "zmx", "decentred ZMX aperture (OBDC != 0)"},
+    {"zmx.aperture_dropped", Severity::Warning, "zmx",
+     "FLAP next to an automatic semi-diameter dropped"},
+    {"zmx.aperture_invalid", Severity::Error, "zmx", "CLAP or FLAP with radius 0 or rmax <= rmin"},
+    {"zmx.aperture_unsupported", Severity::Error, "zmx",
+     "ZMX aperture or system aperture setting without a mapping"},
+    {"zmx.asphere_r2", Severity::Error, "zmx", "EVENASPH with alpha1 (r^2) != 0"},
+    {"zmx.config_mismatch", Severity::Error, "zmx",
+     "THIC or CRVT of the single configuration differs from the surface data"},
+    {"zmx.encoding_unsupported", Severity::Error, "zmx",
+     "ZMX file in UTF-16 BE or malformed UTF-16"},
+    {"zmx.environment_unsupported", Severity::Error, "zmx",
+     "ZMX environment other than 20 degC and 1 atm"},
+    {"zmx.field_unsupported", Severity::Error, "zmx",
+     "ZMX field type real image height or theodolite angle"},
+    {"zmx.glass_reference_temperature", Severity::Warning, "zmx",
+     "glass with catalogue data at another temperature than 20 degC"},
+    {"zmx.glass_unknown", Severity::Error, "zmx",
+     "glass of a ZMX file not found in the GCAT catalogues"},
+    {"zmx.image_in_glass", Severity::Error, "zmx", "glass in front of the image surface"},
+    {"zmx.invalid_result", Severity::Error, "zmx", "the imported system fails validate or compile"},
+    {"zmx.keyword_ignored", Severity::Warning, "zmx", "unknown ZMX keyword ignored"},
+    {"zmx.mirror_in_glass", Severity::Error, "zmx", "mirror inside glass (Mangin)"},
+    {"zmx.mode_unsupported", Severity::Error, "zmx", "ZMX file not sequential"},
+    {"zmx.model_glass", Severity::Error, "zmx", "model glass or MIL number glass in a ZMX file"},
+    {"zmx.multi_config", Severity::Error, "zmx", "ZMX file with more than one configuration"},
+    {"zmx.object_medium_infinite", Severity::Error, "zmx",
+     "glass in object space with the object at infinity"},
+    {"zmx.object_medium_unsupported", Severity::Error, "zmx",
+     "glass object space whose first surface does not start a lens"},
+    {"zmx.parse", Severity::Error, "zmx", "malformed ZMX line or missing ZMX data"},
+    {"zmx.stop_radius_conflict", Severity::Error, "zmx",
+     "FLOA with a stop aperture that differs from its semi-diameter"},
+    {"zmx.stop_radius_missing", Severity::Error, "zmx",
+     "ZMX stop without semi-diameter and aperture"},
+    {"zmx.stop_radius_small", Severity::Warning, "zmx",
+     "paraxial stop radius above 1.1 times the automatic semi-diameter"},
+    {"zmx.surface_dropped", Severity::Warning, "zmx", "air-air surface with power dropped"},
+    {"zmx.surface_unsupported", Severity::Error, "zmx", "ZMX surface type without a mapping"},
+    {"zmx.unit_unsupported", Severity::Error, "zmx", "ZMX lens unit other than MM, CM, IN, METER"},
+    {"zmx.vignetting_unsupported", Severity::Error, "zmx", "ZMX vignetting factors != 0"},
 });
 
 /// Registry entry of `code`, or nullptr if it is not registered.

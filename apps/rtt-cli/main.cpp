@@ -1,5 +1,6 @@
 // rtt - command line tool for Raytatouille system files.
 
+#include <cstddef>
 #include <cstdlib>
 #include <exception>
 #include <fstream>
@@ -9,6 +10,8 @@
 #include <vector>
 
 #include "rtt/io/json_io.hpp"
+#include "rtt/io/zmx.hpp"
+#include "rtt/material/material.hpp"
 #include "rtt/model/validate.hpp"
 
 namespace {
@@ -22,7 +25,9 @@ void usage(std::ostream& os) {
         "  rtt --version\n"
         "  rtt validate <file.rtt.json>...      check structure and semantics\n"
         "  rtt format <file.rtt.json>...        rewrite files in canonical form\n"
-        "  rtt format --check <file.rtt.json>...  fail if a file is not canonical\n";
+        "  rtt format --check <file.rtt.json>...  fail if a file is not canonical\n"
+        "  rtt import <file.zmx> <out.rtt.json> --catalog <file.agf>...\n"
+        "                                       import the sequential part of a ZMX file\n";
 }
 
 std::string read_text(const std::string& path) {
@@ -88,6 +93,26 @@ int format(const std::vector<std::string>& files, bool check_only) {
   return result;
 }
 
+/// rtt import (ADR 0044): reads a ZMX file, resolves its glasses in the given AGF catalogues and
+/// writes the system in canonical form. Warnings go to stderr; exit 1 if the file cannot be
+/// imported (also a missing file), 0 otherwise.
+int import_file(const std::string& zmx,
+                const std::string& out,
+                const std::vector<std::string>& catalogs) {
+  try {
+    rtt::material::MaterialLibrary lib;
+    for (const std::string& c : catalogs) lib.add_catalog(c);
+    const rtt::io::ZmxImport r = rtt::io::load_zmx(zmx, lib);
+    for (const auto& d : r.warnings) std::cerr << zmx << ": " << rtt::model::to_string(d) << "\n";
+    rtt::io::save_system(r.system, out);
+    std::cout << zmx << ": imported to " << out << "\n";
+    return kOk;
+  } catch (const std::exception& e) {
+    std::cout << zmx << ": error " << e.what() << "\n";
+    return kInvalid;
+  }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -107,6 +132,18 @@ int main(int argc, char** argv) {
   }
   std::vector<std::string> rest(args.begin() + 1, args.end());
   if (command == "validate" && !rest.empty()) return validate(rest);
+  if (command == "import" && rest.size() >= 2) {
+    std::vector<std::string> catalogs;
+    bool ok = true;
+    for (std::size_t i = 2; i < rest.size(); ++i) {
+      if (rest[i] == "--catalog" && i + 1 < rest.size()) {
+        catalogs.push_back(rest[++i]);
+      } else {
+        ok = false;
+      }
+    }
+    if (ok) return import_file(rest[0], rest[1], catalogs);
+  }
   if (command == "format") {
     const bool check = !rest.empty() && rest[0] == "--check";
     if (check) rest.erase(rest.begin());
