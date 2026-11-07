@@ -9,7 +9,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
-#include <iterator>
 #include <map>
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -39,9 +38,11 @@ using rtt::model::System;
 const std::string kZmxDir = std::string(RTT_ZMX_DIR) + "/";
 
 std::string read_file(const std::string& path) {
-  std::ifstream in(path, std::ios::binary);
+  const std::ifstream in(path, std::ios::binary);
   REQUIRE(in);
-  return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+  std::ostringstream buffer;
+  buffer << in.rdbuf();
+  return buffer.str();
 }
 
 /// A library with one AGF catalogue, loaded once (MaterialLibrary is neither copyable nor
