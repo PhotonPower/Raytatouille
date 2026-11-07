@@ -9,10 +9,10 @@
 #include <cstdint>
 #include <exception>
 #include <fstream>
-#include <iterator>
 #include <map>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -413,12 +413,13 @@ std::string Importer::resolve_glass(const ZSurface& s) {
       if (!glass_first_line_.contains(ref)) {
         glass_first_line_.emplace(ref, s.glass_line);
         const auto* catalog = dynamic_cast<const material::CatalogMaterial*>(material.get());
-        if (catalog != nullptr && catalog->thermal() &&
-            catalog->thermal()->reference_temperature_c != 20.0) {
+        const std::optional<material::SchottThermalCoefficients> thermal =
+            catalog != nullptr ? catalog->thermal() : std::nullopt;
+        if (thermal.has_value() && thermal->reference_temperature_c != 20.0) {
           warnings_.push_back(
               Ignored::warning("zmx.glass_reference_temperature", s.glass_line,
                                ref + " has its catalogue data at " +
-                                   std::to_string(catalog->thermal()->reference_temperature_c) +
+                                   std::to_string(thermal->reference_temperature_c) +
                                    " degC, not at the 20 degC of the file"));
         }
       }
@@ -656,7 +657,8 @@ model::System Importer::build() {
   int thins = 0;
   double pending = 0.0;
   bool first = true;
-  std::optional<model::Element> lens;
+  model::Element lens;  // the lens being built, valid while lens_open
+  bool lens_open = false;
   std::vector<std::string> lens_media;
   bool before_glass = object_medium.has_value();
   const auto place = [&](model::Element& e) {
@@ -697,12 +699,12 @@ model::System Importer::build() {
   const auto close_lens = [&] {
     if (std::all_of(lens_media.begin(), lens_media.end(),
                     [&](const std::string& m) { return m == lens_media.front(); })) {
-      lens->material = lens_media.front();
+      lens.material = lens_media.front();
     } else {
-      lens->segment_materials = lens_media;
+      lens.segment_materials = lens_media;
     }
-    children.push_back(model::Node{*lens});
-    lens.reset();
+    children.push_back(model::Node{lens});
+    lens_open = false;
     lens_media.clear();
   };
 
@@ -727,11 +729,11 @@ model::System Importer::build() {
       fail("zmx.mirror_in_glass", s.glass_line, "a mirror inside glass (Mangin) is not supported");
     }
     const bool after_glass = !s.glass.empty() && !is_mirror(s);
-    if (lens) {
+    if (lens_open) {
       model::Surface surface = make_surface(s, powered);
       surface.pose.position[2] = pending;
       surface.pose.reference = model::PoseReference::RelativeToPreceding;
-      lens->surfaces.push_back(std::move(surface));
+      lens.surfaces.push_back(std::move(surface));
       if (s.stop) sys.aperture.stop = model::SurfaceId("S" + std::to_string(s.number));
       if (after_glass) {
         lens_media.push_back(resolve_glass(s));
@@ -752,9 +754,10 @@ model::System Importer::build() {
       ++lenses;
       lens = model::Element{
           "L" + std::to_string(lenses), model::ElementKind::Lens, {}, std::nullopt, {}};
-      lens->surfaces.push_back(make_surface(s, powered));
+      lens_open = true;
+      lens.surfaces.push_back(make_surface(s, powered));
       lens_media.push_back(resolve_glass(s));
-      place(*lens);
+      place(lens);
       if (s.stop) sys.aperture.stop = model::SurfaceId("S" + std::to_string(s.number));
     } else if (s.stop) {
       model::Element st{"stop", model::ElementKind::Stop, {}, std::nullopt, {}};
@@ -871,10 +874,11 @@ ZmxImport import_zmx(std::string_view bytes, const material::MaterialLibrary& ma
 }
 
 ZmxImport load_zmx(const std::filesystem::path& file, const material::MaterialLibrary& materials) {
-  std::ifstream in(file, std::ios::binary);
+  const std::ifstream in(file, std::ios::binary);
   if (!in) throw std::runtime_error("cannot read " + file.string());
-  const std::string bytes{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
-  return import_zmx(bytes, materials);
+  std::ostringstream buffer;
+  buffer << in.rdbuf();
+  return import_zmx(buffer.str(), materials);
 }
 
 }  // namespace rtt::io
