@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <limits>
 #include <span>
+#include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -102,8 +104,8 @@ double oval(double r) {
     hi = lo;
     f_hi = f_lo;
   }
-  FAIL("no root of the oval at r = " << r);
-  return 0.0;
+  // A throw, not FAIL plus return: MSVC flags the return as unreachable (C4702).
+  throw std::logic_error("no root of the oval at r = " + std::to_string(r));
 }
 
 }  // namespace

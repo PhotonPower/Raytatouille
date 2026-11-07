@@ -5,6 +5,7 @@
 // The system is the singlet of test_radius_sign.cpp (N-BK7, R2 = -50 mm) with L.S1 replaced.
 
 #include <catch2/catch_test_macros.hpp>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -114,8 +115,8 @@ double curvature(const System& s) {
         if constexpr (std::is_same_v<B, rtt::model::QCon> || std::is_same_v<B, rtt::model::QBfs>) {
           return b.curvature.value;
         } else {
-          FAIL("not a Forbes base");
-          return 0.0;
+          // A throw, not FAIL plus return: MSVC flags the return as unreachable (C4702).
+          throw std::logic_error("not a Forbes base");
         }
       },
       lens.surfaces[0].shape.base);
