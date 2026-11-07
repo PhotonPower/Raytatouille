@@ -58,7 +58,7 @@ TEST_CASE("every code names its producer", "[diagnostics]") {
     REQUIRE((info.producer == "validate" || info.producer == "compile" ||
              info.producer == "analysis" || info.producer == "agf" || info.producer == "edit" ||
              info.producer == "io" || info.producer == "optim" || info.producer == "tolerance" ||
-             info.producer == "trace"));
+             info.producer == "trace" || info.producer == "zmx"));
   }
   REQUIRE(find_code("stop.not_on_path")->producer == "compile");
   REQUIRE(find_code("rays.lost")->producer == "analysis");

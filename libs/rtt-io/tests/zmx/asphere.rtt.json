@@ -1,0 +1,180 @@
+{
+  "schema_version": "0.9.0",
+  "name": "Aspheres",
+  "units": {
+    "length": "mm",
+    "wavelength": "um"
+  },
+  "environment": {
+    "temperature_c": 20.0,
+    "pressure_atm": 1.0,
+    "medium": "AIR"
+  },
+  "wavelengths": [
+    {
+      "um": 0.587721870012617,
+      "weight": 1.0,
+      "reference": true
+    }
+  ],
+  "aperture": {
+    "type": "stop_size",
+    "stop": {
+      "surface": "S1"
+    }
+  },
+  "fields": {
+    "type": "angle_deg",
+    "points": [
+      {
+        "x": 0.0,
+        "y": 0.0,
+        "weight": 1.0
+      },
+      {
+        "x": 0.0,
+        "y": 3.0,
+        "weight": 1.0
+      },
+      {
+        "x": 0.0,
+        "y": 5.0,
+        "weight": 1.0
+      }
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "lens",
+        "name": "L1",
+        "surfaces": [
+          {
+            "id": "S1",
+            "shape": {
+              "base": {
+                "type": "odd_asphere",
+                "curvature": 0.0,
+                "conic": 0.0,
+                "coefficients": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  2e-06,
+                  0.0,
+                  -1e-09
+                ]
+              }
+            },
+            "aperture": {
+              "type": "circular",
+              "radius": 6.0
+            }
+          },
+          {
+            "id": "S2",
+            "shape": {
+              "base": {
+                "type": "plane"
+              }
+            },
+            "pose": {
+              "reference": "relative_to_preceding",
+              "position": [
+                0.0,
+                0.0,
+                2.0
+              ]
+            }
+          }
+        ],
+        "pose": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "material": "SCHOTT:N-BK7"
+      },
+      {
+        "type": "lens",
+        "name": "L2",
+        "surfaces": [
+          {
+            "id": "S3",
+            "shape": {
+              "base": {
+                "type": "even_asphere",
+                "radius": 30.0,
+                "conic": -0.8,
+                "coefficients": [
+                  -1.5e-06,
+                  3e-10,
+                  -2e-13
+                ]
+              }
+            }
+          },
+          {
+            "id": "S4",
+            "shape": {
+              "base": {
+                "type": "conic",
+                "radius": -120.0,
+                "conic": 0.0
+              }
+            },
+            "pose": {
+              "reference": "relative_to_preceding",
+              "position": [
+                0.0,
+                0.0,
+                4.0
+              ]
+            }
+          }
+        ],
+        "pose": {
+          "reference": "relative_to_preceding",
+          "position": [
+            0.0,
+            0.0,
+            10.0
+          ]
+        },
+        "material": "SCHOTT:N-BK7"
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "surfaces": [
+          {
+            "id": "S5",
+            "shape": {
+              "base": {
+                "type": "plane"
+              }
+            }
+          }
+        ],
+        "pose": {
+          "reference": "relative_to_preceding",
+          "position": [
+            0.0,
+            0.0,
+            40.0
+          ]
+        }
+      }
+    ]
+  },
+  "paths": [
+    {
+      "name": "main",
+      "events": "auto"
+    }
+  ]
+}

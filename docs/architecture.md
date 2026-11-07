@@ -485,7 +485,7 @@ editor.apply(result.patch)                       # oder als ein Schritt mit Undo
 
 **Ergebnisse als Daten (#86, ADR 0023):** Jedes Ergebnisobjekt der Python-API hat `to_dict()` und `to_json()` im Format `raytatouille-result` (Schema `schema/raytatouille-result.schema.json`, Beispiele unter `tests/reference/results/`); `rt.results.load_json` liest die Daten bitgleich zurück, ohne die C++-Objekte zu rekonstruieren. Spot, Fächer und OPD zählen in `losses` die Strahlen je Status und die Fläche mit den meisten Verlusten und melden in `warnings` die Codes `rays.lost` (über `lost_warning_fraction`, Standard 50 %) und `stop.clips_beam`; Python gibt sie zusätzlich als `RaytatouilleWarning` aus. In den rtt-py-Tests ist eine unerwartete `RaytatouilleWarning` ein Fehler.
 
-**CLI (`rtt`):** vorhanden: `rtt validate` (Ausgabe `error [code] /pointer: Meldung`, ADR 0022), `rtt format [--check]`, `rtt --version`. Geplant: `rtt trace`, `rtt analyze`, `rtt optimize`, `rtt import <zmx> <rtt.json>`.
+**CLI (`rtt`):** vorhanden: `rtt validate` (Ausgabe `error [code] /pointer: Meldung`, ADR 0022), `rtt format [--check]`, `rtt import <datei.zmx> <ausgabe.rtt.json> --catalog <agf>...` (sequenzieller Teil einer OpticStudio-Datei, ADR 0044; C++: `rtt::io::import_zmx`, `load_zmx` in `rtt/io/zmx.hpp`), `rtt --version`. Geplant: `rtt trace`, `rtt analyze`, `rtt optimize`. Der Import kennt in I1 die Flächentypen `STANDARD` und `EVENASPH`, Linsen, Kittglieder, Spiegel auf der Achse, Blende als Element oder auf einer Fläche (ADR 0039), `CLAP` und `FLAP`; Koordinatenbrüche, weitere Aperturen und Flächentypen folgen (ADR 0044, Folgen).
 
 ## Validierung und Tests
 

@@ -1,0 +1,221 @@
+{
+  "schema_version": "0.9.0",
+  "name": "Sasian triplet",
+  "units": {
+    "length": "mm",
+    "wavelength": "um"
+  },
+  "environment": {
+    "temperature_c": 20.0,
+    "pressure_atm": 1.0,
+    "medium": "AIR"
+  },
+  "wavelengths": [
+    {
+      "um": 0.4862661791313749,
+      "weight": 1.0
+    },
+    {
+      "um": 0.587721870012617,
+      "weight": 1.0,
+      "reference": true
+    },
+    {
+      "um": 0.6564506940778654,
+      "weight": 1.0
+    }
+  ],
+  "aperture": {
+    "type": "epd",
+    "value": 12.5,
+    "stop": {
+      "surface": "S3"
+    }
+  },
+  "fields": {
+    "type": "angle_deg",
+    "points": [
+      {
+        "x": 0.0,
+        "y": 0.0,
+        "weight": 1.0
+      },
+      {
+        "x": 0.0,
+        "y": 14.0,
+        "weight": 1.0
+      },
+      {
+        "x": 0.0,
+        "y": 20.0,
+        "weight": 1.0
+      }
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "lens",
+        "name": "L1",
+        "surfaces": [
+          {
+            "id": "S1",
+            "shape": {
+              "base": {
+                "type": "conic",
+                "radius": 23.713,
+                "conic": 0.0
+              }
+            }
+          },
+          {
+            "id": "S2",
+            "shape": {
+              "base": {
+                "type": "conic",
+                "radius": 7331.287999999999,
+                "conic": 0.0
+              }
+            },
+            "pose": {
+              "reference": "relative_to_preceding",
+              "position": [
+                0.0,
+                0.0,
+                4.831
+              ]
+            }
+          }
+        ],
+        "pose": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "material": "SCHOTT:N-LAK9"
+      },
+      {
+        "type": "lens",
+        "name": "L2",
+        "surfaces": [
+          {
+            "id": "S3",
+            "shape": {
+              "base": {
+                "type": "conic",
+                "radius": -24.456,
+                "conic": 0.0
+              }
+            },
+            "aperture": {
+              "type": "circular",
+              "radius": 10.0
+            }
+          },
+          {
+            "id": "S4",
+            "shape": {
+              "base": {
+                "type": "conic",
+                "radius": 21.896,
+                "conic": 0.0
+              }
+            },
+            "pose": {
+              "reference": "relative_to_preceding",
+              "position": [
+                0.0,
+                0.0,
+                0.975
+              ]
+            }
+          }
+        ],
+        "pose": {
+          "reference": "relative_to_preceding",
+          "position": [
+            0.0,
+            0.0,
+            5.86
+          ]
+        },
+        "material": "SCHOTT:N-SF5"
+      },
+      {
+        "type": "lens",
+        "name": "L3",
+        "surfaces": [
+          {
+            "id": "S5",
+            "shape": {
+              "base": {
+                "type": "conic",
+                "radius": 86.759,
+                "conic": 0.0
+              }
+            }
+          },
+          {
+            "id": "S6",
+            "shape": {
+              "base": {
+                "type": "conic",
+                "radius": -20.4942,
+                "conic": 0.0
+              }
+            },
+            "pose": {
+              "reference": "relative_to_preceding",
+              "position": [
+                0.0,
+                0.0,
+                3.127
+              ]
+            }
+          }
+        ],
+        "pose": {
+          "reference": "relative_to_preceding",
+          "position": [
+            0.0,
+            0.0,
+            4.822
+          ]
+        },
+        "material": "SCHOTT:N-LAK9"
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "surfaces": [
+          {
+            "id": "S7",
+            "shape": {
+              "base": {
+                "type": "plane"
+              }
+            }
+          }
+        ],
+        "pose": {
+          "reference": "relative_to_preceding",
+          "position": [
+            0.0,
+            0.0,
+            41.10346
+          ]
+        }
+      }
+    ]
+  },
+  "paths": [
+    {
+      "name": "main",
+      "events": "auto"
+    }
+  ]
+}
