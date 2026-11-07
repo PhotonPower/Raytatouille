@@ -137,6 +137,11 @@ class ParamWalker {
             list(b.coefficients, base + "/coefficients");
           } else if constexpr (std::is_same_v<B, Axicon>) {
             visit_(base + "/angle_deg", b.angle_deg);
+          } else if constexpr (std::is_same_v<B, QCon> || std::is_same_v<B, QBfs>) {
+            visit_(base + "/curvature", b.curvature);
+            visit_(base + "/conic", b.conic);
+            visit_(base + "/normalization_radius", b.normalization_radius);
+            list(b.coefficients, base + "/coefficients");
           } else {
             static_assert(kUnhandledShape<B>, "for_each_param: unhandled base shape");
           }

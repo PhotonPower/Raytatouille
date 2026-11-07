@@ -198,6 +198,7 @@ if(RTT_BUILD_TESTS)
     tests/ideal_lens_cases.cpp tests/jones_cases.cpp tests/m6_cases.cpp tests/pupil_cases.cpp
     tests/psf_cases.cpp tests/q_cases.cpp tests/tolerance_cases.cpp tests/m7_cases.cpp
     tests/anamorphic_cases.cpp tests/rotational_cases.cpp
+    tests/forbes_cases.cpp
     src/polar_batch.cpp)
   target_include_directories(rtt_py_reference PRIVATE src)
   target_link_libraries(rtt_py_reference PRIVATE

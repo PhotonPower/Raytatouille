@@ -1,0 +1,69 @@
+{
+  "schema_version": "0.9.0",
+  "name": "Singlet with a Forbes Q-con front: c = 1/64 mm^-1, k = -0.8, rho = 12.7 mm, a = (-0.05, 0.01, -0.002) mm, n = 1.5168, t = 4 mm; vertex curvature c, A4 = sum a_m (-1)^m C(m+4, 4) / rho^4 (ADR 0043, point 3); VACUUM, image near the paraxial focus",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 10.0},
+  "fields": {
+    "points": [
+      {},
+      {"y": 2.0}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 10.0}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "L1",
+        "pose": {"position": [0.0, 0.0, 5.0]},
+        "material": "CONST:1.5168",
+        "surfaces": [
+          {
+            "id": "L1.S1",
+            "shape": {
+              "base": {
+                "type": "qcon",
+                "curvature": 0.015625,
+                "conic": -0.8,
+                "normalization_radius": 12.7,
+                "coefficients": [-0.05, 0.01, -0.002]
+              }
+            },
+            "aperture": {"type": "circular", "radius": 12.7}
+          },
+          {
+            "id": "L1.S2",
+            "pose": {"position": [0.0, 0.0, 4.0]},
+            "aperture": {"type": "circular", "radius": 12.7}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 130.0]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}

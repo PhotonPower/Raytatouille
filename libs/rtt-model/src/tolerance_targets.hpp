@@ -62,6 +62,11 @@ class TargetIndex {
   std::unordered_map<std::string, const Param*> params_;
 };
 
+/// True for a base that carries a curvature instead of a radius (odd asphere, Q-con, Q-bfs;
+/// ADR 0043, F10): curvature_relative perturbs /shape/base/curvature there, and C' may reach 0
+/// or change its sign (ADR 0035, addendum #314).
+[[nodiscard]] bool curvature_base(const BaseShape& base) noexcept;
+
 /// The quantity a tolerance perturbs (ADR 0035, point 2) as a key: the absolute pointer of the
 /// Param for the dimensional kinds (radius and curvature_relative share the radius), "row:" plus
 /// the name for a row, the anchor pointer plus kind for the rigid kinds, and the element pointer

@@ -1061,6 +1061,13 @@ class Compiler {
           } else if constexpr (std::is_same_v<B, model::Axicon>) {
             // angle_deg in rad; validate() guarantees |alpha| < 90 deg.
             return geom::Axicon<double>(math::deg_to_rad(base.angle_deg.value));
+          } else if constexpr (std::is_same_v<B, model::QCon>) {
+            // c as is (F10), rho and the a_m in mm; validate() guarantees c finite, rho > 0.
+            return geom::QCon<double>(base.curvature.value, base.conic.value,
+                                      base.normalization_radius.value, values(base.coefficients));
+          } else if constexpr (std::is_same_v<B, model::QBfs>) {
+            return geom::QBfs<double>(base.curvature.value, base.conic.value,
+                                      base.normalization_radius.value, values(base.coefficients));
           } else {
             static_assert(kUnhandledShape<B>, "compile_shape: unhandled base shape");
           }

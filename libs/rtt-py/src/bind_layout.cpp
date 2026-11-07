@@ -155,6 +155,19 @@ ShapeData shape_data(const compile::CompiledShape& shape) {
           // A cone without a base conic; the angle back in degree from the compiled rad (exact
           // up to the rounding of the two conversions).
           return {"axicon", 0.0, 0.0, {}, 0.0, 0.0, std::nullopt, math::rad_to_deg(s.angle())};
+        } else if constexpr (std::is_same_v<S, geom::QCon<double>> ||
+                             std::is_same_v<S, geom::QBfs<double>>) {
+          // The curvature and conic of the base (for Q-bfs not the vertex curvature, ADR 0043,
+          // point 4), the coefficients a_m (not the auxiliary b_m of Q-bfs), rho.
+          const auto [c, k] = s.base_conic();
+          return {std::is_same_v<S, geom::QCon<double>> ? "qcon" : "qbfs",
+                  c,
+                  k,
+                  s.coefficients(),
+                  c,
+                  k,
+                  s.normalization_radius(),
+                  std::nullopt};
         } else {
           // Every shape has its own branch; a new one must not be labelled even_asphere
           // (ADR 0041, point 6).

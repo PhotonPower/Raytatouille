@@ -314,6 +314,19 @@ std::vector<Case> cases() {
        }},
       {"shape.axicon_angle_invalid", "/root/children/1/surfaces/0/shape/base/angle_deg",
        [](System& s) { element(s, 1).surfaces[0].shape.base = Axicon{Param(90.0)}; }},
+      // Q-con and Q-bfs (ADR 0043, points 2 and 4); L1.S1 has the aperture radius 12.7 mm.
+      {"shape.normalization_radius_invalid",
+       "/root/children/1/surfaces/0/shape/base/normalization_radius",
+       [](System& s) {
+         element(s, 1).surfaces[0].shape.base =
+             QCon{Param(0.01), Param(0.0), Param(0.0), {Param(1e-3)}};
+       }},
+      {"shape.normalization_radius_exceeded",
+       "/root/children/1/surfaces/0/shape/base/normalization_radius",
+       [](System& s) {
+         element(s, 1).surfaces[0].shape.base =
+             QBfs{Param(0.01), Param(0.0), Param(10.0), {Param(1e-3)}};
+       }},
       {"shape.zernike_radius_invalid",
        "/root/children/1/surfaces/0/shape/terms/0/normalization_radius",
        [](System& s) {

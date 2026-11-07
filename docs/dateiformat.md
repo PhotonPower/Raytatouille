@@ -88,7 +88,7 @@ braucht das Substrat, ohne `material` ist es ein Kompilierfehler.
 
 | Feld | Inhalt |
 | --- | --- |
-| `shape.base` | `{"type": "plane"}`, `{"type": "conic", "radius": R, "conic": k}` oder `{"type": "even_asphere", "radius": R, "conic": k, "coefficients": [A4, A6, …]}`; ab Schema 0.9 (ADR 0042) die anamorphen Formen `{"type": "biconic", "radius_x": R_x, "radius_y": R_y, "conic_x": k_x, "conic_y": k_y}`, `{"type": "toroid", "radius": R, "conic": k, "coefficients": [A4, A6, …], "radius_of_rotation": R_rot}` und `{"type": "cylinder", "radius": R, "conic": k, "coefficients": [A4, A6, …]}` sowie (ADR 0043) `{"type": "odd_asphere", "curvature": c, "conic": k, "coefficients": [A1, A2, A3, …]}` und `{"type": "axicon", "angle_deg": α}` (siehe unten) |
+| `shape.base` | `{"type": "plane"}`, `{"type": "conic", "radius": R, "conic": k}` oder `{"type": "even_asphere", "radius": R, "conic": k, "coefficients": [A4, A6, …]}`; ab Schema 0.9 (ADR 0042) die anamorphen Formen `{"type": "biconic", "radius_x": R_x, "radius_y": R_y, "conic_x": k_x, "conic_y": k_y}`, `{"type": "toroid", "radius": R, "conic": k, "coefficients": [A4, A6, …], "radius_of_rotation": R_rot}` und `{"type": "cylinder", "radius": R, "conic": k, "coefficients": [A4, A6, …]}` sowie (ADR 0043) `{"type": "odd_asphere", "curvature": c, "conic": k, "coefficients": [A1, A2, A3, …]}`, `{"type": "axicon", "angle_deg": α}`, `{"type": "qcon", "curvature": c, "conic": k, "normalization_radius": ρ, "coefficients": [a0, a1, …]}` und `{"type": "qbfs", …}` mit denselben Schlüsseln (siehe unten) |
 | `aperture` | `circular` (`radius`, optional `inner_radius`), `rectangular` (`half_width_x`, `half_width_y`) oder `elliptical` (`semi_axis_x`, `semi_axis_y`) |
 | `phases` | Phasenschichten: `{"type": "linear_grating", "lines_per_mm": G, "orientation_deg": ψ}` oder `{"type": "radial_phase", "normalization_radius": R, "coefficients": [c1, c2, …]}` (ADR 0025). Einheiten: G in 1/mm, ψ in Grad von der lokalen x- zur lokalen y-Achse (ψ = 0: Rillen parallel zur lokalen y-Achse), φ = 2πG(x cos ψ + y sin ψ); R in mm, Koeffizienten c_k in **rad** (nicht in Wellen, kein Faktor 2π), c1 gehört zu ρ², φ = Σ c_k ρ^{2k} mit ρ = r/R. Die Werte gelten unverändert für jede Wellenlänge; das Vorzeichen von φ und der Ordnung nach ADR 0025, Punkte 1 bis 3 |
 | `diffraction_efficiency` | nur an Flächen mit `phases`: Leistungsanteil je Beugungsordnung, z. B. `[{"order": 1, "efficiency": 0.8}]`; fehlt das Feld, hat jede Ordnung 1, sonst haben nicht aufgeführte Ordnungen 0 |
@@ -166,10 +166,40 @@ anamorphen Formen sind sie in einer Datei vor Schema 0.9 ein Lesefehler.
 Toleranzen (ADR 0035, Nachtrag #314): An `odd_asphere` stört `curvature_relative` die Krümmung,
 C′ = C (1 + δ), und `conic` die Konik; `radius` ist dort `tolerances.target_invalid`. Die
 Klassen überspringen beide bei c = 0 mit `Plane`. Eine Krümmung, die 0 erreicht oder das
-Vorzeichen wechselt, macht den Prüfling nicht ungültig. Am Axicon sind `radius`,
+Vorzeichen wechselt, macht den Prüfling nicht ungültig; deshalb ist an einer Krümmung auch eine
+Grenze `curvature_relative` ≥ 1 erlaubt (ADR 0043, Nachtrag PR C), an einem Radius nicht. Am Axicon sind `radius`,
 `curvature_relative` und `conic` `tolerances.target_invalid` (Klassen: Grund `ShapeType`); der
 Winkel geht über die Art `param` auf `/shape/base/angle_deg`, und ein Prüfling, dessen Winkel
 das Vorzeichen wechselt oder |α| ≥ 90° erreicht, ist ungültig.
+
+## Forbes Q-con und Q-bfs (ab Schema 0.9, ADR 0043)
+
+Rotationssymmetrische Asphären nach G. W. Forbes mit orthogonalen Polynomen in u² und
+u = r/ρ (`docs/quellen.md`). Die Basis trägt wie bei `odd_asphere` ihre Krümmung `curvature`
+c in mm⁻¹ (endlich, 0 ist eine ebene Basis), `conic` k ist optional, `normalization_radius` ρ
+in mm ist Pflicht (endlich und > 0, sonst `shape.normalization_radius_invalid`), die
+`coefficients` a₀, a₁, … sind in mm. Alle Werte sind Params.
+
+```json
+{"type": "qcon", "curvature": 0.015625, "conic": -0.8, "normalization_radius": 12.7,
+ "coefficients": [-0.05, 0.01, -0.002]}
+{"type": "qbfs", "curvature": 0.0166667, "conic": -0.3, "normalization_radius": 12.7,
+ "coefficients": [0.1, -0.02]}
+```
+
+- `qcon` (Forbes 2007, Gl. (2), (3), (8)): z = c r²/(1 + φ) + u⁴ Σ a_m Q^con_m(u²) mit
+  φ = √(1 − (1 + k) c² r²). Forbes 2007 schreibt die Konik als „conic parameter“ ε = 1 + k.
+  Die Scheitelkrümmung ist c.
+- `qbfs` (Forbes 2011, Gl. (2.4)): z = c r²/(1 + φ) + u²(1 − u²)/σ · Σ a_m Q^bfs_m(u²) mit
+  1/σ = √(1 − k c² r²)/φ. Mit k = 0 ist c die Krümmung der Best-Fit-Sphäre, die die Fläche im
+  Scheitel und bei u = 1 trifft (Forbes 2007, Gl. (10), (11)). Die Fläche ist nur für φ > 0
+  definiert; (1 + k) c² ρ² ≥ 1 ist `shape.normalization_radius_invalid`. Die Scheitelkrümmung
+  ist c + 2 S(0)/ρ² mit S(0) = Σ a_m Q_m(0), nicht c.
+- ρ ist bei Forbes die halbe freie Apertur. Jenseits von ρ (u > 1) werden die Polynome
+  extrapoliert; reicht die Apertur der Fläche weiter als ρ (Radius, halbe Diagonale bzw. große
+  Halbachse, mehr als 10⁻⁹ relativ), warnt `shape.normalization_radius_exceeded`.
+- Toleranzen wie bei `odd_asphere`: `curvature_relative` stört c, `conic` stört k, `radius` ist
+  `tolerances.target_invalid`; ρ und die Koeffizienten gehen über `param`.
 
 ## Ideale Linse und ideale Zylinderlinse (ab Schema 0.5, ADR 0031)
 

@@ -594,6 +594,17 @@
             "type": {"const": "axicon"},
             "angle_deg": {"$ref": "#/$defs/param"}
           }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "curvature", "normalization_radius"],
+          "properties": {
+            "type": {"enum": ["qcon", "qbfs"]},
+            "curvature": {"$ref": "#/$defs/param"},
+            "conic": {"$ref": "#/$defs/param"},
+            "normalization_radius": {"$ref": "#/$defs/param"},
+            "coefficients": {"$ref": "#/$defs/param_list"}
+          }
         }
       ]
     },

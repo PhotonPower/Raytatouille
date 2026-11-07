@@ -88,6 +88,11 @@ bool class_generates(const TargetIndex& index, const ToleranceTarget& target, To
   return contains(kElementKinds) || contains(kMaterialKinds);
 }
 
+bool curvature_base(const BaseShape& base) noexcept {
+  return std::holds_alternative<OddAsphere>(base) || std::holds_alternative<QCon>(base) ||
+         std::holds_alternative<QBfs>(base);
+}
+
 bool is_rigid(ToleranceKind kind) noexcept {
   switch (kind) {
     case ToleranceKind::DecenterX:
@@ -117,10 +122,11 @@ std::optional<std::string> quantity(const TargetIndex& index,
     case ToleranceKind::Radius:
     case ToleranceKind::CurvatureRelative: {
       if (target.anchor != ToleranceAnchor::Surface) return std::nullopt;
-      // curvature_relative perturbs the curvature of an odd asphere (ADR 0035, addendum #314).
+      // curvature_relative perturbs the curvature of odd asphere, Q-con and Q-bfs (ADR 0035,
+      // addendum #314).
       const SurfaceEntry* s = index.surface(target.name);
       if (kind == ToleranceKind::CurvatureRelative && s != nullptr &&
-          std::holds_alternative<OddAsphere>(s->surface->shape.base)) {
+          curvature_base(s->surface->shape.base)) {
         return *anchor + "/shape/base/curvature";
       }
       return *anchor + "/shape/base/radius";

@@ -600,6 +600,31 @@ void bind_model_tree(nb::module_& m) {
               "Conic constant k of the base, dimensionless; without effect at c = 0 (Param).")
       .def_ro("coefficients", &model::OddAsphere::coefficients,
               "A1, A2, A3, ...: A_n in mm^(1 - n) for the term A_n r^n (Param each).");
+  // Forbes Q-con and Q-bfs (ADR 0043, point 1): the same fields.
+  read_only_class<model::QCon>(
+      m, "QCon",
+      "Forbes Q-con asphere z = c r^2 / (1 + sqrt(1 - (1 + k) c^2 r^2)) + u^4 sum a_m "
+      "Q^con_m(u^2), u = r / normalization_radius (ADR 0043; read-only copy). Forbes 2007 writes "
+      "the conic as epsilon = 1 + k. Beyond the normalization radius the polynomials are "
+      "extrapolated.")
+      .def_ro("curvature", &model::QCon::curvature,
+              "Curvature c of the base conic in 1/mm, finite, 0 allowed (Param).")
+      .def_ro("conic", &model::QCon::conic, "Conic constant k of the base, dimensionless (Param).")
+      .def_ro("normalization_radius", &model::QCon::normalization_radius,
+              "Normalization radius rho in mm, > 0: half the clear aperture (Param).")
+      .def_ro("coefficients", &model::QCon::coefficients, "a_0, a_1, ... in mm (Param each).");
+  read_only_class<model::QBfs>(
+      m, "QBfs",
+      "Forbes Q-bfs asphere with a conic base z = c r^2 / (1 + phi) + u^2 (1 - u^2) / sigma sum "
+      "a_m Q^bfs_m(u^2), phi = sqrt(1 - (1 + k) c^2 r^2), 1/sigma = sqrt(1 - k c^2 r^2) / phi, "
+      "u = r / normalization_radius (Forbes 2011, Eq. (2.4); ADR 0043; read-only copy). Defined "
+      "for phi > 0; the vertex curvature is c + 2 S(0) / rho^2.")
+      .def_ro("curvature", &model::QBfs::curvature,
+              "Curvature c of the base conic in 1/mm, finite, 0 allowed (Param).")
+      .def_ro("conic", &model::QBfs::conic, "Conic constant k of the base, dimensionless (Param).")
+      .def_ro("normalization_radius", &model::QBfs::normalization_radius,
+              "Normalization radius rho in mm, > 0, with (1 + k) c^2 rho^2 < 1 (Param).")
+      .def_ro("coefficients", &model::QBfs::coefficients, "a_0, a_1, ... in mm (Param each).");
   read_only_class<model::Axicon>(
       m, "Axicon",
       "Axicon z = r tan(alpha), a cone with its apex at the vertex (ADR 0043; read-only copy). "
@@ -619,8 +644,8 @@ void bind_model_tree(nb::module_& m) {
       m, "ShapeStack",
       "Total sag = base + sum of the terms, in the local xy plane (read-only copy).")
       .def_ro("base", &model::ShapeStack::base,
-              "Base shape: Plane, Conic, EvenAsphere, Biconic, Toroid, Cylinder, OddAsphere "
-              "or Axicon.")
+              "Base shape: Plane, Conic, EvenAsphere, Biconic, Toroid, Cylinder, OddAsphere, "
+              "Axicon, QCon or QBfs.")
       .def_ro("terms", &model::ShapeStack::terms, "Additive terms (ZernikeSag).");
 
   // ------------------------------------------------------------- aperture -----

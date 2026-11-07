@@ -26,6 +26,7 @@ if(RTT_BUILD_TESTS)
             tests/test_validate_object_medium.cpp tests/test_validate_object_reference.cpp
             tests/test_validate_aperture_stop.cpp tests/test_validate_aperture_reading.cpp
             tests/test_anamorphic_model.cpp tests/test_rotational_model.cpp
+            tests/test_forbes_model.cpp
     LIBS rtt::model rtt::model_test_support)
   # src/: the expression parser (expression.hpp) is tested directly.
   target_include_directories(rtt_model_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)

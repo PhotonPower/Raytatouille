@@ -95,8 +95,35 @@ struct Axicon {
   bool operator==(const Axicon&) const = default;
 };
 
-using BaseShape =
-    std::variant<Plane, Conic, EvenAsphere, Biconic, Toroid, Cylinder, OddAsphere, Axicon>;
+/// Forbes Q-con asphere (ADR 0043, point 1; Forbes, Opt. Express 15(8), 5218 (2007), Eqs. (2),
+/// (3), (8)): z = c r^2 / (1 + sqrt(1 - (1 + k) c^2 r^2)) + u^4 sum_m a_m Q^con_m(u^2) with
+/// u = r / normalization_radius. The base carries its curvature c (finite, 0 allowed) as the odd
+/// asphere; Forbes writes the conic as epsilon = 1 + k. Beyond the normalization radius the
+/// polynomials are extrapolated (a warning if the aperture reaches beyond it).
+struct QCon {
+  Param curvature;                  ///< c of the base conic, 1/mm, positive as 1/Conic::radius
+  Param conic;                      ///< k of the base conic, dimensionless
+  Param normalization_radius;       ///< rho, mm, finite and > 0 (half the clear aperture)
+  std::vector<Param> coefficients;  ///< a_0, a_1, ...: mm
+  bool operator==(const QCon&) const = default;
+};
+
+/// Forbes Q-bfs asphere with a conic base (ADR 0043, point 1; Forbes, Opt. Express 19(10), 9923
+/// (2011), Eq. (2.4)): z = c r^2 / (1 + phi) + u^2 (1 - u^2) / sigma sum_m a_m Q^bfs_m(u^2) with
+/// phi = sqrt(1 - (1 + k) c^2 r^2), 1/sigma = sqrt(1 - k c^2 r^2) / phi and u = r /
+/// normalization_radius. Defined for phi > 0; (1 + k) c^2 rho^2 < 1 is required. With k = 0, c is
+/// the curvature of the best-fit sphere through the vertex and the rim u = 1. The vertex
+/// curvature is c + 2 S(0) / rho^2, not c.
+struct QBfs {
+  Param curvature;                  ///< c of the base conic, 1/mm, positive as 1/Conic::radius
+  Param conic;                      ///< k of the base conic, dimensionless
+  Param normalization_radius;       ///< rho, mm, finite and > 0 (half the clear aperture)
+  std::vector<Param> coefficients;  ///< a_0, a_1, ...: mm
+  bool operator==(const QBfs&) const = default;
+};
+
+using BaseShape = std::
+    variant<Plane, Conic, EvenAsphere, Biconic, Toroid, Cylinder, OddAsphere, Axicon, QCon, QBfs>;
 
 /// Additive Zernike sag term, Noll ordering (coefficients[0] = j = 1), coefficients in mm.
 struct ZernikeSag {

@@ -29,7 +29,7 @@ template <class>
 inline constexpr bool kUnhandledShape = false;
 
 /// Name of the base type as in the file format ("plane", "conic", "even_asphere", "biconic",
-/// "toroid", "cylinder", "odd_asphere", "axicon").
+/// "toroid", "cylinder", "odd_asphere", "axicon", "qcon", "qbfs").
 std::string base_type_name(const BaseShape& base) {
   return std::visit(
       [](const auto& b) -> std::string {
@@ -50,6 +50,10 @@ std::string base_type_name(const BaseShape& base) {
           return "odd_asphere";
         } else if constexpr (std::is_same_v<B, Axicon>) {
           return "axicon";
+        } else if constexpr (std::is_same_v<B, QCon>) {
+          return "qcon";
+        } else if constexpr (std::is_same_v<B, QBfs>) {
+          return "qbfs";
         } else {
           static_assert(kUnhandledShape<B>, "base_type_name: unhandled base shape");
         }
@@ -500,6 +504,7 @@ class Validator {
       }
     }
     check_shape(s.shape, loc + "/shape");
+    check_normalization_extent(s, loc);
     if (s.aperture) check_aperture(*s.aperture, loc + "/aperture");
     for (std::size_t i = 0; i < s.phases.size(); ++i) {
       check_phase(s.phases[i], idx(loc + "/phases", i));
@@ -546,6 +551,81 @@ class Validator {
     }
   }
 
+  /// The base of odd asphere, Q-con and Q-bfs (ADR 0043, point 4): c finite, 0 allowed (a plane
+  /// base); a conic constant at c = 0 has no effect; the coefficients as Params.
+  void check_curvature_base(const Param& curvature,
+                            const Param& conic,
+                            const std::vector<Param>& coefficients,
+                            const std::string& base) {
+    check_param(curvature, base + "/curvature", true);
+    const bool c_known = !curvature.is_bound();
+    if (c_known && !std::isfinite(curvature.value)) {
+      report("shape.curvature_invalid", base + "/curvature", "curvature must be finite");
+    }
+    check_param(conic, base + "/conic", false);
+    if (c_known && curvature.value == 0.0 && !conic.is_bound() && conic.value != 0.0) {
+      report("shape.conic_without_curvature", base + "/conic",
+             "conic constant without effect: the curvature is 0 (a plane base)");
+    }
+    for (std::size_t k = 0; k < coefficients.size(); ++k) {
+      check_param(coefficients[k], idx(base + "/coefficients", k), false);
+    }
+    if (coefficients.empty())
+      report("shape.asphere_without_coefficients", base + "/coefficients",
+             "asphere without coefficients");
+  }
+
+  /// The normalization radius of Q-con and Q-bfs (ADR 0043, point 4): finite and > 0; at Q-bfs
+  /// also (1 + k) c^2 rho^2 < 1 (phi > 0 up to the normalization radius).
+  template <class B>
+  void check_normalization_radius(const B& b, const std::string& base) {
+    const Param& rho = b.normalization_radius;
+    check_param(rho, base + "/normalization_radius", true);
+    if (rho.is_bound()) return;
+    if (!finite_positive(rho.value)) {
+      report("shape.normalization_radius_invalid", base + "/normalization_radius",
+             "normalization radius must be finite and > 0 mm");
+      return;
+    }
+    if constexpr (std::is_same_v<B, QBfs>) {
+      if (b.curvature.is_bound() || b.conic.is_bound()) return;
+      const double c = b.curvature.value;
+      const double k = b.conic.value;
+      if ((1.0 + k) * c * c * rho.value * rho.value >= 1.0) {
+        report("shape.normalization_radius_invalid", base + "/normalization_radius",
+               "Q-bfs needs (1 + conic) curvature^2 normalization_radius^2 < 1 (phi > 0)");
+      }
+    }
+  }
+
+  /// ADR 0043, point 2 (F3): Q-con and Q-bfs extrapolate beyond the normalization radius; a
+  /// warning if the largest distance of the aperture from the axis (radius, half the diagonal,
+  /// the major semi-axis) exceeds it by more than 1e-9 relative. No aperture, no warning.
+  void check_normalization_extent(const Surface& s, const std::string& loc) {
+    if (!s.aperture) return;
+    const Param* rho = nullptr;
+    if (const auto* q = std::get_if<QCon>(&s.shape.base)) rho = &q->normalization_radius;
+    if (const auto* q = std::get_if<QBfs>(&s.shape.base)) rho = &q->normalization_radius;
+    if (rho == nullptr || rho->is_bound() || !finite_positive(rho->value)) return;
+    const double extent = std::visit(
+        [](const auto& a) -> double {
+          using A = std::decay_t<decltype(a)>;
+          if constexpr (std::is_same_v<A, CircularAperture>) {
+            return a.radius;
+          } else if constexpr (std::is_same_v<A, RectangularAperture>) {
+            return std::hypot(a.half_width_x, a.half_width_y);
+          } else {
+            return std::max(a.semi_axis_x, a.semi_axis_y);
+          }
+        },
+        *s.aperture);
+    if (extent > rho->value * (1.0 + 1e-9)) {
+      report("shape.normalization_radius_exceeded", loc + "/shape/base/normalization_radius",
+             "the aperture reaches beyond the normalization radius: the polynomials are "
+             "extrapolated there");
+    }
+  }
+
   void check_shape(const ShapeStack& shape, const std::string& loc) {
     const std::string base = loc + "/base";
     std::visit(
@@ -584,25 +664,10 @@ class Validator {
               check_radius(b.radius_of_rotation, base + "/radius_of_rotation");
             }
           } else if constexpr (std::is_same_v<B, OddAsphere>) {
-            // ADR 0043, point 4: c finite, 0 allowed (a plane base); a conic constant at c = 0
-            // has no effect.
-            check_param(b.curvature, base + "/curvature", true);
-            const bool c_known = !b.curvature.is_bound();
-            if (c_known && !std::isfinite(b.curvature.value)) {
-              report("shape.curvature_invalid", base + "/curvature", "curvature must be finite");
-            }
-            check_param(b.conic, base + "/conic", false);
-            if (c_known && b.curvature.value == 0.0 && !b.conic.is_bound() &&
-                b.conic.value != 0.0) {
-              report("shape.conic_without_curvature", base + "/conic",
-                     "conic constant without effect: the curvature is 0 (a plane base)");
-            }
-            for (std::size_t k = 0; k < b.coefficients.size(); ++k) {
-              check_param(b.coefficients[k], idx(base + "/coefficients", k), false);
-            }
-            if (b.coefficients.empty())
-              report("shape.asphere_without_coefficients", base + "/coefficients",
-                     "asphere without coefficients");
+            check_curvature_base(b.curvature, b.conic, b.coefficients, base);
+          } else if constexpr (std::is_same_v<B, QCon> || std::is_same_v<B, QBfs>) {
+            check_curvature_base(b.curvature, b.conic, b.coefficients, base);
+            check_normalization_radius(b, base);
           } else if constexpr (std::is_same_v<B, Axicon>) {
             // ADR 0043, point 4 (F5): alpha finite with |alpha| < 90 deg.
             check_param(b.angle_deg, base + "/angle_deg", true);
@@ -1022,13 +1087,23 @@ class Validator {
     }
   }
 
-  void check_limit(double limit, ToleranceKind kind, const std::string& loc) {
+  /// `curvature`: the target carries a curvature instead of a radius (odd asphere, Q-con,
+  /// Q-bfs); there C' = C (1 + delta) may reach 0 or change its sign as a valid trial (ADR 0035,
+  /// addendum #314), so curvature_relative >= 1 is no error (ADR 0043, addendum PR C).
+  void check_limit(double limit, ToleranceKind kind, const std::string& loc, bool curvature) {
     if (!std::isfinite(limit) || limit <= 0.0) {
       report("tolerances.limit_invalid", loc, "limit must be finite and > 0");
-    } else if (kind == ToleranceKind::CurvatureRelative && limit >= 1.0) {
+    } else if (kind == ToleranceKind::CurvatureRelative && limit >= 1.0 && !curvature) {
       report("tolerances.limit_invalid", loc,
              "curvature_relative >= 1 allows C' = 0 or a change of sign");
     }
+  }
+
+  /// True if `target` is a surface whose base carries a curvature (detail::curvature_base).
+  static bool on_curvature(const detail::TargetIndex& index, const ToleranceTarget& target) {
+    if (target.anchor != ToleranceAnchor::Surface) return false;
+    const detail::SurfaceEntry* s = index.surface(target.name);
+    return s != nullptr && detail::curvature_base(s->surface->shape.base);
   }
 
   /// The anchor of an item, override or compensator: false if it does not resolve (reported).
@@ -1167,8 +1242,8 @@ class Validator {
                                     ? &index.surface(t.name)->surface->shape.base
                                     : nullptr;
         // The Param that the kind perturbs: the radius (radius, curvature_relative) or the conic
-        // of conic and even asphere, the curvature (curvature_relative) or the conic of the odd
-        // asphere (ADR 0035, addendum #314).
+        // of conic and even asphere, the curvature (curvature_relative) or the conic of odd
+        // asphere, Q-con and Q-bfs (ADR 0035, addendum #314).
         const Param* radius = nullptr;
         const Param* conic = nullptr;
         if (base != nullptr) {
@@ -1178,10 +1253,17 @@ class Validator {
           } else if (const auto* a = std::get_if<EvenAsphere>(base)) {
             radius = &a->radius;
             conic = &a->conic;
-          } else if (const auto* o = std::get_if<OddAsphere>(base);
-                     o != nullptr && kind != ToleranceKind::Radius) {
-            radius = &o->curvature;
-            conic = &o->conic;
+          } else if (kind != ToleranceKind::Radius) {
+            if (const auto* o = std::get_if<OddAsphere>(base)) {
+              radius = &o->curvature;
+              conic = &o->conic;
+            } else if (const auto* q = std::get_if<QCon>(base)) {
+              radius = &q->curvature;
+              conic = &q->conic;
+            } else if (const auto* r = std::get_if<QBfs>(base)) {
+              radius = &r->curvature;
+              conic = &r->conic;
+            }
           }
         }
         if (radius == nullptr) {
@@ -1189,7 +1271,8 @@ class Validator {
           const std::string needs =
               kind == ToleranceKind::Radius
                   ? "needs a surface with a conic or even asphere base"
-                  : "needs a surface with a conic, even asphere or odd asphere base";
+                  : "needs a surface with a conic, even asphere, odd asphere, Q-con or Q-bfs "
+                    "base";
           report(
               "tolerances.target_invalid", loc + "/kind",
               base != nullptr ? needs + " (base type \"" + base_type_name(*base) + "\")" : needs);
@@ -1281,7 +1364,7 @@ class Validator {
         }
         check_tolerance_class(c->tolerance_class, loc + "/class");
       } else if (const auto* v = std::get_if<ToleranceValueOverride>(&overrides[i])) {
-        check_limit(v->limit, v->kind, loc + "/limit");
+        check_limit(v->limit, v->kind, loc + "/limit", on_curvature(index, v->target));
         if (!check_anchor(index, v->target, loc)) continue;
         if (v->target.param || !detail::class_generates(index, v->target, v->kind)) {
           report("tolerances.target_invalid", loc + "/kind",
@@ -1341,7 +1424,7 @@ class Validator {
       if (!blank(item.id) && !ids.insert(item.id).second) {
         report("tolerances.id_duplicate", loc + "/id", "duplicate id '" + item.id + "'");
       }
-      check_limit(item.limit, item.kind, loc + "/limit");
+      check_limit(item.limit, item.kind, loc + "/limit", on_curvature(index, item.target));
       check_item_target(index, item.target, item.kind, item.limit, loc);
       if (const std::optional<std::string> q = detail::quantity(index, item.target, item.kind)) {
         if (!quantities.insert(*q).second) {

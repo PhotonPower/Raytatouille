@@ -371,9 +371,29 @@ BaseShape read_base_shape(const Json& j, const Ctx& c) {
     s.angle_deg = read_param(require(j, "angle_deg", c), c.at("angle_deg"));
     return s;
   }
+  if (type == "qcon" || type == "qbfs") {
+    // ADR 0043, point 4: curvature and normalization radius are required, conic constant and
+    // coefficients optional as for odd_asphere.
+    expect_object(j, c, {"type", "curvature", "conic", "normalization_radius", "coefficients"});
+    const auto fill = [&](auto& s) {
+      s.curvature = read_param(require(j, "curvature", c), c.at("curvature"));
+      read_opt(j, "conic", c, s.conic, read_param);
+      s.normalization_radius =
+          read_param(require(j, "normalization_radius", c), c.at("normalization_radius"));
+      read_opt(j, "coefficients", c, s.coefficients, read_param_list);
+    };
+    if (type == "qcon") {
+      QCon s;
+      fill(s);
+      return s;
+    }
+    QBfs s;
+    fill(s);
+    return s;
+  }
   c.at("type").fail("unknown shape type '" + type +
                     "', expected plane, conic, even_asphere, biconic, toroid, cylinder, "
-                    "odd_asphere or axicon");
+                    "odd_asphere, axicon, qcon or qbfs");
 }
 
 ShapeTerm read_shape_term(const Json& j, const Ctx& c) {
@@ -696,7 +716,7 @@ struct Migration {
 /// - 0.7 -> 0.8 (ADR 0038 to 0040): content unchanged, only "object.reference", "aperture.stop"
 ///   and "aperture.reading" are new.
 /// - 0.8 -> 0.9 (ADR 0042, ADR 0043): content unchanged, only the base shapes biconic, toroid,
-///   cylinder, odd_asphere and axicon are new.
+///   cylinder, odd_asphere, axicon, qcon and qbfs are new.
 Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
   const std::string ours(kSchemaVersion);
   const std::string mm = major_minor(version);
@@ -717,9 +737,9 @@ Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
          " and migrates 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7 and 0.8");
 }
 
-/// Files before 0.9 (ADR 0042, ADR 0043, point 4): a biconic, toroid, cylinder, odd_asphere or
-/// axicon base is an error at the type of its base shape, so that a version is never silently
-/// upgraded.
+/// Files before 0.9 (ADR 0042, ADR 0043, point 4): a biconic, toroid, cylinder, odd_asphere,
+/// axicon, qcon or qbfs base is an error at the type of its base shape, so that a version is never
+/// silently upgraded.
 void check_0_9_forms(const Json& node, const Ctx& c) {
   if (!node.is_object()) return;  // structural errors are reported by the reader
   if (const Json* surfaces = find(node, "surfaces"); surfaces != nullptr && surfaces->is_array()) {
@@ -729,7 +749,8 @@ void check_0_9_forms(const Json& node, const Ctx& c) {
       const Json* type = base != nullptr ? find(*base, "type") : nullptr;
       if (type == nullptr || !type->is_string()) continue;
       const bool anamorphic = *type == "biconic" || *type == "toroid" || *type == "cylinder";
-      const bool rotational = *type == "odd_asphere" || *type == "axicon";
+      const bool rotational =
+          *type == "odd_asphere" || *type == "axicon" || *type == "qcon" || *type == "qbfs";
       if (anamorphic || rotational) {
         c.at("surfaces")
             .at(i)
@@ -1622,6 +1643,12 @@ class Writer {
           } else if constexpr (std::is_same_v<S, Axicon>) {
             o["type"] = "axicon";
             o["angle_deg"] = param(s.angle_deg);
+          } else if constexpr (std::is_same_v<S, QCon> || std::is_same_v<S, QBfs>) {
+            o["type"] = std::is_same_v<S, QCon> ? "qcon" : "qbfs";
+            o["curvature"] = param(s.curvature);
+            if (edit_ || s.conic != Param{}) o["conic"] = param(s.conic);
+            o["normalization_radius"] = param(s.normalization_radius);
+            if (edit_ || !s.coefficients.empty()) o["coefficients"] = param_list(s.coefficients);
           } else {
             static_assert(kUnhandledShape<S>, "base_shape: unhandled base shape");
           }
