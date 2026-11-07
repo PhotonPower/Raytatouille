@@ -4,7 +4,7 @@ target_include_directories(rtt_io PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(rtt_io PUBLIC rtt::model PRIVATE rtt::json rtt::diagnostics rtt::material
-  rtt::compile rtt::trace
+  rtt::compile rtt::paraxial rtt::trace
   nlohmann_json::nlohmann_json)
 rtt_target_defaults(rtt_io LIBRARY)
 
@@ -26,7 +26,8 @@ if(RTT_BUILD_TESTS)
   # first order and a spot per field, so the test needs the tracing and analysis libraries.
   rtt_add_test(rtt_io_zmx_tests
     SOURCES tests/test_zmx.cpp
-    LIBS rtt::io rtt::material rtt::compile rtt::paraxial rtt::analysis rtt::diagnostics
+    LIBS rtt::io rtt::material rtt::compile rtt::paraxial rtt::analysis rtt::trace
+         rtt::diagnostics
          nlohmann_json::nlohmann_json)
   target_compile_definitions(rtt_io_zmx_tests PRIVATE
     RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs"

@@ -100,5 +100,23 @@
     "efl_relative": 50.00098928993638,
     "bfl_relative": 41.23764895362285,
     "condition": 5.340279919228272
+  },
+  "paraxial": {
+    "n_air": 1.0002724309385276,
+    "efl": 99.97276432598748,
+    "bfl": 100.0,
+    "rear_focal_length": 100.0,
+    "efl_relative": 100.0,
+    "bfl_relative": 100.0,
+    "condition": 1.0
+  },
+  "apertures": {
+    "n_air": 1.0002724309385276,
+    "efl": 49.37072221620032,
+    "bfl": 47.36504721900802,
+    "rear_focal_length": 49.38417232838947,
+    "efl_relative": 49.38417232838946,
+    "bfl_relative": 47.36504721900801,
+    "condition": 1.0
   }
 }

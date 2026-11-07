@@ -198,13 +198,14 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `wavelengths.weight_invalid` | Fehler | Wellenlängengewicht nicht endlich oder < 0 | validate | `/wavelengths/i/weight` |
 | `zernike.pupil_incomplete` | Warnung | Zernike-Fit auf einer unvollständigen Pupille: mehr als `incomplete_warning_fraction` (Standard 1 %) der Pupillenfläche kam nicht an, oder die Pupille ist ein Ring (zentrale Abschattung am Stopp, ADR 0032, Nachtrag #229). Dort sind die Z_j nicht orthogonal, die Koeffizienten sind ein Fit, keine Zerlegung (ADR 0032, Punkt 6) | analysis | `/paths/i` |
 | `zmx.afocal_image_space` | Warnung | `FTYP` Stelle 7 = 1 (Afocal Image Space, Lesart optiland) übergangen; ändert in OpticStudio nur die Einheiten der Analysen (ADR 0044, Punkt 4) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
-| `zmx.aperture_conflict` | Fehler | Fläche mit `CLAP` und `FLAP` (ADR 0044, Punkt 8) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.aperture_conflict` | Fehler | Fläche mit mehr als einer Apertur (`CLAP`, `FLAP`, `SQAP`, `ELAP`; ADR 0044, Punkt 8) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.aperture_decenter` | Fehler | dezentrierte Apertur (`OBDC` ≠ 0) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.aperture_dropped` | Warnung | `FLAP` neben automatischem Halbdurchmesser verworfen; er würde real gezielte Randstrahlen beschneiden (ADR 0044, Punkt 8) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
-| `zmx.aperture_invalid` | Fehler | `CLAP` oder `FLAP` mit Radius 0 oder rmax ≤ rmin | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
-| `zmx.aperture_unsupported` | Fehler | Apertur oder Systemapertur ohne Abbildung: `FNUM v 1`, `OBNA v 1`, `FTYP` objektseitig telezentrisch, `FLAP` mit erstem Feld ≠ 0, `SQAP`, `ELAP`, `OBSC` u. a. | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.aperture_invalid` | Fehler | `CLAP` oder `FLAP` mit Radius 0 oder rmax ≤ rmin, `SQAP` oder `ELAP` mit Halbbreite ≤ 0 | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.aperture_unsupported` | Fehler | Apertur oder Systemapertur ohne Abbildung: `FNUM v 1`, `OBNA v 1`, `FTYP` objektseitig telezentrisch, `FLAP` mit erstem Feld ≠ 0, `OBSC`, `SQOB`, `ELOB`, `SPID`, `USAP`, Rechteck oder Ellipse an der Blende, Apertur an oder Blende auf einer gekippten Ebene | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.asphere_r2` | Fehler | `EVENASPH` mit α1 (r²) ≠ 0; die paraxiale Lesart in OpticStudio ist nicht belegt (ADR 0044, Punkt 6) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.config_mismatch` | Fehler | `THIC` oder `CRVT` der einzigen Konfiguration weicht von den Flächendaten ab (ADR 0044, Punkt 9) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.coordbrk_surface` | Fehler | `STOP` oder Apertur an einem Koordinatensprung (ADR 0044, Nachtrag PR C) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.encoding_unsupported` | Fehler | Datei in UTF-16 BE oder fehlerhaftes UTF-16 | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.environment_unsupported` | Fehler | Umgebung (`ENVD`) nicht 20 °C und 1 atm | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.field_unsupported` | Fehler | Feldtyp reale Bildhöhe oder Theodolitwinkel | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
@@ -213,18 +214,23 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `zmx.image_in_glass` | Fehler | Glas vor der Bildfläche | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.invalid_result` | Fehler | das importierte System besteht `validate` oder `compile` nicht; die Meldung des Originals steht im Text | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.keyword_ignored` | Warnung | unbekanntes Schlüsselwort übergangen, einmal je Schlüsselwort mit Anzahl | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.keyword_unsupported` | Fehler | unbekanntes Schlüsselwort in einem Flächenblock, `VDSZ` ≠ 0 oder `FIMP` mit Wert; es könnte die Optik ändern (ADR 0044, Nachtrag PR C) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.mirror_in_glass` | Fehler | Spiegel im Glas (Mangin) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.mode_unsupported` | Fehler | Datei nicht sequenziell (`MODE` ≠ `SEQ`) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.model_glass` | Fehler | Modellglas (`GLAS` Feld 2 = 1, `___BLANK`) oder MIL-Nummer als Glasname | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.multi_config` | Fehler | mehr als eine Konfiguration (`MNUM` > 1) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.object_medium_infinite` | Fehler | Glas im Objektraum bei Objekt im Unendlichen | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.object_medium_unsupported` | Fehler | Glas im Objektraum, und Fläche 1 beginnt keine Linse | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
-| `zmx.parse` | Fehler | fehlerhafte Zeile (keine endliche Zahl, falsche Nummerierung, `SURF` nach dem Ende der Flächen, zweite Systemapertur) oder fehlende Angabe (`FTYP`, Apertur, Wellenlängen, `STOP`) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.paraxial_medium` | Fehler | ideale Linse (`PARAXIAL`) nicht mit Luft auf beiden Seiten (ADR 0044, Nachtrag PR C) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.paraxial_opd` | Warnung | OPD-Modus 0, 1 oder 3 einer idealen Linse als unendliche Konjugierte übernommen; die Strahlen sind gleich, die OPD bei endlicher Konjugierter nicht | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.paraxial_unavailable` | Warnung | gefalteter, gekippter oder dezentrierter Pfad ohne paraxiales Modell; Analysen mit paraxialer Zielung brauchen vorgegebene Startstrahlen (#357) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.parse` | Fehler | fehlerhafte Zeile (keine endliche Zahl, falsche Nummerierung, `SURF` nach dem Ende der Flächen, zweite Systemapertur, fremdes Glas an einem Koordinatensprung, OPD-Modus einer idealen Linse außer 0 bis 3) oder fehlende Angabe (`FTYP`, Apertur, Wellenlängen, `STOP`) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.stop_radius_conflict` | Fehler | `FLOA` mit einer Blendenapertur, die vom Halbdurchmesser abweicht | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.stop_radius_missing` | Fehler | Blende ohne Halbdurchmesser und ohne Apertur | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.stop_radius_small` | Warnung | paraxialer Blendenradius größer als 1,1 · automatischer Halbdurchmesser; reale Randstrahlen werden an der Blende vignettiert (ADR 0044, Punkt 8) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.surface_dropped` | Warnung | Luft-Luft-Fläche mit Brechkraft ohne Apertur weggelassen; sie bricht nicht | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
-| `zmx.surface_unsupported` | Fehler | Flächentyp ohne Abbildung (alles außer `STANDARD` und `EVENASPH`) oder gekrümmte Objektfläche | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.surface_unsupported` | Fehler | Flächentyp ohne Abbildung (alles außer `STANDARD`, `EVENASPH`, `COORDBRK`, `TILTSURF`, `PARAXIAL`), gekrümmte oder gekippte Objektfläche, Koordinatensprung als Objekt- oder Bildfläche, ideale Linse als Spiegel oder Bildfläche, gekippte Ebene oder ideale Linse mit `CURV` ≠ 0 | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.tilted_image` | Warnung | gekippte Bildfläche (`TILTSURF`): Bildkoordinaten in der gekippten Ebene, nicht wie in OpticStudio auf den ungekippten Rahmen projiziert | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.unit_unsupported` | Fehler | Linseneinheit nicht MM, CM, IN oder METER | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.vignetting_unsupported` | Fehler | Vignettierungsfaktoren ≠ 0 | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 

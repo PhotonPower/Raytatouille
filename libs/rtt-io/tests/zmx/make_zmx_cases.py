@@ -100,7 +100,7 @@ UNITS = {"MM": 1.0, "CM": 10.0, "IN": 25.4, "METER": 1000.0}
 
 def surf(**kw):
     base = dict(type="STANDARD", curv=0.0, coni=0.0, parm=[], disz=0.0, glas="", diam=(0.0, 0, 0),
-                clap=None, flap=None, stop=False)
+                clap=None, flap=None, sqap=None, elap=None, stop=False)
     base.update(kw)
     return base
 
@@ -213,7 +213,262 @@ CASES = {
             surf(),
         ],
         merit=False, thic=None),
+    # PR C: ideal lens f = 100 as the stop (PARAXIAL, OPD mode 2), image in its focal plane.
+    "paraxial": dict(
+        name="Paraxial lens", unit="MM", catalog="schott.agf", aperture=("ENPD", 10.0), ftyp=0,
+        fields=[(0.0, 0.0, 1.0), (0.0, 2.0, 1.0), (0.0, 4.0, 1.0)],
+        waves=[(0.5875618, 1.0)], pwav=1, object=None,
+        surfaces=[
+            surf(type="PARAXIAL", parm=[100.0, 2.0], disz=100.0, diam=(5.0, 1, 0), stop=True),
+            surf(),
+        ],
+        merit=False, thic=None),
+    # PR C: rectangular and elliptical apertures on dummy surfaces in front of a singlet, in
+    # inches (the half widths scale with the unit).
+    "apertures": dict(
+        name="Apertures", unit="IN", catalog="schott.agf", aperture=("ENPD", 10.0), ftyp=0,
+        fields=[(0.0, 0.0, 1.0), (0.0, 3.0, 1.0), (0.0, 5.0, 1.0)],
+        waves=[(0.5875618, 1.0)], pwav=1, object=None,
+        surfaces=[
+            surf(disz=2.0, sqap=(7.0, 6.0)),
+            surf(disz=3.0, elap=(7.0, 6.0)),
+            surf(disz=5.0, diam=(8.0, 1, 0), stop=True),
+            surf(curv=1.0 / 50.0, disz=6.0, glas="N-BK7", diam=(9.0, 1, 0), flap=9.0),
+            surf(curv=-1.0 / 50.0, disz=45.0, diam=(9.0, 2, 4), flap=9.0),
+            surf(),
+        ],
+        merit=False, thic=None),
 }
+
+
+def cb(dx=0.0, dy=0.0, a=0.0, b=0.0, c=0.0, order=0, disz=0.0, **kw):
+    """A coordinate break (UG "Coordinate Break"): decenters in mm, tilts in degrees."""
+    return surf(type="COORDBRK", parm=[dx, dy, a, b, c, float(order)], disz=disz, **kw)
+
+
+# PR C, folded and tilted systems: the expected data are the frames of OpticStudio (below), not
+# an expected file, because the poses of a decomposed transform round.
+FOLDED = {
+    # tests/reference/m6/fold45_focus.rtt.json as ZMX: ideal lens f = 50 (the stop), fold +45
+    # deg about x at z = 20, detector 32 behind the fold (2 mm behind the focus) at (0, 32, 20).
+    "fold": dict(
+        name="Fold 45", unit="MM", catalog="schott.agf", aperture=("ENPD", 10.0), ftyp=0,
+        fields=[(0.0, 0.0, 1.0), (0.0, 1.0, 1.0)], waves=[(0.55, 1.0)], pwav=1, object=None,
+        surfaces=[
+            surf(type="PARAXIAL", parm=[50.0, 2.0], disz=20.0, diam=(5.0, 1, 0), stop=True),
+            cb(a=45.0),
+            surf(glas="MIRROR", disz=0.0),
+            cb(a=45.0, disz=-32.0),
+            surf(),
+        ],
+        merit=False, thic=None),
+    # Off-axis parabola: decenter -10 in y (flag 0), the parabola R = -200, then three breaks in
+    # a row (a compound tilt, its reversal with flag 1, the decenter undone with flag 1) and the
+    # image in the plane of the focus at z = 0.
+    "oap": dict(
+        name="Off-axis parabola", unit="MM", catalog="schott.agf", aperture=("ENPD", 6.0), ftyp=0,
+        fields=[(0.0, 0.0, 1.0), (0.0, 0.2, 1.0)], waves=[(0.55, 1.0)], pwav=1, object=None,
+        surfaces=[
+            surf(disz=100.0, diam=(5.0, 1, 0), stop=True),
+            cb(dy=-10.0),
+            surf(curv=-0.005, coni=-1.0, glas="MIRROR", disz=0.0),
+            cb(a=10.0, b=5.0),
+            cb(a=-10.0, b=-5.0, order=1),
+            cb(dy=10.0, order=1, disz=-100.0),
+            surf(),
+        ],
+        merit=False, thic=None),
+    # Pivoted lens after the OISC file of the same name: a break of 5 deg at surface 1, a
+    # cemented lens, the way back to the pivot with a negative thickness and the break undone;
+    # finite object, object heights.
+    "pivot": dict(
+        name="Pivoted lens", unit="MM", catalog="schott.agf", aperture=("ENPD", 8.0), ftyp=1,
+        fields=[(0.0, 0.0, 1.0), (0.0, 5.0, 1.0)], waves=[(0.5875618, 1.0)], pwav=1,
+        object=200.0,
+        surfaces=[
+            cb(a=5.0),
+            surf(curv=1.0 / 40.0, disz=6.0, glas="N-BK7", diam=(8.0, 1, 0), flap=8.0, stop=True),
+            surf(curv=-1.0 / 30.0, disz=3.0, glas="F2", diam=(8.0, 1, 0), flap=8.0),
+            surf(curv=-1.0 / 100.0, disz=-9.0, diam=(8.0, 1, 0), flap=8.0),
+            cb(a=-5.0, disz=150.0),
+            surf(),
+        ],
+        merit=False, thic=None),
+    # A singlet with a tilted image plane (Scheimpflug, TILTSURF at the image).
+    "tilt_image": dict(
+        name="Tilted image", unit="MM", catalog="schott.agf", aperture=("ENPD", 10.0), ftyp=0,
+        fields=[(0.0, 0.0, 1.0), (0.0, 3.0, 1.0)], waves=[(0.5875618, 1.0)], pwav=1, object=None,
+        surfaces=[
+            surf(disz=5.0, diam=(5.0, 1, 0), stop=True),
+            surf(curv=1.0 / 50.0, disz=6.0, glas="N-BK7", diam=(8.0, 1, 0), flap=8.0),
+            surf(curv=-1.0 / 50.0, disz=45.0, diam=(8.0, 1, 0), flap=8.0),
+            surf(type="TILTSURF", parm=[0.1, -0.3]),
+        ],
+        merit=False, thic=None),
+    # A plate with a tilted entrance face (TILTSURF, the first surface of the lens) and a plane
+    # exit face; the exit face takes the tilt out exactly (rotate_first, PR C point 4).
+    "tilt_plate": dict(
+        name="Tilted plate", unit="MM", catalog="schott.agf", aperture=("ENPD", 6.0), ftyp=0,
+        fields=[(0.0, 0.0, 1.0), (0.0, 1.0, 1.0)], waves=[(0.5875618, 1.0)], pwav=1, object=None,
+        surfaces=[
+            surf(disz=5.0, diam=(5.0, 1, 0), stop=True),
+            surf(type="TILTSURF", parm=[0.05, 0.2], disz=5.0, glas="N-BK7"),
+            surf(disz=20.0),
+            surf(),
+        ],
+        merit=False, thic=None),
+    # A prism: tilted entrance face, then a break of -3 deg inside the glass (it takes the medium
+    # of the surface before it), the exit face in the new frame.
+    "tilt_prism": dict(
+        name="Tilted prism", unit="MM", catalog="schott.agf", aperture=("ENPD", 6.0), ftyp=0,
+        fields=[(0.0, 0.0, 1.0), (0.0, 1.0, 1.0)], waves=[(0.5875618, 1.0)], pwav=1, object=None,
+        surfaces=[
+            surf(disz=5.0, diam=(5.0, 1, 0), stop=True),
+            surf(type="TILTSURF", parm=[0.05, 0.2], disz=5.0, glas="N-BK7"),
+            cb(a=-3.0),
+            surf(disz=20.0),
+            surf(),
+        ],
+        merit=False, thic=None),
+}
+
+
+def chained_breaks(name: str, breaks: list) -> dict:
+    """Breaks in a row (multiplied out and decomposed, PR C point 3, rule 3) in front of a thin
+    element with a CLAP, whose frame then checks the decomposition, and the image behind it."""
+    return dict(
+        name=name, unit="MM", catalog="schott.agf", aperture=("ENPD", 4.0), ftyp=0,
+        fields=[(0.0, 0.0, 1.0)], waves=[(0.55, 1.0)], pwav=1, object=None,
+        surfaces=[surf(disz=5.0, diam=(2.0, 1, 0), stop=True)] + breaks + [
+            surf(disz=10.0, clap=(0.0, 20.0)),
+            surf(),
+        ],
+        merit=False, thic=None)
+
+
+def random_breaks() -> list:
+    """Three breaks with angles from a fixed seed (Python's Mersenne Twister, seed 317), flag 0
+    and flag 1 alternating, printed with 13 digits like any other value."""
+    import random
+    rng = random.Random(317)
+    out = []
+    for i in range(3):
+        a, b, c = (round(rng.uniform(-80.0, 80.0), 6) for _ in range(3))
+        dx, dy = (round(rng.uniform(-3.0, 3.0), 6) for _ in range(2))
+        out.append(cb(dx=dx, dy=dy, a=a, b=b, c=c, order=i % 2, disz=1.0))
+    return out
+
+
+# Ry(45) Ry(45) = Ry(90) and Rx(20) Ry(45) Ry(45): b = 90 deg, where only a + c is defined, built
+# by composition as R02 = 1 +- 1 ulp (the case of the review of the proposal).
+FOLDED["gimbal"] = chained_breaks("Gimbal", [cb(b=45.0), cb(b=45.0, disz=3.0)])
+FOLDED["gimbal_x"] = chained_breaks("Gimbal x", [cb(a=20.0), cb(b=45.0), cb(b=45.0, disz=3.0)])
+FOLDED["random_breaks"] = chained_breaks("Random breaks", random_breaks())
+
+# --------------------------------------------------------------------- frames of OpticStudio
+
+
+def mat_mul(a, b):
+    return [[sum(a[i][k] * b[k][j] for k in range(3)) for j in range(3)] for i in range(3)]
+
+
+def mat_vec(a, v):
+    return [sum(a[i][k] * v[k] for k in range(3)) for i in range(3)]
+
+
+def rot(axis: int, deg: float):
+    """Right-handed rotation about the x, y or z axis (UG "Coordinate Break": "right-handed with
+    respect to the positive axes")."""
+    c, s = math.cos(math.radians(deg)), math.sin(math.radians(deg))
+    m = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+    i, j = [(1, 2), (2, 0), (0, 1)][axis]
+    m[i][i], m[i][j], m[j][i], m[j][j] = c, -s, s, c
+    return m
+
+
+class Frame:
+    """Origin and axes (columns of r) of the current coordinate system of OpticStudio, global."""
+
+    def __init__(self):
+        self.r = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+        self.o = [0.0, 0.0, 0.0]
+
+    def shift(self, v):  # translate along the current axes
+        d = mat_vec(self.r, v)
+        self.o = [self.o[i] + d[i] for i in range(3)]
+
+    def turn(self, m):  # rotate the current axes (intrinsic)
+        self.r = mat_mul(self.r, m)
+
+
+def frames(c: dict) -> dict:
+    """The frame of every surface after UG "Coordinate Break" (flag 0: decenter, tilt about x, the
+    new y, the new z; flag != 0: tilt about z, the new y, the new x, then decenter; the thickness
+    last, along the new z), "Tilted" (a plane z = x tan_x + y tan_y that keeps the frame: only its
+    normal is given) and "Thickness" (a mirror does not turn the frame). Surface 1 is the origin."""
+    s = UNITS[c["unit"]]
+    f = Frame()
+    out = {}
+    for k, sf in enumerate(c["surfaces"], start=1):
+        p = [float(x) for x in sf["parm_s"]]
+        if sf["type"] == "COORDBRK":
+            dx, dy, a, b, cz, order = p[0] * s, p[1] * s, p[2], p[3], p[4], p[5]
+            if order == 0.0:
+                f.shift([dx, dy, 0.0])
+                f.turn(rot(0, a))
+                f.turn(rot(1, b))
+                f.turn(rot(2, cz))
+            else:
+                f.turn(rot(2, cz))
+                f.turn(rot(1, b))
+                f.turn(rot(0, a))
+                f.shift([dx, dy, 0.0])
+        else:
+            entry = {"origin": list(f.o)}
+            if sf["type"] == "TILTSURF":
+                n = [-p[0], -p[1], 1.0]
+                norm = math.sqrt(sum(x * x for x in n))
+                entry["normal"] = mat_vec(f.r, [x / norm for x in n])
+            else:
+                entry["axes"] = [list(row) for row in f.r]  # rows of the matrix, axes in columns
+            out[f"S{k}"] = entry
+        f.shift([0.0, 0.0, float(sf["disz_s"]) * s])
+    return out
+
+
+def refract(d, n, n1, n2):
+    """Vector Snell's law for a unit direction d at a unit normal n of either orientation:
+    t = mu d + (cos_t - mu cos_i) m, m the normal on the side d points to, mu = n1 / n2."""
+    cos_i = sum(d[i] * n[i] for i in range(3))
+    m = n if cos_i > 0.0 else [-x for x in n]
+    cos_i = abs(cos_i)
+    mu = n1 / n2
+    cos_t = math.sqrt(1.0 - mu * mu * (1.0 - cos_i * cos_i))
+    return [mu * d[i] + (cos_t - mu * cos_i) * m[i] for i in range(3)]
+
+
+def to_plane(p, d, origin, normal):
+    t = (sum((origin[i] - p[i]) * normal[i] for i in range(3)) /
+         sum(d[i] * normal[i] for i in range(3)))
+    return [p[i] + t * d[i] for i in range(3)]
+
+
+def plate_ray(c: dict, fr: dict, glasses: dict) -> dict:
+    """A ray from (0, 1, -1) along +z through the tilted entrance face, the glass and the exit
+    face to the image plane, with the own absolute indices above (Sellmeier, Ciddor)."""
+    lam = vacuum_wavelength(float(e(c["waves"][0][0])))
+    na = n_air(lam)
+    ng = n_rel(glasses["N-BK7"][0], lam / na) * na
+    entry, exit_, img = (fr[k] for k in sorted(fr, key=lambda k: int(k[1:]))[1:])
+    p, d = [0.0, 1.0, -1.0], [0.0, 0.0, 1.0]
+    p = to_plane(p, d, entry["origin"], entry["normal"])
+    d = refract(d, entry["normal"], na, ng)
+    z_exit = [row[2] for row in exit_["axes"]]
+    p = to_plane(p, d, exit_["origin"], z_exit)
+    d = refract(d, z_exit, ng, na)
+    p = to_plane(p, d, img["origin"], [row[2] for row in img["axes"]])
+    return {"start": [0.0, 1.0, -1.0], "hit": p}
+
 
 # ------------------------------------------------------------------------------ printing
 
@@ -237,8 +492,19 @@ def printed(case: dict) -> dict:
         p["diam_s"] = e(sf["diam"][0] / s)
         p["clap_s"] = None if sf["clap"] is None else (e(sf["clap"][0] / s), e(sf["clap"][1] / s))
         p["flap_s"] = None if sf["flap"] is None else e(sf["flap"] / s)
-        # alpha_i in L^(1 - 2i): the value in the unit of the file is alpha_mm * s^(2i - 1)
-        p["parm_s"] = [e(a * s ** (2 * i + 1)) for i, a in enumerate(sf["parm"])]
+        if sf["type"] == "COORDBRK":
+            # decenters in lens units, tilts in degrees, the order flag (UG "Coordinate Break")
+            p["parm_s"] = [e(v / s) if i < 2 else e(v) for i, v in enumerate(sf["parm"])]
+        elif sf["type"] == "PARAXIAL":
+            # focal length in lens units, OPD mode (UG "Paraxial")
+            p["parm_s"] = [e(sf["parm"][0] / s), e(sf["parm"][1])]
+        elif sf["type"] == "TILTSURF":
+            p["parm_s"] = [e(v) for v in sf["parm"]]  # tangents (UG "Tilted")
+        else:
+            # alpha_i in L^(1 - 2i): the value in the unit of the file is alpha_mm * s^(2i - 1)
+            p["parm_s"] = [e(a * s ** (2 * i + 1)) for i, a in enumerate(sf["parm"])]
+        for k in ("sqap", "elap"):
+            p[k + "_s"] = None if sf[k] is None else (e(sf[k][0] / s), e(sf[k][1] / s))
         out["surfaces"].append(p)
     ap = case["aperture"]
     out["aperture_s"] = (ap[0],) if ap[0] == "FLOA" else (
@@ -273,7 +539,7 @@ def write_zmx(name: str, c: dict) -> None:
           "COFN COATING.DAT SCATTER_PROFILE.DAT ABG_DATA.DAT PROFILE.GRD"]
     surfaces = [surf()] + c["surfaces"]
     obj = dict(surfaces[0], curv_s=e(0.0, 18), diam_s=zero, clap_s=None, flap_s=None, parm_s=[],
-               glas=c.get("object_glass", ""))
+               sqap_s=None, elap_s=None, glas=c.get("object_glass", ""))
     obj["disz_s"] = "INFINITY" if c["object_s"] is None else c["object_s"]
     surfaces[0] = obj
     for k, sf in enumerate(surfaces):
@@ -299,6 +565,9 @@ def write_zmx(name: str, c: dict) -> None:
             L.append(f"  CLAP {sf['clap_s'][0]} {sf['clap_s'][1]} 0")
         if sf["flap_s"] is not None:
             L.append(f"  FLAP {zero} {sf['flap_s']} 0")
+        for k in ("sqap", "elap"):
+            if sf.get(k + "_s") is not None:
+                L.append(f"  {k.upper()} {sf[k + '_s'][0]} {sf[k + '_s'][1]} 0")
     if c["merit"]:
         L += ["EFFL 0 2 0 0 0 0 0 0 1.0E+002", "BLNK Default merit function",
               "DMFS 0 0 0 0 0 0 0 0", "TRAC 0 1 0 0 0.3 0.4 0 0.1", "OPDX 0 1 0 0 0.3 0.4 0 0.1"]
@@ -375,6 +644,12 @@ def build_expected(c: dict, glasses: dict) -> tuple[dict, dict]:
         return {"type": "conic", "radius": 1.0 / cv, "conic": float(e(sf["coni"]))}
 
     def aperture(sf) -> dict | None:
+        if sf["sqap_s"] is not None:
+            return {"type": "rectangular", "half_width_x": float(sf["sqap_s"][0]) * s,
+                    "half_width_y": float(sf["sqap_s"][1]) * s}
+        if sf["elap_s"] is not None:
+            return {"type": "elliptical", "semi_axis_x": float(sf["elap_s"][0]) * s,
+                    "semi_axis_y": float(sf["elap_s"][1]) * s}
         if sf["clap_s"] is not None:
             a = {"type": "circular", "radius": float(sf["clap_s"][1]) * s}
             if float(sf["clap_s"][0]) != 0.0:
@@ -443,6 +718,16 @@ def build_expected(c: dict, glasses: dict) -> tuple[dict, dict]:
                 lens = None
             else:
                 lens["_mats"].append(f"SCHOTT:{after}")
+        elif sf["type"] == "PARAXIAL" and float(sf["parm_s"][0]) != 0.0:
+            # ideal lens on a thin element (ADR 0031), f in mm; the stop sits on its surface
+            counters["T"] += 1
+            sn = surface_node(k, sf)
+            sn["interaction"] = {"type": "ideal_lens", "focal_length": float(sf["parm_s"][0]) * s}
+            node = {"type": "thin_element", "name": f"T{counters['T']}", "surfaces": [sn]}
+            place(node, pending)
+            children.append(node)
+            if sf["stop"]:
+                sys["aperture"]["stop"] = {"surface": f"S{k}"}
         elif sf["glas"] == "MIRROR":
             counters["M"] += 1
             sn = surface_node(k, sf)
@@ -508,6 +793,19 @@ def first_order(c: dict, glasses: dict, lam_ref: float, nair: float) -> dict:
         y1 = None
         for k, sf in enumerate(surfaces):
             cv = float(sf["curv_s"]) / s
+            if sf["type"] == "PARAXIAL":
+                # ideal thin lens n'u' = nu - y phi with phi = |n| / f (UG "Paraxial" in air,
+                # ADR 0031 with the absolute index); the medium does not change
+                phi = abs(n) / (float(sf["parm_s"][0]) * s)
+                if y1 is None:
+                    y1 = y
+                z_last = z
+                sum_abs += abs(y * phi)
+                nu = nu - y * phi
+                t = float(sf["disz_s"]) * s
+                y = y + t * nu / n
+                z += t
+                continue
             if sf["glas"] == "MIRROR":
                 n_next = -n
             else:
@@ -562,6 +860,17 @@ def main() -> None:
         results[name] = first_order(c, glasses, data["lam_ref"], data["nair"])
     (HERE / "first_order.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8",
                                            newline="\n")
+    folded = {}
+    for name, case in FOLDED.items():
+        glasses = read_sellmeier(CATALOGS / case["catalog"])
+        c = printed(case)
+        write_zmx(name, c)
+        fr = frames(c)
+        folded[name] = {"frames": fr}
+        if name in ("tilt_plate", "tilt_prism"):
+            folded[name]["ray"] = plate_ray(c, fr, glasses)
+    (HERE / "frames.json").write_text(json.dumps(folded, indent=2) + "\n", encoding="utf-8",
+                                      newline="\n")
 
 
 if __name__ == "__main__":
