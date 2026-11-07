@@ -332,6 +332,39 @@ FOLDED = {
         merit=False, thic=None),
 }
 
+
+def chained_breaks(name: str, breaks: list) -> dict:
+    """Breaks in a row (multiplied out and decomposed, PR C point 3, rule 3) in front of a thin
+    element with a CLAP, whose frame then checks the decomposition, and the image behind it."""
+    return dict(
+        name=name, unit="MM", catalog="schott.agf", aperture=("ENPD", 4.0), ftyp=0,
+        fields=[(0.0, 0.0, 1.0)], waves=[(0.55, 1.0)], pwav=1, object=None,
+        surfaces=[surf(disz=5.0, diam=(2.0, 1, 0), stop=True)] + breaks + [
+            surf(disz=10.0, clap=(0.0, 20.0)),
+            surf(),
+        ],
+        merit=False, thic=None)
+
+
+def random_breaks() -> list:
+    """Three breaks with angles from a fixed seed (Python's Mersenne Twister, seed 317), flag 0
+    and flag 1 alternating, printed with 13 digits like any other value."""
+    import random
+    rng = random.Random(317)
+    out = []
+    for i in range(3):
+        a, b, c = (round(rng.uniform(-80.0, 80.0), 6) for _ in range(3))
+        dx, dy = (round(rng.uniform(-3.0, 3.0), 6) for _ in range(2))
+        out.append(cb(dx=dx, dy=dy, a=a, b=b, c=c, order=i % 2, disz=1.0))
+    return out
+
+
+# Ry(45) Ry(45) = Ry(90) and Rx(20) Ry(45) Ry(45): b = 90 deg, where only a + c is defined, built
+# by composition as R02 = 1 +- 1 ulp (the case of the review of the proposal).
+FOLDED["gimbal"] = chained_breaks("Gimbal", [cb(b=45.0), cb(b=45.0, disz=3.0)])
+FOLDED["gimbal_x"] = chained_breaks("Gimbal x", [cb(a=20.0), cb(b=45.0), cb(b=45.0, disz=3.0)])
+FOLDED["random_breaks"] = chained_breaks("Random breaks", random_breaks())
+
 # --------------------------------------------------------------------- frames of OpticStudio
 
 

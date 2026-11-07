@@ -417,7 +417,7 @@ std::vector<ErrorCase> error_cases() {
       {"zmx.aperture_unsupported", with(s, "FTYP", "FTYP 0 1 3 3 0 0 0"), "FTYP 0 1"},
       {"zmx.aperture_unsupported", in_surface(2, "FLAP", "  FLAP 1.0E+000 8.0E+000 0"),
        "FLAP 1.0E+000"},
-      {"zmx.aperture_unsupported", in_surface(2, "FLAP", "  SQAP 4.0E+000 4.0E+000 0"), "SQAP"},
+      {"zmx.aperture_unsupported", in_surface(2, "FLAP", "  SQOB 4.0E+000 4.0E+000 0"), "SQOB"},
       {"zmx.field_unsupported", with(s, "FTYP", "FTYP 3 0 3 3 0 0 0"), "FTYP 3"},
       {"zmx.vignetting_unsupported", with(s, "VDYN", "VDYN 0 1.0E-001 0 0 0 0 0 0 0 0 0 0"),
        "VDYN 0 1.0E-001"},
@@ -461,7 +461,7 @@ std::vector<ErrorCase> error_cases() {
       {"zmx.surface_unsupported", in_surface(0, "CURV", "  CURV 1.0E-002 0 0 0 0"),
        "CURV 1.0E-002"},
       {"zmx.aperture_invalid", in_surface(2, "FLAP", "  CLAP -1.0E+000 4.0E+000 0"), "CLAP -1.0"},
-      {"zmx.aperture_unsupported", in_surface(2, "FLAP", "  ELAP 4.0E+000 3.0E+000 0"), "ELAP"},
+      {"zmx.aperture_unsupported", in_surface(2, "FLAP", "  ELOB 4.0E+000 3.0E+000 0"), "ELOB"},
       {"zmx.aperture_unsupported", in_surface(2, "FLAP", "  OBSC 0 1.0E+000 0"), "OBSC"},
       {"zmx.config_mismatch", with(s, "THIC", "CRVT 2 1 2.1E-002 0 0 0 1 1 0"), "CRVT 2 1"},
       // PR C: coordinate breaks, tilted planes, the paraxial lens, apertures, surface keywords.
@@ -477,7 +477,7 @@ std::vector<ErrorCase> error_cases() {
       {"zmx.surface_unsupported", in_surface(par, 1, "HIDE", "  GLAS MIRROR 0 0"), "GLAS MIRROR"},
       {"zmx.surface_unsupported", in_surface(par, 1, "CURV", "  CURV 1.0E-002 0 0 0 0"),
        "CURV 1.0E-002"},
-      {"zmx.surface_unsupported", in_surface(par, 2, "TYPE", "  TYPE PARAXIAL"), "TYPE PARAXIAL"},
+      {"zmx.surface_unsupported", in_surface(4, "TYPE", "  TYPE PARAXIAL"), "TYPE PARAXIAL"},
       {"zmx.aperture_unsupported", in_surface(plate, 2, "HIDE", "  FLAP 0 5.0E+000 0"),
        "FLAP 0 5.0E+000"},
       {"zmx.aperture_unsupported",
@@ -691,8 +691,12 @@ std::vector<std::pair<Vec3, Vec3>> parallel_bundle(double r, double angle_deg = 
   return out;
 }
 
+// The last three: breaks in a row, multiplied out and decomposed (PR C, point 3, rule 3), at
+// b = 90 deg as a composition (R02 = 1 +- 1 ulp) and with angles from a fixed seed; the frame of
+// the thin element behind them checks the decomposition to 1e-14.
 const std::vector<std::string> kFolded{"fold",       "oap",        "pivot",
-                                       "tilt_image", "tilt_plate", "tilt_prism"};
+                                       "tilt_image", "tilt_plate", "tilt_prism",
+                                       "gimbal",     "gimbal_x",   "random_breaks"};
 
 }  // namespace
 
@@ -790,6 +794,9 @@ TEST_CASE("every surface of a folded case lies in the frame of OpticStudio", "[z
       {"tilt_image", {"zmx.tilted_image", "zmx.paraxial_unavailable"}},
       {"tilt_plate", {"zmx.paraxial_unavailable"}},
       {"tilt_prism", {"zmx.paraxial_unavailable"}},
+      {"gimbal", {"zmx.paraxial_unavailable"}},
+      {"gimbal_x", {"zmx.paraxial_unavailable"}},
+      {"random_breaks", {"zmx.paraxial_unavailable"}},
   };
   for (const std::string& name : kFolded) {
     INFO(name);
