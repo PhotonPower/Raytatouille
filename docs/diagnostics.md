@@ -21,6 +21,7 @@ Jede Diagnose (`rtt::model::Diagnostic`, in Python `rt.Diagnostic`) trägt einen
 - `optim`: `rtt::optim::optimize` (ADR 0030). Startfehler kommen als `rtt::optim::OptimError` mit `diagnostics()`; Meldungen des Laufs stehen in `OptimResult::diagnostics`, zusammen mit den Warnungen der Analysen am Endstand.
 - `trace`: die Zielung von `rtt-trace` (`aim_ray`, `make_rays`, `stop_radius`), als `rtt::trace::ApertureError` (eine `std::invalid_argument`) mit `code()` und `location()`, in Python `rt.ApertureError` mit `.code` und `.location` (ADR 0040). Der Fall steht in `libs/rtt-trace/tests/test_real_na.cpp`.
 - `agf`: der AGF-Leser von `rtt-material` (`parse_agf`, `MaterialLibrary::add_catalog`, `add_catalog_text`), als `rtt::material::LoadWarning{code, file, line, message}` in `AgfCatalog::warnings` und `MaterialLibrary::load_warnings()` (#71); Ort ist Datei und Zeile.
+- `zmx`: der ZMX-Import von `rtt-io` (`import_zmx`, `load_zmx`, `rtt import`, ADR 0044). Fehler kommen als `rtt::io::ZmxError` mit `code()` und `line()` (1-basiert, 0 für die ganze Datei), Warnungen in `ZmxImport::warnings` mit dem Ort `line n` bzw. `file`.
 - Warnungen von `compile()`, den Analysen und dem AGF-Leser gibt Python zusätzlich als `RaytatouilleWarning` mit `code` und `location` aus (beim AGF-Leser `datei:zeile`).
 
 Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; `…/s` für eine Fläche, z. B. `/root/children/1/surfaces/0`; `i`, `k` für Listenindizes.
@@ -196,6 +197,36 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `wavelengths.value_invalid` | Fehler | Wellenlänge nicht endlich oder ≤ 0 µm | validate | `/wavelengths/i/um` |
 | `wavelengths.weight_invalid` | Fehler | Wellenlängengewicht nicht endlich oder < 0 | validate | `/wavelengths/i/weight` |
 | `zernike.pupil_incomplete` | Warnung | Zernike-Fit auf einer unvollständigen Pupille: mehr als `incomplete_warning_fraction` (Standard 1 %) der Pupillenfläche kam nicht an, oder die Pupille ist ein Ring (zentrale Abschattung am Stopp, ADR 0032, Nachtrag #229). Dort sind die Z_j nicht orthogonal, die Koeffizienten sind ein Fit, keine Zerlegung (ADR 0032, Punkt 6) | analysis | `/paths/i` |
+| `zmx.afocal_image_space` | Warnung | `FTYP` Stelle 7 = 1 (Afocal Image Space, Lesart optiland) übergangen; ändert in OpticStudio nur die Einheiten der Analysen (ADR 0044, Punkt 4) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.aperture_conflict` | Fehler | Fläche mit `CLAP` und `FLAP` (ADR 0044, Punkt 8) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.aperture_decenter` | Fehler | dezentrierte Apertur (`OBDC` ≠ 0) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.aperture_dropped` | Warnung | `FLAP` neben automatischem Halbdurchmesser verworfen; er würde real gezielte Randstrahlen beschneiden (ADR 0044, Punkt 8) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.aperture_invalid` | Fehler | `CLAP` oder `FLAP` mit Radius 0 oder rmax ≤ rmin | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.aperture_unsupported` | Fehler | Apertur oder Systemapertur ohne Abbildung: `FNUM v 1`, `OBNA v 1`, `FTYP` objektseitig telezentrisch, `FLAP` mit erstem Feld ≠ 0, `SQAP`, `ELAP`, `OBSC` u. a. | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.asphere_r2` | Fehler | `EVENASPH` mit α1 (r²) ≠ 0; die paraxiale Lesart in OpticStudio ist nicht belegt (ADR 0044, Punkt 6) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.config_mismatch` | Fehler | `THIC` oder `CRVT` der einzigen Konfiguration weicht von den Flächendaten ab (ADR 0044, Punkt 9) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.encoding_unsupported` | Fehler | Datei in UTF-16 BE oder fehlerhaftes UTF-16 | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.environment_unsupported` | Fehler | Umgebung (`ENVD`) nicht 20 °C und 1 atm | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.field_unsupported` | Fehler | Feldtyp reale Bildhöhe oder Theodolitwinkel | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.glass_reference_temperature` | Warnung | Glas mit Katalogdaten bei T_ref ≠ 20 °C; die Datei rechnet bei 20 °C (ADR 0044, Punkt 4) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.glass_unknown` | Fehler | Glas in keinem der `GCAT`-Kataloge gefunden | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.image_in_glass` | Fehler | Glas vor der Bildfläche | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.invalid_result` | Fehler | das importierte System besteht `validate` oder `compile` nicht; die Meldung des Originals steht im Text | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.keyword_ignored` | Warnung | unbekanntes Schlüsselwort übergangen, einmal je Schlüsselwort mit Anzahl | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.mirror_in_glass` | Fehler | Spiegel im Glas (Mangin) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.mode_unsupported` | Fehler | Datei nicht sequenziell (`MODE` ≠ `SEQ`) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.model_glass` | Fehler | Modellglas (`GLAS` Feld 2 = 1, `___BLANK`) oder MIL-Nummer als Glasname | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.multi_config` | Fehler | mehr als eine Konfiguration (`MNUM` > 1) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.object_medium_infinite` | Fehler | Glas im Objektraum bei Objekt im Unendlichen | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.object_medium_unsupported` | Fehler | Glas im Objektraum, und Fläche 1 beginnt keine Linse | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.parse` | Fehler | fehlerhafte Zeile (keine Zahl, falsche Nummerierung) oder fehlende Angabe (`FTYP`, Apertur, Wellenlängen) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.stop_radius_conflict` | Fehler | `FLOA` mit einer Blendenapertur, die vom Halbdurchmesser abweicht | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.stop_radius_missing` | Fehler | Blende ohne Halbdurchmesser und ohne Apertur | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.stop_radius_small` | Warnung | paraxialer Blendenradius größer als 1,1 · automatischer Halbdurchmesser; reale Randstrahlen werden an der Blende vignettiert (ADR 0044, Punkt 8) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.surface_dropped` | Warnung | Luft-Luft-Fläche mit Brechkraft ohne Apertur weggelassen; sie bricht nicht | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.surface_unsupported` | Fehler | Flächentyp ohne Abbildung (alles außer `STANDARD` und `EVENASPH`) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.unit_unsupported` | Fehler | Linseneinheit nicht MM, CM, IN oder METER | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.vignetting_unsupported` | Fehler | Vignettierungsfaktoren ≠ 0 | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 
 ## Ausnahmen mit Ortsangabe
 

@@ -1,9 +1,10 @@
-add_library(rtt_io src/json_io.cpp src/json_format.cpp src/json_patch.cpp src/edit.cpp)
+add_library(rtt_io src/json_io.cpp src/json_format.cpp src/json_patch.cpp src/edit.cpp src/zmx.cpp)
 add_library(rtt::io ALIAS rtt_io)
 target_include_directories(rtt_io PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(rtt_io PUBLIC rtt::model PRIVATE rtt::json rtt::diagnostics
+target_link_libraries(rtt_io PUBLIC rtt::model PRIVATE rtt::json rtt::diagnostics rtt::material
+  rtt::compile rtt::trace
   nlohmann_json::nlohmann_json)
 rtt_target_defaults(rtt_io LIBRARY)
 
@@ -21,14 +22,15 @@ if(RTT_BUILD_TESTS)
 endif()
 
 if(RTT_BUILD_TESTS)
-  # ZMX import (ADR 0044): the cases of tests/reference/m8/zmx against the expected systems, the
+  # ZMX import (ADR 0044): the cases of tests/zmx against the expected systems, the
   # first order and a spot per field, so the test needs the tracing and analysis libraries.
   rtt_add_test(rtt_io_zmx_tests
     SOURCES tests/test_zmx.cpp
     LIBS rtt::io rtt::material rtt::compile rtt::paraxial rtt::analysis rtt::diagnostics
          nlohmann_json::nlohmann_json)
   target_compile_definitions(rtt_io_zmx_tests PRIVATE
-    RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs")
+    RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs"
+    RTT_ZMX_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/zmx")
 endif()
 
 if(RTT_BUILD_TESTS)
