@@ -90,5 +90,6 @@ def test_the_forbes_cases_have_content(stem: str) -> None:
     cs = rt.compile(rt.System.from_json(json.dumps(data)))
     rays = rt.trace.make_rays(cs, rt.trace.HexapolarPupil(3), aiming=Aiming.REAL)
     rt.trace.trace(cs, rays)
+    assert set(np.array(rays.status).tolist()) == {alive}
     real = flatten(f"forbes_{stem}_real", 1)
     assert np.max(np.abs(np.array(rays.pos_y) - real["pos_y"])) > 1e-3
