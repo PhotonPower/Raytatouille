@@ -30,7 +30,7 @@
     "value": 4.998638216299374
   },
   "fields": {
-    "type": "angle_deg",
+    "type": "paraxial_image_height",
     "points": [
       {
         "x": 0.0,
@@ -39,12 +39,12 @@
       },
       {
         "x": 0.0,
-        "y": 2.0,
+        "y": 3.0,
         "weight": 1.0
       },
       {
-        "x": 1.0,
-        "y": 3.0,
+        "x": 1.5,
+        "y": 4.0,
         "weight": 1.0
       }
     ]

@@ -219,12 +219,12 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `zmx.multi_config` | Fehler | mehr als eine Konfiguration (`MNUM` > 1) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.object_medium_infinite` | Fehler | Glas im Objektraum bei Objekt im Unendlichen | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.object_medium_unsupported` | Fehler | Glas im Objektraum, und Fläche 1 beginnt keine Linse | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
-| `zmx.parse` | Fehler | fehlerhafte Zeile (keine Zahl, falsche Nummerierung) oder fehlende Angabe (`FTYP`, Apertur, Wellenlängen) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.parse` | Fehler | fehlerhafte Zeile (keine endliche Zahl, falsche Nummerierung, `SURF` nach dem Ende der Flächen, zweite Systemapertur) oder fehlende Angabe (`FTYP`, Apertur, Wellenlängen, `STOP`) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.stop_radius_conflict` | Fehler | `FLOA` mit einer Blendenapertur, die vom Halbdurchmesser abweicht | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.stop_radius_missing` | Fehler | Blende ohne Halbdurchmesser und ohne Apertur | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.stop_radius_small` | Warnung | paraxialer Blendenradius größer als 1,1 · automatischer Halbdurchmesser; reale Randstrahlen werden an der Blende vignettiert (ADR 0044, Punkt 8) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.surface_dropped` | Warnung | Luft-Luft-Fläche mit Brechkraft ohne Apertur weggelassen; sie bricht nicht | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
-| `zmx.surface_unsupported` | Fehler | Flächentyp ohne Abbildung (alles außer `STANDARD` und `EVENASPH`) | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
+| `zmx.surface_unsupported` | Fehler | Flächentyp ohne Abbildung (alles außer `STANDARD` und `EVENASPH`) oder gekrümmte Objektfläche | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.unit_unsupported` | Fehler | Linseneinheit nicht MM, CM, IN oder METER | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 | `zmx.vignetting_unsupported` | Fehler | Vignettierungsfaktoren ≠ 0 | zmx | Zeile der Datei (`line n`), 0 bzw. `file` für die ganze Datei |
 

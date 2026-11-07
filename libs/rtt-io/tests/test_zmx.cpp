@@ -105,8 +105,8 @@ std::vector<std::string> codes_of(const std::vector<rtt::model::Diagnostic>& d) 
   return out;
 }
 
-const std::vector<std::string> kCases{"singlet", "doublet", "mirror",
-                                      "finite",  "asphere", "sasian"};
+const std::vector<std::string> kCases{"singlet", "doublet", "mirror",   "finite",
+                                      "asphere", "sasian",  "immersion"};
 
 }  // namespace
 
@@ -207,7 +207,7 @@ TEST_CASE("first order of each case agrees with the independent y-nu trace", "[z
   // relative times the condition sum|y_i phi_i| / |y_1 Phi| (ADR 0044, acceptance 3).
   const nlohmann::json fo = nlohmann::json::parse(read_file(kZmxDir + "first_order.json"));
   for (const char* name : {"singlet", "singlet_in", "singlet_m", "doublet", "mirror", "finite",
-                           "asphere", "asphere_in", "asphere_cm", "sasian"}) {
+                           "asphere", "asphere_in", "asphere_cm", "sasian", "immersion"}) {
     INFO(name);
     const auto& e = fo.at(name);
     const System s = import_case(name).system;
@@ -230,6 +230,20 @@ TEST_CASE("first order of each case agrees with the independent y-nu trace", "[z
     REQUIRE(rel(*f.rear_focal_length, e.at("efl_relative").get<double>()) <= bound);
     REQUIRE(rel(*f.efl * n_air, e.at("efl_relative").get<double>()) <= bound);
     REQUIRE(rel(*f.bfl, e.at("bfl_relative").get<double>()) <= bound);
+    // System apertures (acceptance 3): the EPD from image_fnumber is EFL_rel / F# of the file,
+    // and NA / n of object space (absolute here, relative there) is the same slope, because
+    // n_air cancels. Both against the independent script, not against the expected file.
+    if (e.contains("epd_relative")) {
+      REQUIRE(f.entrance_pupil);
+      REQUIRE(f.entrance_pupil->diameter);
+      REQUIRE(rel(*f.entrance_pupil->diameter, e.at("epd_relative").get<double>()) <= bound);
+    }
+    if (e.contains("na_over_n_relative")) {
+      const auto& path = cs.path(rtt::compile::PathId{0});
+      const double n_obj = cs.media()[path.events.front().medium_before].index[ref].real();
+      REQUIRE(rel(s.aperture.value.value / n_obj, e.at("na_over_n_relative").get<double>()) <=
+              1e-14);
+    }
   }
 }
 
@@ -239,6 +253,9 @@ TEST_CASE("the Sasian triplet as ZMX meets the ray-optics first order and the re
   const System s = import_case("sasian").system;
   const auto cs = rtt::compile::compile(s, schott_m2());
   const rtt::paraxial::FirstOrder f = rtt::paraxial::first_order(cs, {0}, 1);
+  REQUIRE(f.rear_focal_length);
+  REQUIRE(f.bfl);
+  REQUIRE(f.ffl);
   REQUIRE(std::abs(*f.rear_focal_length - 50.00098928993641) <= 1e-9);
   REQUIRE(std::abs(*f.bfl - 41.23764895362289) <= 1e-9);
   REQUIRE(std::abs(*f.ffl - 37.102124967857094) <= 1e-9);
@@ -262,7 +279,23 @@ TEST_CASE("the Sasian triplet as ZMX meets the ray-optics first order and the re
                                                {"S4", "L2.S2"}, {"S5", "L3.S1"}, {"S6", "L3.S2"},
                                                {"S7", "IMG"}};
   REQUIRE(s.aperture.stop);
+  REQUIRE(ref.aperture.stop);
   REQUIRE(ids.at(s.aperture.stop->str()) == ref.aperture.stop->str());
+  // Wavelengths: lambda_vac of the fixed point against the file to 1e-12 relative; radii
+  // R = 1/c of the printed curvature to a few ulp (1e-15 relative).
+  REQUIRE(s.wavelengths.size() == ref.wavelengths.size());
+  for (std::size_t i = 0; i < ref.wavelengths.size(); ++i) {
+    REQUIRE(rel(s.wavelengths[i].um, ref.wavelengths[i].um) <= 1e-12);
+  }
+  for (std::size_t i = 0; i + 1 < ref.root.children.size(); ++i) {
+    const auto& a = std::get<rtt::model::Element>(s.root.children[i].value);
+    const auto& b = std::get<rtt::model::Element>(ref.root.children[i].value);
+    for (std::size_t k = 0; k < b.surfaces.size(); ++k) {
+      const double ra = std::get<rtt::model::Conic>(a.surfaces[k].shape.base).radius.value;
+      const double rb = std::get<rtt::model::Conic>(b.surfaces[k].shape.base).radius.value;
+      REQUIRE(rel(ra, rb) <= 1e-15);
+    }
+  }
   const auto cr = rtt::compile::compile(ref, schott_m2());
   REQUIRE(cs.surfaces().size() == cr.surfaces().size());
   for (std::size_t i = 0; i < cr.surfaces().size(); ++i) {
@@ -337,13 +370,21 @@ std::string doublet_curved_dummy() {
   return t.substr(0, at) + with(t.substr(at), "CURV", "  CURV 1.0E-002 0 0 0 0");
 }
 
-/// Surface block `k` of the singlet: replaces its line starting with `prefix`.
-std::string in_surface(int k, std::string_view prefix, std::string_view replacement) {
-  std::string t = singlet();
+/// Surface block `k` of `text`: replaces its line starting with `prefix`.
+std::string in_surface(const std::string& text,
+                       int k,
+                       std::string_view prefix,
+                       std::string_view replacement) {
+  const std::string& t = text;
   const std::string head = "SURF " + std::to_string(k) + "\r\n";
   const std::size_t at = t.find(head);
   REQUIRE(at != std::string::npos);
   return t.substr(0, at) + with(t.substr(at), prefix, replacement);
+}
+
+/// Surface block `k` of the singlet.
+std::string in_surface(int k, std::string_view prefix, std::string_view replacement) {
+  return in_surface(singlet(), k, prefix, replacement);
 }
 
 struct ErrorCase {
@@ -400,6 +441,20 @@ std::vector<ErrorCase> error_cases() {
             "FLOA"),
        "CLAP 0 4"},
       {"zmx.invalid_result", with(s, "WAVM 1 ", "WAVM 1 4.861327E-001 -1.0E+000"), ""},
+      // Review of PR B: further rules that reject a file.
+      {"zmx.parse", in_surface(1, "STOP", ""), ""},
+      {"zmx.parse", in_surface(in_surface(1, "STOP", ""), 4, "TYPE", "  STOP\r\n  TYPE STANDARD"),
+       "STOP"},
+      {"zmx.parse", with(s, "ENPD", "ENPD 1.0E+001\r\nFNUM 5.0E+000 0"), "FNUM 5.0E+000 0"},
+      {"zmx.parse", with(s, "SURF 2", "XXXX 1\r\nSURF 2"), "SURF 2"},
+      {"zmx.parse", in_surface(2, "CURV", "  CURV nan 0 0 0 0"), "CURV nan"},
+      {"zmx.parse", in_surface(2, "DISZ", "  DISZ Infinity"), "DISZ Infinity"},
+      {"zmx.surface_unsupported", in_surface(0, "CURV", "  CURV 1.0E-002 0 0 0 0"),
+       "CURV 1.0E-002"},
+      {"zmx.aperture_invalid", in_surface(2, "FLAP", "  CLAP -1.0E+000 4.0E+000 0"), "CLAP -1.0"},
+      {"zmx.aperture_unsupported", in_surface(2, "FLAP", "  ELAP 4.0E+000 3.0E+000 0"), "ELAP"},
+      {"zmx.aperture_unsupported", in_surface(2, "FLAP", "  OBSC 0 1.0E+000 0"), "OBSC"},
+      {"zmx.config_mismatch", with(s, "THIC", "CRVT 2 1 2.1E-002 0 0 0 1 1 0"), "CRVT 2 1"},
   };
 }
 
@@ -446,11 +501,15 @@ TEST_CASE("every warning of the import has a case at its line", "[zmx]") {
   const std::vector<WarningCase> cases{
       {"zmx.keyword_ignored", with(s, "ROPD", "ROPD 2\r\nZZZZ 1\r\nZZZZ 2"), "ZZZZ 1", &schott()},
       {"zmx.surface_dropped", doublet_curved_dummy(), "CURV 1.0E-002", &schott()},
-      {"zmx.aperture_dropped", in_surface(3, "DIAM", "  DIAM 8.0E+000 0 0 0 1"), "", &schott()},
+      {"zmx.aperture_dropped",
+       in_surface(in_surface(3, "DIAM", "  DIAM 8.0E+000 0 0 0 1"), 3, "FLAP",
+                  "  FLAP 0 8.00E+000 0"),
+       "FLAP 0 8.00E+000", &schott()},
       {"zmx.glass_reference_temperature", s, "GLAS N-BK7", &warm},
       {"zmx.afocal_image_space", with(s, "FTYP", "FTYP 0 0 3 3 0 0 1"), "FTYP 0 0 3 3 0 0 1",
        &schott()},
-      {"zmx.stop_radius_small", with(s, "ENPD", "ENPD 1.2E+001"), "", &schott()},
+      {"zmx.stop_radius_small", with(s, "ENPD", "ENPD 1.2E+001"), "DIAM 5.000000000000E+000",
+       &schott()},
   };
   std::set<std::string> covered;
   for (const WarningCase& c : cases) {
@@ -487,4 +546,29 @@ TEST_CASE("keyword_ignored is reported once per keyword with its count", "[zmx]"
           std::vector<std::string>{"zmx.keyword_ignored", "zmx.keyword_ignored"});
   REQUIRE(r.warnings[0].message.find("ZZZZ") != std::string::npos);
   REQUIRE(r.warnings[0].message.find("2 times") != std::string::npos);
+}
+
+TEST_CASE("variants that import like the case they come from", "[zmx]") {
+  const System base = import_case("singlet").system;
+  // GLAS with field 2 = 3 (as at catalogue glasses in OpticStudio files) is a catalogue glass.
+  REQUIRE(import_zmx(in_surface(2, "GLAS", "  GLAS N-BK7 3 0 1.62040997 60.32364916"), schott())
+              .system == base);
+  // EVENASPH with all alpha = 0 is the STANDARD surface.
+  REQUIRE(import_zmx(in_surface(2, "TYPE", "  TYPE EVENASPH\r\n  PARM 2 0"), schott()).system ==
+          base);
+}
+
+TEST_CASE("a curved stop between air and air becomes a stop element with its shape", "[zmx]") {
+  const ZmxImport r = import_zmx(in_surface(1, "CURV", "  CURV 1.0E-002 0 0 0 0"), schott());
+  REQUIRE(r.warnings.empty());
+  const auto& stop = std::get<rtt::model::Element>(r.system.root.children[0].value);
+  REQUIRE(stop.kind == rtt::model::ElementKind::Stop);
+  const auto* conic = std::get_if<rtt::model::Conic>(&stop.surfaces[0].shape.base);
+  REQUIRE(conic != nullptr);
+  REQUIRE(conic->radius.value == 1.0 / 1.0E-002);
+  const auto cs = rtt::compile::compile(r.system, schott());
+  for (std::uint16_t field = 0; field < 3; ++field) {
+    const auto d = rtt::analysis::spot(cs, {0}, field, std::nullopt);
+    REQUIRE(d.rays_arrived == d.rays_launched);
+  }
 }

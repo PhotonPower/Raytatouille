@@ -45,4 +45,18 @@ if(RTT_BUILD_TESTS)
     PASS_REGULAR_EXPRESSION "singlet\\.zmx: error line [0-9]+: .*\\[zmx\\.glass_unknown\\]")
   add_test(NAME cli.import.usage COMMAND rtt_cli import ${_zmx}/singlet.zmx)
   set_tests_properties(cli.import.usage PROPERTIES WILL_FAIL TRUE)
+  # Exit 1 for a file that cannot be imported, 2 for a wrong call (ADR 0044, point 1).
+  add_test(NAME cli.import.exit_1
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:rtt_cli> -DEXPECT=1
+            "-DARGS=import;${_zmx}/singlet.zmx;${CMAKE_CURRENT_BINARY_DIR}/none.rtt.json"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/expect_exit.cmake)
+  add_test(NAME cli.import.exit_2
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:rtt_cli> -DEXPECT=2
+            "-DARGS=import;${_zmx}/singlet.zmx"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/expect_exit.cmake)
+  # The written file is canonical: rtt format --check accepts it on every platform.
+  set_tests_properties(cli.import.singlet PROPERTIES FIXTURES_SETUP zmx_import)
+  add_test(NAME cli.import.canonical
+    COMMAND rtt_cli format --check ${CMAKE_CURRENT_BINARY_DIR}/singlet.rtt.json)
+  set_tests_properties(cli.import.canonical PROPERTIES FIXTURES_REQUIRED zmx_import)
 endif()

@@ -146,8 +146,8 @@ CASES = {
     # with a fixed semi-diameter; F/# aperture; the first lens surface has a FLAP next to an
     # automatic DIAM (dropped with a warning).
     "doublet": dict(
-        name="Achromat", unit="MM", catalog="schott.agf", aperture=("FNUM", 5.0), ftyp=0,
-        fields=[(0.0, 0.0, 1.0), (0.0, 2.0, 1.0), (1.0, 3.0, 1.0)],
+        name="Achromat", unit="MM", catalog="schott.agf", aperture=("FNUM", 5.0), ftyp=2,
+        fields=[(0.0, 0.0, 1.0), (0.0, 3.0, 1.0), (1.5, 4.0, 1.0)],
         waves=[(0.4861327, 1.0), (0.5875618, 2.0), (0.6562725, 1.0)], pwav=2, object=None,
         surfaces=[
             surf(disz=2.0),
@@ -184,6 +184,18 @@ CASES = {
     "asphere": asphere("MM"),
     "asphere_in": asphere("IN"),
     "asphere_cm": asphere("CM"),
+    # Object 10 mm inside N-BK7 (object medium, ADR 0037), surface 1 starts the lens; the stop is
+    # the back surface with a semi-diameter picked up from surface 1; object heights in cm.
+    "immersion": dict(
+        name="Immersion", unit="CM", catalog="schott.agf", aperture=("OBNA", 0.1), ftyp=1,
+        fields=[(0.0, 0.0, 1.0), (0.0, 0.5, 1.0), (0.0, 1.0, 1.0)],
+        waves=[(0.5875618, 1.0)], pwav=1, object=10.0, object_glass="N-BK7",
+        surfaces=[
+            surf(disz=4.0, glas="F2", diam=(2.0, 1, 0)),
+            surf(curv=-1.0 / 4.0, disz=22.0, diam=(2.0, 2, 1), stop=True),
+            surf(),
+        ],
+        merit=False, thic=None),
     # Cooke triplet after Geiser (Sasian, OPTI 517, L20; docs/quellen.md), stop on L2.S1 with
     # radius 10 as tests/reference/m2/cooke_triplet_surface_stop.rtt.json (acceptance 4).
     "sasian": dict(
@@ -260,7 +272,8 @@ def write_zmx(name: str, c: dict) -> None:
     L += [f"PWAV {c['pwav']}", "POLS 1 0 1 0 0 1 0",
           "COFN COATING.DAT SCATTER_PROFILE.DAT ABG_DATA.DAT PROFILE.GRD"]
     surfaces = [surf()] + c["surfaces"]
-    obj = dict(surfaces[0], curv_s=e(0.0, 18), diam_s=zero, clap_s=None, flap_s=None, parm_s=[])
+    obj = dict(surfaces[0], curv_s=e(0.0, 18), diam_s=zero, clap_s=None, flap_s=None, parm_s=[],
+               glas=c.get("object_glass", ""))
     obj["disz_s"] = "INFINITY" if c["object_s"] is None else c["object_s"]
     surfaces[0] = obj
     for k, sf in enumerate(surfaces):
@@ -318,6 +331,8 @@ def build_expected(c: dict, glasses: dict) -> tuple[dict, dict]:
                  "environment": {"temperature_c": 20.0, "pressure_atm": 1.0, "medium": "AIR"}}
     if c["object_s"] is not None:
         sys["object"] = {"at_infinity": False, "distance": float(c["object_s"]) * s}
+        if c.get("object_glass"):
+            sys["object"]["medium"] = f"SCHOTT:{c['object_glass']}"
     sys["wavelengths"] = waves
     ap = c["aperture_s"]
     if ap[0] == "ENPD":
@@ -485,7 +500,7 @@ def first_order(c: dict, glasses: dict, lam_ref: float, nair: float) -> dict:
             return n_rel(coeffs, lam_air)
 
         y, nu = 1.0, 0.0
-        n = index("AIR")
+        n = index(c.get("object_glass") or "AIR")
         sum_abs = 0.0
         surfaces = c["surfaces"][:-1]
         z = 0.0
@@ -520,9 +535,19 @@ def first_order(c: dict, glasses: dict, lam_ref: float, nair: float) -> dict:
 
     a = trace(True)
     r = trace(False)
-    return {"n_air": nair, "efl": a["efl"], "bfl": a["bfl"],
-            "rear_focal_length": a["rear_focal_length"], "efl_relative": r["efl"],
-            "bfl_relative": r["bfl"], "condition": a["condition"]}
+    out = {"n_air": nair, "efl": a["efl"], "bfl": a["bfl"],
+           "rear_focal_length": a["rear_focal_length"], "efl_relative": r["efl"],
+           "bfl_relative": r["bfl"], "condition": a["condition"]}
+    ap = c["aperture_s"]
+    if ap[0] == "FNUM":
+        # EPD = |EFL| / F# in OpticStudio, with its EFL relative to air (acceptance 3)
+        out["epd_relative"] = abs(r["efl"]) / float(ap[1])
+    if ap[0] == "OBNA":
+        # paraxial marginal slope u = NA / n with the relative index of object space
+        glass = c.get("object_glass")
+        n_obj = n_rel(glasses[glass][0], lam_air) if glass else 1.0
+        out["na_over_n_relative"] = float(ap[1]) / n_obj
+    return out
 
 
 def main() -> None:

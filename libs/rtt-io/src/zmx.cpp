@@ -103,8 +103,8 @@ double number(const Line& line, std::size_t i) {
   const char* last = w.data() + w.size();
   if (first != last && *first == '+') ++first;
   const auto [ptr, ec] = std::from_chars(first, last, v);
-  if (ec != std::errc() || ptr != last) {
-    fail("zmx.parse", line.number, line.words[0] + ": '" + w + "' is not a number");
+  if (ec != std::errc() || ptr != last || !std::isfinite(v)) {
+    fail("zmx.parse", line.number, line.words[0] + ": '" + w + "' is not a finite number");
   }
   return v;
 }
@@ -275,6 +275,10 @@ void Importer::read_header(const Line& l) {
                          : "object cone angle is not supported");
       }
     }
+    if (aperture_kind_) {
+      fail("zmx.parse", l.number,
+           "a second system aperture (" + k + " after " + *aperture_kind_ + ")");
+    }
     aperture_kind_ = k;
   } else if (k == "ENVD") {
     if (number(l, 1) != 20.0 || number(l, 2) != 1.0) {
@@ -353,6 +357,14 @@ void Importer::read_surface_line(ZSurface& s, const Line& l) {
 /// Merit block, TOL lines and the configuration editor after the last surface (ADR 0044,
 /// point 2 and 9).
 void Importer::read_trailer(std::size_t from) {
+  // A SURF block after a line that ended the surfaces would be skipped with the merit block.
+  for (std::size_t k = from; k < lines_.size(); ++k) {
+    if (lines_[k].words[0] == "SURF") {
+      fail("zmx.parse", lines_[k].number,
+           "SURF after the line " + std::to_string(lines_[from].number) +
+               ", which ended the surfaces (a line that is not indented)");
+    }
+  }
   std::size_t i = from;
   while (i < lines_.size() && lines_[i].words[0] != "TOL" && lines_[i].words[0] != "MNUM") ++i;
   while (i < lines_.size() && lines_[i].words[0] != "MNUM") ++i;
@@ -480,7 +492,7 @@ std::optional<model::Aperture> Importer::aperture(const ZSurface& s) {
   }
   if (s.clap) {
     const auto [rmin, rmax] = *s.clap;
-    if (!(rmax > 0.0) || !(rmax > rmin)) {
+    if (!(rmax > 0.0) || !(rmax > rmin) || rmin < 0.0) {
       fail("zmx.aperture_invalid", s.clap_line, "CLAP needs 0 <= rmin < rmax and rmax > 0");
     }
     return model::CircularAperture{length(rmax), length(rmin)};
@@ -527,8 +539,9 @@ model::System Importer::build() {
   if (n_fields < 1 || n_waves < 1) fail("zmx.parse", ft.number, "no fields or wavelengths");
 
   for (const Line& v : vignetting_) {
-    for (int i = 0; i < n_fields && static_cast<std::size_t>(i + 1) < v.words.size(); ++i) {
-      if (number(v, static_cast<std::size_t>(i + 1)) != 0.0) {
+    const auto count = static_cast<std::size_t>(n_fields);
+    for (std::size_t i = 1; i <= count && i < v.words.size(); ++i) {
+      if (number(v, i) != 0.0) {
         fail("zmx.vignetting_unsupported", v.number, "vignetting factors are not supported");
       }
     }
@@ -548,8 +561,7 @@ model::System Importer::build() {
                                                           model::FieldType::ParaxialImageHeight};
   sys.fields.type = kTypes[static_cast<std::size_t>(ftype)];
   const double field_scale = ftype == 0 ? 1.0 : scale_;
-  for (int i = 0; i < n_fields; ++i) {
-    const auto at = static_cast<std::size_t>(i + 1);
+  for (std::size_t at = 1; at <= static_cast<std::size_t>(n_fields); ++at) {
     model::Field f;
     f.x = number(*xs, at) * field_scale;
     f.y = number(*ys, at) * field_scale;
@@ -583,14 +595,15 @@ model::System Importer::build() {
 
   // System aperture.
   if (!aperture_kind_) fail("zmx.parse", 0, "no system aperture (ENPD, FNUM, OBNA or FLOA)");
+  const std::string& kind = *aperture_kind_;
   using AT = model::SystemApertureType;
-  if (*aperture_kind_ == "ENPD") {
+  if (kind == "ENPD") {
     sys.aperture.type = AT::EntrancePupilDiameter;
     sys.aperture.value = length(aperture_value_);
-  } else if (*aperture_kind_ == "FNUM") {
+  } else if (kind == "FNUM") {
     sys.aperture.type = AT::ImageSpaceFNumber;
     sys.aperture.value = aperture_value_ / n_air;
-  } else if (*aperture_kind_ == "OBNA") {
+  } else if (kind == "OBNA") {
     sys.aperture.type = AT::ObjectSpaceNA;
     sys.aperture.value = n_air * aperture_value_;
     sys.aperture.reading = model::ApertureReading::Real;
@@ -602,6 +615,10 @@ model::System Importer::build() {
   if (surfaces_.size() < 3)
     fail("zmx.parse", 0, "the file needs an object, a surface and an image");
   const ZSurface& obj = surfaces_.front();
+  if (obj.type != "STANDARD" || obj.curv.value != 0.0) {
+    fail("zmx.surface_unsupported", obj.curv.value != 0.0 ? obj.curv.line : obj.type_line,
+         "the object surface must be a plane STANDARD surface");
+  }
   std::optional<std::string> object_medium;
   if (obj.infinite) {
     if (!obj.glass.empty()) {
@@ -623,6 +640,15 @@ model::System Importer::build() {
     }
   }
 
+  // Exactly one STOP, on a surface between the object and the image.
+  const auto stops =
+      std::count_if(surfaces_.begin(), surfaces_.end(), [](const ZSurface& z) { return z.stop; });
+  if (surfaces_.front().stop || surfaces_.back().stop) {
+    const ZSurface& z = surfaces_.front().stop ? surfaces_.front() : surfaces_.back();
+    fail("zmx.parse", z.stop_line, "the stop cannot be the object or the image surface");
+  }
+  if (stops == 0) fail("zmx.parse", 0, "no STOP surface");
+
   // Surfaces -> tree.
   std::vector<model::Node> children;
   int lenses = 0;
@@ -641,7 +667,7 @@ model::System Importer::build() {
   };
   const auto stop_radius = [&](const ZSurface& s) {
     const double v = length(s.diam.value);
-    if (*aperture_kind_ == "FLOA" || s.diam_flag == 1 || s.diam_flag == 2) return v;
+    if (kind == "FLOA" || s.diam_flag == 1 || s.diam_flag == 2) return v;
     stop_from_diam_rule_ = true;
     stop_diam_line_ = s.diam.line;
     return 1.1 * v;
@@ -654,7 +680,7 @@ model::System Importer::build() {
     if (s.stop) {
       if (out.aperture) {
         const auto* c = std::get_if<model::CircularAperture>(&*out.aperture);
-        if (*aperture_kind_ == "FLOA" && c != nullptr && c->radius != length(s.diam.value)) {
+        if (kind == "FLOA" && c != nullptr && c->radius != length(s.diam.value)) {
           fail("zmx.stop_radius_conflict", s.clap ? s.clap_line : s.flap_line,
                "with FLOA the aperture of the stop must equal its semi-diameter");
         }
