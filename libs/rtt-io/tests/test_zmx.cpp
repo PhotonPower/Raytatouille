@@ -4,6 +4,7 @@
 // and 3). The error and warning cases change single lines of those files.
 
 #include <algorithm>
+#include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <cstddef>
@@ -17,6 +18,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "rtt/analysis/spot.hpp"
@@ -25,8 +27,11 @@
 #include "rtt/io/json_io.hpp"
 #include "rtt/io/zmx.hpp"
 #include "rtt/material/material.hpp"
+#include "rtt/math/types.hpp"
 #include "rtt/model/system.hpp"
 #include "rtt/paraxial/paraxial.hpp"
+#include "rtt/trace/ray_batch.hpp"
+#include "rtt/trace/sequential.hpp"
 
 namespace {
 
@@ -398,6 +403,9 @@ struct ErrorCase {
 std::vector<ErrorCase> error_cases() {
   const std::string s = singlet();
   const std::string asph = read_file(kZmxDir + "asphere.zmx");
+  const std::string fold = read_file(kZmxDir + "fold.zmx");
+  const std::string par = read_file(kZmxDir + "paraxial.zmx");
+  const std::string plate = read_file(kZmxDir + "tilt_plate.zmx");
   return {
       {"zmx.parse", in_surface(2, "DISZ", "  DISZ six"), "DISZ six"},
       {"zmx.encoding_unsupported", "\xFE\xFF" + s, ""},
@@ -456,6 +464,32 @@ std::vector<ErrorCase> error_cases() {
       {"zmx.aperture_unsupported", in_surface(2, "FLAP", "  ELAP 4.0E+000 3.0E+000 0"), "ELAP"},
       {"zmx.aperture_unsupported", in_surface(2, "FLAP", "  OBSC 0 1.0E+000 0"), "OBSC"},
       {"zmx.config_mismatch", with(s, "THIC", "CRVT 2 1 2.1E-002 0 0 0 1 1 0"), "CRVT 2 1"},
+      // PR C: coordinate breaks, tilted planes, the paraxial lens, apertures, surface keywords.
+      {"zmx.coordbrk_surface",
+       in_surface(in_surface(fold, 1, "STOP", ""), 2, "TYPE", "  STOP\r\n  TYPE COORDBRK"), "STOP"},
+      {"zmx.coordbrk_surface", in_surface(fold, 2, "HIDE", "  CLAP 0 5.0E+000 0"),
+       "CLAP 0 5.0E+000"},
+      {"zmx.parse", in_surface(fold, 2, "HIDE", "  GLAS F2 0 0 1.5 40"), "GLAS F2"},
+      {"zmx.parse", in_surface(fold, 2, "HIDE", "  GLAS MIRROR 0 0"), "GLAS MIRROR"},
+      {"zmx.surface_unsupported", in_surface(4, "TYPE", "  TYPE COORDBRK"), "TYPE COORDBRK"},
+      {"zmx.surface_unsupported", in_surface(0, "TYPE", "  TYPE COORDBRK"), "TYPE COORDBRK"},
+      {"zmx.paraxial_medium", in_surface(par, 1, "HIDE", "  GLAS N-BK7 0 0 1.5 40"), "GLAS N-BK7"},
+      {"zmx.surface_unsupported", in_surface(par, 1, "HIDE", "  GLAS MIRROR 0 0"), "GLAS MIRROR"},
+      {"zmx.surface_unsupported", in_surface(par, 1, "CURV", "  CURV 1.0E-002 0 0 0 0"),
+       "CURV 1.0E-002"},
+      {"zmx.surface_unsupported", in_surface(par, 2, "TYPE", "  TYPE PARAXIAL"), "TYPE PARAXIAL"},
+      {"zmx.aperture_unsupported", in_surface(plate, 2, "HIDE", "  FLAP 0 5.0E+000 0"),
+       "FLAP 0 5.0E+000"},
+      {"zmx.aperture_unsupported",
+       in_surface(in_surface(plate, 1, "STOP", ""), 2, "TYPE", "  STOP\r\n  TYPE TILTSURF"),
+       "STOP"},
+      {"zmx.aperture_unsupported", in_surface(1, "HIDE", "  SQAP 4.0E+000 4.0E+000 0"), "SQAP"},
+      {"zmx.aperture_invalid", in_surface(2, "FLAP", "  SQAP 0 4.0E+000 0"), "SQAP 0"},
+      {"zmx.aperture_invalid", in_surface(2, "FLAP", "  ELAP 4.0E+000 -1.0E+000 0"), "ELAP 4"},
+      {"zmx.aperture_conflict",
+       in_surface(2, "FLAP", "  CLAP 0 7.0E+000 0\r\n  SQAP 4.0E+000 4.0E+000 0"), "SQAP 4"},
+      {"zmx.keyword_unsupported", in_surface(2, "HIDE", "  ZZZZ 1"), "ZZZZ 1"},
+      {"zmx.keyword_unsupported", in_surface(2, "HIDE", "  VDSZ 1.0E+000 0 0"), "VDSZ 1"},
   };
 }
 
@@ -511,6 +545,12 @@ TEST_CASE("every warning of the import has a case at its line", "[zmx]") {
        &schott()},
       {"zmx.stop_radius_small", with(s, "ENPD", "ENPD 1.2E+001"), "DIAM 5.000000000000E+000",
        &schott()},
+      // PR C.
+      {"zmx.paraxial_unavailable", read_file(kZmxDir + "fold.zmx"), "", &schott()},
+      {"zmx.paraxial_opd",
+       in_surface(read_file(kZmxDir + "paraxial.zmx"), 1, "PARM 2", "  PARM 2 3.0E+000"),
+       "PARM 2 3.0E+000", &schott()},
+      {"zmx.tilted_image", read_file(kZmxDir + "tilt_image.zmx"), "TYPE TILTSURF", &schott()},
   };
   std::set<std::string> covered;
   for (const WarningCase& c : cases) {
@@ -572,4 +612,352 @@ TEST_CASE("a curved stop between air and air becomes a stop element with its sha
     const auto d = rtt::analysis::spot(cs, {0}, field, std::nullopt);
     REQUIRE(d.rays_arrived == d.rays_launched);
   }
+}
+
+// ------------------------------------------------------------------------------------- PR C
+// Coordinate breaks, tilted planes, fold mirrors, the paraxial lens and rectangular and
+// elliptical apertures (ADR 0044, addendum "PR C"). The folded cases have no expected file:
+// make_zmx_cases.py writes the frame of OpticStudio for every surface into frames.json (UG
+// "Coordinate Break", "Tilted", "Thickness"), and the analytic anchors are computed here.
+
+namespace {
+
+using rtt::compile::CompiledSystem;
+using rtt::math::Vec3;
+using rtt::trace::RayBatch;
+using rtt::trace::RayStatus;
+
+const nlohmann::json& frames_json() {
+  static const nlohmann::json j = nlohmann::json::parse(read_file(kZmxDir + "frames.json"));
+  return j;
+}
+
+const rtt::compile::CompiledSurface& surface_by_id(const CompiledSystem& cs,
+                                                   const std::string& id) {
+  for (const auto& s : cs.surfaces()) {
+    if (s.id.str() == id) return s;
+  }
+  throw std::logic_error("no surface " + id);
+}
+
+/// The element that holds surface `id` (a pointer: a reference result bound to a reference with
+/// a temporary string argument trips GCC's -Wdangling-reference, AGENTS.md).
+const rtt::model::Element* element_of(const System& s, const std::string& id) {
+  for (const rtt::model::Node& n : s.root.children) {
+    const auto& e = std::get<rtt::model::Element>(n.value);
+    for (const rtt::model::Surface& surface : e.surfaces) {
+      if (surface.id.str() == id) return &e;
+    }
+  }
+  throw std::logic_error("no element with " + id);
+}
+
+Vec3 vec(const nlohmann::json& a) {
+  return {a.at(0).get<double>(), a.at(1).get<double>(), a.at(2).get<double>()};
+}
+
+/// Traces start rays (global, unit directions) along the path; returns the batch after it.
+RayBatch trace_rays(const CompiledSystem& cs, const std::vector<std::pair<Vec3, Vec3>>& rays) {
+  RayBatch b(rays.size());
+  for (std::size_t i = 0; i < rays.size(); ++i) {
+    const auto& [p, d] = rays[i];
+    b.pos_x()[i] = p.x();
+    b.pos_y()[i] = p.y();
+    b.pos_z()[i] = p.z();
+    b.dir_x()[i] = d.x();
+    b.dir_y()[i] = d.y();
+    b.dir_z()[i] = d.z();
+  }
+  (void)rtt::trace::SequentialTracer().trace(cs, rtt::compile::PathId{0}, b);
+  return b;
+}
+
+Vec3 pos(const RayBatch& b, std::size_t i) {
+  return {b.pos_x()[i], b.pos_y()[i], b.pos_z()[i]};
+}
+
+/// Parallel rays from z = -1 (in front of surface 1, AGENTS.md) on a grid inside radius r, at a
+/// field angle about x.
+std::vector<std::pair<Vec3, Vec3>> parallel_bundle(double r, double angle_deg = 0.0) {
+  const Vec3 d = Vec3(0.0, std::tan(angle_deg * 3.14159265358979323846 / 180.0), 1.0).normalized();
+  std::vector<std::pair<Vec3, Vec3>> out;
+  for (int iy = -4; iy <= 4; ++iy) {
+    for (int ix = -4; ix <= 4; ++ix) {
+      const double x = r * ix / 4.0;
+      const double y = r * iy / 4.0;
+      if (x * x + y * y <= r * r) out.emplace_back(Vec3(x, y, -1.0), d);
+    }
+  }
+  return out;
+}
+
+const std::vector<std::string> kFolded{"fold",       "oap",        "pivot",
+                                       "tilt_image", "tilt_plate", "tilt_prism"};
+
+}  // namespace
+
+TEST_CASE("the coaxial cases of PR C import to their expected systems", "[zmx]") {
+  for (const char* name : {"paraxial", "apertures"}) {
+    INFO(name);
+    const ZmxImport r = import_case(name);
+    REQUIRE(r.warnings.empty());
+    require_matches(r.system, expected_case(name));
+  }
+}
+
+TEST_CASE("first order of the PR C coaxial cases agrees with the y-nu trace", "[zmx]") {
+  // As acceptance 3 of PR B; the paraxial lens enters the script with phi = |n| / f.
+  const nlohmann::json fo = nlohmann::json::parse(read_file(kZmxDir + "first_order.json"));
+  for (const char* name : {"paraxial", "apertures"}) {
+    INFO(name);
+    const auto& e = fo.at(name);
+    const System s = import_case(name).system;
+    const auto cs = rtt::compile::compile(s, schott());
+    const rtt::paraxial::FirstOrder f = rtt::paraxial::first_order(cs, {0}, 0);
+    REQUIRE(f.efl);
+    REQUIRE(f.bfl);
+    REQUIRE(f.rear_focal_length);
+    const double bound = 1e-12 * std::max(1.0, e.at("condition").get<double>());
+    REQUIRE(rel(*f.efl, e.at("efl").get<double>()) <= bound);
+    REQUIRE(rel(*f.bfl, e.at("bfl").get<double>()) <= bound);
+    REQUIRE(rel(*f.rear_focal_length, e.at("efl_relative").get<double>()) <= bound);
+  }
+}
+
+TEST_CASE("content guard of the PR C coaxial cases", "[zmx]") {
+  // apertures: all rays pass both apertures, the fields differ (as PR B). paraxial: the ideal
+  // lens images every field to a point (spot < 1e-9 mm), at different image heights.
+  {
+    const System s = import_case("apertures").system;
+    const auto cs = rtt::compile::compile(s, schott());
+    std::set<double> rms;
+    for (std::uint16_t field = 0; field < 3; ++field) {
+      const auto d = rtt::analysis::spot(cs, {0}, field, std::nullopt);
+      REQUIRE(d.rays_launched > 0);
+      REQUIRE(d.rays_arrived == d.rays_launched);
+      rms.insert(d.stats.rms_centroid);
+    }
+    REQUIRE(rms.size() == 3);
+  }
+  const System s = import_case("paraxial").system;
+  const auto cs = rtt::compile::compile(s, schott());
+  std::set<double> heights;
+  for (std::uint16_t field = 0; field < 3; ++field) {
+    const auto d = rtt::analysis::spot(cs, {0}, field, std::nullopt);
+    REQUIRE(d.rays_launched > 0);
+    REQUIRE(d.rays_arrived == d.rays_launched);
+    REQUIRE(d.stats.rms_centroid < 1e-9);
+    heights.insert(d.points.front().y);
+  }
+  REQUIRE(heights.size() == 3);
+}
+
+TEST_CASE("SQAP and ELAP clip at their half widths, the corner only by the ellipse", "[zmx]") {
+  // apertures.zmx: SQAP 7 x 6 mm (printed in inches) on surface 1, ELAP 7 x 6 on surface 2.
+  const System s = import_case("apertures").system;
+  const auto& sq =
+      std::get<rtt::model::RectangularAperture>(*element_of(s, "S1")->surfaces[0].aperture);
+  const auto& el =
+      std::get<rtt::model::EllipticalAperture>(*element_of(s, "S2")->surfaces[0].aperture);
+  const double a = sq.half_width_x;
+  const double b = sq.half_width_y;
+  REQUIRE(el.semi_axis_x == a);
+  REQUIRE(el.semi_axis_y == b);
+  const auto cs = rtt::compile::compile(s, schott());
+  const Vec3 z(0.0, 0.0, 1.0);
+  const std::vector<std::pair<Vec3, Vec3>> rays{{Vec3(0.999 * a, 0.0, -1.0), z},
+                                                {Vec3(1.001 * a, 0.0, -1.0), z},
+                                                {Vec3(0.0, 0.999 * b, -1.0), z},
+                                                {Vec3(0.0, 1.001 * b, -1.0), z},
+                                                {Vec3(0.9 * a, 0.9 * b, -1.0), z}};
+  const RayBatch out = trace_rays(cs, rays);
+  CHECK(out.status()[0] == RayStatus::Alive);
+  CHECK(out.status()[1] == RayStatus::Vignetted);
+  CHECK(out.status()[2] == RayStatus::Alive);
+  CHECK(out.status()[3] == RayStatus::Vignetted);
+  // (0.9 a, 0.9 b) is inside the rectangle and outside the ellipse (0.81 + 0.81 > 1).
+  CHECK(out.status()[4] == RayStatus::Vignetted);
+  CHECK(out.last_surface()[4] == 1);
+}
+
+TEST_CASE("every surface of a folded case lies in the frame of OpticStudio", "[zmx]") {
+  // Vertices to 1e-12 mm, axes (or the normal of a tilted plane) to 1e-14; the poses of a
+  // decomposed transform round, so the frames are compared, not the poses.
+  const std::map<std::string, std::vector<std::string>> expected_warnings{
+      {"fold", {"zmx.paraxial_unavailable"}},
+      {"oap", {"zmx.paraxial_unavailable"}},
+      {"pivot", {"zmx.paraxial_unavailable"}},
+      {"tilt_image", {"zmx.tilted_image", "zmx.paraxial_unavailable"}},
+      {"tilt_plate", {"zmx.paraxial_unavailable"}},
+      {"tilt_prism", {"zmx.paraxial_unavailable"}},
+  };
+  for (const std::string& name : kFolded) {
+    INFO(name);
+    const ZmxImport r = import_case(name);
+    REQUIRE(codes_of(r.warnings) == expected_warnings.at(name));
+    const auto cs = rtt::compile::compile(r.system, schott());
+    std::size_t checked = 0;
+    for (const auto& [id, f] : frames_json().at(name).at("frames").items()) {
+      bool present = false;
+      for (const auto& s : cs.surfaces()) present = present || s.id.str() == id;
+      if (!present) continue;  // a dropped dummy
+      INFO(id);
+      const auto& g = surface_by_id(cs, id).to_global;
+      REQUIRE((g.translation() - vec(f.at("origin"))).norm() <= 1e-12);
+      if (f.contains("normal")) {
+        REQUIRE((g.apply_vector({0.0, 0.0, 1.0}) - vec(f.at("normal"))).norm() <= 1e-14);
+      } else {
+        for (int i = 0; i < 3; ++i) {
+          for (int j = 0; j < 3; ++j) {
+            REQUIRE(std::abs(g.rotation()(i, j) - f.at("axes").at(i).at(j).get<double>()) <= 1e-14);
+          }
+        }
+      }
+      ++checked;
+    }
+    REQUIRE(checked == cs.surfaces().size());
+  }
+}
+
+TEST_CASE("a single coordinate break gives an exact rotate_first pose", "[zmx]") {
+  // PR C, point 3, rule 2: flag 0 -> pivot (dx, dy, t1), position (dx, dy, t1 + t2), the tilts
+  // as in the file.
+  using rtt::model::PoseOrder;
+  using rtt::model::PoseReference;
+  struct Expected {
+    const char* file;
+    const char* surface;
+    PoseReference reference;
+    std::array<double, 3> rotation, pivot, position;
+  };
+  const std::vector<Expected> cases{
+      {"fold", "S3", PoseReference::RelativeToPreceding, {45, 0, 0}, {0, 0, 20}, {0, 0, 20}},
+      {"fold", "S5", PoseReference::RelativeToPreceding, {45, 0, 0}, {0, 0, 0}, {0, 0, -32}},
+      {"pivot", "S2", PoseReference::Absolute, {5, 0, 0}, {0, 0, 0}, {0, 0, 0}},
+      {"pivot", "S6", PoseReference::RelativeToPreceding, {-5, 0, 0}, {0, 0, -9}, {0, 0, 141}},
+      {"oap", "S3", PoseReference::RelativeToPreceding, {0, 0, 0}, {0, -10, 100}, {0, -10, 100}},
+  };
+  for (const Expected& c : cases) {
+    INFO(c.file << " " << c.surface);
+    const System s = import_case(c.file).system;
+    const rtt::model::Pose p = element_of(s, c.surface)->pose;
+    REQUIRE(p.reference == c.reference);
+    REQUIRE(p.order == PoseOrder::RotateFirst);
+    for (std::size_t i = 0; i < 3; ++i) {
+      REQUIRE(p.rotation_deg[i].value == c.rotation[i]);
+      REQUIRE(p.pivot[i] == c.pivot[i]);
+      REQUIRE(p.position[i].value == c.position[i]);
+    }
+  }
+  // The exit face of the tilted plate takes the tilt out: rotate_first about its vertex, the
+  // thickness stays one number (PR C, point 4).
+  const System plate = import_case("tilt_plate").system;
+  const rtt::model::Element* lens = element_of(plate, "S3");
+  REQUIRE(lens->surfaces[1].pose.order == PoseOrder::RotateFirst);
+  REQUIRE(lens->surfaces[1].pose.position[2].value == 5.0);
+}
+
+TEST_CASE("the fold as ZMX meets tests/reference/m6/fold45_focus and focuses there", "[zmx]") {
+  const System s = import_case("fold").system;
+  const auto cs = rtt::compile::compile(s, schott());
+  const System ref =
+      rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m6/fold45_focus.rtt.json");
+  const auto cr = rtt::compile::compile(ref, schott());
+  // Vertices and normals; the normals up to the sign (the reference turns its detector by
+  // -90 deg, the frame of OpticStudio by +90 deg).
+  for (const auto& [mine, theirs] :
+       std::vector<std::pair<std::string, std::string>>{{"S1", "IL"}, {"S3", "M"}, {"S5", "IMG"}}) {
+    INFO(mine);
+    const auto& a = surface_by_id(cs, mine).to_global;
+    const auto& b = surface_by_id(cr, theirs).to_global;
+    REQUIRE((a.translation() - b.translation()).norm() <= 1e-12);
+    const Vec3 na = a.apply_vector({0.0, 0.0, 1.0});
+    const Vec3 nb = b.apply_vector({0.0, 0.0, 1.0});
+    REQUIRE(std::min((na - nb).norm(), (na + nb).norm()) <= 1e-14);
+  }
+  // The detector is 2 mm behind the focus (0, 30, 20): a ray at height h hits it 2 h / 50 off
+  // (0, 32, 20); with DISZ -30 every parallel ray meets in (0, 30, 20).
+  const RayBatch at32 = trace_rays(cs, {{Vec3(0.0, 4.0, -1.0), Vec3(0.0, 0.0, 1.0)},
+                                        {Vec3(0.0, 0.0, -1.0), Vec3(0.0, 0.0, 1.0)}});
+  REQUIRE(at32.status()[0] == RayStatus::Alive);
+  REQUIRE((pos(at32, 1) - Vec3(0.0, 32.0, 20.0)).norm() <= 1e-12);
+  REQUIRE(std::abs((pos(at32, 0) - Vec3(0.0, 32.0, 20.0)).norm() - 2.0 * 4.0 / 50.0) <= 1e-12);
+  const std::string text = read_file(kZmxDir + "fold.zmx");
+  const System s30 =
+      import_zmx(in_surface(text, 4, "DISZ", "  DISZ -3.000000000000E+001"), schott()).system;
+  const auto c30 = rtt::compile::compile(s30, schott());
+  std::set<double> centres;
+  for (const double angle : {0.0, 1.0}) {
+    const RayBatch b = trace_rays(c30, parallel_bundle(4.0, angle));
+    const Vec3 first = pos(b, 0);
+    for (std::size_t i = 0; i < b.size(); ++i) {
+      REQUIRE(b.status()[i] == RayStatus::Alive);
+      REQUIRE((pos(b, i) - first).norm() < 1e-9);
+    }
+    if (angle == 0.0) REQUIRE((first - Vec3(0.0, 30.0, 20.0)).norm() <= 1e-12);
+    centres.insert(first.z());  // content guard: the field moves the image point
+  }
+  REQUIRE(centres.size() == 2);
+}
+
+TEST_CASE("the off-axis parabola focuses in its focus, R/2 off the decentred vertex", "[zmx]") {
+  // Vertex at (0, -10, 100) (decenter -10 in y), R = -200, k = -1: every ray parallel to the
+  // axis meets in (0, -10, 100 - 100) = (0, -10, 0), on the image plane z = 0. With the wrong
+  // sign of the decenter the focus would be at y = +10.
+  const System s = import_case("oap").system;
+  const auto cs = rtt::compile::compile(s, schott());
+  const RayBatch b = trace_rays(cs, parallel_bundle(2.5));
+  for (std::size_t i = 0; i < b.size(); ++i) {
+    INFO(i);
+    REQUIRE(b.status()[i] == RayStatus::Alive);
+    REQUIRE((pos(b, i) - Vec3(0.0, -10.0, 0.0)).norm() <= 1e-9);
+  }
+}
+
+TEST_CASE("a ray hits the tilted image plane on z = x tan_x + y tan_y", "[zmx]") {
+  // UG "Tilted": the plane keeps the frame of the image (vertex (0, 0, 56), axes as global).
+  const System s = import_case("tilt_image").system;
+  const auto cs = rtt::compile::compile(s, schott());
+  const RayBatch b = trace_rays(cs, {{Vec3(1.0, 3.0, -1.0), Vec3(0.0, 0.0, 1.0)}});
+  REQUIRE(b.status()[0] == RayStatus::Alive);
+  const Vec3 p = pos(b, 0) - Vec3(0.0, 0.0, 56.0);
+  REQUIRE(std::abs(p.y()) > 0.1);
+  REQUIRE(std::abs(p.z() - (0.1 * p.x() - 0.3 * p.y())) <= 1e-12);
+}
+
+TEST_CASE("a ray through the tilted plate and prism meets the hand-traced Snell ray", "[zmx]") {
+  // make_zmx_cases.py traces (0, 1, -1) along +z with its own vector Snell's law, own Sellmeier
+  // and Ciddor; 1e-11 mm leaves room for the rounding of two index computations.
+  for (const char* name : {"tilt_plate", "tilt_prism"}) {
+    INFO(name);
+    const auto& ray = frames_json().at(name).at("ray");
+    const System s = import_case(name).system;
+    const auto cs = rtt::compile::compile(s, schott());
+    const RayBatch b = trace_rays(cs, {{vec(ray.at("start")), Vec3(0.0, 0.0, 1.0)}});
+    REQUIRE(b.status()[0] == RayStatus::Alive);
+    REQUIRE((pos(b, 0) - vec(ray.at("hit"))).norm() <= 1e-11);
+  }
+}
+
+TEST_CASE("variants of PR C that import like the case they come from", "[zmx]") {
+  // Pickup and variable notes, TCED, SSID, FIMP and VDSZ with zeros in a surface are silent.
+  const System base = import_case("singlet").system;
+  const ZmxImport notes = import_zmx(
+      in_surface(2, "HIDE",
+                 "  HIDE 0 0 0 0 0 0 0 0\r\n  PPAR 1 2 1.0E+000 0 0\r\n  PZUP 1 -1 0 0\r\n"
+                 "  VPAR 2\r\n  TCED 2.36E+001 0 0\r\n  SSID 7\r\n  FIMP\r\n  VDSZ 0 0 0"),
+      schott());
+  REQUIRE(notes.warnings.empty());
+  REQUIRE(notes.system == base);
+  // A GLAS line on a coordinate break that names the medium before it.
+  const std::string prism = read_file(kZmxDir + "tilt_prism.zmx");
+  REQUIRE(import_zmx(
+              in_surface(prism, 3, "DISZ", "  DISZ 0.000000000000E+000\r\n  GLAS N-BK7 0 0 1.5 40"),
+              schott())
+              .system == import_case("tilt_prism").system);
+  // OPD mode 0 of a paraxial lens: the same system, with the warning zmx.paraxial_opd.
+  const std::string par = read_file(kZmxDir + "paraxial.zmx");
+  const ZmxImport mode0 = import_zmx(in_surface(par, 1, "PARM 2", "  PARM 2 0"), schott());
+  REQUIRE(codes_of(mode0.warnings) == std::vector<std::string>{"zmx.paraxial_opd"});
+  REQUIRE(mode0.system == import_case("paraxial").system);
 }

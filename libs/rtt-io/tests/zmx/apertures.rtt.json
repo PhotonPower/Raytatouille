@@ -1,0 +1,208 @@
+{
+  "schema_version": "0.9.0",
+  "name": "Apertures",
+  "units": {
+    "length": "mm",
+    "wavelength": "um"
+  },
+  "environment": {
+    "temperature_c": 20.0,
+    "pressure_atm": 1.0,
+    "medium": "AIR"
+  },
+  "wavelengths": [
+    {
+      "um": 0.587721870012617,
+      "weight": 1.0,
+      "reference": true
+    }
+  ],
+  "aperture": {
+    "type": "epd",
+    "value": 10.00000000000064
+  },
+  "fields": {
+    "type": "angle_deg",
+    "points": [
+      {
+        "x": 0.0,
+        "y": 0.0,
+        "weight": 1.0
+      },
+      {
+        "x": 0.0,
+        "y": 3.0,
+        "weight": 1.0
+      },
+      {
+        "x": 0.0,
+        "y": 5.0,
+        "weight": 1.0
+      }
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "thin_element",
+        "name": "T1",
+        "surfaces": [
+          {
+            "id": "S1",
+            "shape": {
+              "base": {
+                "type": "plane"
+              }
+            },
+            "aperture": {
+              "type": "rectangular",
+              "half_width_x": 6.99999999999994,
+              "half_width_y": 5.99999999999886
+            }
+          }
+        ],
+        "pose": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      {
+        "type": "thin_element",
+        "name": "T2",
+        "surfaces": [
+          {
+            "id": "S2",
+            "shape": {
+              "base": {
+                "type": "plane"
+              }
+            },
+            "aperture": {
+              "type": "elliptical",
+              "semi_axis_x": 6.99999999999994,
+              "semi_axis_y": 5.99999999999886
+            }
+          }
+        ],
+        "pose": {
+          "reference": "relative_to_preceding",
+          "position": [
+            0.0,
+            0.0,
+            1.999999999999874
+          ]
+        }
+      },
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "S3",
+            "shape": {
+              "base": {
+                "type": "plane"
+              }
+            },
+            "aperture": {
+              "type": "circular",
+              "radius": 8.00000000000102
+            }
+          }
+        ],
+        "pose": {
+          "reference": "relative_to_preceding",
+          "position": [
+            0.0,
+            0.0,
+            3.0000000000007
+          ]
+        }
+      },
+      {
+        "type": "lens",
+        "name": "L1",
+        "surfaces": [
+          {
+            "id": "S4",
+            "shape": {
+              "base": {
+                "type": "conic",
+                "radius": 50.0,
+                "conic": 0.0
+              }
+            },
+            "aperture": {
+              "type": "circular",
+              "radius": 8.99999999999956
+            }
+          },
+          {
+            "id": "S5",
+            "shape": {
+              "base": {
+                "type": "conic",
+                "radius": -50.0,
+                "conic": 0.0
+              }
+            },
+            "aperture": {
+              "type": "circular",
+              "radius": 8.99999999999956
+            },
+            "pose": {
+              "reference": "relative_to_preceding",
+              "position": [
+                0.0,
+                0.0,
+                5.99999999999886
+              ]
+            }
+          }
+        ],
+        "pose": {
+          "reference": "relative_to_preceding",
+          "position": [
+            0.0,
+            0.0,
+            5.00000000000032
+          ]
+        },
+        "material": "SCHOTT:N-BK7"
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "surfaces": [
+          {
+            "id": "S6",
+            "shape": {
+              "base": {
+                "type": "plane"
+              }
+            }
+          }
+        ],
+        "pose": {
+          "reference": "relative_to_preceding",
+          "position": [
+            0.0,
+            0.0,
+            44.9999999999978
+          ]
+        }
+      }
+    ]
+  },
+  "paths": [
+    {
+      "name": "main",
+      "events": "auto"
+    }
+  ]
+}
