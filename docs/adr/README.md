@@ -53,6 +53,7 @@ Präzisierungen und Ergänzungen einer angenommenen Entscheidung kommen als dati
 | [0042](0042.md) | Anamorphe Flächen und Paraxialrechnung je Schnitt (M8 S2: Biconic, Toroid, Zylinder; Gebiet `in_domain`; `first_order_section` mit ausgerichteten Hauptachsen; Zielung je Schnitt) | angenommen |
 | [0043](0043.md) | Rotationssymmetrische Flächen v1 (M8 S1: ungerade Asphäre, Forbes Q-con und Q-bfs mit Konik, Axicon mit analytischem Schnitt; Krümmung statt Radius) | angenommen |
 | [0044](0044.md) | ZMX-Import des sequenziellen Teils (M8 I1: Lesarten der Schlüsselwörter, Luft → Vakuum, Aperturen und Blende, Gläser, `rtt import`) | angenommen |
+| [0045](0045.md) | CSV-Flächentabelle und ZMX-Export (M8 I2: koaxiale Teilmenge, Umkehrung von ADR 0044, kanonische Form, `rtt export`) | angenommen |
 
 ## Vorlage
 
