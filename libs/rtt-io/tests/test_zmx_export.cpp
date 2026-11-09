@@ -694,6 +694,7 @@ TEST_CASE("every export error has a case", "[zmx][export]") {
     spaced.add_catalog(dir / "MY CAT.agf");
     element(s, 1).material = "MY CAT:N-BK7";
     check(s, spaced, "export.material_unsupported");
+    fs::remove_all(dir);
   }
   {  // N-BK7 and F2 in both catalogues
     const std::string agf = read_file(std::string(RTT_CATALOG_DIR) + "/schott.agf");
