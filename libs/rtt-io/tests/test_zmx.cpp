@@ -423,7 +423,7 @@ std::vector<ErrorCase> error_cases() {
        "VDYN 0 1.0E-001"},
       {"zmx.multi_config", with(s, "MNUM", "MNUM 2"), "MNUM 2"},
       {"zmx.config_mismatch", with(s, "THIC", "THIC 3 1 4.4E+001 0 0 0 1 1 0"), "THIC 3 1 4.4"},
-      {"zmx.surface_unsupported", in_surface(2, "TYPE", "  TYPE TOROIDAL"), "TYPE TOROIDAL"},
+      {"zmx.surface_unsupported", in_surface(2, "TYPE", "  TYPE SZERNSAG"), "TYPE SZERNSAG"},
       {"zmx.asphere_r2", with(asph, "PARM 1", "  PARM 1 1.0E-003"), "PARM 1 1.0E-003"},
       {"zmx.object_medium_infinite", in_surface(0, "DISZ", "  DISZ INFINITY\r\n  GLAS N-BK7 0 0"),
        "GLAS N-BK7 0 0"},
