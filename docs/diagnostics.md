@@ -21,6 +21,7 @@ Jede Diagnose (`rtt::model::Diagnostic`, in Python `rt.Diagnostic`) trägt einen
 - `optim`: `rtt::optim::optimize` (ADR 0030). Startfehler kommen als `rtt::optim::OptimError` mit `diagnostics()`; Meldungen des Laufs stehen in `OptimResult::diagnostics`, zusammen mit den Warnungen der Analysen am Endstand.
 - `trace`: die Zielung von `rtt-trace` (`aim_ray`, `make_rays`, `stop_radius`), als `rtt::trace::ApertureError` (eine `std::invalid_argument`) mit `code()` und `location()`, in Python `rt.ApertureError` mit `.code` und `.location` (ADR 0040). Der Fall steht in `libs/rtt-trace/tests/test_real_na.cpp`.
 - `agf`: der AGF-Leser von `rtt-material` (`parse_agf`, `MaterialLibrary::add_catalog`, `add_catalog_text`), als `rtt::material::LoadWarning{code, file, line, message}` in `AgfCatalog::warnings` und `MaterialLibrary::load_warnings()` (#71); Ort ist Datei und Zeile.
+- `export`: der ZMX-Export von `rtt-io` (`export_zmx`, `save_zmx`, `rtt export`, ADR 0045). Fehler kommen als `rtt::io::ExportError` mit `code()` und `surface()` (Flächen-ID, leer für das ganze System), Warnungen in `ZmxExport::warnings` mit dem JSON-Pointer der Fläche bzw. des Systemteils.
 - `zmx`: der ZMX-Import von `rtt-io` (`import_zmx`, `load_zmx`, `rtt import`, ADR 0044). Fehler kommen als `rtt::io::ZmxError` mit `code()` und `line()` (1-basiert, 0 für die ganze Datei), Warnungen in `ZmxImport::warnings` mit dem Ort `line n` bzw. `file`.
 - Warnungen von `compile()`, den Analysen und dem AGF-Leser gibt Python zusätzlich als `RaytatouilleWarning` mit `code` und `location` aus (beim AGF-Leser `datei:zeile`).
 
@@ -76,6 +77,27 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `environment.medium_empty` | Fehler | leeres Umgebungsmedium | validate | `/environment/medium` |
 | `environment.pressure_invalid` | Fehler | Druck nicht endlich oder < 0 atm | validate | `/environment/pressure_atm` |
 | `environment.temperature_invalid` | Fehler | Temperatur nicht endlich oder nicht über dem absoluten Nullpunkt | validate | `/environment/temperature_c` |
+| `export.aperture_unsupported` | Fehler | Systemapertur oder Blendenapertur ohne Abbildung: `object_na` paraxial gelesen, Rechteck oder Ellipse an der Blende (ADR 0045, Punkte 3 und 4) | export | `surface()`: Flächen-ID, leer für das ganze System |
+| `export.coating_dropped` | Warnung | Coating oder `ideal_anti_reflection` nicht exportiert; die Fläche wird wie `fresnel` geschrieben | export | `…/s` |
+| `export.element_in_glass` | Fehler | Blende, dünnes Element oder Detektor mit Glas davor oder dahinter, z. B. eine Blende in einer Linse (Import: `zmx.image_in_glass` bzw. eine Linse mit Flächenblende) | export | `surface()`: Flächen-ID, leer für das ganze System |
+| `export.environment_unsupported` | Fehler | Umgebung nicht `AIR` bei 20 °C und 1 atm; die Indizes der Datei sind relativ zu dieser Luft | export | `surface()`: Flächen-ID, leer für das ganze System |
+| `export.event_unsupported` | Fehler | Ereignis ohne ZMX-Fläche: nicht die Art des automatischen Pfades für das Element (z. B. Reflect an einer Linse; Refract an Blende oder Detektor gilt als Transmit, ADR 0045, Nachtrag PR B), Ordinary, Extraordinary, Ordnung ≠ 0, dieselbe Fläche mehrmals, ein Detektor vor dem letzten Ereignis | export | `surface()`: Flächen-ID, leer für das ganze System |
+| `export.glass_ambiguous` | Fehler | keine Reihenfolge der `GCAT`-Kataloge findet jedes Glas in seinem eigenen Katalog (ADR 0045, Punkt 4) | export | `surface()`: Flächen-ID, leer für das ganze System |
+| `export.image_missing` | Fehler | das letzte Ereignis des Pfades ist kein Detektor; der Import nähme die letzte Fläche als Bildfläche | export | `surface()`: Flächen-ID, leer für das ganze System |
+| `export.interaction_unsupported` | Fehler | Wechselwirkung ohne Abbildung: Phasenschicht, Gitter, Polarisator, Verzögerer, Strahlteiler, Absorber, Kristall, ideale Zylinderlinse, `ideal_mirror` außerhalb eines Spiegels, ideale Linse außerhalb eines dünnen Elements | export | `surface()`: Flächen-ID, leer für das ganze System |
+| `export.limit_exceeded` | Fehler | mehr als 12 Felder oder 24 Wellenlängen (Grenzen aus dem Korpus und ray-optics, ADR 0045, Punkt 4) | export | `surface()`: Flächen-ID, leer für das ganze System |
+| `export.material_unsupported` | Fehler | Medium ist kein Katalogglas, das der Import findet: `CONST:`, `VACUUM`, ein Name, den der Import als Modellglas, Luft oder Spiegel liest (sechs Ziffern, `ddd.ddd`, `___BLANK`, `AIR`, `MIRROR`), oder ein Glas- oder Katalogname mit Leerzeichen (F4) | export | `surface()`: Flächen-ID, leer für das ganze System |
+| `export.mirror_in_glass` | Fehler | Spiegel im Glas (Mangin; Import: `zmx.mirror_in_glass`) | export | `surface()`: Flächen-ID, leer für das ganze System |
+| `export.mirror_material_dropped` | Warnung | Substratmaterial eines Spiegels nicht exportiert; die Datei kennt nur `MIRROR` | export | `…/s` |
+| `export.multi_config` | Fehler | System mit mehreren Konfigurationen ohne gewählte Konfiguration (F6) | export | `surface()`: Flächen-ID, leer für das ganze System |
+| `export.name_changed` | Warnung | Steuerzeichen (unter 0x20) im Systemnamen durch Leerzeichen ersetzt; sonst bräche der Name die Zeile `NAME` | export | `/name` |
+| `export.not_coaxial` | Fehler | Fläche nicht auf der z-Achse oder gekippt; exportiert werden nur koaxiale Systeme, Schwelle 10⁻¹² (ADR 0045, Punkt 2) | export | `surface()`: Flächen-ID, leer für das ganze System |
+| `export.object_medium_unsupported` | Fehler | Objektmedium ≠ Umgebung, und das erste Ereignis tritt nicht in eine Linse ein (Import: `zmx.object_medium_unsupported`) | export | `surface()`: Flächen-ID, leer für das ganze System |
+| `export.paraxial_opd` | Warnung | ideale Linse mit `object_distance` als `PARAXIAL` mit OPD-Modus 0 geschrieben; der Import gibt die Konjugierte nicht zurück | export | `…/s` |
+| `export.paths_dropped` | Warnung | die anderen Pfade als der exportierte entfallen | export | `/paths` |
+| `export.stop_missing` | Fehler | keine Blende auf dem exportierten Pfad (F8; Import: „no STOP surface“) | export | `surface()`: Flächen-ID, leer für das ganze System |
+| `export.surface_off_path` | Warnung | Fläche, die nicht auf dem exportierten Pfad liegt, entfällt | export | `…/s` |
+| `export.surface_unsupported` | Fehler | Form ohne Abbildung: alles außer `plane`, `conic`, `even_asphere` bis A16 und `odd_asphere` mit c = 0 und nur geraden Termen A4 bis A16; `shape.terms`; ein dünnes Element ohne Apertur und ohne ideale Linse (der Import ließe die Fläche weg); 1/R nicht endlich | export | `surface()`: Flächen-ID, leer für das ganze System |
 | `fields.coordinate_invalid` | Fehler | Feldkoordinate nicht endlich | validate | `/fields/points/i` |
 | `fields.empty` | Fehler | kein Feldpunkt | validate | `/fields/points` |
 | `fields.weight_invalid` | Fehler | Feldgewicht nicht endlich oder < 0 | validate | `/fields/points/i/weight` |

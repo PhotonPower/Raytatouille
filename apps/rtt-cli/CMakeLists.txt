@@ -59,4 +59,38 @@ if(RTT_BUILD_TESTS)
   add_test(NAME cli.import.canonical
     COMMAND rtt_cli format --check ${CMAKE_CURRENT_BINARY_DIR}/singlet.rtt.json)
   set_tests_properties(cli.import.canonical PROPERTIES FIXTURES_REQUIRED zmx_import)
+  # rtt export (ADR 0045, point 5): a good case whose file imports again, the options, a system
+  # that cannot be exported (exit 1, with its code) and wrong calls (exit 2).
+  set(_agf_m2 ${PROJECT_SOURCE_DIR}/tests/catalogs/m2/schott.agf)
+  add_test(NAME cli.export.singlet
+    COMMAND rtt_cli export ${_zmx}/export_singlet.rtt.json
+            ${CMAKE_CURRENT_BINARY_DIR}/export_singlet.zmx --catalog ${_agf})
+  set_tests_properties(cli.export.singlet PROPERTIES PASS_REGULAR_EXPRESSION "exported to"
+    FIXTURES_SETUP zmx_export)
+  add_test(NAME cli.export.imports
+    COMMAND rtt_cli import ${CMAKE_CURRENT_BINARY_DIR}/export_singlet.zmx
+            ${CMAKE_CURRENT_BINARY_DIR}/export_singlet.rtt.json --catalog ${_agf})
+  set_tests_properties(cli.export.imports PROPERTIES PASS_REGULAR_EXPRESSION "imported to"
+    FIXTURES_REQUIRED zmx_export)
+  add_test(NAME cli.export.options
+    COMMAND rtt_cli export ${_zmx}/export_singlet.rtt.json ${CMAKE_CURRENT_BINARY_DIR}/main.ZMX
+            --catalog ${_agf} --path main --config 0)
+  set_tests_properties(cli.export.options PROPERTIES PASS_REGULAR_EXPRESSION "exported to")
+  add_test(NAME cli.export.code
+    COMMAND rtt_cli export ${RTT_REFERENCE_DIR}/m2/cooke_triplet.rtt.json
+            ${CMAKE_CURRENT_BINARY_DIR}/none.zmx --catalog ${_agf_m2})
+  set_tests_properties(cli.export.code PROPERTIES
+    PASS_REGULAR_EXPRESSION "cooke_triplet\\.rtt\\.json: error .*\\[export\\.element_in_glass\\]")
+  add_test(NAME cli.export.exit_1
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:rtt_cli> -DEXPECT=1
+            "-DARGS=export;${RTT_REFERENCE_DIR}/m2/cooke_triplet.rtt.json;${CMAKE_CURRENT_BINARY_DIR}/none.zmx;--catalog;${_agf_m2}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/expect_exit.cmake)
+  add_test(NAME cli.export.exit_2
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:rtt_cli> -DEXPECT=2
+            "-DARGS=export;${_zmx}/export_singlet.rtt.json;${CMAKE_CURRENT_BINARY_DIR}/out.txt;--catalog;${_agf}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/expect_exit.cmake)
+  add_test(NAME cli.export.exit_2_config
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:rtt_cli> -DEXPECT=2
+            "-DARGS=export;${_zmx}/export_singlet.rtt.json;${CMAKE_CURRENT_BINARY_DIR}/out.zmx;--config;x"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/expect_exit.cmake)
 endif()

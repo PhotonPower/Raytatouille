@@ -1,12 +1,16 @@
 // rtt - command line tool for Raytatouille system files.
 
+#include <cctype>
+#include <charconv>
 #include <cstddef>
 #include <cstdlib>
 #include <exception>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include "rtt/io/json_io.hpp"
@@ -27,7 +31,9 @@ void usage(std::ostream& os) {
         "  rtt format <file.rtt.json>...        rewrite files in canonical form\n"
         "  rtt format --check <file.rtt.json>...  fail if a file is not canonical\n"
         "  rtt import <file.zmx> <out.rtt.json> --catalog <file.agf>...\n"
-        "                                       import the sequential part of a ZMX file\n";
+        "                                       import the sequential part of a ZMX file\n"
+        "  rtt export <file.rtt.json> <out.zmx> --catalog <file.agf>... [--path <name>]\n"
+        "             [--config <index>]        export one path of a coaxial system as ZMX\n";
 }
 
 std::string read_text(const std::string& path) {
@@ -113,6 +119,55 @@ int import_file(const std::string& zmx,
   }
 }
 
+/// rtt export (ADR 0045, point 5): writes one path of a coaxial system as a ZMX file. Warnings
+/// go to stderr; exit 1 if the system cannot be read or exported, 0 otherwise.
+int export_file(const std::string& file,
+                const std::string& out,
+                const std::vector<std::string>& catalogs,
+                const rtt::io::ExportOptions& options) {
+  try {
+    std::vector<rtt::model::Diagnostic> read_warnings;
+    const rtt::model::System system = rtt::io::load_system(file, read_warnings);
+    print_read_warnings(file, read_warnings);
+    rtt::material::MaterialLibrary lib;
+    for (const std::string& c : catalogs) lib.add_catalog(c);
+    const auto warnings = rtt::io::save_zmx(out, system, lib, options);
+    for (const auto& d : warnings) std::cerr << file << ": " << rtt::model::to_string(d) << "\n";
+    std::cout << file << ": exported to " << out << "\n";
+    return kOk;
+  } catch (const std::exception& e) {
+    std::cout << file << ": error " << e.what() << "\n";
+    return kInvalid;
+  }
+}
+
+/// rtt export with the arguments after the command: the exit code, none for a wrong call.
+std::optional<int> run_export(const std::vector<std::string>& rest) {
+  if (rest.size() < 2) return std::nullopt;
+  std::string extension = rest[1].substr(rest[1].size() < 4 ? 0 : rest[1].size() - 4);
+  for (char& c : extension) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  if (extension != ".zmx") return std::nullopt;
+  std::vector<std::string> catalogs;
+  rtt::io::ExportOptions options;
+  for (std::size_t i = 2; i < rest.size(); i += 2) {
+    if (i + 1 >= rest.size()) return std::nullopt;
+    const std::string& value = rest[i + 1];
+    if (rest[i] == "--catalog") {
+      catalogs.push_back(value);
+    } else if (rest[i] == "--path") {
+      options.path = value;
+    } else if (rest[i] == "--config") {
+      std::size_t index = 0;
+      const auto [end, ec] = std::from_chars(value.data(), value.data() + value.size(), index);
+      if (ec != std::errc() || end != value.data() + value.size()) return std::nullopt;
+      options.configuration = index;
+    } else {
+      return std::nullopt;
+    }
+  }
+  return export_file(rest[0], rest[1], catalogs, options);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -143,6 +198,9 @@ int main(int argc, char** argv) {
       }
     }
     if (ok) return import_file(rest[0], rest[1], catalogs);
+  }
+  if (command == "export") {
+    if (const std::optional<int> code = run_export(rest)) return *code;
   }
   if (command == "format") {
     const bool check = !rest.empty() && rest[0] == "--check";
