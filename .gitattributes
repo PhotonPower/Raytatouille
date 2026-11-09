@@ -3,3 +3,5 @@
 tests/catalogs/** -text
 # ZMX test cases keep the CRLF line ends OpticStudio writes (ADR 0044); the tests edit them.
 libs/rtt-io/tests/zmx/*.zmx -text
+# The surface table is written with CRLF (RFC 4180, rule 1; ADR 0045, point 7).
+libs/rtt-io/tests/zmx/*.csv -text

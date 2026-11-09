@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Writes the case of the ZMX export (ADR 0045, acceptance 4) and its expected file.
+"""Writes the case of the ZMX export and the surface table (ADR 0045, acceptance 4) and the
+expected files.
 
 The case is described once below, as an optical prescription. From it the script writes
 - export_singlet.rtt.json: the system that the test exports;
 - export_singlet.zmx: the file the export must write, built here from the prescription by the
   rules of ADR 0045, point 4, and NOT with the C++ code. Air wavelengths and the F/# relative to
-  air come from the own Ciddor of make_zmx_cases.py (NIST, Eqs. (A21) to (A41)).
+  air come from the own Ciddor of make_zmx_cases.py (NIST, Eqs. (A21) to (A41));
+- export_singlet.csv: the surface table of the same system by the rules of point 7 (CRLF, a 0 in
+  conic, a4 ... a16 and the inner radius left empty).
 
 The test compares the two files word for word, numbers as doubles: bitwise, except the air
 wavelengths and FNUM (two Ciddor implementations, <= 1e-15 relative). Python prints the shortest
@@ -147,10 +150,46 @@ def expected_zmx() -> str:
     return "".join(line + "\r\n" for line in lines)
 
 
+COLUMNS = ["row", "surface", "element", "kind", "shape", "radius", "conic", "a4", "a6", "a8",
+           "a10", "a12", "a14", "a16", "thickness", "material", "aperture", "aperture_1",
+           "aperture_2", "stop", "focal_length", "object_distance"]
+
+
+def expected_csv() -> str:
+    """ADR 0045, point 7: the header, the object row, one row per surface in path order."""
+    def row(**kw) -> list[str]:
+        return [kw.get(c, "") for c in COLUMNS]
+
+    def opt(v: float) -> str:  # 0 is written as an empty field
+        return "" if v == 0.0 else repr(v)
+
+    a = FRONT["a"] + [0.0] * (7 - len(FRONT["a"]))
+    asph = {f"a{4 + 2 * i}": opt(v) for i, v in enumerate(a)}
+    rows = [
+        COLUMNS,
+        row(row="object", thickness="Infinity"),
+        row(row="surface", surface="STO", element="stop", kind="stop", shape="plane",
+            thickness=repr(STOP["t"]), aperture="circular", aperture_1=repr(STOP["radius"]),
+            aperture_2=opt(STOP["inner"]), stop="true"),
+        row(row="surface", surface="L1.S1", element="L1", kind="lens", shape="even_asphere",
+            radius=repr(FRONT["radius"]), conic=opt(FRONT["conic"]), thickness=repr(FRONT["t"]),
+            material=f"{GLASS[0]}:{GLASS[1]}", aperture="circular",
+            aperture_1=repr(FRONT["aperture"]), **asph),
+        row(row="surface", surface="L1.S2", element="L1", kind="lens", shape="conic",
+            radius=repr(BACK["radius"]), conic=opt(BACK["conic"]), thickness=repr(BACK["t"]),
+            aperture="circular", aperture_1=repr(BACK["aperture"])),
+        row(row="surface", surface="IMG", element="image", kind="detector", shape="plane",
+            aperture="rectangular", aperture_1=repr(IMAGE["half_x"]),
+            aperture_2=repr(IMAGE["half_y"])),
+    ]
+    return "".join(",".join(r) + "\r\n" for r in rows)
+
+
 def main() -> None:
     (HERE / "export_singlet.rtt.json").write_text(json.dumps(system(), indent=2) + "\n",
                                                   encoding="utf-8", newline="\n")
     (HERE / "export_singlet.zmx").write_bytes(expected_zmx().encode("utf-8"))
+    (HERE / "export_singlet.csv").write_bytes(expected_csv().encode("utf-8"))
 
 
 if __name__ == "__main__":
