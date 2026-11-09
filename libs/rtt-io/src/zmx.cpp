@@ -620,6 +620,83 @@ model::ShapeStack Importer::shape(const ZSurface& s, bool& powered) const {
       }
       return out;
     }
+  } else if (s.type == "ODDASPHE") {
+    // UG "Odd Asphere": z = c r^2 / (1 + sqrt(1 - (1 + k) c^2 r^2)) + beta_1 r + ... + beta_8 r^8,
+    // parameters 1 to 8 = beta_1 ... beta_8 (also optiland); the odd_asphere of ADR 0043 with
+    // A_n = beta_n. beta_n in L^(1 - n): times 1/s for (n - 1) times (ADR 0044, point 3).
+    std::vector<double> beta(8, 0.0);
+    for (const auto& [i, v] : s.parm) {
+      if (i < 1 || i > 8) {
+        if (v.value != 0.0) fail("zmx.parse", v.line, "ODDASPHE has the parameters 1 to 8 only");
+        continue;
+      }
+      double x = v.value;
+      const double inv = 1.0 / scale_;
+      for (int k = 0; k < i - 1; ++k) x *= inv;
+      beta[static_cast<std::size_t>(i - 1)] = x;
+    }
+    while (!beta.empty() && beta.back() == 0.0) beta.pop_back();
+    if (!beta.empty()) {
+      powered = true;
+      // the conic has no effect at c = 0 and is dropped there (as for EVENASPH)
+      model::OddAsphere a{c, c != 0.0 ? s.coni.value : 0.0, {}};
+      for (const double b : beta) a.coefficients.emplace_back(b);
+      out.base = a;
+      return out;
+    }
+  } else if (s.type == "TOROIDAL") {
+    // UG "Toroidal": parameter 1 = radius of rotation (0: infinite, a cylinder), 2 to 8 =
+    // alpha_1 ... alpha_7 on y^2 ... y^14 of the y-z profile, whose radius is CURV (also
+    // ray-optics zmxread.py; optiland reads them one parameter later). The axis of rotation at
+    // z = +R as in ADR 0042: ray-optics profiles.py, YToroid.sag gives x^2 + (R - z)^2 =
+    // (R - f(y))^2. Parameter 0 is the extrapolate flag of the Zernike terms (extra data, not
+    // read here).
+    double rotation = 0.0;
+    std::vector<double> alpha(7, 0.0);
+    for (const auto& [i, v] : s.parm) {
+      if (i == 0) continue;
+      if (i == 1) {
+        rotation = length(v.value);
+      } else if (i <= 8) {
+        double x = v.value;
+        const double inv = 1.0 / scale_;
+        for (int k = 0; k < 2 * (i - 1) - 1; ++k) x *= inv;
+        alpha[static_cast<std::size_t>(i - 2)] = x;
+      } else if (v.value != 0.0) {
+        fail("zmx.parse", v.line, "TOROIDAL has the parameters 1 to 8 only");
+      }
+    }
+    if (alpha[0] != 0.0) {
+      fail("zmx.asphere_r2", s.parm.at(2).line,
+           "TOROIDAL with alpha1 (y^2) != 0 is not imported: the model has no y^2 term (ADR "
+           "0042, F2)");
+    }
+    alpha.erase(alpha.begin());
+    while (!alpha.empty() && alpha.back() == 0.0) alpha.pop_back();
+    const std::vector<model::Param> coefficients(alpha.begin(), alpha.end());
+    if (c != 0.0) {
+      powered = true;
+      if (rotation == 0.0) {
+        out.base = model::Cylinder{1.0 / c, s.coni.value, coefficients};
+      } else {
+        out.base = model::Toroid{1.0 / c, s.coni.value, coefficients, rotation};
+      }
+      return out;
+    }
+    if (!coefficients.empty()) {
+      fail("zmx.surface_unsupported", s.type_line,
+           "TOROIDAL with an infinite y-z radius and terms in y has no model surface");
+    }
+    if (rotation != 0.0) {
+      // power in x only: the cylinder of radius R, turned by 90 deg about z by the caller
+      // (decision H2 on #360)
+      powered = true;
+      out.base = model::Cylinder{rotation, 0.0, {}};
+      return out;
+    }
+    powered = false;
+    out.base = model::Plane{};
+    return out;
   } else if (s.type == "TILTSURF" || s.type == "PARAXIAL") {
     // planes (UG "Tilted", "Paraxial"); the tilt goes into the pose, the lens into the interaction
     if (c != 0.0) {
@@ -847,6 +924,10 @@ model::System Importer::build() {
     if (tilt) chain.untilt = rotation_of(*tilt).transpose();
     chain.thickness(disz);
   };
+  const auto parm = [](const ZSurface& z, int i) {
+    const auto it = z.parm.find(i);
+    return it == z.parm.end() ? 0.0 : it->second.value;
+  };
   const auto aperture_line = [](const ZSurface& z) {
     for (const std::size_t line : {z.clap_line, z.flap_line, z.sqap_line, z.elap_line}) {
       if (line != 0) return line;
@@ -860,11 +941,24 @@ model::System Importer::build() {
     stop_diam_line_ = s.diam.line;
     return 1.1 * v;
   };
+  // TOROIDAL with an infinite y-z radius: a cylinder with power in x, its frame turned by 90 deg
+  // about z (decision H2 on #360)
+  const auto x_cylinder = [&](const ZSurface& z) {
+    return z.type == "TOROIDAL" && z.curv.value == 0.0 && parm(z, 1) != 0.0;
+  };
   const auto make_surface = [&](const ZSurface& s, bool& powered) {
     model::Surface out;
     out.id = model::SurfaceId("S" + std::to_string(s.number));
     out.shape = shape(s, powered);
     out.aperture = aperture(s);
+    if (x_cylinder(s) && out.aperture) {
+      // OpticStudio tests the half widths in the unturned frame: local x is global y
+      if (auto* r = std::get_if<model::RectangularAperture>(&*out.aperture)) {
+        std::swap(r->half_width_x, r->half_width_y);
+      } else if (auto* e = std::get_if<model::EllipticalAperture>(&*out.aperture)) {
+        std::swap(e->semi_axis_x, e->semi_axis_y);
+      }
+    }
     if (s.stop) {
       if (out.aperture && !std::holds_alternative<model::CircularAperture>(*out.aperture)) {
         // the stop rules of point 8 and the pupils need a stop radius (addendum PR C)
@@ -899,11 +993,6 @@ model::System Importer::build() {
     lens_media.clear();
   };
 
-  const auto parm = [](const ZSurface& z, int i) {
-    const auto it = z.parm.find(i);
-    return it == z.parm.end() ? 0.0 : it->second.value;
-  };
-
   for (std::size_t k = 1; k < surfaces_.size(); ++k) {
     const ZSurface& s = surfaces_[k];
     const bool image = k + 1 == surfaces_.size();
@@ -926,6 +1015,7 @@ model::System Importer::build() {
       }
       if (parm(s, 1) != 0.0 || parm(s, 2) != 0.0) tilt = plane_tilt_deg(parm(s, 1), parm(s, 2));
     }
+    if (x_cylinder(s)) tilt = std::array<double, 3>{0.0, 0.0, 90.0};
 
     if (image) {
       if (s.type == "COORDBRK" || s.type == "PARAXIAL") {
@@ -937,8 +1027,8 @@ model::System Importer::build() {
       }
       model::Element det{"image", model::ElementKind::Detector, {}, std::nullopt, {}};
       det.surfaces.push_back(make_surface(s, powered));
-      if (tilt) {
-        det.surfaces.back().pose.rotation_deg = {(*tilt)[0], (*tilt)[1], (*tilt)[2]};
+      if (tilt) det.surfaces.back().pose.rotation_deg = {(*tilt)[0], (*tilt)[1], (*tilt)[2]};
+      if (tilt && s.type == "TILTSURF") {
         warnings_.push_back(Ignored::warning(
             "zmx.tilted_image", s.type_line,
             "tilted image plane: image coordinates are in the tilted plane, not projected on the "
@@ -1054,6 +1144,7 @@ model::System Importer::build() {
     } else if (s.stop) {
       model::Element st{"stop", model::ElementKind::Stop, {}, std::nullopt, {}};
       st.surfaces.push_back(make_surface(s, powered));
+      if (tilt) st.surfaces.back().pose.rotation_deg = {(*tilt)[0], (*tilt)[1], (*tilt)[2]};
       place(st);
       children.push_back(model::Node{st});
     } else {
@@ -1062,6 +1153,7 @@ model::System Importer::build() {
         ++thins;
         model::Element t{
             "T" + std::to_string(thins), model::ElementKind::ThinElement, {}, std::nullopt, {}};
+        if (tilt) surface.pose.rotation_deg = {(*tilt)[0], (*tilt)[1], (*tilt)[2]};
         t.surfaces.push_back(std::move(surface));
         place(t);
         children.push_back(model::Node{t});
