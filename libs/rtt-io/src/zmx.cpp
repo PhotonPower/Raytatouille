@@ -284,6 +284,7 @@ struct ZSurface {
   Located curv;
   Located coni;
   std::map<int, Located> parm;
+  std::map<int, Located> xdat;  ///< extra data (XDAT n value ...), UG parameter 12 + n
   bool infinite = false;
   Located disz;
   std::string glass;  ///< empty: air
@@ -446,6 +447,8 @@ void Importer::read_surface_line(ZSurface& s, const Line& l) {
     s.coni = {number(l, 1), l.number};
   } else if (k == "PARM") {
     s.parm[integer(l, 1)] = {number(l, 2), l.number};
+  } else if (k == "XDAT") {
+    s.xdat[integer(l, 1)] = {number(l, 2), l.number};
   } else if (k == "DISZ") {
     if (l.words.size() > 1 && l.words[1] == "INFINITY") {
       s.infinite = true;
@@ -663,8 +666,17 @@ model::ShapeStack Importer::shape(const ZSurface& s, bool& powered) const {
         for (int k = 0; k < 2 * (i - 1) - 1; ++k) x *= inv;
         alpha[static_cast<std::size_t>(i - 2)] = x;
       } else if (v.value != 0.0) {
-        fail("zmx.parse", v.line, "TOROIDAL has the parameters 1 to 8 only");
+        fail("zmx.parse", v.line,
+             "TOROIDAL has the parameters 1 to 8 (its Zernike terms are extra data)");
       }
+    }
+    // Extra data (UG "Toroidal": parameter 13 = number of Zernike terms, 14 = normalization
+    // radius, 15 ff. = coefficients), written as XDAT 1, 2, ... (ray-optics test file
+    // HoO-V2C18Ex46.zmx). OpticStudio writes them also without terms; with terms the surface
+    // has no model.
+    if (const auto terms = s.xdat.find(1); terms != s.xdat.end() && terms->second.value != 0.0) {
+      fail("zmx.surface_unsupported", terms->second.line,
+           "TOROIDAL with Zernike terms is not supported");
     }
     if (alpha[0] != 0.0) {
       fail("zmx.asphere_r2", s.parm.at(2).line,
@@ -1018,6 +1030,11 @@ model::System Importer::build() {
     if (x_cylinder(s)) tilt = std::array<double, 3>{0.0, 0.0, 90.0};
 
     if (image) {
+      if (x_cylinder(s)) {
+        // its turned frame would turn the image coordinates by 90 deg (decision H2 on #360)
+        fail("zmx.surface_unsupported", s.parm.at(1).line,
+             "a cylinder with power in x as the image surface is not supported");
+      }
       if (s.type == "COORDBRK" || s.type == "PARAXIAL") {
         fail("zmx.surface_unsupported", s.type_line, s.type + " cannot be the image surface");
       }
@@ -1197,6 +1214,12 @@ ZmxImport Importer::run() {
     surfaces_.push_back(std::move(s));
   }
   read_trailer(i);
+  for (const ZSurface& s : surfaces_) {
+    if (!s.xdat.empty() && s.type != "TOROIDAL") {
+      fail("zmx.keyword_unsupported", s.xdat.begin()->second.line,
+           "extra data (XDAT) of a " + s.type + " surface is not supported");
+    }
+  }
 
   model::System sys = build();
   ZmxImport out;

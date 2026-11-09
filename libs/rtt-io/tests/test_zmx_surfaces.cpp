@@ -3,6 +3,7 @@
 // (built in Python from the prescription) and the first order from an own y-nu trace, per
 // section for the toroids (ADR 0044, addendum #360).
 
+#include <algorithm>
 #include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
@@ -288,6 +289,30 @@ TEST_CASE("a cylinder with power in x is turned by 90 degrees about z", "[zmx][3
   }
 }
 
+TEST_CASE("a toroid as OpticStudio writes it, with extra data but no Zernike terms", "[zmx][360]") {
+  // As in the ray-optics test file HoO-V2C18Ex46.zmx: PARM 0 (extrapolate), XDAT 1 = 0 terms,
+  // XDAT 2 = normalization radius. It imports as the toroid without them.
+  const std::string tor = read_file(kZmxDir + "toroid.zmx");
+  const std::string real =
+      in_surface(tor, 2, "PARM 1",
+                 "  PARM 0 0\r\n  PARM 1 8.000000000000E+001\r\n"
+                 "  XDAT 1 0.000000000000E+00 0 0 1.000000000000E+00 0.000000000000E+00 0 \"\"\r\n"
+                 "  XDAT 2 1.000000000000E+02 0 0 1.000000000000E+00 0.000000000000E+00 0 \"\"");
+  REQUIRE(real != tor);
+  REQUIRE(import_zmx(real, schott()).system == import_case("toroid").system);
+}
+
+TEST_CASE("the turned cylinder swaps a rectangular aperture too", "[zmx][360]") {
+  const std::string text = in_surface(read_file(kZmxDir + "xcylinder.zmx"), 2, "ELAP",
+                                      "  SQAP 7.000000000000E+000 5.000000000000E+000 0");
+  const System s = import_zmx(text, schott()).system;
+  const auto& front = element(s, 1).surfaces.at(0);
+  const auto* r = std::get_if<rtt::model::RectangularAperture>(&front.aperture.value());
+  REQUIRE(r != nullptr);
+  REQUIRE(r->half_width_x == 5.0);
+  REQUIRE(r->half_width_y == 7.0);
+}
+
 TEST_CASE("content guard: the new cases trace, all rays arrive, the fields differ", "[zmx][360]") {
   // Given start rays: the toroids and the cone have no paraxial model for the aiming. Three
   // fields (on axis, about x, about y) give three different mean image points.
@@ -327,6 +352,25 @@ TEST_CASE("the rules of ODDASPHE and TOROIDAL reject what the model cannot hold"
       // a toroid with an infinite y-z radius and terms in y: neither a cylinder in x nor a toroid
       {"zmx.surface_unsupported",
        in_surface(tor, 2, "CURV", "  CURV 0.000000000000000000E+000 0 0 0 0"), "TYPE TOROIDAL"},
+      // the same with radius of rotation 0: a profile flat in y with terms in y
+      {"zmx.surface_unsupported",
+       in_surface(in_surface(tor, 2, "CURV", "  CURV 0.000000000000000000E+000 0 0 0 0"), 2,
+                  "PARM 1", "  PARM 1 0.000000000000E+000"),
+       "TYPE TOROIDAL"},
+      // Zernike terms on the toroid (extra data, UG parameter 13)
+      {"zmx.surface_unsupported",
+       in_surface(tor, 2, "PARM 1",
+                  "  PARM 1 8.000000000000E+001\r\n  XDAT 1 3.000000000000E+00 0 0 1 0 0"),
+       "XDAT 1 3"},
+      // extra data on another type
+      {"zmx.keyword_unsupported",
+       in_surface(odd, 2, "PARM 1", "  PARM 1 0.0E+000\r\n  XDAT 1 0.0E+000 0 0 1 0 0"),
+       "XDAT 1 0.0E+000"},
+      // the turned cylinder as the image surface would turn the image coordinates
+      {"zmx.surface_unsupported",
+       in_surface(read_file(kZmxDir + "xcylinder.zmx"), 4, "TYPE",
+                  "  TYPE TOROIDAL\r\n  PARM 1 5.000000000000E+001"),
+       "PARM 1 5.000000000000E+001"},
   };
   for (const Case& c : cases) {
     INFO(c.code << " / " << c.needle);
