@@ -1,6 +1,5 @@
 #include <algorithm>
 #include <array>
-#include <charconv>
 #include <cmath>
 #include <cstddef>
 #include <fstream>
@@ -14,6 +13,7 @@
 #include <vector>
 
 #include "export_path.hpp"
+#include "numbers.hpp"
 #include "rtt/io/zmx.hpp"
 #include "rtt/material/air.hpp"
 #include "rtt/material/material.hpp"
@@ -35,13 +35,8 @@ using detail::ExportRow;
 constexpr std::size_t kMaxFields = 12;
 constexpr std::size_t kMaxWavelengths = 24;
 
-/// The shortest text that reads back to the same double ([charconv.to.chars], paragraphs 2, 7
-/// and 8; ADR 0045, F3).
 std::string num(double v) {
-  std::array<char, 32> buf{};
-  const auto [end, ec] = std::to_chars(buf.data(), buf.data() + buf.size(), v);
-  if (ec != std::errc()) throw std::logic_error("to_chars failed");
-  return {buf.data(), end};
+  return detail::format_number(v);
 }
 
 /// The lines of the file; each ends with CRLF as in the files of OpticStudio.

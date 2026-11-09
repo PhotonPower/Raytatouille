@@ -563,6 +563,66 @@ with open("meine_linse.rtt.json", "w", encoding="utf-8") as f:
 Alternativ: im Explorer unter **System bauen** eine Flächentabelle ausfüllen und über
 **System-Datei → Als .rtt.json speichern** die fertige Datei herunterladen.
 
+## Flächentabelle (CSV, ADR 0045, Punkt 7)
+
+Eine Linsentabelle für Tabellenprogramme. Sie enthält nur die Flächen eines koaxialen Systems;
+Wellenlängen, Felder, Systemapertur und Umgebung bleiben in der `.rtt.json`-Datei. Beim Einlesen
+ersetzt die Tabelle Baum, Objekt und Blende eines Basissystems.
+
+```powershell
+rtt export system.rtt.json linsen.csv --catalog schott.agf          # schreiben
+rtt import linsen.csv neu.rtt.json --base system.rtt.json --catalog schott.agf
+```
+
+C++: `rtt::io::write_surface_table`, `read_surface_table` in `rtt/io/surface_table.hpp`.
+
+**Format** (RFC 4180, Abschnitt 2):
+- UTF-8, Komma als Trenner, jede Zeile mit gleich vielen Feldern.
+- Geschrieben wird CRLF, gelesen werden CRLF und LF; ein BOM wird übergangen.
+- Felder mit Komma, Anführungszeichen oder Zeilenumbruch stehen in Anführungszeichen, ein
+  Anführungszeichen darin wird verdoppelt.
+- Leerzeichen gehören zum Feld: `" 50"` ist keine Zahl.
+- Zahlen in der kürzesten Form, die beim Lesen denselben Wert gibt.
+
+**Kopfzeile:** genau diese Spalten, gelesen in beliebiger Reihenfolge. Eine fehlende, unbekannte
+oder doppelte Spalte ist der Fehler `table.column`.
+
+| Spalte | Inhalt |
+|---|---|
+| `row` | `object` (erste Zeile nach der Kopfzeile) oder `surface` |
+| `surface` | Flächen-ID |
+| `element`, `kind` | Elementname und Art (`lens`, `plate`, `mirror`, `thin_element`, `stop`, `detector`); aufeinanderfolgende Zeilen mit demselben Namen bilden ein Element |
+| `shape` | `plane`, `conic`, `even_asphere` |
+| `radius`, `conic` | R in mm, Konik |
+| `a4` … `a16` | Asphärenkoeffizienten in mm^(1−n) |
+| `thickness` | Abstand zum Scheitel der nächsten Zeile längs z in mm, nach einem Spiegel negativ; beim Objekt der Abstand zur ersten Fläche oder `Infinity`; in der letzten Zeile leer |
+| `material` | Medium hinter der Fläche (`KATALOG:NAME`, `CONST:…`, leer = Umgebung); bei Spiegeln, Blenden, dünnen Elementen, Detektoren und der letzten Fläche einer Linse leer; beim Objekt das Objektmedium |
+| `aperture`, `aperture_1`, `aperture_2` | `circular` (Radius, Innenradius), `rectangular` bzw. `elliptical` (Halbbreiten x, y) oder leer |
+| `stop` | `true` an der Blende, sonst leer |
+| `focal_length`, `object_distance` | ideale Linse eines dünnen Elements, mm |
+
+**Regeln:**
+- Die Objektzeile enthält nur `thickness` und `material`.
+- Ein leeres `conic`, `a4` … `a16` oder ein leerer Innenradius ist 0, und 0 wird dort leer
+  geschrieben. Ein leerer `radius` gehört zu `plane`.
+- `stop` = `true` an einer Zeile der Art `stop` macht das Element zur Blende, an jeder anderen
+  Zeile setzt es `aperture.stop` auf ihre ID.
+- Beim Einlesen entsteht die kanonische Form: flacher Baum, erstes Element bei z = 0, alle
+  weiteren Elemente und Flächen `relative_to_preceding` mit (0, 0, t), ein automatischer Pfad.
+  Spiegel werden `ideal_mirror`.
+- Was im Basissystem auf den alten Baum verweist, entfällt mit der Warnung `table.base_dropped`:
+  weitere Pfade, `optimization`, `tolerances`, `parameters`, `configurations`. Gebundene Werte des
+  Basissystems behalten den Wert der Konfiguration 0.
+- **Fehler** tragen die Zeile, in der das Feld beginnt, und die Nummer des Feldes (`table.parse`,
+  `table.column`, `table.value`, `table.duplicate`), siehe `docs/diagnostics.md`. Am Ende laufen
+  `validate` und `compile`; ein Fehler dort wird `table.invalid_result`.
+- **Schreiben:** nur koaxiale Systeme, mit denselben Fehlern `export.*` wie der ZMX-Export.
+  Anders als dort sind `CONST:`, `VACUUM`, jede Umgebung und eine ideale Linse mit
+  `object_distance` erlaubt. Eine `odd_asphere` und andere Formen sind `export.surface_unsupported`.
+- **Excel mit deutscher Einstellung** schreibt `;` und Dezimalkomma; das gibt `table.parse` mit
+  einem Hinweis. Als CSV mit Komma und Dezimalpunkt speichern. Tabellenprogramme speichern oft nur
+  15 Stellen; das ist eine Grenze des Programms, nicht des Formats.
+
 ## Prüfen und laden
 
 ```powershell

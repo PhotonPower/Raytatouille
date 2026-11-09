@@ -1,5 +1,5 @@
 add_library(rtt_io src/json_io.cpp src/json_format.cpp src/json_patch.cpp src/edit.cpp src/zmx.cpp
-  src/export_path.cpp src/zmx_export.cpp)
+  src/export_path.cpp src/zmx_export.cpp src/surface_table.cpp)
 add_library(rtt::io ALIAS rtt_io)
 target_include_directories(rtt_io PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -23,11 +23,12 @@ if(RTT_BUILD_TESTS)
 endif()
 
 if(RTT_BUILD_TESTS)
-  # ZMX import (ADR 0044) and export (ADR 0045): the cases of tests/zmx against the expected
-  # systems and files, the first order and a spot per field, so the test needs the tracing and
-  # analysis libraries; the reference systems with coatings compile with the test coatings.
+  # ZMX import (ADR 0044), ZMX export and surface table (ADR 0045): the cases of tests/zmx
+  # against the expected systems and files, the first order and a spot per field, so the test
+  # needs the tracing and analysis libraries; the reference systems with coatings compile with the
+  # test coatings.
   rtt_add_test(rtt_io_zmx_tests
-    SOURCES tests/test_zmx.cpp tests/test_zmx_export.cpp
+    SOURCES tests/test_zmx.cpp tests/test_zmx_export.cpp tests/test_surface_table.cpp
     LIBS rtt::io rtt::material rtt::compile rtt::paraxial rtt::analysis rtt::trace
          rtt::diagnostics rtt::coating
          nlohmann_json::nlohmann_json)

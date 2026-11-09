@@ -89,6 +89,41 @@ if(RTT_BUILD_TESTS)
     COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:rtt_cli> -DEXPECT=2
             "-DARGS=export;${_zmx}/export_singlet.rtt.json;${CMAKE_CURRENT_BINARY_DIR}/out.txt;--catalog;${_agf}"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/expect_exit.cmake)
+  # The surface table (ADR 0045, point 7): written, read into a base system, the result is
+  # canonical; a table with an error exits 1 with its code; a table without a base system and a
+  # ZMX file with one are wrong calls (exit 2).
+  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/semicolons.csv "row;surface;element\n")
+  add_test(NAME cli.table.export
+    COMMAND rtt_cli export ${_zmx}/export_singlet.rtt.json
+            ${CMAKE_CURRENT_BINARY_DIR}/export_singlet.csv --catalog ${_agf})
+  set_tests_properties(cli.table.export PROPERTIES PASS_REGULAR_EXPRESSION "exported to"
+    FIXTURES_SETUP table_export)
+  add_test(NAME cli.table.import
+    COMMAND rtt_cli import ${CMAKE_CURRENT_BINARY_DIR}/export_singlet.csv
+            ${CMAKE_CURRENT_BINARY_DIR}/table_singlet.rtt.json
+            --base ${_zmx}/export_singlet.rtt.json --catalog ${_agf})
+  set_tests_properties(cli.table.import PROPERTIES PASS_REGULAR_EXPRESSION "imported to"
+    FIXTURES_REQUIRED table_export FIXTURES_SETUP table_import)
+  add_test(NAME cli.table.canonical
+    COMMAND rtt_cli format --check ${CMAKE_CURRENT_BINARY_DIR}/table_singlet.rtt.json)
+  set_tests_properties(cli.table.canonical PROPERTIES FIXTURES_REQUIRED table_import)
+  add_test(NAME cli.table.code
+    COMMAND rtt_cli import ${CMAKE_CURRENT_BINARY_DIR}/semicolons.csv
+            ${CMAKE_CURRENT_BINARY_DIR}/none.rtt.json --base ${_zmx}/export_singlet.rtt.json --catalog ${_agf})
+  set_tests_properties(cli.table.code PROPERTIES
+    PASS_REGULAR_EXPRESSION "semicolons\\.csv: error .*\\[table\\.")
+  add_test(NAME cli.table.exit_1
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:rtt_cli> -DEXPECT=1
+            "-DARGS=import;${CMAKE_CURRENT_BINARY_DIR}/semicolons.csv;${CMAKE_CURRENT_BINARY_DIR}/none.rtt.json;--base;${_zmx}/export_singlet.rtt.json;--catalog;${_agf}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/expect_exit.cmake)
+  add_test(NAME cli.table.exit_2_no_base
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:rtt_cli> -DEXPECT=2
+            "-DARGS=import;${_zmx}/export_singlet.csv;${CMAKE_CURRENT_BINARY_DIR}/none.rtt.json;--catalog;${_agf}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/expect_exit.cmake)
+  add_test(NAME cli.table.exit_2_zmx_base
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:rtt_cli> -DEXPECT=2
+            "-DARGS=import;${_zmx}/singlet.zmx;${CMAKE_CURRENT_BINARY_DIR}/none.rtt.json;--base;${_zmx}/export_singlet.rtt.json"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/expect_exit.cmake)
   add_test(NAME cli.export.exit_2_config
     COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:rtt_cli> -DEXPECT=2
             "-DARGS=export;${_zmx}/export_singlet.rtt.json;${CMAKE_CURRENT_BINARY_DIR}/out.zmx;--config;x"
