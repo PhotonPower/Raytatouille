@@ -281,6 +281,10 @@ std::vector<Record> parse_csv(std::string_view s) {
     }
     records.push_back(std::move(record));
   }
+  // an empty line at the end, as text editors add one, is no record
+  if (records.size() > 1 && records.back().size() == 1 && records.back().front().text.empty()) {
+    records.pop_back();
+  }
   return records;
 }
 
@@ -425,7 +429,15 @@ TableExport write_surface_table(const model::System& system,
     f[kKind] = kind_name(row.kind);
     write_shape(row, f);
     if (k + 1 < path.rows.size()) f[kThickness] = detail::format_number(row.thickness);
-    if (!row.mirror) f[kMaterial] = row.medium_after.value_or(std::string());
+    // An inner surface of a lens or plate names its segment, also one of the environment
+    // medium (an air gap in a cemented group); the reader needs a material there.
+    const bool inner = (row.kind == ElementKind::Lens || row.kind == ElementKind::Plate) &&
+                       k + 1 < path.rows.size() && path.rows[k + 1].element == row.element;
+    if (inner) {
+      f[kMaterial] = row.medium_reference;
+    } else if (!row.mirror) {
+      f[kMaterial] = row.medium_after.value_or(std::string());
+    }
     write_aperture(row, f);
     if (row.stop) f[kStop] = "true";
     if (const auto* lens = std::get_if<model::IdealLens>(&row.surface.interaction)) {
@@ -472,7 +484,8 @@ TableImport read_surface_table(std::string_view csv,
   for (const Record& r : records) {
     if (r.size() != header.size()) {
       const std::size_t column = std::min(r.size(), header.size()) + 1;
-      table_fail("table.parse", r.front().line, column,
+      const std::size_t line = r.size() > header.size() ? r[header.size()].line : r.back().line;
+      table_fail("table.parse", line, column,
                  "the record has " + std::to_string(r.size()) + " fields, the header " +
                      std::to_string(header.size()) + " (RFC 4180, rule 4)");
     }

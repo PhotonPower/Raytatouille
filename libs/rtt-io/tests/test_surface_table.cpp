@@ -291,6 +291,9 @@ TEST_CASE("the table reads quotes, LF, a byte order mark and columns in any orde
   const std::string csv = write_surface_table(s, schott()).text;
   const System expected = read_surface_table(csv, s, schott()).system;
 
+  // an empty line at the end, as text editors add one
+  REQUIRE(read_surface_table(csv + "\r\n", s, schott()).system == expected);
+
   // LF only, and no line end after the last record (RFC 4180, rule 2)
   std::string lf;
   for (const char c : csv) {
@@ -348,6 +351,29 @@ TEST_CASE("the table keeps what the ZMX file cannot hold", "[table]") {
   REQUIRE(out.warnings.empty());
   REQUIRE(out.text.find(",CONST:1.5,") != std::string::npos);
   const TableImport back = read_surface_table(out.text, s, rtt::material::MaterialLibrary{});
+  REQUIRE(back.system == s);
+}
+
+TEST_CASE("an air gap inside a cemented lens is written and read back", "[table]") {
+  // The segment of the environment medium needs its name in the table (review of PR C).
+  System s = singlet();
+  Element& lens = element(s, 1);
+  Surface third = lens.surfaces[1];
+  third.id = SurfaceId("L1.S3");
+  Surface fourth = lens.surfaces[1];
+  fourth.id = SurfaceId("L1.S4");
+  lens.surfaces[1].shape.base = rtt::model::Plane{};
+  third.shape.base = rtt::model::Plane{};
+  third.pose.position[2] = Param(0.5);
+  fourth.pose.position[2] = Param(4.0);
+  lens.surfaces.push_back(third);
+  lens.surfaces.push_back(fourth);
+  lens.material.reset();
+  lens.segment_materials = {"SCHOTT:N-BK7", "AIR", "SCHOTT:N-BK7"};
+  const TableExport out = write_surface_table(s, schott());
+  REQUIRE(out.warnings.empty());
+  REQUIRE(out.text.find(",AIR,") != std::string::npos);
+  const TableImport back = read_surface_table(out.text, s, schott());
   REQUIRE(back.system == s);
 }
 
@@ -423,6 +449,11 @@ TEST_CASE("every table error has a case at its line and column", "[table]") {
   check(edited(csv, "surface,L1.S1", 3, "\"L1"), "table.parse", 4, 3);   // quote not closed
   check(edited(csv, "surface,L1.S1", 3, "L\"1"), "table.parse", 4, 3);   // quote inside a field
   check(edited(csv, "surface,L1.S1", 3, "L1,x"), "table.parse", 4, 23);  // 23 fields
+  // after a field with a line break, the extra field starts on the next line (G3)
+  check(edited(csv, "surface,L1.S1", 3, "\"L\r\n1\",x"), "table.parse", 5, 23);
+  // and a later error counts the lines of that field
+  check(edited(edited(csv, "surface,L1.S1", 3, "\"L\r\n1\""), "surface,L1.S2", 6, "fifty"),
+        "table.value", 6, 6);
   check(edited(csv, "surface,L1.S1", 3, "L\xFF"), "table.parse", 4, 3);  // not UTF-8
 
   // table.column
@@ -491,12 +522,13 @@ TEST_CASE("the blocks of the base system that refer to its tree are dropped", "[
   efl.common.target = 50.0;
   efl.path = "main";
   base.optimization.operands.emplace_back(efl);
+  base.tolerances.tolerance_class = rtt::model::ToleranceClass::Normal;
   const TableImport r = read_surface_table(csv, base, schott());
-  REQUIRE(codes_of(r.warnings) == std::vector<std::string>(4, "table.base_dropped"));
+  REQUIRE(codes_of(r.warnings) == std::vector<std::string>(5, "table.base_dropped"));
   std::set<std::string> where;
   for (const auto& d : r.warnings) where.insert(d.location);
-  REQUIRE(where ==
-          std::set<std::string>{"/paths", "/optimization", "/parameters", "/configurations"});
+  REQUIRE(where == std::set<std::string>{"/paths", "/optimization", "/tolerances", "/parameters",
+                                         "/configurations"});
   REQUIRE(r.system.paths.size() == 1);
   REQUIRE(r.system.paths.front().automatic);
   REQUIRE(r.system.configurations.empty());
@@ -512,8 +544,9 @@ TEST_CASE("the blocks of the base system that refer to its tree are dropped", "[
 
 TEST_CASE("every reference system writes a table that reads back, or fails with its code",
           "[table]") {
-  // Acceptance 3 for the table: the same first order (1e-12) and spots (1e-9 mm) where
-  // first_order goes, or an export.* code; never an error while reading.
+  // Acceptance 3 for the table: an export.* code, or a table that reads back without an error
+  // and writes the same text again. First order and spots of a path through the export are
+  // compared in test_zmx_export.cpp; the table has the same geometry.
   std::size_t ok = 0;
   for (const auto& entry : fs::recursive_directory_iterator(RTT_REFERENCE_DIR)) {
     if (!entry.is_regular_file() || !entry.path().filename().string().ends_with(".rtt.json")) {

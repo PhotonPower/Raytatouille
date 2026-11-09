@@ -17,6 +17,7 @@
 #include <utility>
 #include <vector>
 
+#include "numbers.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/diagnostics/codes.hpp"
 #include "rtt/material/agf.hpp"
@@ -28,9 +29,7 @@
 #include "rtt/model/surface.hpp"
 #include "rtt/paraxial/paraxial.hpp"
 #include "rtt/trace/sources.hpp"
-
 // rtt-compile declares line_vacuum_wavelength_um in perturbation.hpp.
-#include "numbers.hpp"
 #include "rtt/compile/perturbation.hpp"
 #include "zmx_names.hpp"
 

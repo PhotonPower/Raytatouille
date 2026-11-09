@@ -116,6 +116,10 @@ if(RTT_BUILD_TESTS)
     COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:rtt_cli> -DEXPECT=1
             "-DARGS=import;${CMAKE_CURRENT_BINARY_DIR}/semicolons.csv;${CMAKE_CURRENT_BINARY_DIR}/none.rtt.json;--base;${_zmx}/export_singlet.rtt.json;--catalog;${_agf}"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/expect_exit.cmake)
+  add_test(NAME cli.table.export_exit_1
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:rtt_cli> -DEXPECT=1
+            "-DARGS=export;${RTT_REFERENCE_DIR}/m2/cooke_triplet.rtt.json;${CMAKE_CURRENT_BINARY_DIR}/none.csv;--catalog;${_agf_m2}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/expect_exit.cmake)
   add_test(NAME cli.table.exit_2_no_base
     COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:rtt_cli> -DEXPECT=2
             "-DARGS=import;${_zmx}/export_singlet.csv;${CMAKE_CURRENT_BINARY_DIR}/none.rtt.json;--catalog;${_agf}"

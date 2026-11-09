@@ -46,6 +46,9 @@ struct ExportRow {
   /// Material reference of the medium after the event; none for the environment and after a
   /// reflection.
   std::optional<std::string> medium_after;
+  /// Material reference of the medium after the event, also when it is the environment (an
+  /// inner segment of a lens may be of the environment medium, e.g. an air gap).
+  std::string medium_reference;
   bool mirror = false;  ///< the event is a reflection
   bool stop = false;    ///< the surface is the system stop
   /// Distance to the vertex of the next row along the global z, mm (negative after an odd number

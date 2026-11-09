@@ -311,6 +311,7 @@ ExportPath walk_export_path(const model::System& system,
     row.mirror = e.kind == EventKind::Reflect;
     row.stop = stop_surface == std::optional<std::uint32_t>(e.surface);
     if (glass_after && !row.mirror) row.medium_after = cs.media()[e.medium_after].reference;
+    row.medium_reference = cs.media()[e.medium_after].reference;
     if (r(2, 2) < 0.0) mirror_shape(row.surface.shape);
     check_interaction(row, element, out.warnings);
     if (element.kind == ElementKind::Mirror &&

@@ -610,6 +610,10 @@ oder doppelte Spalte ist der Fehler `table.column`.
 - Beim Einlesen entsteht die kanonische Form: flacher Baum, erstes Element bei z = 0, alle
   weiteren Elemente und Flächen `relative_to_preceding` mit (0, 0, t), ein automatischer Pfad.
   Spiegel werden `ideal_mirror`.
+- Die Tabelle hält nur Werte: Optimierungsvariablen und Grenzen der Parameter, Pivot und
+  Reihenfolge der Posen und ein ausdrücklich gesetztes Objektmedium gleich der Umgebung
+  entfallen ohne Warnung.
+- Eine leere Zeile am Ende der Datei wird übergangen.
 - Was im Basissystem auf den alten Baum verweist, entfällt mit der Warnung `table.base_dropped`:
   weitere Pfade, `optimization`, `tolerances`, `parameters`, `configurations`. Gebundene Werte des
   Basissystems behalten den Wert der Konfiguration 0.

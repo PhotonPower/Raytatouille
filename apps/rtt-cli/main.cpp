@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <exception>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <optional>
@@ -105,8 +106,7 @@ int format(const std::vector<std::string>& files, bool check_only) {
 
 /// The extension of `file` in lower case, with the dot ("" if it has none).
 std::string extension_of(const std::string& file) {
-  const std::size_t dot = file.find_last_of('.');
-  std::string e = dot == std::string::npos ? std::string() : file.substr(dot);
+  std::string e = std::filesystem::path(file).extension().string();
   for (char& c : e) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
   return e;
 }
