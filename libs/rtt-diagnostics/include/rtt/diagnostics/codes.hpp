@@ -24,8 +24,8 @@ enum class Severity : std::uint8_t { Error, Warning };
 struct CodeInfo {
   std::string_view code;  ///< dotted name, e.g. "material.unknown"
   Severity severity;      ///< the severity every diagnostic with this code has
-  /// "validate", "compile", "analysis", "agf", "edit", "io", "optim", "tolerance", "trace" or
-  /// "zmx" (docs/diagnostics.md)
+  /// "validate", "compile", "analysis", "agf", "edit", "export", "io", "optim", "tolerance",
+  /// "trace" or "zmx" (docs/diagnostics.md)
   std::string_view producer;
   std::string_view summary;  ///< one-line meaning, as in docs/diagnostics.md
 };
@@ -116,6 +116,46 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
     {"environment.pressure_invalid", Severity::Error, "validate", "pressure not finite or < 0 atm"},
     {"environment.temperature_invalid", Severity::Error, "validate",
      "temperature not finite or not above absolute zero"},
+    {"export.aperture_unsupported", Severity::Error, "export",
+     "system aperture or stop aperture without a ZMX mapping (object_na read paraxially, rectangle "
+     "or ellipse at the stop)"},
+    {"export.coating_dropped", Severity::Warning, "export",
+     "coating or ideal anti-reflection layer not exported"},
+    {"export.element_in_glass", Severity::Error, "export",
+     "stop, thin element or detector with glass in front or behind"},
+    {"export.environment_unsupported", Severity::Error, "export",
+     "environment other than AIR at 20 degC and 1 atm"},
+    {"export.event_unsupported", Severity::Error, "export",
+     "path event without a ZMX surface (not the automatic kind, a mode or order, a surface twice, "
+     "a detector before the end)"},
+    {"export.glass_ambiguous", Severity::Error, "export",
+     "no GCAT order finds every glass in its own catalogue"},
+    {"export.image_missing", Severity::Error, "export",
+     "the last event of the path is not a detector"},
+    {"export.interaction_unsupported", Severity::Error, "export",
+     "interaction or phase layer without a ZMX mapping"},
+    {"export.limit_exceeded", Severity::Error, "export", "more than 12 fields or 24 wavelengths"},
+    {"export.material_unsupported", Severity::Error, "export",
+     "medium that is no catalogue glass the import can find (CONST:, VACUUM, a model glass name)"},
+    {"export.mirror_in_glass", Severity::Error, "export", "mirror inside glass (Mangin)"},
+    {"export.mirror_material_dropped", Severity::Warning, "export",
+     "substrate material of a mirror not exported"},
+    {"export.multi_config", Severity::Error, "export",
+     "system with more than one configuration and none chosen"},
+    {"export.name_changed", Severity::Warning, "export",
+     "control characters of the system name replaced by spaces"},
+    {"export.not_coaxial", Severity::Error, "export",
+     "surface off the z axis or tilted (only coaxial systems are exported)"},
+    {"export.object_medium_unsupported", Severity::Error, "export",
+     "glass in object space and the path does not start in a lens"},
+    {"export.paraxial_opd", Severity::Warning, "export",
+     "ideal lens with a design conjugate written with OPD mode 0"},
+    {"export.paths_dropped", Severity::Warning, "export",
+     "paths other than the exported one dropped"},
+    {"export.stop_missing", Severity::Error, "export", "no stop on the exported path"},
+    {"export.surface_off_path", Severity::Warning, "export",
+     "surface not on the exported path dropped"},
+    {"export.surface_unsupported", Severity::Error, "export", "shape without a ZMX mapping"},
     {"fields.coordinate_invalid", Severity::Error, "validate", "field coordinate not finite"},
     {"fields.empty", Severity::Error, "validate", "no field point"},
     {"fields.weight_invalid", Severity::Error, "validate", "field weight not finite or < 0"},

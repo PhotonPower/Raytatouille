@@ -1,7 +1,8 @@
 #pragma once
 
 /// @file zmx.hpp
-/// Import of the sequential part of an OpticStudio file (.zmx) into the model (ADR 0044).
+/// Import of the sequential part of an OpticStudio file (.zmx) into the model (ADR 0044), and
+/// the export of a coaxial system into such a file (ADR 0045).
 ///
 /// The meanings of the quantities come from the OpticStudio User Guide, the mapping of the
 /// keywords from readers with a free licence (docs/quellen.md, rows "ZMX-Import"); readings
@@ -15,6 +16,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -68,5 +70,71 @@ class ZmxError : public std::runtime_error {
 /// @throws ZmxError as import_zmx(); std::runtime_error if the file cannot be read
 [[nodiscard]] ZmxImport load_zmx(const std::filesystem::path& file,
                                  const material::MaterialLibrary& materials);
+
+/// What to export (ADR 0045, point 3; the CSV surface table uses the same options).
+struct ExportOptions {
+  /// Name of the path to export; none: path 0. The other paths are dropped with the warning
+  /// export.paths_dropped.
+  std::optional<std::string> path;
+  /// Index of the configuration (ADR 0029), exported with the parameters resolved for it; none:
+  /// configuration 0, an error (export.multi_config) for a system with more than one.
+  std::optional<std::size_t> configuration;
+};
+
+/// Result of an export: the file text (UTF-8, CRLF) and the warnings (codes export.*; the
+/// location is the JSON pointer of the surface, e.g. "/root/children/1/surfaces/0", or of the
+/// part of the system, e.g. "/paths" or "/name").
+struct ZmxExport {
+  std::string text;
+  std::vector<model::Diagnostic> warnings;
+};
+
+/// A system that cannot be exported. code() is a registered export.* code (docs/diagnostics.md),
+/// surface() the id of the surface concerned, empty if the cause is not one surface.
+class ExportError : public std::runtime_error {
+ public:
+  /// @param code    registered export.* code
+  /// @param surface id of the surface concerned, empty for the whole system
+  /// @param message human-readable text; what() is "<surface>: <message> [<code>]", without
+  ///                "<surface>: " for the whole system
+  ExportError(std::string code, std::string surface, const std::string& message);
+
+  [[nodiscard]] const std::string& code() const noexcept { return code_; }
+  [[nodiscard]] const std::string& surface() const noexcept { return surface_; }
+
+ private:
+  std::string code_;
+  std::string surface_;
+};
+
+/// Writes one path of a coaxial system as a sequential .zmx file (ADR 0045, points 1 to 4): the
+/// inverse of import_zmx, so that the import reads every exported file. Coaxial: every vertex on
+/// the z axis and every surface axis +-e_z, with local x and y parallel to +-e_x and +-e_y, to
+/// 1e-12 (mm, or on the unit vectors); a surface with the axis -e_z is written mirrored
+/// (R -> -R, A_i -> -A_i). Lengths in mm (UNIT MM); radii with the sign of the model, which is
+/// OpticStudio's; thicknesses along the global z, negative after an odd number of mirrors (the
+/// frame of OpticStudio does not turn at a mirror). OpticStudio indices are relative to air:
+/// wavelengths are written as lambda_air = lambda_vac / n_air(lambda_vac), an F/# multiplied and
+/// an object-space NA divided by n_air(lambda_vac,ref), n_air after Ciddor at 20 degC and 1 atm.
+/// Numbers in the shortest form that reads back to the same double (std::to_chars).
+/// @param system    the system; compiled with `materials` and without coatings (a coating is
+///                  dropped with a warning)
+/// @param materials the glass catalogues; the GCAT line lists the catalogues of the glasses used
+/// @throws ExportError for every rule of ADR 0045 that rejects the system
+/// @throws std::invalid_argument for an unknown path name or a configuration index beyond the
+///         configurations of the system
+/// @throws compile::CompileError if the system does not compile (validate errors, unknown
+///         materials)
+[[nodiscard]] ZmxExport export_zmx(const model::System& system,
+                                   const material::MaterialLibrary& materials,
+                                   const ExportOptions& options = {});
+
+/// Exports as export_zmx() and writes the text to `file` (binary, so the CRLF stay).
+/// @return the warnings of the export
+/// @throws as export_zmx(); std::runtime_error if the file cannot be written
+[[nodiscard]] std::vector<model::Diagnostic> save_zmx(const std::filesystem::path& file,
+                                                      const model::System& system,
+                                                      const material::MaterialLibrary& materials,
+                                                      const ExportOptions& options = {});
 
 }  // namespace rtt::io
