@@ -250,6 +250,7 @@ ExportPath walk_export_path(const model::System& system,
     out.object_medium = out.system.object.medium;
   }
 
+  const std::optional<std::uint32_t> stop_surface = cs.stop_surface();
   std::set<std::uint32_t> visited;
   for (std::size_t k = 0; k < path.events.size(); ++k) {
     const compile::CompiledEvent& e = path.events[k];
@@ -308,7 +309,7 @@ ExportPath walk_export_path(const model::System& system,
     row.location = cs_surface.location;
     row.z = p.z();
     row.mirror = e.kind == EventKind::Reflect;
-    row.stop = cs.stop_surface() && *cs.stop_surface() == e.surface;
+    row.stop = stop_surface == std::optional<std::uint32_t>(e.surface);
     if (glass_after && !row.mirror) row.medium_after = cs.media()[e.medium_after].reference;
     if (r(2, 2) < 0.0) mirror_shape(row.surface.shape);
     check_interaction(row, element, out.warnings);
@@ -330,8 +331,9 @@ ExportPath walk_export_path(const model::System& system,
   if (stop == out.rows.end()) {
     export_fail("export.stop_missing", "", "the exported path has no stop");
   }
-  if (stop->surface.aperture &&
-      !std::holds_alternative<model::CircularAperture>(*stop->surface.aperture)) {
+  const std::optional<model::Aperture>& stop_aperture = stop->surface.aperture;
+  if (stop_aperture.has_value() &&
+      !std::holds_alternative<model::CircularAperture>(stop_aperture.value())) {
     export_fail("export.aperture_unsupported", stop->surface.id.str(),
                 "a rectangular or elliptical stop has no mapping");
   }

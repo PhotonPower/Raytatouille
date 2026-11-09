@@ -1,5 +1,6 @@
 // rtt - command line tool for Raytatouille system files.
 
+#include <cctype>
 #include <charconv>
 #include <cstddef>
 #include <cstdlib>
@@ -142,7 +143,10 @@ int export_file(const std::string& file,
 
 /// rtt export with the arguments after the command: the exit code, none for a wrong call.
 std::optional<int> run_export(const std::vector<std::string>& rest) {
-  if (rest.size() < 2 || !rest[1].ends_with(".zmx")) return std::nullopt;
+  if (rest.size() < 2) return std::nullopt;
+  std::string extension = rest[1].substr(rest[1].size() < 4 ? 0 : rest[1].size() - 4);
+  for (char& c : extension) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  if (extension != ".zmx") return std::nullopt;
   std::vector<std::string> catalogs;
   rtt::io::ExportOptions options;
   for (std::size_t i = 2; i < rest.size(); i += 2) {

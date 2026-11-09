@@ -73,7 +73,7 @@ if(RTT_BUILD_TESTS)
   set_tests_properties(cli.export.imports PROPERTIES PASS_REGULAR_EXPRESSION "imported to"
     FIXTURES_REQUIRED zmx_export)
   add_test(NAME cli.export.options
-    COMMAND rtt_cli export ${_zmx}/export_singlet.rtt.json ${CMAKE_CURRENT_BINARY_DIR}/main.zmx
+    COMMAND rtt_cli export ${_zmx}/export_singlet.rtt.json ${CMAKE_CURRENT_BINARY_DIR}/main.ZMX
             --catalog ${_agf} --path main --config 0)
   set_tests_properties(cli.export.options PROPERTIES PASS_REGULAR_EXPRESSION "exported to")
   add_test(NAME cli.export.code

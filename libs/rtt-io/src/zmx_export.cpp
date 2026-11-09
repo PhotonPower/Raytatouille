@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <cmath>
 #include <cstddef>
 #include <fstream>
 #include <map>
@@ -75,11 +76,18 @@ Glass glass_of(const std::string& reference,
                     " is no glass of a loaded catalogue (CONST: and VACUUM have no "
                     "mapping, a model glass would be another glass)");
   }
-  const bool blank = name.empty() || std::any_of(name.begin(), name.end(), [](unsigned char c) {
-                       return c <= 0x20 || c == 0x7F;
-                     });
+  // The import splits a line at white space: a blank in a GCAT or GLAS word splits the name.
+  const auto blank = [](const std::string& s) {
+    return s.empty() ||
+           std::any_of(s.begin(), s.end(), [](unsigned char c) { return c <= 0x20 || c == 0x7F; });
+  };
+  if (blank(catalog)) {
+    export_fail("export.material_unsupported", surface,
+                "the catalogue name '" + catalog + "' holds a blank, the GCAT line would split it");
+  }
   const std::string u = detail::upper(name);
-  if (blank || u == "AIR" || u == "MIRROR" || name == "___BLANK" || detail::mil_number(name)) {
+  if (blank(name) || u == "AIR" || u == "MIRROR" || name == "___BLANK" ||
+      detail::mil_number(name)) {
     export_fail("export.material_unsupported", surface,
                 "the import would not read the glass name '" + name + "' as a catalogue glass");
   }
@@ -105,8 +113,9 @@ std::vector<std::string> gcat_order(const std::map<std::string, std::set<std::st
   for (const auto& [catalog, glasses] : used) {
     for (const std::string& other : lib.catalogs()) {
       if (other != catalog && detail::upper(other) == detail::upper(catalog)) {
-        export_fail("export.glass_ambiguous", first_surface.at(catalog),
-                    "catalogues " + catalog + " and " + other + " differ only in case");
+        std::string message = "catalogues ";
+        message.append(catalog).append(" and ").append(other).append(" differ only in case");
+        export_fail("export.glass_ambiguous", first_surface.at(catalog), message);
       }
     }
   }
@@ -116,8 +125,9 @@ std::vector<std::string> gcat_order(const std::map<std::string, std::set<std::st
   for (const auto& [catalog, glasses] : used) {
     for (const std::string& name : glasses) {
       for (const auto& [other, unused] : used) {
-        if (other != catalog && resolves(other + ":" + name) &&
-            after[catalog].insert(other).second) {
+        std::string reference = other;
+        reference.append(":").append(name);
+        if (other != catalog && resolves(reference) && after[catalog].insert(other).second) {
           ++before[other];
         }
       }
@@ -148,6 +158,15 @@ std::vector<std::string> gcat_order(const std::map<std::string, std::set<std::st
   return order;
 }
 
+/// 1/R in 1/mm; a radius so small that 1/R overflows has no CURV the import reads.
+double curvature(double radius, const std::string& surface) {
+  const double c = 1.0 / radius;
+  if (!std::isfinite(c)) {
+    export_fail("export.surface_unsupported", surface, "the curvature 1/R is not finite");
+  }
+  return c;
+}
+
 /// TYPE, CURV, CONI and PARM of a surface in the global frame (ADR 0045, point 4).
 void write_shape(Writer& w, const ExportRow& row) {
   const std::string& id = row.surface.id.str();
@@ -176,7 +195,7 @@ void write_shape(Writer& w, const ExportRow& row) {
     w.sub("CURV 0");
   } else if (const auto* c = std::get_if<model::Conic>(&shape.base)) {
     w.sub("TYPE STANDARD");
-    w.sub("CURV " + num(1.0 / c->radius.value));
+    w.sub("CURV " + num(curvature(c->radius.value, id)));
     w.sub("CONI " + num(c->conic.value));
   } else if (const auto* e = std::get_if<model::EvenAsphere>(&shape.base)) {
     // PARM 2 ... 8 = A4 ... A16 (ADR 0044, point 6)
@@ -188,7 +207,7 @@ void write_shape(Writer& w, const ExportRow& row) {
         export_fail("export.surface_unsupported", id, "EVENASPH holds the terms up to A16 only");
       }
     }
-    even(1.0 / e->radius.value, e->conic.value, a);
+    even(curvature(e->radius.value, id), e->conic.value, a);
   } else if (const auto* o = std::get_if<model::OddAsphere>(&shape.base)) {
     // c = 0 and only even terms A4 ... A16: EVENASPH with c = 0, as the import reads it back
     std::array<double, 7> a{};
@@ -215,8 +234,9 @@ void write_shape(Writer& w, const ExportRow& row) {
 /// DIAM and the aperture lines (ADR 0045, point 4; ADR 0044, point 8).
 void write_aperture(Writer& w, const ExportRow& row) {
   const std::optional<model::Aperture>& a = row.surface.aperture;
-  if (row.stop) {
-    // the stop: fixed semi-diameter (rule 2), an annulus also as CLAP (rule 1)
+  if (row.stop && a) {
+    // the stop: fixed semi-diameter (rule 2), an annulus also as CLAP (rule 1); validate gives
+    // every stop an aperture, the walk only lets a circle through
     const auto& c = std::get<model::CircularAperture>(*a);
     w.sub("DIAM " + num(c.radius) + " 1");
     if (c.inner_radius > 0.0) w.sub("CLAP " + num(c.inner_radius) + " " + num(c.radius));
@@ -292,6 +312,7 @@ ZmxExport export_zmx(const model::System& system,
   };
   if (path.object_medium) object_glass = use(*path.object_medium, "");
   std::vector<std::optional<Glass>> glasses;
+  glasses.reserve(path.rows.size());
   for (const ExportRow& row : path.rows) {
     glasses.push_back(row.medium_after
                           ? std::optional<Glass>(use(*row.medium_after, row.surface.id.str()))
@@ -352,14 +373,21 @@ ZmxExport export_zmx(const model::System& system,
   w.sub("DIAM 0 0");
   for (std::size_t k = 0; k < path.rows.size(); ++k) {
     const ExportRow& row = path.rows[k];
+    if (row.kind == model::ElementKind::ThinElement && !row.surface.aperture &&
+        !std::holds_alternative<model::IdealLens>(row.surface.interaction)) {
+      // an air-air surface without aperture: the import drops it (ADR 0044, point 5)
+      export_fail("export.surface_unsupported", row.surface.id.str(),
+                  "a thin element without aperture and ideal lens has no ZMX surface the import "
+                  "keeps");
+    }
     w.line("SURF " + std::to_string(k + 1));
     if (row.stop) w.sub("STOP");
     write_shape(w, row);
     w.sub("DISZ " + num(row.thickness));
     if (row.mirror) {
       w.sub("GLAS MIRROR 0");
-    } else if (glasses[k]) {
-      w.sub("GLAS " + glasses[k]->name + " 0");
+    } else if (const std::optional<Glass>& g = glasses[k]; g.has_value()) {
+      w.sub("GLAS " + g->name + " 0");
     }
     write_aperture(w, row);
     if (const auto* lens = std::get_if<model::IdealLens>(&row.surface.interaction);

@@ -366,7 +366,9 @@ TEST_CASE("every coaxial ZMX case survives import, export and import", "[zmx][ex
 }
 
 TEST_CASE("the folded ZMX cases are not coaxial", "[zmx][export]") {
-  for (const char* name : {"fold", "oap", "pivot", "tilt_plate", "gimbal"}) {
+  // with kCoaxialCases every case of tests/zmx is in one of the two groups
+  for (const char* name : {"fold", "oap", "pivot", "tilt_image", "tilt_plate", "tilt_prism",
+                           "gimbal", "gimbal_x", "random_breaks"}) {
     INFO(name);
     const System s = import_zmx(read_file(kZmxDir + name + ".zmx"), schott()).system;
     require_export_error(s, schott(), "export.not_coaxial");
@@ -434,19 +436,19 @@ TEST_CASE("every reference system exports and imports again, or fails with its e
     if (result == "ok") ++ok;
   }
   // Content guard: the exportable systems of M0 to M6 in air go through.
-  for (const char* name : {"m0/singlet.rtt.json", "m2/achromat.rtt.json",
-                           "m2/cooke_triplet_surface_stop.rtt.json", "m2/paraboloid_stop.rtt.json",
-                           "m6/paraboloid_f10.rtt.json", "m7/achromat_tolerances.rtt.json"}) {
+  for (const char* name :
+       {"m0/singlet.rtt.json", "m2/achromat.rtt.json", "m2/cooke_triplet_surface_stop.rtt.json",
+        "m2/paraboloid_stop.rtt.json", "m6/paraboloid_f10.rtt.json", "m6/paraboloid_f50.rtt.json",
+        "m7/achromat_tolerances.rtt.json", "r2/ideal_lens.rtt.json"}) {
+    // r2/ideal_lens: its explicit path refracts at the stop and the image (the default event
+    // kind), which keeps the medium as transmit (ADR 0045, addendum PR B)
     INFO(name);
     REQUIRE(outcome.at(name) == "ok");
   }
   REQUIRE(outcome.at("m1/paraboloid_mirror.rtt.json") == "export.stop_missing");
   REQUIRE(outcome.at("m2/cooke_triplet.rtt.json") == "export.element_in_glass");
   REQUIRE(outcome.at("m3/ar_mgf2.rtt.json") == "export.environment_unsupported");
-  // Its explicit path refracts at the stop and the image (the default event kind), which keeps
-  // the medium as transmit (ADR 0045, addendum PR B).
-  REQUIRE(outcome.at("r2/ideal_lens.rtt.json") == "ok");
-  REQUIRE(ok >= 7);
+  REQUIRE(ok == 8);
 }
 
 TEST_CASE("a lens turned by 180 degrees about x is written with mirrored shapes", "[zmx][export]") {
@@ -683,6 +685,15 @@ TEST_CASE("every export error has a case", "[zmx][export]") {
     lib.add_catalog_text(agf, "MIL");
     element(s, 1).material = "MIL:517642";
     check(s, lib, "export.material_unsupported");
+    // a catalogue named after a file with a blank: the GCAT line would split the name
+    const fs::path dir = fs::temp_directory_path() / "rtt_zmx_export_318";
+    fs::create_directories(dir);
+    fs::copy_file(std::string(RTT_CATALOG_DIR) + "/schott.agf", dir / "MY CAT.agf",
+                  fs::copy_options::overwrite_existing);
+    rtt::material::MaterialLibrary spaced;
+    spaced.add_catalog(dir / "MY CAT.agf");
+    element(s, 1).material = "MY CAT:N-BK7";
+    check(s, spaced, "export.material_unsupported");
   }
   {  // N-BK7 and F2 in both catalogues
     const std::string agf = read_file(std::string(RTT_CATALOG_DIR) + "/schott.agf");
@@ -716,6 +727,18 @@ TEST_CASE("every export error has a case", "[zmx][export]") {
     element(u, 1).surfaces[1].shape.base = rtt::model::OddAsphere{
         Param(-0.02), Param(0.0), {Param(0.0), Param(0.0), Param(0.0), Param(1e-6)}};
     check(u, schott(), "export.surface_unsupported");
+    // a thin element without aperture and ideal lens: the import drops such a surface
+    System v = singlet();
+    Element thin{"T", ElementKind::ThinElement, {}, std::nullopt, {}};
+    Surface ts;
+    ts.id = SurfaceId("T.S1");
+    ts.shape.base = rtt::model::Conic{Param(30.0), Param(0.0)};
+    thin.surfaces.push_back(ts);
+    thin.pose.reference = rtt::model::PoseReference::RelativeToPreceding;
+    thin.pose.position[2] = Param(2.0);
+    v.root.children.insert(v.root.children.begin() + 1, Node{thin});
+    element(v, 2).pose.position[2] = Param(3.0);
+    check(v, schott(), "export.surface_unsupported");
   }
   {  // a phase layer, an ideal mirror at a lens surface, a polarizer
     System s = singlet();
