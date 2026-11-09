@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
-#include <charconv>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -15,10 +14,10 @@
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <system_error>
 #include <utility>
 #include <vector>
 
+#include "numbers.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/diagnostics/codes.hpp"
 #include "rtt/material/agf.hpp"
@@ -30,7 +29,6 @@
 #include "rtt/model/surface.hpp"
 #include "rtt/paraxial/paraxial.hpp"
 #include "rtt/trace/sources.hpp"
-
 // rtt-compile declares line_vacuum_wavelength_um in perturbation.hpp.
 #include "rtt/compile/perturbation.hpp"
 #include "zmx_names.hpp"
@@ -104,15 +102,9 @@ double number(const Line& line, std::size_t i) {
          line.words[0] + ": expected at least " + std::to_string(i) + " values");
   }
   const std::string& w = line.words[i];
-  double v = 0.0;
-  const char* first = w.data();
-  const char* last = w.data() + w.size();
-  if (first != last && *first == '+') ++first;
-  const auto [ptr, ec] = std::from_chars(first, last, v);
-  if (ec != std::errc() || ptr != last || !std::isfinite(v)) {
-    fail("zmx.parse", line.number, line.words[0] + ": '" + w + "' is not a finite number");
-  }
-  return v;
+  const std::optional<double> v = detail::parse_number(w);
+  if (!v) fail("zmx.parse", line.number, line.words[0] + ": '" + w + "' is not a finite number");
+  return *v;
 }
 
 int integer(const Line& line, std::size_t i) {

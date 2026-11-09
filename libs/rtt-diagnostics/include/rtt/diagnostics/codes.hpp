@@ -24,8 +24,8 @@ enum class Severity : std::uint8_t { Error, Warning };
 struct CodeInfo {
   std::string_view code;  ///< dotted name, e.g. "material.unknown"
   Severity severity;      ///< the severity every diagnostic with this code has
-  /// "validate", "compile", "analysis", "agf", "edit", "export", "io", "optim", "tolerance",
-  /// "trace" or "zmx" (docs/diagnostics.md)
+  /// "validate", "compile", "analysis", "agf", "edit", "export", "io", "optim", "table",
+  /// "tolerance", "trace" or "zmx" (docs/diagnostics.md)
   std::string_view producer;
   std::string_view summary;  ///< one-line meaning, as in docs/diagnostics.md
 };
@@ -324,6 +324,17 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "circular aperture radius not finite or <= 0 mm"},
     {"surface_aperture.semi_axis_invalid", Severity::Error, "validate",
      "elliptical aperture semi axis not finite or <= 0 mm"},
+    {"table.base_dropped", Severity::Warning, "table",
+     "block of the base system that refers to its tree dropped"},
+    {"table.column", Severity::Error, "table",
+     "missing, unknown or repeated column of a surface table"},
+    {"table.duplicate", Severity::Error, "table",
+     "element name or surface id twice in a surface table"},
+    {"table.invalid_result", Severity::Error, "table",
+     "the system read from a surface table fails validate or compile"},
+    {"table.parse", Severity::Error, "table",
+     "malformed CSV of a surface table (quotes, field count, semicolons)"},
+    {"table.value", Severity::Error, "table", "unreadable or invalid value in a surface table"},
     {"tolerances.abbe_on_const", Severity::Error, "validate",
      "explicit Abbe number tolerance at a CONST material (n_F - n_C = 0); compile also reports it "
      "for any material with n_F = n_C when applying the perturbation (#254)"},

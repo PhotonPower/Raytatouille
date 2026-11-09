@@ -1,0 +1,6 @@
+row,surface,element,kind,shape,radius,conic,a4,a6,a8,a10,a12,a14,a16,thickness,material,aperture,aperture_1,aperture_2,stop,focal_length,object_distance
+object,,,,,,,,,,,,,,Infinity,,,,,,,
+surface,STO,stop,stop,plane,,,,,,,,,,5.0,,circular,5.0,1.0,true,,
+surface,L1.S1,L1,lens,even_asphere,50.0,-1.0,1e-06,-2e-09,,,,,,6.0,SCHOTT:N-BK7,circular,8.0,,,,
+surface,L1.S2,L1,lens,conic,-50.0,0.5,,,,,,,,45.0,,circular,8.0,,,,
+surface,IMG,image,detector,plane,,,,,,,,,,,,rectangular,10.0,8.0,,,

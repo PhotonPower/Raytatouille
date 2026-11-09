@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <exception>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <optional>
@@ -14,6 +15,7 @@
 #include <vector>
 
 #include "rtt/io/json_io.hpp"
+#include "rtt/io/surface_table.hpp"
 #include "rtt/io/zmx.hpp"
 #include "rtt/material/material.hpp"
 #include "rtt/model/validate.hpp"
@@ -32,8 +34,11 @@ void usage(std::ostream& os) {
         "  rtt format --check <file.rtt.json>...  fail if a file is not canonical\n"
         "  rtt import <file.zmx> <out.rtt.json> --catalog <file.agf>...\n"
         "                                       import the sequential part of a ZMX file\n"
-        "  rtt export <file.rtt.json> <out.zmx> --catalog <file.agf>... [--path <name>]\n"
-        "             [--config <index>]        export one path of a coaxial system as ZMX\n";
+        "  rtt import <file.csv> <out.rtt.json> --base <system.rtt.json> --catalog <file.agf>...\n"
+        "                                       read a surface table into a base system\n"
+        "  rtt export <file.rtt.json> <out.zmx|out.csv> --catalog <file.agf>... [--path <name>]\n"
+        "             [--config <index>]        export one path of a coaxial system as ZMX\n"
+        "                                       or as a surface table\n";
 }
 
 std::string read_text(const std::string& path) {
@@ -99,28 +104,51 @@ int format(const std::vector<std::string>& files, bool check_only) {
   return result;
 }
 
-/// rtt import (ADR 0044): reads a ZMX file, resolves its glasses in the given AGF catalogues and
-/// writes the system in canonical form. Warnings go to stderr; exit 1 if the file cannot be
-/// imported (also a missing file), 0 otherwise.
-int import_file(const std::string& zmx,
+/// The extension of `file` in lower case, with the dot ("" if it has none).
+std::string extension_of(const std::string& file) {
+  std::string e = std::filesystem::path(file).extension().string();
+  for (char& c : e) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  return e;
+}
+
+/// rtt import (ADR 0044; ADR 0045, point 5): reads a ZMX file, or a surface table into the base
+/// system `base`, resolves the glasses in the given AGF catalogues and writes the system in
+/// canonical form. Warnings go to stderr; exit 1 if the file cannot be imported (also a missing
+/// file), 0 otherwise.
+int import_file(const std::string& in,
                 const std::string& out,
-                const std::vector<std::string>& catalogs) {
+                const std::vector<std::string>& catalogs,
+                const std::optional<std::string>& base) {
   try {
     rtt::material::MaterialLibrary lib;
     for (const std::string& c : catalogs) lib.add_catalog(c);
-    const rtt::io::ZmxImport r = rtt::io::load_zmx(zmx, lib);
-    for (const auto& d : r.warnings) std::cerr << zmx << ": " << rtt::model::to_string(d) << "\n";
-    rtt::io::save_system(r.system, out);
-    std::cout << zmx << ": imported to " << out << "\n";
+    rtt::model::System system;
+    std::vector<rtt::model::Diagnostic> warnings;
+    if (base) {
+      std::vector<rtt::model::Diagnostic> read_warnings;
+      rtt::model::System b = rtt::io::load_system(*base, read_warnings);
+      print_read_warnings(*base, read_warnings);
+      rtt::io::TableImport r = rtt::io::read_surface_table(read_text(in), std::move(b), lib);
+      system = std::move(r.system);
+      warnings = std::move(r.warnings);
+    } else {
+      rtt::io::ZmxImport r = rtt::io::load_zmx(in, lib);
+      system = std::move(r.system);
+      warnings = std::move(r.warnings);
+    }
+    for (const auto& d : warnings) std::cerr << in << ": " << rtt::model::to_string(d) << "\n";
+    rtt::io::save_system(system, out);
+    std::cout << in << ": imported to " << out << "\n";
     return kOk;
   } catch (const std::exception& e) {
-    std::cout << zmx << ": error " << e.what() << "\n";
+    std::cout << in << ": error " << e.what() << "\n";
     return kInvalid;
   }
 }
 
-/// rtt export (ADR 0045, point 5): writes one path of a coaxial system as a ZMX file. Warnings
-/// go to stderr; exit 1 if the system cannot be read or exported, 0 otherwise.
+/// rtt export (ADR 0045, point 5): writes one path of a coaxial system as a ZMX file or, for an
+/// output ending in .csv, as a surface table. Warnings go to stderr; exit 1 if the system cannot
+/// be read or exported, 0 otherwise.
 int export_file(const std::string& file,
                 const std::string& out,
                 const std::vector<std::string>& catalogs,
@@ -131,7 +159,16 @@ int export_file(const std::string& file,
     print_read_warnings(file, read_warnings);
     rtt::material::MaterialLibrary lib;
     for (const std::string& c : catalogs) lib.add_catalog(c);
-    const auto warnings = rtt::io::save_zmx(out, system, lib, options);
+    std::vector<rtt::model::Diagnostic> warnings;
+    if (extension_of(out) == ".csv") {
+      rtt::io::TableExport table = rtt::io::write_surface_table(system, lib, options);
+      std::ofstream f(out, std::ios::binary | std::ios::trunc);
+      f << table.text;
+      if (!f) throw std::runtime_error("cannot write " + out);
+      warnings = std::move(table.warnings);
+    } else {
+      warnings = rtt::io::save_zmx(out, system, lib, options);
+    }
     for (const auto& d : warnings) std::cerr << file << ": " << rtt::model::to_string(d) << "\n";
     std::cout << file << ": exported to " << out << "\n";
     return kOk;
@@ -143,10 +180,9 @@ int export_file(const std::string& file,
 
 /// rtt export with the arguments after the command: the exit code, none for a wrong call.
 std::optional<int> run_export(const std::vector<std::string>& rest) {
-  if (rest.size() < 2) return std::nullopt;
-  std::string extension = rest[1].substr(rest[1].size() < 4 ? 0 : rest[1].size() - 4);
-  for (char& c : extension) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-  if (extension != ".zmx") return std::nullopt;
+  if (rest.size() < 2 || (extension_of(rest[1]) != ".zmx" && extension_of(rest[1]) != ".csv")) {
+    return std::nullopt;
+  }
   std::vector<std::string> catalogs;
   rtt::io::ExportOptions options;
   for (std::size_t i = 2; i < rest.size(); i += 2) {
@@ -189,15 +225,21 @@ int main(int argc, char** argv) {
   if (command == "validate" && !rest.empty()) return validate(rest);
   if (command == "import" && rest.size() >= 2) {
     std::vector<std::string> catalogs;
+    std::optional<std::string> base;
     bool ok = true;
     for (std::size_t i = 2; i < rest.size(); ++i) {
       if (rest[i] == "--catalog" && i + 1 < rest.size()) {
         catalogs.push_back(rest[++i]);
+      } else if (rest[i] == "--base" && i + 1 < rest.size() && !base) {
+        base = rest[++i];
       } else {
         ok = false;
       }
     }
-    if (ok) return import_file(rest[0], rest[1], catalogs);
+    // a table needs a base system, a ZMX file takes none
+    if (ok && (extension_of(rest[0]) == ".csv") == base.has_value()) {
+      return import_file(rest[0], rest[1], catalogs, base);
+    }
   }
   if (command == "export") {
     if (const std::optional<int> code = run_export(rest)) return *code;
