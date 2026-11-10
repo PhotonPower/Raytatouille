@@ -29,7 +29,7 @@ if(RTT_BUILD_TESTS)
   # test coatings.
   rtt_add_test(rtt_io_zmx_tests
     SOURCES tests/test_zmx.cpp tests/test_zmx_export.cpp tests/test_surface_table.cpp
-            tests/test_zmx_surfaces.cpp
+            tests/test_zmx_surfaces.cpp tests/test_zmx_export_surfaces.cpp
     LIBS rtt::io rtt::material rtt::compile rtt::paraxial rtt::analysis rtt::trace
          rtt::diagnostics rtt::coating
          nlohmann_json::nlohmann_json)
