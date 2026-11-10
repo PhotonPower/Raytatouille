@@ -1,6 +1,7 @@
 #include "export_path.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -11,9 +12,11 @@
 #include <variant>
 #include <vector>
 
+#include "frames.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/material/material.hpp"
 #include "rtt/math/isometry.hpp"
+#include "rtt/math/units.hpp"
 #include "rtt/model/parameters.hpp"
 #include "rtt/model/path.hpp"
 #include "rtt/model/pose.hpp"
@@ -175,11 +178,146 @@ void check_interaction(ExportRow& row, const Element& e, std::vector<model::Diag
   }
 }
 
+/// Threshold of the frames of a folded path (ADR 0045, addendum #366): as kCoaxial, mm for
+/// positions, dimensionless on the unit vectors.
+constexpr double kFrame = 1e-12;
+
+/// The sign of the propagation along z of the ZMX frame after `mirrors` mirrors: +1 after an
+/// even number, -1 after an odd one (UG "Thickness"; KA-01588).
+double parity(int mirrors) {
+  return mirrors % 2 == 0 ? 1.0 : -1.0;
+}
+
+bool is_identity(const math::Mat3& r) {
+  return (r - math::Mat3::Identity()).cwiseAbs().maxCoeff() <= kFrame;
+}
+
+/// The angle of the rotation r, rad.
+double turn_angle(const math::Mat3& r) {
+  return std::acos(std::clamp((r.trace() - 1.0) / 2.0, -1.0, 1.0));
+}
+
+/// A frame of the ZMX file in global coordinates: rotation (axes in the columns) and origin, mm.
+struct ZmxFrame {
+  math::Mat3 r = math::Mat3::Identity();
+  math::Vec3 o = math::Vec3::Zero();
+};
+
+/// The step from the frame `a` of one row to the frame `b` of the next (ADR 0045, addendum
+/// #366, point 3): the thickness at the row of `a` and the coordinate breaks after it. `s` is
+/// the sign of the propagation on the segment, +1 or -1.
+void frame_step(const ZmxFrame& a,
+                const ZmxFrame& b,
+                double s,
+                double& thickness,
+                std::vector<CoordinateBreak>& breaks) {
+  const math::Mat3 turn = a.r.transpose() * b.r;
+  const math::Vec3 d = b.o - a.o;
+  const math::Vec3 p = a.r.transpose() * d;
+  if (is_identity(turn)) {
+    // cases 1 and 2: a thickness, a decenter beside it
+    thickness = p.z();
+    if (std::abs(p.x()) > kFrame || std::abs(p.y()) > kFrame) {
+      breaks.push_back({p.x(), p.y(), {0.0, 0.0, 0.0}, 0.0});
+    }
+    return;
+  }
+  // case 3, the axis frame: break 1 turns z onto s d/|d| and carries s |d|, break 2 turns into b
+  thickness = 0.0;
+  math::Mat3 axis = a.r;
+  const double length = d.norm();
+  if (length > kFrame) {
+    const math::Vec3 u = s * p / length;
+    if (std::abs(u.x()) <= kFrame && std::abs(u.y()) <= kFrame) {
+      thickness = s * length;
+    } else {
+      // Rx(ta) Ry(tb) e_z = (sin tb, -sin ta cos tb, cos ta cos tb) (derived in #366)
+      const double tb = std::asin(std::clamp(u.x(), -1.0, 1.0));
+      const double ta = std::atan2(-u.y(), u.z());
+      breaks.push_back(
+          {0.0, 0.0, {math::rad_to_deg(ta) + 0.0, math::rad_to_deg(tb) + 0.0, 0.0}, s * length});
+      axis = a.r * math::rotation_xyz_intrinsic(math::Vec3(ta, tb, 0.0));
+    }
+  }
+  const math::Mat3 rest = axis.transpose() * b.r;
+  if (!is_identity(rest)) breaks.push_back({0.0, 0.0, xyz_angles_deg(rest), 0.0});
+}
+
+/// The ZMX frames, mirrored shapes and coordinate breaks of a folded path (ADR 0045, addendum
+/// #366, points 2 and 3). `rot` and `pos` are the global frames of the rows; the entrance frame
+/// is the global one, in the axial object point (finite object) or in the first vertex.
+void fold_path(ExportPath& out,
+               const std::vector<math::Mat3>& rot,
+               const std::vector<math::Vec3>& pos,
+               double object_z) {
+  const bool infinite = out.system.object.at_infinity;
+  const std::size_t n = out.rows.size();
+  const ZmxFrame entrance{math::Mat3::Identity(),
+                          infinite ? pos.front() : math::Vec3(0.0, 0.0, object_z)};
+  const math::Mat3 rz = math::Vec3(-1.0, -1.0, 1.0).asDiagonal();
+  const math::Mat3 rx = math::Vec3(1.0, -1.0, -1.0).asDiagonal();
+  const math::Mat3 ry = math::Vec3(-1.0, 1.0, -1.0).asDiagonal();
+  std::vector<ZmxFrame> frames(n);
+  int mirrors = 0;
+  for (std::size_t k = 0; k < n; ++k) {
+    ExportRow& row = out.rows[k];
+    const std::string& id = row.surface.id.str();
+    const int after = mirrors + (row.mirror ? 1 : 0);
+    // true if the light on d runs along s z of the global frame of the row (point 2)
+    const auto along = [&](const math::Vec3& d, double s) {
+      const double z = (rot[k].transpose() * d).z();
+      if (std::abs(z) <= kFrame * d.norm()) {
+        export_fail("export.frame_ambiguous", id,
+                    "the light runs in the plane of the surface, so its side is not defined");
+      }
+      return (z > 0.0) == (s > 0.0);
+    };
+    const math::Vec3 d_in =
+        k > 0 ? math::Vec3(pos[k] - pos[k - 1])
+              : (infinite ? math::Vec3(0.0, 0.0, 1.0) : math::Vec3(pos[k] - entrance.o));
+    const math::Vec3 d_out = k + 1 < n ? math::Vec3(pos[k + 1] - pos[k]) : math::Vec3::Zero();
+    bool keep = true;
+    if (d_out.norm() > kFrame) {
+      keep = along(d_out, parity(after));
+      if (!row.mirror && d_in.norm() > kFrame && along(d_in, parity(mirrors)) != keep) {
+        export_fail("export.frame_ambiguous", id,
+                    "the light arrives and leaves on different sides of the surface");
+      }
+    } else if (d_in.norm() > kFrame) {
+      keep = along(d_in, parity(mirrors));
+    } else {
+      export_fail("export.frame_ambiguous", id, "no direction of the light at the surface");
+    }
+    // the turn by 180 deg with the smaller rotation from the frame before; E or Rx on a tie
+    const ZmxFrame& before = k > 0 ? frames[k - 1] : entrance;
+    const math::Mat3 first = rot[k] * (keep ? math::Mat3(math::Mat3::Identity()) : rx);
+    const math::Mat3 second = rot[k] * (keep ? rz : ry);
+    const bool take_second =
+        turn_angle(before.r.transpose() * second) < turn_angle(before.r.transpose() * first) - 1e-9;
+    frames[k] = {take_second ? second : first, pos[k]};
+    if (!keep) mirror_shape(row.surface.shape);
+    if (k == 0) {
+      // surface 0: its thickness along the global z, then one break with decenter and turn
+      const math::Mat3 turn = frames[0].r;
+      const math::Vec3 p = frames[0].o - entrance.o;
+      out.object_distance = p.z();
+      if (!is_identity(turn) || std::abs(p.x()) > kFrame || std::abs(p.y()) > kFrame) {
+        out.object_breaks.push_back({p.x(), p.y(), xyz_angles_deg(turn), 0.0});
+      }
+    } else {
+      ExportRow& last = out.rows[k - 1];
+      frame_step(frames[k - 1], frames[k], parity(mirrors), last.thickness, last.breaks);
+    }
+    mirrors = after;
+  }
+}
+
 }  // namespace
 
 ExportPath walk_export_path(const model::System& system,
                             const material::MaterialLibrary& materials,
-                            const ExportOptions& options) {
+                            const ExportOptions& options,
+                            bool folded) {
   ExportPath out;
 
   // Configuration (ADR 0045, point 3; F6).
@@ -252,6 +390,10 @@ ExportPath walk_export_path(const model::System& system,
 
   const std::optional<std::uint32_t> stop_surface = cs.stop_surface();
   std::set<std::uint32_t> visited;
+  std::vector<math::Mat3> rot;  // global frames of the rows
+  std::vector<math::Vec3> pos;
+  std::vector<bool> axis_down;  // the axis of the row is -e_z (coaxial path)
+  bool coaxial_path = true;
   for (std::size_t k = 0; k < path.events.size(); ++k) {
     const compile::CompiledEvent& e = path.events[k];
     const compile::CompiledSurface& cs_surface = cs.surfaces()[e.surface];
@@ -284,11 +426,12 @@ ExportPath walk_export_path(const model::System& system,
         if (i != j && std::abs(r(i, j)) > kCoaxial) coaxial = false;
       }
     }
-    if (!coaxial) {
+    if (!coaxial && !folded) {
       export_fail("export.not_coaxial", id,
                   "only coaxial systems are exported: the vertex must lie on the z axis and the "
                   "surface axes along +-x, +-y, +-z");
     }
+    coaxial_path = coaxial_path && coaxial;
 
     const bool glass_before = e.medium_before != env;
     const bool glass_after = e.medium_after != env;
@@ -312,7 +455,9 @@ ExportPath walk_export_path(const model::System& system,
     row.stop = stop_surface == std::optional<std::uint32_t>(e.surface);
     if (glass_after && !row.mirror) row.medium_after = cs.media()[e.medium_after].reference;
     row.medium_reference = cs.media()[e.medium_after].reference;
-    if (r(2, 2) < 0.0) mirror_shape(row.surface.shape);
+    rot.push_back(r);
+    pos.push_back(p);
+    axis_down.push_back(r(2, 2) < 0.0);
     check_interaction(row, element, out.warnings);
     if (element.kind == ElementKind::Mirror &&
         (element.material || !element.segment_materials.empty())) {
@@ -345,6 +490,26 @@ ExportPath walk_export_path(const model::System& system,
           export_warning("export.surface_off_path", cs.surfaces()[i].location,
                          "surface " + cs.surfaces()[i].id.str() + " is not on the exported path"));
     }
+  }
+
+  // An ideal lens after an odd number of mirrors (ADR 0045, addendum #366, point 5).
+  int mirrors = 0;
+  for (const ExportRow& row : out.rows) {
+    if (std::holds_alternative<model::IdealLens>(row.surface.interaction) && mirrors % 2 != 0) {
+      export_fail("export.surface_unsupported", row.surface.id.str(),
+                  "an ideal lens after an odd number of mirrors: no source gives the sign of the "
+                  "focal length of a PARAXIAL surface with the light along -z");
+    }
+    if (row.mirror) ++mirrors;
+  }
+
+  if (!coaxial_path) {
+    // a folded path (ADR 0045, addendum #366): frames, mirrored shapes, coordinate breaks
+    fold_path(out, rot, pos, cs.object_z());
+    return out;
+  }
+  for (std::size_t k = 0; k < out.rows.size(); ++k) {
+    if (axis_down[k]) mirror_shape(out.rows[k].surface.shape);
   }
 
   // Thicknesses (ADR 0045, point 4): the t of the poses if the system is canonical (then the
