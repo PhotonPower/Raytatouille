@@ -493,6 +493,32 @@ TEST_CASE("a Q coefficient beyond the maximum term number is ignored, as in Opti
   REQUIRE(import_zmx(more, schott()).system == import_case("qcon").system);
 }
 
+TEST_CASE("degenerate BICONICX and QED_TYPE surfaces are planes and conics", "[zmx][360]") {
+  // Both radii of a biconic infinite: a plane. A Q type without terms (XDAT 2 = 0): the base
+  // conic, as STANDARD. A Q type on a plane base drops its conic (no effect at c = 0).
+  const std::string bic = read_file(kZmxDir + "biconic.zmx");
+  const System plane =
+      import_zmx(in_surface(in_surface(bic, 2, "CURV", "  CURV 0.000000000000000000E+000 0 0 0 0"),
+                            2, "PARM 1", "  PARM 1 0.000000000000E+000"),
+                 schott())
+          .system;
+  REQUIRE(std::holds_alternative<rtt::model::Plane>(element(plane, 1).surfaces[0].shape.base));
+  const std::string q = read_file(kZmxDir + "qcon.zmx");
+  const System none =
+      import_zmx(in_surface(q, 2, "XDAT 2", "  XDAT 2 0.000000000000E+000 0 0 1 0 0"), schott())
+          .system;
+  const auto* conic = std::get_if<rtt::model::Conic>(&element(none, 1).surfaces[0].shape.base);
+  REQUIRE(conic != nullptr);
+  REQUIRE(conic->radius.value == 40.0);
+  REQUIRE(conic->conic.value == -0.2);
+  const ZmxImport flat =
+      import_zmx(in_surface(q, 2, "CURV", "  CURV 0.000000000000000000E+000 0 0 0 0"), schott());
+  const auto& qc = std::get<rtt::model::QCon>(element(flat.system, 1).surfaces[0].shape.base);
+  REQUIRE(qc.curvature.value == 0.0);
+  REQUIRE(qc.conic.value == 0.0);
+  REQUIRE(flat.warnings.empty());
+}
+
 TEST_CASE("content guard: the PR B cases trace, all rays arrive, the fields differ", "[zmx][360]") {
   for (const char* name : {"biconic", "qcon", "qbfs", "xbiconic"}) {
     INFO(name);
@@ -534,6 +560,14 @@ TEST_CASE("the rules of BICONICX and QED_TYPE reject what the model cannot hold"
        "PARM 3 1.0E-003"},
       {"zmx.parse", in_surface(bic, 2, "PARM 2", "  PARM 2 3.0E-001\r\n  PARM 3 1.0E-003"),
        "PARM 3 1.0E-003"},
+      // a term count that is not a whole number from 0 to 100
+      {"zmx.parse", in_surface(q, 2, "XDAT 2", "  XDAT 2 2.500000000000E+000 0 0 1 0 0"),
+       "XDAT 2 2.5"},
+      {"zmx.parse", in_surface(q, 2, "XDAT 2", "  XDAT 2 -1.000000000000E+000 0 0 1 0 0"),
+       "XDAT 2 -1.0"},
+      // a parameter 0, which neither type has
+      {"zmx.parse", in_surface(bic, 2, "PARM 2", "  PARM 2 3.0E-001\r\n  PARM 0 1.0E+000"),
+       "PARM 0 1.0E+000"},
       // extra data on a biconic
       {"zmx.keyword_unsupported",
        in_surface(bic, 2, "PARM 2", "  PARM 2 3.0E-001\r\n  XDAT 1 0.5 0 0 1 0 0"), "XDAT 1 0.5"},

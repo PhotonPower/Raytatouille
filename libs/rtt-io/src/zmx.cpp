@@ -652,7 +652,7 @@ model::ShapeStack Importer::shape(const ZSurface& s, bool& powered) const {
     // conic columns, as for the toroid ("similar to a toroidal surface"); a reading supported by
     // the UG only (decision H3 on #360).
     for (const auto& [i, v] : s.parm) {
-      if (i > 2 && v.value != 0.0) {
+      if ((i < 1 || i > 2) && v.value != 0.0) {
         fail("zmx.parse", v.line, "BICONICX has the parameters 1 and 2 only");
       }
     }
@@ -677,12 +677,13 @@ model::ShapeStack Importer::shape(const ZSurface& s, bool& powered) const {
     return out;
   } else if (s.type == "QED_TYPE") {
     // UG "Q-Type Asphere (sequential)": extra data 13 = type (0 Qbfs, 1 Qcon), 14 = maximum term
-    // number (at most 100), 15 = normalization radius in lens units, 16 ff. = A0, A1, ... in
-    // lens units; Qcon after Forbes 2007, Eqs. (2) and (3), Qbfs after Forbes 2011, Eqs. (2.1) to
-    // (2.4), as q_con and q_bfs (ADR 0043). Extra data 12 + n is XDAT n (UG "Extended Asphere",
-    // ray-optics XASPHERE); a reading (decision H4 on #360).
+    // number (at most 100; with 16 to 115 = A0 ... A99 it is the number of terms), 15 =
+    // normalization radius in lens units, 16 ff. = A0, A1, ... (lengths after Forbes, lens units
+    // as in "Extended Asphere"); Qcon after Forbes 2007, Eqs. (2) and (3), Qbfs after Forbes 2011,
+    // Eqs. (2.1) to (2.4), as q_con and q_bfs (ADR 0043). Extra data 12 + n is XDAT n (UG "Extended
+    // Asphere", ray-optics XASPHERE); a reading (decision H4 on #360).
     for (const auto& [i, v] : s.parm) {
-      if (i != 0 && v.value != 0.0) {
+      if (v.value != 0.0) {
         fail("zmx.parse", v.line, "QED_TYPE has no parameters (its data are extra data)");
       }
     }
@@ -709,10 +710,12 @@ model::ShapeStack Importer::shape(const ZSurface& s, bool& powered) const {
       powered = true;
       const std::vector<model::Param> coefficients(a.begin(), a.end());
       const double rho = length(xd(3).value);
+      // the conic has no effect at c = 0 and is dropped there (as for EVENASPH)
+      const double k = c != 0.0 ? s.coni.value : 0.0;
       if (type.value == 1.0) {
-        out.base = model::QCon{c, s.coni.value, rho, coefficients};
+        out.base = model::QCon{c, k, rho, coefficients};
       } else {
-        out.base = model::QBfs{c, s.coni.value, rho, coefficients};
+        out.base = model::QBfs{c, k, rho, coefficients};
       }
       return out;
     }
@@ -1022,8 +1025,8 @@ model::System Importer::build() {
     stop_diam_line_ = s.diam.line;
     return 1.1 * v;
   };
-  // TOROIDAL or BICONICX with an infinite y-z radius: a cylinder with power in x, its frame turned
-  // by 90 deg
+  // TOROIDAL or BICONICX with an infinite y-z radius: a cylinder with power in x, its frame
+  // turned by 90 deg
   // about z (decision H2 on #360)
   const auto x_cylinder = [&](const ZSurface& z) {
     return (z.type == "TOROIDAL" || z.type == "BICONICX") && z.curv.value == 0.0 &&
