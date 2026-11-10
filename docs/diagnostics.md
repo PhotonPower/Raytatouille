@@ -98,7 +98,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `export.paths_dropped` | Warnung | die anderen Pfade als der exportierte entfallen | export | `/paths` |
 | `export.stop_missing` | Fehler | keine Blende auf dem exportierten Pfad (F8; Import: „no STOP surface“) | export | `surface()`: Flächen-ID, leer für das ganze System |
 | `export.surface_off_path` | Warnung | Fläche, die nicht auf dem exportierten Pfad liegt, entfällt | export | `…/s` |
-| `export.surface_unsupported` | Fehler | Form ohne Abbildung: alles außer `plane`, `conic`, `even_asphere` bis A16 und `odd_asphere` mit c = 0 und nur geraden Termen A4 bis A16; `shape.terms`; ein dünnes Element ohne Apertur und ohne ideale Linse (der Import ließe die Fläche weg); 1/R nicht endlich | export | `surface()`: Flächen-ID, leer für das ganze System |
+| `export.surface_unsupported` | Fehler | Form ohne Abbildung: alles außer `plane`, `conic`, `even_asphere` bis A16 und `odd_asphere` mit c = 0 und nur geraden Termen A4 bis A16 (`EVENASPH`) oder mit Termen bis A8 (`ODDASPHE`, ADR 0045, Nachtrag #368); `shape.terms`; ein dünnes Element ohne Apertur und ohne ideale Linse (der Import ließe die Fläche weg); 1/R nicht endlich | export | `surface()`: Flächen-ID, leer für das ganze System |
 | `fields.coordinate_invalid` | Fehler | Feldkoordinate nicht endlich | validate | `/fields/points/i` |
 | `fields.empty` | Fehler | kein Feldpunkt | validate | `/fields/points` |
 | `fields.weight_invalid` | Fehler | Feldgewicht nicht endlich oder < 0 | validate | `/fields/points/i/weight` |
