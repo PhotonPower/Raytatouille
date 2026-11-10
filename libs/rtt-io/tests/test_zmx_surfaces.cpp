@@ -384,3 +384,174 @@ TEST_CASE("the rules of ODDASPHE and TOROIDAL reject what the model cannot hold"
     }
   }
 }
+
+// ------------------------------------------------------------------- PR B: BICONICX, QED_TYPE
+
+TEST_CASE("the BICONICX and QED_TYPE cases import to their expected systems", "[zmx][360]") {
+  const std::map<std::string, std::vector<std::string>> warnings{
+      {"biconic", {"zmx.paraxial_unavailable"}},
+      {"biconic_in", {"zmx.paraxial_unavailable"}},
+      {"qcon", {}},
+      {"qcon_in", {}},
+      {"qbfs", {}},
+  };
+  for (const auto& [name, codes] : warnings) {
+    INFO(name);
+    const ZmxImport r = import_case(name);
+    REQUIRE(codes_of(r.warnings) == codes);
+    System imported = r.system;
+    const System expected = rtt::io::load_system(kZmxDir + name + ".rtt.json");
+    REQUIRE(imported.wavelengths.size() == expected.wavelengths.size());
+    for (std::size_t i = 0; i < expected.wavelengths.size(); ++i) {
+      REQUIRE(rel(imported.wavelengths[i].um, expected.wavelengths[i].um) <= 1e-14);
+      imported.wavelengths[i].um = expected.wavelengths[i].um;
+    }
+    INFO("imported:\n"
+         << rtt::io::to_json(imported) << "\nexpected:\n"
+         << rtt::io::to_json(expected));
+    REQUIRE(imported == expected);
+  }
+}
+
+TEST_CASE("the biconics meet the y-nu trace in both sections, the Q-con on axis", "[zmx][360]") {
+  // Biconic x-z: 1/Rx (0 for Rx = 0), y-z: c; the biconic with an infinite Ry is the cylinder
+  // turned by 90 deg (H2). Q-con: the vertex curvature is c (ADR 0043).
+  const auto& fo = first_order_data();
+  for (const char* name : {"biconic", "biconic_in", "xbiconic"}) {
+    INFO(name);
+    const auto cs = rtt::compile::compile(import_case(name).system, schott());
+    for (const auto& [key, section] :
+         {std::pair{"x", rtt::paraxial::Section::x}, std::pair{"y", rtt::paraxial::Section::y}}) {
+      INFO("section " << key);
+      const auto& e = fo.at(name).at(key);
+      const auto f = rtt::paraxial::first_order_section(cs, {0}, 0, section);
+      REQUIRE(f.efl);
+      REQUIRE(f.bfl);
+      const double bound = 1e-12 * std::max(1.0, e.at("condition").get<double>());
+      REQUIRE(rel(*f.efl, e.at("efl").get<double>()) <= bound);
+      REQUIRE(rel(*f.bfl, e.at("bfl").get<double>()) <= bound);
+    }
+  }
+  for (const char* name : {"qcon", "qcon_in"}) {
+    INFO(name);
+    const auto& e = fo.at(name);
+    const auto cs = rtt::compile::compile(import_case(name).system, schott());
+    const auto f = rtt::paraxial::first_order(cs, {0}, 0);
+    REQUIRE(f.efl);
+    REQUIRE(f.bfl);
+    const double bound = 1e-12 * std::max(1.0, e.at("condition").get<double>());
+    REQUIRE(rel(*f.efl, e.at("efl").get<double>()) <= bound);
+    REQUIRE(rel(*f.bfl, e.at("bfl").get<double>()) <= bound);
+  }
+}
+
+TEST_CASE("the biconic and the Q-con in inches agree with the millimetre files", "[zmx][360]") {
+  // 13 printed digits: radius in x and the Q values to 1e-12 relative.
+  {
+    const System sa = import_case("biconic").system;
+    const System sb = import_case("biconic_in").system;
+    const auto& a = std::get<rtt::model::Biconic>(element(sa, 1).surfaces[0].shape.base);
+    const auto& b = std::get<rtt::model::Biconic>(element(sb, 1).surfaces[0].shape.base);
+    REQUIRE(rel(b.radius_x.value, a.radius_x.value) <= 1e-12);
+    REQUIRE(rel(b.radius_y.value, a.radius_y.value) <= 1e-12);
+    REQUIRE(b.conic_x.value == a.conic_x.value);
+  }
+  const System sa = import_case("qcon").system;
+  const System sb = import_case("qcon_in").system;
+  const auto& a = std::get<rtt::model::QCon>(element(sa, 1).surfaces[0].shape.base);
+  const auto& b = std::get<rtt::model::QCon>(element(sb, 1).surfaces[0].shape.base);
+  REQUIRE(rel(b.normalization_radius.value, a.normalization_radius.value) <= 1e-12);
+  REQUIRE(a.coefficients.size() == 3);
+  REQUIRE(b.coefficients.size() == 3);
+  for (std::size_t i = 0; i < 3; ++i) {
+    REQUIRE(rel(b.coefficients[i].value, a.coefficients[i].value) <= 1e-12);
+  }
+}
+
+TEST_CASE("a biconic with an infinite Ry is the cylinder in x, turned", "[zmx][360]") {
+  const ZmxImport r = import_case("xbiconic");
+  REQUIRE(codes_of(r.warnings) == std::vector<std::string>{"zmx.paraxial_unavailable"});
+  const auto& front = element(r.system, 1).surfaces.at(0);
+  const auto* cyl = std::get_if<rtt::model::Cylinder>(&front.shape.base);
+  REQUIRE(cyl != nullptr);
+  REQUIRE(cyl->radius.value == 60.0);
+  REQUIRE(cyl->conic.value == -0.4);
+  REQUIRE(front.pose.rotation_deg[2].value == 90.0);
+  const auto* ap = std::get_if<rtt::model::RectangularAperture>(&front.aperture.value());
+  REQUIRE(ap != nullptr);
+  REQUIRE(ap->half_width_x == 5.0);
+  REQUIRE(ap->half_width_y == 7.0);
+}
+
+TEST_CASE("a Q coefficient beyond the maximum term number is ignored, as in OpticStudio",
+          "[zmx][360]") {
+  const std::string q = read_file(kZmxDir + "qcon.zmx");
+  const std::string more = in_surface(
+      q, 2, "XDAT 6",
+      "  XDAT 6 5.000000000000E-005 0 0 1 0 0\r\n  XDAT 7 9.000000000000E-001 0 0 1 0 0");
+  REQUIRE(more != q);
+  REQUIRE(import_zmx(more, schott()).system == import_case("qcon").system);
+}
+
+TEST_CASE("content guard: the PR B cases trace, all rays arrive, the fields differ", "[zmx][360]") {
+  for (const char* name : {"biconic", "qcon", "qbfs", "xbiconic"}) {
+    INFO(name);
+    const auto cs = rtt::compile::compile(import_case(name).system, schott());
+    std::set<std::pair<double, double>> centres;
+    for (const auto& [ax, ay] : {std::pair{0.0, 0.0}, std::pair{2.0, 0.0}, std::pair{0.0, 2.0}}) {
+      const RayBatch b = trace_rays(cs, bundle(3.5, ax, ay));
+      REQUIRE(b.size() > 40);
+      Vec3 mean = Vec3::Zero();
+      for (std::size_t i = 0; i < b.size(); ++i) {
+        REQUIRE(b.status()[i] == RayStatus::Alive);
+        mean += Vec3(b.pos_x()[i], b.pos_y()[i], b.pos_z()[i]);
+      }
+      mean /= static_cast<double>(b.size());
+      centres.insert({mean.x(), mean.y()});
+    }
+    REQUIRE(centres.size() == 3);
+  }
+}
+
+TEST_CASE("the rules of BICONICX and QED_TYPE reject what the model cannot hold", "[zmx][360]") {
+  const std::string bic = read_file(kZmxDir + "biconic.zmx");
+  const std::string q = read_file(kZmxDir + "qcon.zmx");
+  struct Case {
+    std::string code;
+    std::string text;
+    std::string needle;
+  };
+  const std::vector<Case> cases{
+      // a type flag other than 0 (Qbfs) and 1 (Qcon)
+      {"zmx.parse", in_surface(q, 2, "XDAT 1", "  XDAT 1 2.000000000000E+000 0 0 1 0 0"),
+       "XDAT 1 2.0"},
+      // more than 100 terms (UG "Q-Type Asphere")
+      {"zmx.parse", in_surface(q, 2, "XDAT 2", "  XDAT 2 1.010000000000E+002 0 0 1 0 0"),
+       "XDAT 2 1.01"},
+      // parameters: the Q type has none, the biconic two
+      {"zmx.parse",
+       in_surface(q, 2, "XDAT 1", "  PARM 3 1.0E-003\r\n  XDAT 1 1.000000000000E+000 0 0 1 0 0"),
+       "PARM 3 1.0E-003"},
+      {"zmx.parse", in_surface(bic, 2, "PARM 2", "  PARM 2 3.0E-001\r\n  PARM 3 1.0E-003"),
+       "PARM 3 1.0E-003"},
+      // extra data on a biconic
+      {"zmx.keyword_unsupported",
+       in_surface(bic, 2, "PARM 2", "  PARM 2 3.0E-001\r\n  XDAT 1 0.5 0 0 1 0 0"), "XDAT 1 0.5"},
+      // the turned cylinder of a biconic as the image surface
+      {"zmx.surface_unsupported",
+       in_surface(read_file(kZmxDir + "xbiconic.zmx"), 4, "TYPE",
+                  "  TYPE BICONICX\r\n  PARM 1 5.000000000000E+001"),
+       "PARM 1 5.000000000000E+001"},
+  };
+  for (const Case& c : cases) {
+    INFO(c.code << " / " << c.needle);
+    try {
+      (void)import_zmx(c.text, schott());
+      FAIL("no ZmxError");
+    } catch (const ZmxError& e) {
+      INFO(e.what());
+      REQUIRE(e.code() == c.code);
+      REQUIRE(e.line() == line_of(c.text, c.needle));
+    }
+  }
+}
