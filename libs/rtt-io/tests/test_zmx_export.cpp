@@ -724,9 +724,13 @@ TEST_CASE("every export error has a case", "[zmx][export]") {
     a.coefficients.resize(8, Param(0.0));
     a.coefficients[7] = Param(1e-20);
     check(t, schott(), "export.surface_unsupported");
+    // an odd asphere with c != 0 and A10: neither EVENASPH (c = 0) nor ODDASPHE (up to A8) holds
+    // it (ADR 0045, addendum #368)
     System u = singlet();
-    element(u, 1).surfaces[1].shape.base = rtt::model::OddAsphere{
-        Param(-0.02), Param(0.0), {Param(0.0), Param(0.0), Param(0.0), Param(1e-6)}};
+    std::vector<Param> a10(10, Param(0.0));
+    a10[3] = Param(1e-6);
+    a10[9] = Param(1e-20);
+    element(u, 1).surfaces[1].shape.base = rtt::model::OddAsphere{Param(-0.02), Param(0.0), a10};
     check(u, schott(), "export.surface_unsupported");
     // a thin element without aperture and ideal lens: the import drops such a surface
     System v = singlet();

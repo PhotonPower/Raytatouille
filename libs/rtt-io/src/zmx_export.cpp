@@ -204,23 +204,42 @@ void write_shape(Writer& w, const ExportRow& row) {
     }
     even(curvature(e->radius.value, id), e->conic.value, a);
   } else if (const auto* o = std::get_if<model::OddAsphere>(&shape.base)) {
-    // c = 0 and only even terms A4 ... A16: EVENASPH with c = 0, as the import reads it back
-    std::array<double, 7> a{};
-    bool ok = o->curvature.value == 0.0;
+    // EVENASPH first (ADR 0045, addendum #368): c = 0 and only even terms A4 ... A16 stay
+    // EVENASPH with c = 0, which the import reads back as the same odd asphere; the others with
+    // terms up to A8 are ODDASPHE. UG "Odd Asphere": z = c r^2 / (1 + sqrt(1 - (1 + k) c^2 r^2))
+    // + beta_1 r + ... + beta_8 r^8, parameters 1 to 8 = beta_1 ... beta_8, in lens units; the
+    // file is in mm (UNIT MM), so beta_n = A_n (ADR 0043, point 1; ADR 0044, addendum #360).
+    std::array<double, 7> even_terms{};
+    std::array<double, 8> beta{};
+    bool as_even = o->curvature.value == 0.0;
+    bool as_odd = true;
     for (std::size_t i = 0; i < o->coefficients.size(); ++i) {
       const std::size_t n = i + 1;  // A_n
       const double v = o->coefficients[i].value;
       if (n >= 4 && n <= 16 && n % 2 == 0) {
-        a[n / 2 - 2] = v;
+        even_terms[n / 2 - 2] = v;
       } else if (v != 0.0) {
-        ok = false;
+        as_even = false;
+      }
+      if (i < beta.size()) {
+        beta[i] = v;
+      } else if (v != 0.0) {
+        as_odd = false;
       }
     }
-    if (!ok) {
+    if (as_even) {
+      even(0.0, o->conic.value, even_terms);
+    } else if (as_odd) {
+      w.sub("TYPE ODDASPHE");
+      w.sub("CURV " + num(o->curvature.value));
+      w.sub("CONI " + num(o->conic.value));
+      for (std::size_t i = 0; i < beta.size(); ++i)
+        w.sub("PARM " + std::to_string(i + 1) + " " + num(beta[i]));
+    } else {
       export_fail("export.surface_unsupported", id,
-                  "an odd asphere is exported only with c = 0 and the even terms A4 to A16");
+                  "an odd asphere is exported as EVENASPH (c = 0 and only the even terms A4 to "
+                  "A16) or as ODDASPHE (the terms up to A8)");
     }
-    even(0.0, o->conic.value, a);
   } else {
     export_fail("export.surface_unsupported", id, "the shape has no ZMX surface type");
   }
