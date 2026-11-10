@@ -647,6 +647,78 @@ model::ShapeStack Importer::shape(const ZSurface& s, bool& powered) const {
       out.base = a;
       return out;
     }
+  } else if (s.type == "BICONICX") {
+    // UG "Biconic": parameter 1 = R_x (0: infinite), 2 = k_x. R_y and k_y stand in the radius and
+    // conic columns, as for the toroid ("similar to a toroidal surface"); a reading supported by
+    // the UG only (decision H3 on #360).
+    for (const auto& [i, v] : s.parm) {
+      if ((i < 1 || i > 2) && v.value != 0.0) {
+        fail("zmx.parse", v.line, "BICONICX has the parameters 1 and 2 only");
+      }
+    }
+    const auto at = [&](int i) {
+      const auto it = s.parm.find(i);
+      return it == s.parm.end() ? 0.0 : it->second.value;
+    };
+    const double rx = length(at(1));
+    const double kx = at(2);
+    powered = c != 0.0 || rx != 0.0;
+    if (c != 0.0 && rx != 0.0) {
+      out.base = model::Biconic{rx, 1.0 / c, kx, s.coni.value};
+    } else if (c != 0.0) {
+      out.base = model::Cylinder{1.0 / c, s.coni.value, {}};  // flat in x
+    } else if (rx != 0.0) {
+      // power in x only: the cylinder with R_x and k_x, turned by 90 deg about z by the caller
+      // (decision H2 on #360)
+      out.base = model::Cylinder{rx, kx, {}};
+    } else {
+      out.base = model::Plane{};
+    }
+    return out;
+  } else if (s.type == "QED_TYPE") {
+    // UG "Q-Type Asphere (sequential)": extra data 13 = type (0 Qbfs, 1 Qcon), 14 = maximum term
+    // number (at most 100; with 16 to 115 = A0 ... A99 it is the number of terms), 15 =
+    // normalization radius in lens units, 16 ff. = A0, A1, ... (lengths after Forbes, lens units
+    // as in "Extended Asphere"); Qcon after Forbes 2007, Eqs. (2) and (3), Qbfs after Forbes 2011,
+    // Eqs. (2.1) to (2.4), as q_con and q_bfs (ADR 0043). Extra data 12 + n is XDAT n (UG "Extended
+    // Asphere", ray-optics XASPHERE); a reading (decision H4 on #360).
+    for (const auto& [i, v] : s.parm) {
+      if (v.value != 0.0) {
+        fail("zmx.parse", v.line, "QED_TYPE has no parameters (its data are extra data)");
+      }
+    }
+    const auto xd = [&](int i) {
+      const auto it = s.xdat.find(i);
+      return it == s.xdat.end() ? Located{0.0, s.type_line} : it->second;
+    };
+    const Located type = xd(1);
+    if (type.value != 0.0 && type.value != 1.0) {
+      fail("zmx.parse", type.line, "the type of QED_TYPE is 0 (Qbfs) or 1 (Qcon)");
+    }
+    const Located terms = xd(2);
+    if (!(terms.value >= 0.0 && terms.value <= 100.0) ||
+        terms.value != static_cast<double>(static_cast<int>(terms.value))) {
+      fail("zmx.parse", terms.line, "the maximum term number of QED_TYPE is 0 to 100");
+    }
+    // terms beyond the maximum term number are ignored, as in OpticStudio
+    const int n = static_cast<int>(terms.value);
+    std::vector<double> a;
+    a.reserve(static_cast<std::size_t>(n));
+    for (int m = 0; m < n; ++m) a.push_back(length(xd(4 + m).value));
+    while (!a.empty() && a.back() == 0.0) a.pop_back();
+    if (!a.empty()) {
+      powered = true;
+      const std::vector<model::Param> coefficients(a.begin(), a.end());
+      const double rho = length(xd(3).value);
+      // the conic has no effect at c = 0 and is dropped there (as for EVENASPH)
+      const double k = c != 0.0 ? s.coni.value : 0.0;
+      if (type.value == 1.0) {
+        out.base = model::QCon{c, k, rho, coefficients};
+      } else {
+        out.base = model::QBfs{c, k, rho, coefficients};
+      }
+      return out;
+    }
   } else if (s.type == "TOROIDAL") {
     // UG "Toroidal": parameter 1 = radius of rotation (0: infinite, a cylinder), 2 to 8 =
     // alpha_1 ... alpha_7 on y^2 ... y^14 of the y-z profile, whose radius is CURV (also
@@ -953,10 +1025,12 @@ model::System Importer::build() {
     stop_diam_line_ = s.diam.line;
     return 1.1 * v;
   };
-  // TOROIDAL with an infinite y-z radius: a cylinder with power in x, its frame turned by 90 deg
+  // TOROIDAL or BICONICX with an infinite y-z radius: a cylinder with power in x, its frame
+  // turned by 90 deg
   // about z (decision H2 on #360)
   const auto x_cylinder = [&](const ZSurface& z) {
-    return z.type == "TOROIDAL" && z.curv.value == 0.0 && parm(z, 1) != 0.0;
+    return (z.type == "TOROIDAL" || z.type == "BICONICX") && z.curv.value == 0.0 &&
+           parm(z, 1) != 0.0;
   };
   const auto make_surface = [&](const ZSurface& s, bool& powered) {
     model::Surface out;
@@ -1215,7 +1289,7 @@ ZmxImport Importer::run() {
   }
   read_trailer(i);
   for (const ZSurface& s : surfaces_) {
-    if (!s.xdat.empty() && s.type != "TOROIDAL") {
+    if (!s.xdat.empty() && s.type != "TOROIDAL" && s.type != "QED_TYPE") {
       fail("zmx.keyword_unsupported", s.xdat.begin()->second.line,
            "extra data (XDAT) of a " + s.type + " surface is not supported");
     }
