@@ -272,7 +272,7 @@ void write_aperture(Writer& w, const ExportRow& row) {
 ZmxExport export_zmx(const model::System& system,
                      const material::MaterialLibrary& materials,
                      const ExportOptions& options) {
-  detail::ExportPath path = detail::walk_export_path(system, materials, options);
+  detail::ExportPath path = detail::walk_export_path(system, materials, options, true);
   const model::System& s = path.system;
   ZmxExport out;
   out.warnings = std::move(path.warnings);
@@ -379,12 +379,32 @@ ZmxExport export_zmx(const model::System& system,
   }
   w.line("PWAV " + std::to_string(ref + 1));
 
+  // Coordinate breaks of a folded path (ADR 0045, addendum #366, point 3): flag 0, the medium
+  // of the surface before them (ADR 0044, addendum PR C).
+  std::size_t number = 0;
+  const auto breaks = [&](const std::vector<detail::CoordinateBreak>& list,
+                          const std::optional<Glass>& glass) {
+    for (const detail::CoordinateBreak& b : list) {
+      w.line("SURF " + std::to_string(++number));
+      w.sub("TYPE COORDBRK");
+      w.sub("PARM 1 " + num(b.dx));
+      w.sub("PARM 2 " + num(b.dy));
+      w.sub("PARM 3 " + num(b.tilt_deg[0]));
+      w.sub("PARM 4 " + num(b.tilt_deg[1]));
+      w.sub("PARM 5 " + num(b.tilt_deg[2]));
+      w.sub("PARM 6 0");
+      w.sub("DISZ " + num(b.thickness));
+      if (glass) w.sub("GLAS " + glass->name + " 0");
+    }
+  };
+
   w.line("SURF 0");
   w.sub("TYPE STANDARD");
   w.sub("CURV 0");
   w.sub(s.object.at_infinity ? std::string("DISZ INFINITY") : "DISZ " + num(path.object_distance));
   if (object_glass) w.sub("GLAS " + object_glass->name + " 0");
   w.sub("DIAM 0 0");
+  breaks(path.object_breaks, object_glass);
   for (std::size_t k = 0; k < path.rows.size(); ++k) {
     const ExportRow& row = path.rows[k];
     if (row.kind == model::ElementKind::ThinElement && !row.surface.aperture &&
@@ -394,7 +414,7 @@ ZmxExport export_zmx(const model::System& system,
                   "a thin element without aperture and ideal lens has no ZMX surface the import "
                   "keeps");
     }
-    w.line("SURF " + std::to_string(k + 1));
+    w.line("SURF " + std::to_string(++number));
     if (row.stop) w.sub("STOP");
     write_shape(w, row);
     w.sub("DISZ " + num(row.thickness));
@@ -411,6 +431,7 @@ ZmxExport export_zmx(const model::System& system,
           "ideal lens " + row.surface.id.str() +
               " written with OPD mode 0: the rays are the same, the design conjugate is not kept"));
     }
+    breaks(row.breaks, row.mirror ? std::nullopt : glasses[k]);
   }
   w.line("MNUM 1");
   out.text = w.take();
