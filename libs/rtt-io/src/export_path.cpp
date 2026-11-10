@@ -188,6 +188,25 @@ double parity(int mirrors) {
   return mirrors % 2 == 0 ? 1.0 : -1.0;
 }
 
+/// a^T b, element by element: GCC 13 with -O3 reports -Wnull-dereference inside the vectorized
+/// Eigen 5 product of a transpose (vcpkg), so the 3x3 products are written out.
+math::Mat3 tmul(const math::Mat3& a, const math::Mat3& b) {
+  math::Mat3 out;
+  for (int i = 0; i < 3; ++i) {
+    for (int j = 0; j < 3; ++j) {
+      out(i, j) = a(0, i) * b(0, j) + a(1, i) * b(1, j) + a(2, i) * b(2, j);
+    }
+  }
+  return out;
+}
+
+/// a^T v, element by element (see tmul).
+math::Vec3 tmul(const math::Mat3& a, const math::Vec3& v) {
+  math::Vec3 out;
+  for (int i = 0; i < 3; ++i) out(i) = a(0, i) * v(0) + a(1, i) * v(1) + a(2, i) * v(2);
+  return out;
+}
+
 bool is_identity(const math::Mat3& r) {
   return (r - math::Mat3::Identity()).cwiseAbs().maxCoeff() <= kFrame;
 }
@@ -211,9 +230,9 @@ void frame_step(const ZmxFrame& a,
                 double s,
                 double& thickness,
                 std::vector<CoordinateBreak>& breaks) {
-  const math::Mat3 turn = a.r.transpose() * b.r;
+  const math::Mat3 turn = tmul(a.r, b.r);
   const math::Vec3 d = b.o - a.o;
-  const math::Vec3 p = a.r.transpose() * d;
+  const math::Vec3 p = tmul(a.r, d);
   if (is_identity(turn)) {
     // cases 1 and 2: a thickness, a decenter beside it
     thickness = p.z();
@@ -239,7 +258,7 @@ void frame_step(const ZmxFrame& a,
       axis = a.r * math::rotation_xyz_intrinsic(math::Vec3(ta, tb, 0.0));
     }
   }
-  const math::Mat3 rest = axis.transpose() * b.r;
+  const math::Mat3 rest = tmul(axis, b.r);
   if (!is_identity(rest)) breaks.push_back({0.0, 0.0, xyz_angles_deg(rest), 0.0});
 }
 
@@ -263,9 +282,11 @@ void fold_path(ExportPath& out,
     ExportRow& row = out.rows[k];
     const std::string& id = row.surface.id.str();
     const int after = mirrors + (row.mirror ? 1 : 0);
-    // true if the light on d runs along s z of the global frame of the row (point 2)
+    // true if the light on d runs along s z of the global frame of the row (point 2); (G^T d)_z
+    // is the z axis of G dotted with d
+    const math::Vec3 axis = rot.at(k).col(2);
     const auto along = [&](const math::Vec3& d, double s) {
-      const double z = (rot[k].transpose() * d).z();
+      const double z = axis.dot(d);
       if (std::abs(z) <= kFrame * d.norm()) {
         export_fail("export.frame_ambiguous", id,
                     "the light runs in the plane of the surface, so its side is not defined");
@@ -293,7 +314,7 @@ void fold_path(ExportPath& out,
     const math::Mat3 first = rot[k] * (keep ? math::Mat3(math::Mat3::Identity()) : rx);
     const math::Mat3 second = rot[k] * (keep ? rz : ry);
     const bool take_second =
-        turn_angle(before.r.transpose() * second) < turn_angle(before.r.transpose() * first) - 1e-9;
+        turn_angle(tmul(before.r, second)) < turn_angle(tmul(before.r, first)) - 1e-9;
     frames[k] = {take_second ? second : first, pos[k]};
     if (!keep) mirror_shape(row.surface.shape);
     if (k == 0) {
