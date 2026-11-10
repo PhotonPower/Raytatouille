@@ -31,6 +31,7 @@
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/diagnostics/codes.hpp"
 #include "rtt/io/json_io.hpp"
+#include "rtt/io/surface_table.hpp"
 #include "rtt/io/zmx.hpp"
 #include "rtt/material/material.hpp"
 #include "rtt/math/types.hpp"
@@ -365,16 +366,6 @@ TEST_CASE("every coaxial ZMX case survives import, export and import", "[zmx][ex
   }
 }
 
-TEST_CASE("the folded ZMX cases are not coaxial", "[zmx][export]") {
-  // with kCoaxialCases every case of tests/zmx is in one of the two groups
-  for (const char* name : {"fold", "oap", "pivot", "tilt_image", "tilt_plate", "tilt_prism",
-                           "gimbal", "gimbal_x", "random_breaks"}) {
-    INFO(name);
-    const System s = import_zmx(read_file(kZmxDir + name + ".zmx"), schott()).system;
-    require_export_error(s, schott(), "export.not_coaxial");
-  }
-}
-
 TEST_CASE("every reference system exports and imports again, or fails with its export code",
           "[zmx][export]") {
   // Acceptance 3. A system that does not compile with either test catalogue is listed, so that
@@ -468,17 +459,27 @@ TEST_CASE("a lens turned by 180 degrees about x is written with mirrored shapes"
   REQUIRE(export_zmx(s, schott()).text == export_zmx(singlet(), schott()).text);
 }
 
-TEST_CASE("a decentre up to 1e-12 mm is dropped silently, more is not coaxial", "[zmx][export]") {
+TEST_CASE("a decentre up to 1e-12 mm is dropped silently, more is a coordinate break",
+          "[zmx][export]") {
+  // Since ADR 0045, addendum #366 (rule 2, approved by the maintainer, 2026-11-10) a decentre or
+  // tilt beyond 1e-12 is written with coordinate breaks; the surface table stays coaxial.
   System s = singlet();
   element(s, 1).pose.position[0] = Param(1e-13);
   const ZmxExport out = export_zmx(s, schott());
   REQUIRE(out.warnings.empty());
   REQUIRE(out.text == export_zmx(singlet(), schott()).text);
   element(s, 1).pose.position[0] = Param(1e-9);
-  require_export_error(s, schott(), "export.not_coaxial");
+  const std::string decentred = export_zmx(s, schott()).text;
+  REQUIRE(decentred.find("  TYPE COORDBRK\r\n  PARM 1 1e-09\r\n") != std::string::npos);
+  try {
+    (void)rtt::io::write_surface_table(s, schott());
+    FAIL("no ExportError from the table");
+  } catch (const ExportError& e) {
+    REQUIRE(e.code() == "export.not_coaxial");
+  }
   System t = singlet();
   element(t, 1).pose.rotation_deg[1] = Param(0.01);
-  require_export_error(t, schott(), "export.not_coaxial");
+  REQUIRE(export_zmx(t, schott()).text.find("  TYPE COORDBRK\r\n") != std::string::npos);
 }
 
 TEST_CASE("a configuration is written with its resolved parameters", "[zmx][export]") {
@@ -570,10 +571,30 @@ TEST_CASE("every export error has a case", "[zmx][export]") {
     seen.insert(code);
   };
 
-  {  // not coaxial: a decentred lens
+  {  // not coaxial: a decentred lens, in the surface table only since ADR 0045, addendum #366
+     // (rule 2, approved by the maintainer, 2026-11-10); the ZMX export writes a break
     System s = singlet();
     element(s, 1).pose.position[1] = Param(0.5);
-    check(s, schott(), "export.not_coaxial");
+    try {
+      (void)rtt::io::write_surface_table(s, schott());
+      FAIL("no ExportError from the table");
+    } catch (const ExportError& e) {
+      REQUIRE(e.code() == "export.not_coaxial");
+    }
+    seen.insert("export.not_coaxial");
+  }
+  {  // light in the plane of a surface (ADR 0045, addendum #366): a thin element seen edge-on
+    System s = singlet();
+    Element thin{"T", ElementKind::ThinElement, {}, std::nullopt, {}};
+    Surface t;
+    t.id = SurfaceId("T.S1");
+    t.aperture = rtt::model::CircularAperture{3.0, 0.0};
+    thin.surfaces.push_back(t);
+    thin.pose.reference = rtt::model::PoseReference::RelativeToPreceding;
+    thin.pose.position[2] = Param(10.0);
+    thin.pose.rotation_deg[0] = Param(90.0);
+    s.root.children.insert(s.root.children.begin() + 2, Node{thin});
+    check(s, schott(), "export.frame_ambiguous");
   }
   {  // two configurations without a choice
     System s = singlet();
