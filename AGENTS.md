@@ -101,6 +101,14 @@ Fehlerquellen, die nur die CI sieht, vorab lokal prüfen:
   Würfel wie 2⁻³⁰. Stattdessen den Wert im Test zur Laufzeit mit derselben Funktion und derselben
   Eingabe wie der Code berechnen (Eingabe über `volatile`, damit nichts gefaltet wird) und die
   Voraussetzung vor dem Lauf mit `REQUIRE` prüfen (#218).
+- **vcpkg-Stände statt Ubuntu-Pakete.** Die CI baut mit Eigen 5.0.1 und Catch2 3.15.3 aus vcpkg;
+  Ubuntu 24.04 liefert Eigen 3.4 und Catch2 3.4. GCC 13 mit `-O3` meldet manches nur mit den
+  vcpkg-Ständen, z. B. `-Wnull-dereference` im vektorisierten Eigen-Produkt einer Transponierten
+  (#366) oder `-Wmaybe-uninitialized` an `Param` in einer Testdatei (#370). Vorab prüfen: Eigen
+  (Spiegel `github.com/eigen-mirror/eigen`, Tag `5.0.1`) und Catch2 (`catchorg/Catch2`, Tag
+  `v3.15.3`, einmal mit CMake konfigurieren für `catch_user_config.hpp`) holen und die geänderten
+  Übersetzungseinheiten mit diesen Pfaden per `-isystem` vor den System-Headern und
+  `-O3 -DNDEBUG -Werror` übersetzen.
 - **Das clang-tidy der CI meldet mehr als ein neueres lokales.** Die CI (`ci-linux-clang`,
   clang-tidy 18) meldet z. B. `bugprone-unchecked-optional-access` und `misc-unused-using-decls`,
   die das lokale clang-tidy 22 nicht meldet (#227, #233, #235). Ein `std::optional` deshalb nach
