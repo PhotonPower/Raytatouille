@@ -99,8 +99,8 @@ UNITS = {"MM": 1.0, "CM": 10.0, "IN": 25.4, "METER": 1000.0}
 
 
 def surf(**kw):
-    base = dict(type="STANDARD", curv=0.0, coni=0.0, parm=[], disz=0.0, glas="", diam=(0.0, 0, 0),
-                clap=None, flap=None, sqap=None, elap=None, stop=False)
+    base = dict(type="STANDARD", curv=0.0, coni=0.0, parm=[], xdat=[], disz=0.0, glas="",
+                diam=(0.0, 0, 0), clap=None, flap=None, sqap=None, elap=None, stop=False)
     base.update(kw)
     return base
 
@@ -295,10 +295,70 @@ CASES["oddasph_cone"] = dict(
 CASES["toroid"] = toroid("MM")
 CASES["toroid_in"] = toroid("IN")
 
+
+def biconic(unit: str) -> dict:
+    # #360, PR B: a biconic (UG "Biconic": parameter 1 = Rx, 0 = infinite; 2 = kx; Ry and ky in
+    # the radius and conic columns, decision H3) and one with Rx = 0, a cylinder in y.
+    return dict(
+        name="Biconic", unit=unit, catalog="schott.agf", aperture=("ENPD", 8.0), ftyp=0,
+        fields=[(0.0, 0.0, 1.0), (0.0, 3.0, 1.0), (2.0, 0.0, 1.0)],
+        waves=[(0.5875618, 1.0)], pwav=1, object=None,
+        surfaces=[
+            surf(disz=3.0, diam=(4.0, 1, 0), stop=True),
+            surf(type="BICONICX", curv=1.0 / 50.0, coni=-0.5, parm=[70.0, 0.3], disz=5.0,
+                 glas="N-BK7", diam=(7.0, 1, 0), flap=7.0),
+            surf(disz=4.0, diam=(7.0, 0, 0)),
+            surf(type="BICONICX", curv=1.0 / 60.0, coni=-0.2, parm=[0.0, 0.0], disz=4.0,
+                 glas="N-BK7", diam=(7.0, 0, 0)),
+            surf(disz=60.0, diam=(7.0, 0, 0)),
+            surf(),
+        ],
+        merit=False, thic=None)
+
+
+def qtype(unit: str, kind: int, curv: float, coni: float, coeffs: list[float]) -> dict:
+    # #360, PR B: a Q-type asphere (UG "Q-Type Asphere (sequential)": extra data 13 = type,
+    # 14 = maximum term number, 15 = normalization radius, 16 ff. = A0, A1, ...; written as
+    # XDAT 1, 2, ..., decision H4) on the front of a singlet.
+    return dict(
+        name="Q type " + ("con" if kind else "bfs"), unit=unit, catalog="schott.agf",
+        aperture=("ENPD", 8.0), ftyp=0,
+        fields=[(0.0, 0.0, 1.0), (0.0, 2.0, 1.0), (0.0, 4.0, 1.0)],
+        waves=[(0.5875618, 1.0)], pwav=1, object=None,
+        surfaces=[
+            surf(disz=3.0, diam=(4.0, 1, 0), stop=True),
+            surf(type="QED_TYPE", curv=curv, coni=coni,
+                 xdat=[float(kind), float(len(coeffs)), 8.0] + coeffs, disz=6.0, glas="N-BK7",
+                 diam=(8.0, 1, 0), flap=8.0),
+            surf(curv=-1.0 / 80.0, disz=50.0, diam=(8.0, 0, 0)),
+            surf(),
+        ],
+        merit=False, thic=None)
+
+
+CASES["biconic"] = biconic("MM")
+CASES["biconic_in"] = biconic("IN")
+CASES["qcon"] = qtype("MM", 1, 1.0 / 40.0, -0.2, [1e-3, -2e-4, 5e-5])
+CASES["qcon_in"] = qtype("IN", 1, 1.0 / 40.0, -0.2, [1e-3, -2e-4, 5e-5])
+CASES["qbfs"] = qtype("MM", 0, 1.0 / 45.0, 0.0, [2e-3, -1e-4])
+
 # #360, decision H2: a toroid with an infinite y-z radius has power in x only; it is imported as
 # a cylinder turned by 90 deg about z, with a turned frame after it. Its expected data are the
 # first order per section, not an expected file (the pose of the untilt rounds).
 ROTATED = {
+    # a biconic with an infinite Ry: power in x only, the cylinder with Rx and kx turned
+    "xbiconic": dict(
+        name="Biconic in x", unit="MM", catalog="schott.agf", aperture=("ENPD", 8.0), ftyp=0,
+        fields=[(0.0, 0.0, 1.0), (2.0, 0.0, 1.0), (0.0, 2.0, 1.0)],
+        waves=[(0.5875618, 1.0)], pwav=1, object=None,
+        surfaces=[
+            surf(disz=3.0, diam=(4.0, 1, 0), stop=True),
+            surf(type="BICONICX", parm=[60.0, -0.4], disz=5.0, glas="N-BK7", diam=(7.0, 1, 0),
+                 sqap=(7.0, 5.0)),
+            surf(curv=-1.0 / 200.0, disz=90.0, diam=(7.0, 0, 0)),
+            surf(),
+        ],
+        merit=False, thic=None),
     "xcylinder": dict(
         name="Cylinder in x", unit="MM", catalog="schott.agf", aperture=("ENPD", 8.0), ftyp=0,
         fields=[(0.0, 0.0, 1.0), (2.0, 0.0, 1.0), (0.0, 2.0, 1.0)],
@@ -576,6 +636,9 @@ def printed(case: dict) -> dict:
         elif sf["type"] == "ODDASPHE":
             # beta_n in L^(1 - n): the value in the unit of the file is beta_mm * s^(n - 1)
             p["parm_s"] = [e(b * s ** i) for i, b in enumerate(sf["parm"])]
+        elif sf["type"] == "BICONICX":
+            # Rx in lens units, kx (UG "Biconic")
+            p["parm_s"] = [e(sf["parm"][0] / s), e(sf["parm"][1])]
         elif sf["type"] == "TOROIDAL":
             # radius of rotation in lens units, then alpha_i in L^(1 - 2i) as EVENASPH
             p["parm_s"] = [e(sf["parm"][0] / s)] + [
@@ -585,6 +648,10 @@ def printed(case: dict) -> dict:
             p["parm_s"] = [e(a * s ** (2 * i + 1)) for i, a in enumerate(sf["parm"])]
         for k in ("sqap", "elap"):
             p[k + "_s"] = None if sf[k] is None else (e(sf[k][0] / s), e(sf[k][1] / s))
+        # QED_TYPE extra data: type, number of terms, normalization radius (lens units), then
+        # the coefficients A0, A1, ... (lens units)
+        x = sf["xdat"]
+        p["xdat_s"] = [] if not x else [e(x[0]), e(x[1]), e(x[2] / s)] + [e(a / s) for a in x[3:]]
         out["surfaces"].append(p)
     ap = case["aperture"]
     out["aperture_s"] = (ap[0],) if ap[0] == "FLOA" else (
@@ -619,6 +686,7 @@ def write_zmx(name: str, c: dict) -> None:
           "COFN COATING.DAT SCATTER_PROFILE.DAT ABG_DATA.DAT PROFILE.GRD"]
     surfaces = [surf()] + c["surfaces"]
     obj = dict(surfaces[0], curv_s=e(0.0, 18), diam_s=zero, clap_s=None, flap_s=None, parm_s=[],
+               xdat_s=[],
                sqap_s=None, elap_s=None, glas=c.get("object_glass", ""))
     obj["disz_s"] = "INFINITY" if c["object_s"] is None else c["object_s"]
     surfaces[0] = obj
@@ -630,6 +698,8 @@ def write_zmx(name: str, c: dict) -> None:
         L.append(f"  CURV {sf['curv_s']} 0 {zero} {zero} 0")
         for i, a in enumerate(sf["parm_s"]):
             L.append(f"  PARM {i + 1} {a}")
+        for i, a in enumerate(sf.get("xdat_s", [])):
+            L.append(f'  XDAT {i + 1} {a} 0 0 1.000000000000E+00 0.000000000000E+00 0 ""')
         L += ["  HIDE 0 0 0 0 0 0 0 0", "  MIRR 2 0.000000000E+000", f"  SLAB {k + 1}"]
         if sf["coni"] != 0.0:
             L.append(f"  CONI {e(sf['coni'])}")
@@ -717,6 +787,24 @@ def build_expected(c: dict, glasses: dict) -> tuple[dict, dict]:
                 return {"type": "odd_asphere", "curvature": cv,
                         "conic": float(e(sf["coni"])) if cv != 0.0 else 0.0,
                         "coefficients": betas}
+        if sf["type"] == "BICONICX":
+            rx = float(sf["parm_s"][0]) * s
+            kx = float(sf["parm_s"][1])
+            assert cv != 0.0  # power in x only: the ROTATED cases
+            if rx == 0.0:
+                return {"type": "cylinder", "radius": 1.0 / cv, "conic": float(e(sf["coni"])),
+                        "coefficients": []}
+            return {"type": "biconic", "radius_x": rx, "radius_y": 1.0 / cv, "conic_x": kx,
+                    "conic_y": float(e(sf["coni"]))}
+        if sf["type"] == "QED_TYPE":
+            x = [float(v) for v in sf["xdat_s"]]
+            n = int(x[1])
+            coeffs = [v * s for v in x[3:3 + n]]
+            while coeffs and coeffs[-1] == 0.0:
+                coeffs.pop()
+            return {"type": "qcon" if x[0] == 1.0 else "qbfs", "curvature": cv,
+                    "conic": float(e(sf["coni"])), "normalization_radius": x[2] * s,
+                    "coefficients": coeffs}
         if sf["type"] == "TOROIDAL":
             rot = float(sf["parm_s"][0]) * s
             alphas = [scaled(float(a), 2 * i - 1) for i, a in enumerate(sf["parm_s"][1:], start=1)]
@@ -884,6 +972,13 @@ def vertex_curvature(sf: dict, s: float, section: str | None) -> float:
         betas = [float(b) * s ** (-i) for i, b in enumerate(sf["parm_s"])]
         assert betas[0] == 0.0
         return cv + 2.0 * (betas[1] if len(betas) > 1 else 0.0)
+    if sf["type"] == "BICONICX" and section == "x":
+        rx = float(sf["parm_s"][0]) * s
+        return 0.0 if rx == 0.0 else 1.0 / rx
+    if sf["type"] == "QED_TYPE":
+        # Q-con: the polynomial term starts at u^4, the vertex curvature is c (ADR 0043)
+        assert float(sf["xdat_s"][0]) == 1.0
+        return cv
     if sf["type"] == "TOROIDAL" and section == "x":
         rot = float(sf["parm_s"][0]) * s
         return 0.0 if rot == 0.0 else 1.0 / rot
@@ -981,9 +1076,9 @@ def main() -> None:
         system, data = build_expected(c, glasses)
         (HERE / f"{name}.rtt.json").write_text(json.dumps(system, indent=2) + "\n",
                                                encoding="utf-8", newline="\n")
-        if name == "oddasph_cone":
-            continue  # a cone at the vertex has no first order
-        if name.startswith("toroid"):
+        if name in ("oddasph_cone", "qbfs"):
+            continue  # no first order from here: a cone, a Q-bfs vertex curvature c + 2 S(0)/rho^2
+        if name.startswith(("toroid", "biconic")):
             results[name] = {sec: first_order(c, glasses, data["lam_ref"], data["nair"], sec)
                              for sec in ("x", "y")}
         else:
