@@ -241,6 +241,79 @@ CASES = {
 }
 
 
+def odd_asphere(unit: str) -> dict:
+    # #360: an odd asphere with c != 0 and the terms beta2 ... beta8 (UG "Odd Asphere"); beta2
+    # adds 2 beta2 to the vertex curvature, beta1 = 0 keeps a paraxial model.
+    return dict(
+        name="Odd asphere", unit=unit, catalog="schott.agf", aperture=("ENPD", 8.0), ftyp=0,
+        fields=[(0.0, 0.0, 1.0), (0.0, 2.0, 1.0), (0.0, 4.0, 1.0)],
+        waves=[(0.4861327, 1.0), (0.5875618, 1.0), (0.6562725, 1.0)], pwav=2, object=None,
+        surfaces=[
+            surf(disz=3.0, diam=(4.0, 1, 0), stop=True),
+            surf(type="ODDASPHE", curv=1.0 / 45.0, coni=-0.6,
+                 parm=[0.0, 2e-4, 1e-6, -3e-7, 2e-9, 1e-10, -5e-12, 1e-13], disz=6.0,
+                 glas="N-BK7", diam=(8.0, 1, 0), flap=8.0),
+            surf(curv=-1.0 / 80.0, disz=50.0, diam=(8.0, 0, 0)),
+            surf(),
+        ],
+        merit=False, thic=None)
+
+
+def toroid(unit: str) -> dict:
+    # #360: a toroid (UG "Toroidal": radius of rotation in parameter 1, alpha1 ... alpha7 in
+    # 2 ... 8) and a cylinder (radius of rotation 0), with fields in x and y.
+    return dict(
+        name="Toroid", unit=unit, catalog="schott.agf", aperture=("ENPD", 8.0), ftyp=0,
+        fields=[(0.0, 0.0, 1.0), (0.0, 3.0, 1.0), (2.0, 0.0, 1.0)],
+        waves=[(0.5875618, 1.0)], pwav=1, object=None,
+        surfaces=[
+            surf(disz=3.0, diam=(4.0, 1, 0), stop=True),
+            surf(type="TOROIDAL", curv=1.0 / 50.0, parm=[80.0, 0.0, -1e-6, 2e-9], disz=5.0,
+                 glas="N-BK7", diam=(7.0, 1, 0), flap=7.0),
+            surf(disz=4.0, diam=(7.0, 0, 0)),
+            surf(type="TOROIDAL", curv=1.0 / 60.0, coni=-0.3, parm=[0.0, 0.0, 5e-7], disz=4.0,
+                 glas="N-BK7", diam=(7.0, 0, 0)),
+            surf(disz=60.0, diam=(7.0, 0, 0)),
+            surf(),
+        ],
+        merit=False, thic=None)
+
+
+CASES["oddasph"] = odd_asphere("MM")
+CASES["oddasph_in"] = odd_asphere("IN")
+# A cone at the vertex (beta1 != 0) on a plane base with a conic, which has no effect at c = 0
+# and is dropped: imported, without a paraxial model.
+CASES["oddasph_cone"] = dict(
+    odd_asphere("MM"), name="Odd asphere cone",
+    surfaces=[
+        surf(disz=3.0, diam=(4.0, 1, 0), stop=True),
+        surf(type="ODDASPHE", coni=-2.0, parm=[0.02, 0.0, 1e-5], disz=6.0, glas="N-BK7",
+             diam=(8.0, 1, 0), flap=8.0),
+        surf(curv=-1.0 / 30.0, disz=40.0, diam=(8.0, 0, 0)),
+        surf(),
+    ])
+CASES["toroid"] = toroid("MM")
+CASES["toroid_in"] = toroid("IN")
+
+# #360, decision H2: a toroid with an infinite y-z radius has power in x only; it is imported as
+# a cylinder turned by 90 deg about z, with a turned frame after it. Its expected data are the
+# first order per section, not an expected file (the pose of the untilt rounds).
+ROTATED = {
+    "xcylinder": dict(
+        name="Cylinder in x", unit="MM", catalog="schott.agf", aperture=("ENPD", 8.0), ftyp=0,
+        fields=[(0.0, 0.0, 1.0), (2.0, 0.0, 1.0), (0.0, 2.0, 1.0)],
+        waves=[(0.5875618, 1.0)], pwav=1, object=None,
+        surfaces=[
+            surf(disz=3.0, diam=(4.0, 1, 0), stop=True),
+            surf(type="TOROIDAL", parm=[70.0], disz=5.0, glas="N-BK7", diam=(7.0, 1, 0),
+                 elap=(7.0, 5.0)),
+            surf(curv=-1.0 / 200.0, disz=90.0, diam=(7.0, 0, 0)),
+            surf(),
+        ],
+        merit=False, thic=None),
+}
+
+
 def cb(dx=0.0, dy=0.0, a=0.0, b=0.0, c=0.0, order=0, disz=0.0, **kw):
     """A coordinate break (UG "Coordinate Break"): decenters in mm, tilts in degrees."""
     return surf(type="COORDBRK", parm=[dx, dy, a, b, c, float(order)], disz=disz, **kw)
@@ -500,6 +573,13 @@ def printed(case: dict) -> dict:
             p["parm_s"] = [e(sf["parm"][0] / s), e(sf["parm"][1])]
         elif sf["type"] == "TILTSURF":
             p["parm_s"] = [e(v) for v in sf["parm"]]  # tangents (UG "Tilted")
+        elif sf["type"] == "ODDASPHE":
+            # beta_n in L^(1 - n): the value in the unit of the file is beta_mm * s^(n - 1)
+            p["parm_s"] = [e(b * s ** i) for i, b in enumerate(sf["parm"])]
+        elif sf["type"] == "TOROIDAL":
+            # radius of rotation in lens units, then alpha_i in L^(1 - 2i) as EVENASPH
+            p["parm_s"] = [e(sf["parm"][0] / s)] + [
+                e(a * s ** (2 * i - 1)) for i, a in enumerate(sf["parm"][1:], start=1)]
         else:
             # alpha_i in L^(1 - 2i): the value in the unit of the file is alpha_mm * s^(2i - 1)
             p["parm_s"] = [e(a * s ** (2 * i + 1)) for i, a in enumerate(sf["parm"])]
@@ -619,8 +699,36 @@ def build_expected(c: dict, glasses: dict) -> tuple[dict, dict]:
         pts.append({"x": float(x) * k, "y": float(y) * k, "weight": float(w)})
     sys["fields"] = {"type": ftype, "points": pts}
 
+    def scaled(v: float, n: int) -> float:
+        """v times 1/s, n times (as the import does it, no pow)."""
+        for _ in range(n):
+            v *= inv_s
+        return v
+
     def shape(sf) -> dict:
         cv = float(sf["curv_s"]) / s
+        if sf["type"] == "ODDASPHE":
+            # beta_n in L^(1 - n): (n - 1) multiplications with 1/s
+            betas = [scaled(float(b), i) for i, b in enumerate(sf["parm_s"])]
+            while betas and betas[-1] == 0.0:
+                betas.pop()
+            if betas:
+                # the conic has no effect at c = 0 and is dropped there
+                return {"type": "odd_asphere", "curvature": cv,
+                        "conic": float(e(sf["coni"])) if cv != 0.0 else 0.0,
+                        "coefficients": betas}
+        if sf["type"] == "TOROIDAL":
+            rot = float(sf["parm_s"][0]) * s
+            alphas = [scaled(float(a), 2 * i - 1) for i, a in enumerate(sf["parm_s"][1:], start=1)]
+            assert not alphas or alphas[0] == 0.0  # alpha1 (y^2) is an error, not a case here
+            coeffs = alphas[1:]
+            while coeffs and coeffs[-1] == 0.0:
+                coeffs.pop()
+            assert cv != 0.0  # power in x only: the ROTATED cases
+            profile = {"radius": 1.0 / cv, "conic": float(e(sf["coni"])), "coefficients": coeffs}
+            if rot == 0.0:
+                return {"type": "cylinder"} | profile
+            return {"type": "toroid"} | profile | {"radius_of_rotation": rot}
         if sf["type"] == "EVENASPH" and any(float(a) != 0.0 for a in sf["parm_s"]):
             alphas = []
             for i, a in enumerate(sf["parm_s"]):
@@ -767,7 +875,23 @@ def build_expected(c: dict, glasses: dict) -> tuple[dict, dict]:
 # ------------------------------------------------------------------------------ y-nu trace
 
 
-def first_order(c: dict, glasses: dict, lam_ref: float, nair: float) -> dict:
+def vertex_curvature(sf: dict, s: float, section: str | None) -> float:
+    """Paraxial curvature of a surface at its vertex, 1/mm, in the y-z or x-z section.
+    ODDASPHE: c + 2 beta2 (beta1 = 0). TOROIDAL: c in y-z; in x-z the circle of radius R about
+    the axis at z = R, so 1/R, and 0 for R = 0 (cylinder)."""
+    cv = float(sf["curv_s"]) / s
+    if sf["type"] == "ODDASPHE":
+        betas = [float(b) * s ** (-i) for i, b in enumerate(sf["parm_s"])]
+        assert betas[0] == 0.0
+        return cv + 2.0 * (betas[1] if len(betas) > 1 else 0.0)
+    if sf["type"] == "TOROIDAL" and section == "x":
+        rot = float(sf["parm_s"][0]) * s
+        return 0.0 if rot == 0.0 else 1.0 / rot
+    return cv
+
+
+def first_order(c: dict, glasses: dict, lam_ref: float, nair: float,
+                section: str | None = None) -> dict:
     """EFL, BFL and rear focal length from a paraxial y-nu trace (Greivenkamp p. 9-2):
     n'u' = nu - y c (n' - n), y' = y + t u'; with absolute indices (as rtt) and relative to air
     (air = 1, glass n_rel at the air wavelength). Signed indices after a mirror (n' = -n)."""
@@ -792,7 +916,7 @@ def first_order(c: dict, glasses: dict, lam_ref: float, nair: float) -> dict:
         z_last = 0.0
         y1 = None
         for k, sf in enumerate(surfaces):
-            cv = float(sf["curv_s"]) / s
+            cv = vertex_curvature(sf, s, section)
             if sf["type"] == "PARAXIAL":
                 # ideal thin lens n'u' = nu - y phi with phi = |n| / f (UG "Paraxial" in air,
                 # ADR 0031 with the absolute index); the medium does not change
@@ -857,7 +981,20 @@ def main() -> None:
         system, data = build_expected(c, glasses)
         (HERE / f"{name}.rtt.json").write_text(json.dumps(system, indent=2) + "\n",
                                                encoding="utf-8", newline="\n")
-        results[name] = first_order(c, glasses, data["lam_ref"], data["nair"])
+        if name == "oddasph_cone":
+            continue  # a cone at the vertex has no first order
+        if name.startswith("toroid"):
+            results[name] = {sec: first_order(c, glasses, data["lam_ref"], data["nair"], sec)
+                             for sec in ("x", "y")}
+        else:
+            results[name] = first_order(c, glasses, data["lam_ref"], data["nair"])
+    for name, case in ROTATED.items():
+        glasses = read_sellmeier(CATALOGS / case["catalog"])
+        c = printed(case)
+        write_zmx(name, c)
+        lam_ref = vacuum_wavelength(float(e(case["waves"][case["pwav"] - 1][0])))
+        results[name] = {sec: first_order(c, glasses, lam_ref, n_air(lam_ref), sec)
+                         for sec in ("x", "y")}
     (HERE / "first_order.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8",
                                            newline="\n")
     folded = {}
