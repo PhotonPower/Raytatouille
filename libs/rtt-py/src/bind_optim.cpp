@@ -282,13 +282,51 @@ void bind_optim(nb::module_& m) {
       .def_ro("failed_evaluations", &OptimResult::failed_evaluations,
               "Trials that were invalid (ADR 0030, point 10).");
 
+  nb::class_<IterationState>(
+      m, "IterationState",
+      "State after an accepted solve, passed to the on_iteration callback of optimize() (#378). "
+      "A copy: it stays valid after the call.")
+      .def_ro("k", &IterationState::k, "Number of the solve, as in OptimResult.history.k.")
+      .def_ro("phi", &IterationState::phi,
+              "Normalised merit of the new state, bitwise the history entry of this solve.")
+      .def_prop_ro(
+          "values", [](const IterationState& st) { return doubles(st.values); },
+          nb::rv_policy::reference,
+          "Values of the variables, order of OptimResult.variables, their units "
+          "(read-only NumPy copy).")
+      .def_ro("patch", &IterationState::patch,
+              "RFC 6902 patch from the input to this state (JSON text), the same form as "
+              "OptimResult.patch; apply it to a copy of the input to follow the run.");
+
   m.def(
       "optimize",
       [](const model::System& system, const material::MaterialLibrary* materials,
          const coating::CoatingLibrary* coatings, const OptimizeOptions& options,
          std::optional<int> threads, const std::optional<trace::CancelToken>& cancel,
-         const std::optional<nb::callable>& progress) {
+         const std::optional<nb::callable>& progress,
+         const std::optional<nb::callable>& on_iteration) {
         const trace::RunControl control = run_control(cancel, progress);
+        IterationCallback live;
+        if (on_iteration) {
+          // On the calling thread (the solver loop), but without the GIL: take it for the call.
+          // A Python exception is turned into a C++ one after the GIL-held scope, so that
+          // nb::python_error is destroyed with the GIL; the solver then ends the run as
+          // Cancelled (decision of #378).
+          live = [callable = &*on_iteration](const IterationState& st) {
+            bool raised = false;
+            std::string error;
+            {
+              const nb::gil_scoped_acquire acquire;
+              try {
+                (*callable)(nb::cast(st, nb::rv_policy::copy));
+              } catch (const nb::python_error& e) {
+                raised = true;
+                error = e.what();
+              }
+            }
+            if (raised) throw std::runtime_error(error);
+          };
+        }
         // A copy while the GIL is held: rt.System is mutable from Python (name, environment), and
         // another thread could change it during the run (review of #195). The libraries stay
         // references, as in every analysis; the documentation forbids changing them meanwhile.
@@ -298,10 +336,10 @@ void bind_optim(nb::module_& m) {
         const material::MaterialLibrary& library =
             materials != nullptr ? *materials : default_materials;
         return released(threads,
-                        [&] { return optimize(input, library, coatings, options, control); });
+                        [&] { return optimize(input, library, coatings, options, control, live); });
       },
       "system"_a, "materials"_a.none(), "coatings"_a.none(), "options"_a, "threads"_a.none(),
-      "cancel"_a.none(), "progress"_a.none(),
+      "cancel"_a.none(), "progress"_a.none(), "on_iteration"_a.none(),
       "Optimizes the variables of `system` (copied) against its merit function (ADR 0030). "
       "`materials` and `coatings` must not change during the run.");
 }

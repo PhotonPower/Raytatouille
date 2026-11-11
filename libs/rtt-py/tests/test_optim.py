@@ -169,3 +169,57 @@ def test_the_reference_files_carry_the_merit_of_the_acceptance() -> None:
     gap = gap_merit().optimization
     assert len(gap.operands) == 2 and gap.generators == []
     assert with_merit("m5/singlet_optim.rtt.json", None).optimization.operands == []
+
+
+def test_on_iteration_reports_every_accepted_state() -> None:
+    # #378: one call per accepted solve; k and phi as in the history, values and patch of the
+    # state; the last patch turns the input into the result. A callback that writes the
+    # patches along, as a live display in a GUI would.
+    system = singlet_merit()
+    states: list[rt.optim.IterationState] = []
+    result = rt.optim.optimize(system, on_iteration=states.append)
+    accepted = np.flatnonzero(result.history.accepted)
+    assert len(accepted) >= 2  # content guard: several steps
+    assert len(states) == len(accepted)
+    assert [s.k for s in states] == [int(k) for k in result.history.k[accepted]]
+    assert [s.phi for s in states] == [float(p) for p in result.history.phi[accepted]]  # bitwise
+    for s in states:
+        assert isinstance(s.values, np.ndarray) and s.values.shape == (len(result.variables),)
+        rt.apply_patch(system, s.patch)  # every intermediate patch applies to the input
+    assert states[-1].patch == result.patch
+    assert [float(v) for v in states[-1].values] == [v.end for v in result.variables]
+    assert rt.apply_patch(system, states[-1].patch).to_json() == result.system.to_json()
+    # The same run without the callback (and with another thread count): bitwise the same.
+    plain = rt.optim.optimize(singlet_merit(), threads=1)
+    assert plain.patch == result.patch and plain.evaluations == result.evaluations
+
+
+def test_on_iteration_exception_ends_the_run_as_cancelled() -> None:
+    # #378, decision of the maintainer: status CANCELLED with the state of the throwing call;
+    # the exception is not raised but reported as a RuntimeWarning.
+    states: list[rt.optim.IterationState] = []
+
+    def stop_at_second(state: rt.optim.IterationState) -> None:
+        states.append(state)
+        if len(states) == 2:
+            raise KeyError("display closed")
+
+    with pytest.warns(RuntimeWarning, match="display closed"):
+        result = rt.optim.optimize(singlet_merit(), on_iteration=stop_at_second)
+    assert result.status == OptimStatus.CANCELLED
+    assert len(states) == 2
+    assert result.patch == states[1].patch
+    assert int(result.history.k[-1]) == states[1].k and bool(result.history.accepted[-1])
+    assert result.operands == []  # no final evaluation after a cancellation
+
+
+def test_on_iteration_keyboard_interrupt_is_reported_not_lost() -> None:
+    # #378: Ctrl+C reaches only a Python callback; it also ends the run as CANCELLED with the
+    # state of that call and is reported, not swallowed silently.
+    def interrupt(state: rt.optim.IterationState) -> None:
+        raise KeyboardInterrupt
+
+    with pytest.warns(RuntimeWarning, match="KeyboardInterrupt"):
+        result = rt.optim.optimize(singlet_merit(), on_iteration=interrupt)
+    assert result.status == OptimStatus.CANCELLED
+    assert result.patch != "[]" and bool(result.history.accepted[-1])

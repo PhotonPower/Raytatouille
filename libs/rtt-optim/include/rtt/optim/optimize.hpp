@@ -6,6 +6,7 @@
 /// (variables.hpp) with the residuals of its operands (merit.hpp).
 
 #include <cstddef>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -124,6 +125,26 @@ struct OptimResult {
   std::size_t failed_evaluations = 0;  ///< trials that were invalid (ADR 0030, point 10)
 };
 
+/// State after an accepted solve, for a live display (#378; ADR 0030, addendum #378).
+struct IterationState {
+  int k = 0;  ///< number of the solve, as OptimIteration::k
+  /// Normalised merit of the new state, bitwise the `phi` of this solve in OptimResult::history.
+  double phi = 0.0;
+  /// External values of the variables, order of OptimResult::variables (ADR 0030, point 5),
+  /// units of the variables (mm, rad, ...). An unchanged variable keeps its input value bitwise.
+  std::vector<double> values;
+  /// RFC 6902 patch from the input to this state, the same form as OptimResult::patch: one
+  /// "replace" per changed variable, numbers in the shortest round-trip form; "[]" if none. A
+  /// caller keeps a copy of the input and applies it (io::apply_patch) to follow the run.
+  std::string patch;
+};
+
+/// Called by optimize() after every accepted solve, on the calling thread, never from the
+/// parallel part, before the Jacobian of the new state. It does not change the run. An exception
+/// ends the run like a cancellation (status Cancelled, the state of this call, no final
+/// evaluation); it is not rethrown (decision of #378).
+using IterationCallback = std::function<void(const IterationState& state)>;
+
 /// Optimizes the variables of `system` against its merit function System::optimization
 /// (ADR 0030). Every evaluation sets the values in a copy, compiles every used configuration
 /// and evaluates the operands (MeritFunction). The input is not changed.
@@ -145,6 +166,10 @@ struct OptimResult {
 ///                  input; after a cancellation the final state is not evaluated again, so
 ///                  `operands`, `generators`, optim.rays_lost and the warnings of the analyses
 ///                  stay empty (ADR 0030, addendum #167)
+/// @param on_iteration optional, called after every accepted solve with the new state, see
+///                  IterationCallback. The number of calls is the number of accepted entries in
+///                  the history; the last call has the result's values and patch, also when it
+///                  threw and so ended the run.
 /// @throws compile::CompileError if the system is invalid or does not compile at the start
 /// @throws OptimError with optim.no_variables and/or optim.no_operands (both if both apply), or
 ///         with merit.operand_unsupported
@@ -155,13 +180,15 @@ struct OptimResult {
                                    const material::MaterialLibrary& materials,
                                    const coating::CoatingLibrary* coatings = nullptr,
                                    const OptimizeOptions& options = {},
-                                   const trace::RunControl& control = {});
+                                   const trace::RunControl& control = {},
+                                   const IterationCallback& on_iteration = {});
 
 /// optimize() for a tolerance trial (ADR 0030, addendum #256; ADR 0036, point 3): every
 /// evaluation, the start check, the Jacobian and the final state included, compiles with
 /// `overlay.perturbation` and takes aiming, reference spheres and the paraxial operands from
 /// `overlay.nominal` (see MeritFunction). The result system is the input model with the result
-/// values, without the overlay.
+/// values, without the overlay. No IterationCallback: tolerance trials run in parallel (#378, not
+/// part of that task).
 /// @param overlay the trial's overlay; must outlive the call
 /// @throws as the overload without overlay, and std::invalid_argument if the nominal basis does
 ///         not fit the system (MeritFunction)

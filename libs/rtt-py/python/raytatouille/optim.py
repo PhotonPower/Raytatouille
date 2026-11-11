@@ -38,6 +38,7 @@ Notes for use (ADR 0030, addendum #281):
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 
 from . import _core
 from ._core import (
@@ -45,6 +46,7 @@ from ._core import (
     CoatingLibrary,
     GeneratorStats,
     GeneratorValue,
+    IterationState,
     MaterialLibrary,
     MeritEvaluation,
     MeritFunction,
@@ -61,10 +63,15 @@ from ._core import (
 from .errors import OptimError, RaytatouilleWarning
 from .trace import CancelToken, ProgressCallback
 
+IterationCallback = Callable[[IterationState], object]
+"""``on_iteration(state)`` of optimize(): called after every accepted solve (#378)."""
+
 __all__ = [
     "MERIT_PRECISION",
     "GeneratorStats",
     "GeneratorValue",
+    "IterationCallback",
+    "IterationState",
     "MeritEvaluation",
     "MeritFunction",
     "OperandValue",
@@ -78,6 +85,20 @@ __all__ = [
     "optimize",
     "variables",
 ]
+
+
+def _recording(user: IterationCallback, raised: list[BaseException]) -> IterationCallback:
+    """``user`` with its exception recorded in ``raised`` (and re-raised, which ends the run as
+    CANCELLED, #378), so that optimize() can report it."""
+
+    def call(state: IterationState) -> object:
+        try:
+            return user(state)
+        except BaseException as e:  # also KeyboardInterrupt: reported, not lost (#378)
+            raised.append(e)
+            raise
+
+    return call
 
 
 def variables(system: System) -> list[Variable]:
@@ -97,6 +118,7 @@ def optimize(
     threads: int | None = None,
     cancel: CancelToken | None = None,
     progress: ProgressCallback | None = None,
+    on_iteration: IterationCallback | None = None,
 ) -> OptimResult:
     """Optimizes the variables of ``system`` against its merit function (ADR 0030) with
     Levenberg-Marquardt. ``materials`` (None: only VACUUM, AIR and CONST:) and ``coatings``
@@ -110,14 +132,31 @@ def optimize(
     optim.parameter_at_bound, optim.rays_lost, rays.lost) are also issued as
     RaytatouilleWarning.
 
+    ``on_iteration(state)`` (an IterationState) is called after every accepted solve, on the
+    calling thread with the GIL, for a live display (#378): ``state.k`` and ``state.phi`` as in
+    the history, ``state.values`` (NumPy, order of ``result.variables``) and ``state.patch``
+    from the input to that state; apply it to a copy of the input to follow the run. It does not
+    change the result. If it raises, the run ends like a cancellation (status CANCELLED, the
+    state of that call) and the exception is reported as a RuntimeWarning, not raised; this holds
+    for KeyboardInterrupt in the callback too.
+
     Raises CompileError if the system is invalid or does not compile at the start; OptimError
     with optim.no_variables and/or optim.no_operands, or merit.operand_unsupported; the
     exception of an analysis at the start (ParaxialError, AnalysisError, NoStopError), or
     ValueError naming the operand or generator whose value is not defined at the start.
     """
+    raised: list[BaseException] = []
+    live = None if on_iteration is None else _recording(on_iteration, raised)
     result = _core.optimize(system, materials, coatings,
                             OptimizeOptions() if options is None else options, threads, cancel,
-                            progress)
+                            progress, live)
+    if raised:
+        warnings.warn(
+            f"on_iteration raised {raised[0]!r}; the run ended with status CANCELLED and the "
+            "state of that call",
+            RuntimeWarning,
+            stacklevel=2,
+        )
     for d in result.diagnostics:
         if d.severity == Severity.WARNING:
             warnings.warn(RaytatouilleWarning(d.message, d.code, d.location), stacklevel=2)
