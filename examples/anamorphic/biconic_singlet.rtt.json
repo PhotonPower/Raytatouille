@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.9.0",
+  "schema_version": "0.10.0",
   "name": "Biconic singlet, n = 1.5168, t = 4 mm: front R_y = 51.68 mm (f_y = 100 mm), R_x = 77.52 mm (f_x = 150 mm), conic_x = -0.5, rear plane; VACUUM, image in the paraxial y focus",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},

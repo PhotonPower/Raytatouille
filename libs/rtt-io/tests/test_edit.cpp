@@ -185,12 +185,12 @@ void surface_keys(const json& s, const std::string& at) {
 
 void node_keys(const json& n, const std::string& where) {
   if (n["type"] == "assembly") {
-    has_keys(n, {"type", "name", "pose", "children"}, {}, where);
+    has_keys(n, {"type", "name", "active", "pose", "children"}, {}, where);
     for (std::size_t i = 0; i < n["children"].size(); ++i) {
       node_keys(n["children"][i], where + "/children/" + std::to_string(i));
     }
   } else {
-    has_keys(n, {"type", "name", "pose", "surfaces"}, {"material", "optic_axis"}, where);
+    has_keys(n, {"type", "name", "active", "pose", "surfaces"}, {"material", "optic_axis"}, where);
     for (std::size_t i = 0; i < n["surfaces"].size(); ++i) {
       surface_keys(n["surfaces"][i], where + "/surfaces/" + std::to_string(i));
     }

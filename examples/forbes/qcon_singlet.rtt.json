@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.9.0",
+  "schema_version": "0.10.0",
   "name": "Singlet with a Forbes Q-con front: c = 1/64 mm^-1, k = -0.8, rho = 12.7 mm, a = (-0.05, 0.01, -0.002) mm, n = 1.5168, t = 4 mm; vertex curvature c, A4 = sum a_m (-1)^m C(m+4, 4) / rho^4 (ADR 0043, point 3); VACUUM, image near the paraxial focus",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},

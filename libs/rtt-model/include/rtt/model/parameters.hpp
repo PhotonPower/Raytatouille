@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <functional>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -82,5 +83,16 @@ void for_each_param(System& system,
 /// for_each_param() for reading.
 void for_each_param(const System& system,
                     const std::function<void(std::string_view pointer, const Param& param)>& visit);
+
+/// JSON pointers (edit form) of the nodes that are inactive themselves (`active` false,
+/// ADR 0049), in pre-order, only the topmost of each inactive subtree, e.g. "/root/children/2".
+/// Empty if every node is active.
+[[nodiscard]] std::vector<std::string> inactive_nodes(const System& system);
+
+/// True if `pointer` (edit form, e.g. a Param pointer of for_each_param()) lies in an inactive
+/// subtree, i.e. equals one of `inactive` (from inactive_nodes()) or starts with it followed by
+/// "/". Pointers outside the tree (object, aperture, parameters) are never inactive.
+[[nodiscard]] bool in_inactive_node(const std::vector<std::string>& inactive,
+                                    std::string_view pointer);
 
 }  // namespace rtt::model

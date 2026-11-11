@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.9.0",
+  "schema_version": "0.10.0",
   "name": "Plano-convex axicon: n = 1.5, t = 4 mm, cone at the back with a base angle of -5 deg; an axis-parallel ray leaves at beta = asin(n sin 5 deg) - 5 deg = 2.512 deg towards the axis (ADR 0043, acceptance 8). No paraxial model at the apex: trace own start rays",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},

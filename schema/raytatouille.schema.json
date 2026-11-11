@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/PhotonPower/Raytatouille/schema/raytatouille.schema.json",
-  "title": "Raytatouille system file (.rtt.json), schema 0.8",
-  "description": "Units: lengths mm, wavelengths um, angles in degree where the key ends in _deg. Parsing in rtt-io is the reference; this schema must accept exactly what rtt-io accepts structurally for the current schema version. rtt-io migrates older files (0.1 to 0.7); run rtt format before checking them against this schema. Semantic rules (names of parameter rows, one value per configuration, bounds, the targets and limits of tolerances) are checked by validate, not here.",
+  "title": "Raytatouille system file (.rtt.json), schema 0.10",
+  "description": "Units: lengths mm, wavelengths um, angles in degree where the key ends in _deg. Parsing in rtt-io is the reference; this schema must accept exactly what rtt-io accepts structurally for the current schema version. rtt-io migrates older files (0.1 to 0.9); run rtt format before checking them against this schema. Semantic rules (names of parameter rows, one value per configuration, bounds, the targets and limits of tolerances) are checked by validate, not here.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "units", "wavelengths", "aperture", "fields", "root", "paths"],
   "properties": {
-    "schema_version": {"type": "string", "pattern": "^0\\.9\\.[0-9]+$"},
+    "schema_version": {"type": "string", "pattern": "^0\\.10\\.[0-9]+$"},
     "name": {"type": "string"},
     "units": {
       "type": "object",
@@ -455,6 +455,10 @@
       "properties": {
         "type": {"const": "assembly"},
         "name": {"type": "string"},
+        "active": {
+          "description": "false takes the assembly and all its children out of the computation without deleting them; the geometry stays (ADR 0049). Default true; not allowed false at the root (checked by rtt validate).",
+          "type": "boolean"
+        },
         "pose": {"$ref": "#/$defs/pose"},
         "children": {"type": "array", "items": {"$ref": "#/$defs/node"}}
       }
@@ -466,6 +470,10 @@
       "properties": {
         "type": {"enum": ["lens", "mirror", "plate", "thin_element", "stop", "detector"]},
         "name": {"type": "string"},
+        "active": {
+          "description": "false takes the element out of the computation without deleting it; the geometry stays (ADR 0049). Default true.",
+          "type": "boolean"
+        },
         "pose": {"$ref": "#/$defs/pose"},
         "material": {"$ref": "#/$defs/material"},
         "optic_axis": {

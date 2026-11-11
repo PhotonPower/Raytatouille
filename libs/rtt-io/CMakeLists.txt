@@ -16,7 +16,7 @@ if(RTT_BUILD_TESTS)
             tests/test_format_0_3.cpp tests/test_for_each_param.cpp tests/test_format_0_4.cpp
             tests/test_format_optimization.cpp tests/test_format_0_5.cpp
             tests/test_format_tolerances.cpp tests/test_format_0_7.cpp tests/test_format_0_8.cpp
-            tests/test_format_0_9.cpp tests/test_format_rotational.cpp
+            tests/test_format_0_9.cpp tests/test_format_0_10.cpp tests/test_format_rotational.cpp
             tests/test_format_forbes.cpp
             tests/test_aperture_stop.cpp tests/test_aperture_reading.cpp
     LIBS rtt::io rtt::json rtt::diagnostics rtt::model_test_support nlohmann_json::nlohmann_json)
@@ -30,8 +30,9 @@ if(RTT_BUILD_TESTS)
   rtt_add_test(rtt_io_zmx_tests
     SOURCES tests/test_zmx.cpp tests/test_zmx_export.cpp tests/test_surface_table.cpp
             tests/test_zmx_surfaces.cpp tests/test_zmx_export_surfaces.cpp
+            tests/test_export_inactive.cpp
     LIBS rtt::io rtt::material rtt::compile rtt::paraxial rtt::analysis rtt::trace
-         rtt::diagnostics rtt::coating
+         rtt::diagnostics rtt::coating rtt::model_test_support
          nlohmann_json::nlohmann_json)
   target_compile_definitions(rtt_io_zmx_tests PRIVATE
     RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs"

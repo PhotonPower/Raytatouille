@@ -598,9 +598,10 @@ void read_material(const Json& j, const Ctx& c, Element& e) {
 Node read_node(const Json& j, const Ctx& c);
 
 Assembly read_assembly_body(const Json& j, const Ctx& c) {
-  expect_object(j, c, {"type", "name", "pose", "children"});
+  expect_object(j, c, {"type", "name", "active", "pose", "children"});
   Assembly a;
   a.name = read_string(require(j, "name", c), c.at("name"));
+  if (const Json* v = find(j, "active")) a.active = read_bool(*v, c.at("active"));
   read_opt(j, "pose", c, a.pose, read_pose);
   const Json& children = require_array(j, "children", c);
   a.children.reserve(children.size());
@@ -613,10 +614,11 @@ Assembly read_assembly_body(const Json& j, const Ctx& c) {
 Node read_node(const Json& j, const Ctx& c) {
   const std::string type = read_type(j, c);
   if (type == "assembly") return Node{read_assembly_body(j, c)};
-  expect_object(j, c, {"type", "name", "pose", "material", "optic_axis", "surfaces"});
+  expect_object(j, c, {"type", "name", "active", "pose", "material", "optic_axis", "surfaces"});
   Element e;
   e.kind = read_enum(require(j, "type", c), c.at("type"), kElementKinds);
   e.name = read_string(require(j, "name", c), c.at("name"));
+  if (const Json* v = find(j, "active")) e.active = read_bool(*v, c.at("active"));
   read_opt(j, "pose", c, e.pose, read_pose);
   if (const Json* m = find(j, "material")) read_material(*m, c.at("material"), e);
   if (const Json* a = find(j, "optic_axis")) e.optic_axis = read_vec3(*a, c.at("optic_axis"));
@@ -690,13 +692,14 @@ void check_material_forms(const Json& node, const Ctx& c, bool lists_allowed) {
 
 /// Which migrations a file needs.
 struct Migration {
-  bool before_0_3 = false;  ///< the event kind "diffract" existed
-  bool before_0_4 = false;  ///< Params could carry a pickup; no 0.4 forms
-  bool before_0_5 = false;  ///< no ideal lenses (ADR 0031)
-  bool before_0_6 = false;  ///< no tolerance set (ADR 0035)
-  bool before_0_7 = false;  ///< no medium of the object space (ADR 0037)
-  bool before_0_8 = false;  ///< no reference of the object distance (ADR 0038)
-  bool before_0_9 = false;  ///< no anamorphic base shapes (ADR 0042), no odd asphere, no axicon
+  bool before_0_3 = false;   ///< the event kind "diffract" existed
+  bool before_0_4 = false;   ///< Params could carry a pickup; no 0.4 forms
+  bool before_0_5 = false;   ///< no ideal lenses (ADR 0031)
+  bool before_0_6 = false;   ///< no tolerance set (ADR 0035)
+  bool before_0_7 = false;   ///< no medium of the object space (ADR 0037)
+  bool before_0_8 = false;   ///< no reference of the object distance (ADR 0038)
+  bool before_0_9 = false;   ///< no anamorphic base shapes (ADR 0042), no odd asphere, no axicon
+  bool before_0_10 = false;  ///< no flag "active" of assemblies and elements (ADR 0049)
 };
 
 /// Checks the schema version of `j` and tells which migrations to the current version it needs.
@@ -717,6 +720,8 @@ struct Migration {
 ///   and "aperture.reading" are new.
 /// - 0.8 -> 0.9 (ADR 0042, ADR 0043): content unchanged, only the base shapes biconic, toroid,
 ///   cylinder, odd_asphere, axicon, qcon and qbfs are new.
+/// - 0.9 -> 0.10 (ADR 0049): content unchanged, only the flag "active" of assemblies and elements
+///   is new; without it every node is active.
 Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
   const std::string ours(kSchemaVersion);
   const std::string mm = major_minor(version);
@@ -725,16 +730,17 @@ Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
     if (const Json* root = find(j, "root")) {
       check_material_forms(*root, Ctx().at("root"), mm == "0.2");
     }
-    return {true, true, true, true, true, true, true};
+    return {true, true, true, true, true, true, true, true};
   }
-  if (mm == "0.3") return {false, true, true, true, true, true, true};
-  if (mm == "0.4") return {false, false, true, true, true, true, true};
-  if (mm == "0.5") return {false, false, false, true, true, true, true};
-  if (mm == "0.6") return {false, false, false, false, true, true, true};
-  if (mm == "0.7") return {false, false, false, false, false, true, true};
-  if (mm == "0.8") return {false, false, false, false, false, false, true};
+  if (mm == "0.3") return {false, true, true, true, true, true, true, true};
+  if (mm == "0.4") return {false, false, true, true, true, true, true, true};
+  if (mm == "0.5") return {false, false, false, true, true, true, true, true};
+  if (mm == "0.6") return {false, false, false, false, true, true, true, true};
+  if (mm == "0.7") return {false, false, false, false, false, true, true, true};
+  if (mm == "0.8") return {false, false, false, false, false, false, true, true};
+  if (mm == "0.9") return {false, false, false, false, false, false, false, true};
   c.fail("incompatible schema_version '" + version + "', this build reads " + ours +
-         " and migrates 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7 and 0.8");
+         " and migrates 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8 and 0.9");
 }
 
 /// Files before 0.9 (ADR 0042, ADR 0043, point 4): a biconic, toroid, cylinder, odd_asphere,
@@ -766,6 +772,20 @@ void check_0_9_forms(const Json& node, const Ctx& c) {
   if (const Json* children = find(node, "children"); children != nullptr && children->is_array()) {
     for (std::size_t i = 0; i < children->size(); ++i) {
       check_0_9_forms((*children)[i], c.at("children").at(i));
+    }
+  }
+}
+
+/// Files before 0.10 (ADR 0049): the key "active" of an assembly or element (also the root) is an
+/// error at that key, so that a version is never silently upgraded.
+void check_0_10_forms(const Json& node, const Ctx& c) {
+  if (!node.is_object()) return;  // structural errors are reported by the reader
+  if (find(node, "active") != nullptr) {
+    c.at("active").fail("the key 'active' needs schema_version 0.10 or later (ADR 0049)");
+  }
+  if (const Json* children = find(node, "children"); children != nullptr && children->is_array()) {
+    for (std::size_t i = 0; i < children->size(); ++i) {
+      check_0_10_forms((*children)[i], c.at("children").at(i));
     }
   }
 }
@@ -1284,6 +1304,9 @@ System read_system_tree(const Json& j, std::vector<Diagnostic>* warnings) {
   if (m.before_0_9) {
     if (const Json* root = find(j, "root")) check_0_9_forms(*root, c.at("root"));
   }
+  if (m.before_0_10) {
+    if (const Json* root = find(j, "root")) check_0_10_forms(*root, c.at("root"));
+  }
   if (!m.before_0_4) return read_migrated(j, m);
   Json current = j;
   migrate_0_4(current, c, warnings, true);
@@ -1796,6 +1819,7 @@ class Writer {
     OJson o;
     o["type"] = "assembly";
     o["name"] = a.name;
+    if (edit_ || !a.active) o["active"] = a.active;  // ADR 0049: canonical only if false
     put_pose(o, a.pose);
     OJson children = OJson::array();
     for (const Node& c : a.children) children.push_back(node(c));
@@ -1809,6 +1833,7 @@ class Writer {
     OJson o;
     o["type"] = std::string(enum_name(e.kind, kElementKinds));
     o["name"] = e.name;
+    if (edit_ || !e.active) o["active"] = e.active;  // ADR 0049: canonical only if false
     put_pose(o, e.pose);
     if (e.material && !e.segment_materials.empty()) {
       throw std::invalid_argument("element '" + e.name +

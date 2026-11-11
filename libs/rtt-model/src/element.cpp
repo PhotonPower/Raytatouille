@@ -12,7 +12,8 @@ std::optional<std::string> Element::segment_material(std::size_t segment) const 
 }
 
 bool Assembly::operator==(const Assembly& other) const {
-  return name == other.name && pose == other.pose && children == other.children;
+  return name == other.name && pose == other.pose && children == other.children &&
+         active == other.active;
 }
 
 bool Node::operator==(const Node& other) const {

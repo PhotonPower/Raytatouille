@@ -745,7 +745,7 @@ def build_expected(c: dict, glasses: dict) -> tuple[dict, dict]:
     lam_ref = waves[c["pwav"] - 1]["um"]
     nair = n_air(lam_ref)
 
-    sys: dict = {"schema_version": "0.9.0", "name": c["name"],
+    sys: dict = {"schema_version": "0.10.0", "name": c["name"],
                  "units": {"length": "mm", "wavelength": "um"},
                  "environment": {"temperature_c": 20.0, "pressure_atm": 1.0, "medium": "AIR"}}
     if c["object_s"] is not None:
