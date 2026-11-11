@@ -60,9 +60,27 @@
       "cacheVariables": { "RTT_WARNINGS_AS_ERRORS": "ON" }
     },
     {
+      "name": "ci-macos-clang",
+      "displayName": "macOS 26 arm64 (Apple clang, libc++, vcpkg; ADR 0047)",
+      "inherits": ["base", "vcpkg"],
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "26.0",
+        "RTT_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
       "name": "ci-linux-python",
       "displayName": "Python package with tests (GCC; Python from PATH or Python_ROOT_DIR)",
       "inherits": "ci-linux-gcc",
+      "cacheVariables": { "RTT_BUILD_PYTHON": "ON", "RTT_BUILD_APPS": "OFF" }
+    },
+    {
+      "name": "ci-macos-python",
+      "displayName": "Python package with tests (Apple clang; Python from PATH or Python_ROOT_DIR)",
+      "inherits": "ci-macos-clang",
       "cacheVariables": { "RTT_BUILD_PYTHON": "ON", "RTT_BUILD_APPS": "OFF" }
     },
     {
@@ -78,7 +96,9 @@
     { "name": "ci-linux-clang", "configurePreset": "ci-linux-clang" },
     { "name": "ci-linux-sanitizers", "configurePreset": "ci-linux-sanitizers" },
     { "name": "ci-windows-msvc", "configurePreset": "ci-windows-msvc", "configuration": "Release" },
+    { "name": "ci-macos-clang", "configurePreset": "ci-macos-clang" },
     { "name": "ci-linux-python", "configurePreset": "ci-linux-python" },
+    { "name": "ci-macos-python", "configurePreset": "ci-macos-python" },
     { "name": "ci-windows-python", "configurePreset": "ci-windows-python", "configuration": "Release" }
   ],
   "testPresets": [
@@ -87,7 +107,9 @@
     { "name": "ci-linux-clang", "configurePreset": "ci-linux-clang", "output": { "outputOnFailure": true } },
     { "name": "ci-linux-sanitizers", "configurePreset": "ci-linux-sanitizers", "output": { "outputOnFailure": true } },
     { "name": "ci-windows-msvc", "configurePreset": "ci-windows-msvc", "configuration": "Release", "output": { "outputOnFailure": true } },
+    { "name": "ci-macos-clang", "configurePreset": "ci-macos-clang", "output": { "outputOnFailure": true } },
     { "name": "ci-linux-python", "configurePreset": "ci-linux-python", "output": { "outputOnFailure": true } },
+    { "name": "ci-macos-python", "configurePreset": "ci-macos-python", "output": { "outputOnFailure": true } },
     { "name": "ci-windows-python", "configurePreset": "ci-windows-python", "configuration": "Release", "output": { "outputOnFailure": true } }
   ]
 }

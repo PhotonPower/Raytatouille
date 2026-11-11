@@ -6,7 +6,7 @@ Diese Datei liest jeder Agent zu Beginn jeder Sitzung. Sie gilt zusammen mit
 ## Projekt in einem Satz
 
 Raytatouille ist eine headless Raytracing-Engine für Optikdesign in C++20 (MIT-Lizenz) mit
-Python-API; Linux und Windows.
+Python-API; Linux, Windows und macOS 26 (arm64).
 
 ## Bauen und testen
 
@@ -16,7 +16,10 @@ sudo apt-get install cmake ninja-build g++ clang clang-format clang-tidy \
      libeigen3-dev nlohmann-json3-dev catch2 libtbb-dev
 cmake --preset dev && cmake --build --preset dev && ctest --preset dev
 
-# Mit vcpkg (wie die CI; Windows: Preset ci-windows-msvc):
+# macOS 26 (arm64), Homebrew und Command Line Tools; danach dieselben Presets wie oben:
+brew install cmake ninja eigen nlohmann-json catch2 tbb
+
+# Mit vcpkg (wie die CI; Windows: Preset ci-windows-msvc, macOS: ci-macos-clang):
 export VCPKG_ROOT=/pfad/zu/vcpkg
 cmake --preset ci-linux-gcc && cmake --build --preset ci-linux-gcc && ctest --preset ci-linux-gcc
 
@@ -114,6 +117,12 @@ Fehlerquellen, die nur die CI sieht, vorab lokal prüfen:
   (z. B. `-Wunused-lambda-capture`, #239); die CI baut mit clang und den Sanitizern. Wer nur mit
   clang prüft, ergänzt `-Wshadow-uncaptured-local`, sonst fehlt, was GCCs `-Wshadow` in Lambdas
   meldet (#247).
+- **libc++ unter macOS rechnet anders als libstdc++ und MSVC** (#373, ADR 0047). Drei Fallen:
+  `std::sqrt(std::complex)` geht über die Polarform (Re √(−x) ≈ 10⁻¹⁷ statt 0), darum
+  `rtt::math::principal_sqrt` (ADR 0046); die Spezialfunktionen aus C++17 (`std::cyl_bessel_j`
+  u. a.) fehlen, darum `rtt::math::bessel_j0`/`bessel_j1` bzw. eine Hilfsfunktion in `rtt-math`;
+  `std::from_chars` für `double` gibt es erst ab macOS 26. Wer ohne Mac arbeitet, sieht diese
+  Fehler erst im CI-Job `macOS ci-macos-clang`.
 - **Plot-Tests brauchen matplotlib.** Fehlt matplotlib in der lokalen venv, überspringt pytest
   die Plot- und Beispieltests still; dann deckt sie nur die CI ab. Beim Ändern von Plot-Helfern
   matplotlib installieren oder die CI-Läufe gezielt ansehen.
@@ -239,7 +248,7 @@ Regel 9; der Plan für M8 steht in ADR 0041, Punkt 7.
 
 ## Definition of Done (PR-Checkliste)
 
-- [ ] CI grün (Linux GCC/Clang/Sanitizer, Windows MSVC, Format, Schema)
+- [ ] CI grün (Linux GCC/Clang/Sanitizer, Windows MSVC, macOS, Format, Schema)
 - [ ] Referenztests für jedes neue physikalische Verhalten, mit Quelle
 - [ ] Neue Quellen in `docs/quellen.md` eingetragen
 - [ ] Öffentliche API mit Doxygen-Kommentaren inkl. Einheiten

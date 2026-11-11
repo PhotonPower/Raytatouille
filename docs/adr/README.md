@@ -19,7 +19,7 @@ Präzisierungen und Ergänzungen einer angenommenen Entscheidung kommen als dati
 | [0008](0008.md) | JSON-Dateiformat mit strengem Parser | angenommen |
 | [0009](0009.md) | Fehlerbehandlung | angenommen |
 | [0010](0010.md) | Lizenz MIT | angenommen |
-| [0011](0011.md) | Plattformen und Compiler | angenommen |
+| [0011](0011.md) | Plattformen und Compiler | angenommen, „Verworfen: macOS“ ersetzt durch [0047](0047.md) |
 | [0012](0012.md) | GUI in Python | angenommen |
 | [0013](0013.md) | Keine GPU in v1 | angenommen |
 | [0014](0014.md) | Laufzeit-Interface für Materialien in double | angenommen, ergänzt 0006 |
@@ -55,6 +55,7 @@ Präzisierungen und Ergänzungen einer angenommenen Entscheidung kommen als dati
 | [0044](0044.md) | ZMX-Import des sequenziellen Teils (M8 I1: Lesarten der Schlüsselwörter, Luft → Vakuum, Aperturen und Blende, Gläser, `rtt import`) | angenommen |
 | [0045](0045.md) | CSV-Flächentabelle und ZMX-Export (M8 I2: koaxiale Teilmenge, Umkehrung von ADR 0044, kanonische Form, `rtt export`) | angenommen |
 | [0046](0046.md) | Komplexe Wurzel ohne Abhängigkeit von der Standardbibliothek (`rtt::math::principal_sqrt`, Totalreflexion unter libc++) | angenommen |
+| [0047](0047.md) | macOS 26 (arm64) als dritte Plattform (Mindestversion 26, Presets und CI, ersetzt „Verworfen: macOS“ in 0011) | angenommen |
 
 ## Vorlage
 
