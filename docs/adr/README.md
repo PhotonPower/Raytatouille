@@ -54,6 +54,7 @@ Präzisierungen und Ergänzungen einer angenommenen Entscheidung kommen als dati
 | [0043](0043.md) | Rotationssymmetrische Flächen v1 (M8 S1: ungerade Asphäre, Forbes Q-con und Q-bfs mit Konik, Axicon mit analytischem Schnitt; Krümmung statt Radius) | angenommen |
 | [0044](0044.md) | ZMX-Import des sequenziellen Teils (M8 I1: Lesarten der Schlüsselwörter, Luft → Vakuum, Aperturen und Blende, Gläser, `rtt import`) | angenommen |
 | [0045](0045.md) | CSV-Flächentabelle und ZMX-Export (M8 I2: koaxiale Teilmenge, Umkehrung von ADR 0044, kanonische Form, `rtt export`) | angenommen |
+| [0046](0046.md) | Komplexe Wurzel ohne Abhängigkeit von der Standardbibliothek (`rtt::math::principal_sqrt`, Totalreflexion unter libc++) | angenommen |
 
 ## Vorlage
 

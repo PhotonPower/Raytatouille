@@ -31,6 +31,7 @@
 #include <numbers>
 #include <span>
 
+#include "rtt/math/complex.hpp"
 #include "rtt/math/real.hpp"
 
 namespace rtt::coating {
@@ -81,8 +82,9 @@ template <math::Real T>
 /// @param xi tangential invariant (real)
 template <math::Real T>
 [[nodiscard]] std::complex<T> normal_component(std::complex<T> n, T xi) noexcept {
-  using std::sqrt;
-  std::complex<T> q = sqrt(n * n - std::complex<T>(xi * xi));
+  // math::principal_sqrt, not std::sqrt: libc++ gives Re q ~ 1e-17 instead of 0 under total
+  // internal reflection (ADR 0046).
+  std::complex<T> q = math::principal_sqrt(n * n - std::complex<T>(xi * xi));
   if (q.imag() < T(0) || (q.imag() == T(0) && q.real() < T(0))) q = -q;
   return q;
 }
