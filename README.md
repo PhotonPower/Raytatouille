@@ -2,7 +2,7 @@
 
 Raytracing-Engine für Optikdesign: Linsen (sphärisch, asphärisch, Freiform), Spiegel,
 Beschichtungen, Strahlteiler, Polarisatoren und Retarder; Polarisation von Anfang an.
-C++20 mit Python-API, Linux und Windows, MIT-Lizenz.
+C++20 mit Python-API, Linux, Windows und macOS 26 (Apple Silicon), MIT-Lizenz.
 
 **Stand:** Version 0.9.0, Toleranzierung erreicht (M7): Toleranzsatz in der Systemdatei mit
 Toleranzklassen, Einzelwerten und expliziten Toleranzen auf Fläche, Element und Baugruppe (Kippung
@@ -33,8 +33,20 @@ cmake --build --preset dev
 ctest --preset dev
 ```
 
-Mit vcpkg (Linux oder Windows, wie die CI): `VCPKG_ROOT` setzen, dann Preset
-`ci-linux-gcc`, `ci-linux-clang` oder `ci-windows-msvc` verwenden.
+```bash
+# macOS 26 (Apple Silicon) mit Homebrew und den Command Line Tools (xcode-select --install)
+brew install cmake ninja eigen nlohmann-json catch2 tbb
+cmake --preset dev
+cmake --build --preset dev
+ctest --preset dev
+```
+
+macOS braucht mindestens Version 26 ([ADR 0047](docs/adr/0047.md)); die Mindestversion setzt CMake
+selbst. Für `pip install .` mit einem Python von python.org vorher
+`export MACOSX_DEPLOYMENT_TARGET=26.0` setzen.
+
+Mit vcpkg (wie die CI): `VCPKG_ROOT` setzen, dann Preset `ci-linux-gcc`, `ci-linux-clang`,
+`ci-windows-msvc` oder `ci-macos-clang` verwenden.
 
 ## Benutzen
 

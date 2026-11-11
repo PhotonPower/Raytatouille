@@ -1,9 +1,29 @@
 cmake_minimum_required(VERSION 3.25)
 
+# macOS 26 is the minimum (ADR 0047): Apple's libc++ has std::from_chars for double only from
+# there. The default must be set before project(); MACOSX_DEPLOYMENT_TARGET in the environment
+# (e.g. from scikit-build-core) or -DCMAKE_OSX_DEPLOYMENT_TARGET take precedence.
+if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin" AND NOT CMAKE_OSX_DEPLOYMENT_TARGET
+   AND NOT DEFINED ENV{MACOSX_DEPLOYMENT_TARGET})
+  set(CMAKE_OSX_DEPLOYMENT_TARGET "26.0" CACHE STRING "Minimum macOS version (ADR 0047)")
+endif()
+
 project(Raytatouille
   VERSION 0.9.0
   DESCRIPTION "Raytracing engine for optical design"
   LANGUAGES CXX)
+
+if(APPLE AND CMAKE_OSX_DEPLOYMENT_TARGET VERSION_LESS 26.0)
+  message(FATAL_ERROR "Raytatouille needs macOS 26 or later (ADR 0047), but "
+    "CMAKE_OSX_DEPLOYMENT_TARGET is '${CMAKE_OSX_DEPLOYMENT_TARGET}'. Set it to 26.0, or "
+    "MACOSX_DEPLOYMENT_TARGET=26.0 in the environment.")
+endif()
+
+# Apple's linker (ld-prime) warns when CMake repeats a static library on the link line, which it
+# does on purpose for the link order between the rtt libraries; the warning is noise.
+if(APPLE)
+  add_link_options(LINKER:-no_warn_duplicate_libraries)
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

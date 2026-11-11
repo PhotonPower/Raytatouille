@@ -38,7 +38,7 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 | 0008 | Dateiformat JSON (nlohmann/json); strenger C++-Parser ist Referenz, JSON-Schema für externe Werkzeuge |
 | 0009 | Exceptions nur an API-Grenzen, Strahlprobleme als Status-Flags |
 | 0010 | Lizenz MIT, nur kompatible Abhängigkeiten |
-| 0011 | Linux und Windows; getestet mit GCC 13, Clang 18, MSVC 2022; kein `-ffast-math`; keine FMA-Kontraktion (`-ffp-contract=off`, ADR 0029, Nachtrag #373) |
+| 0011 | Linux und Windows; getestet mit GCC 13, Clang 18, MSVC 2022; kein `-ffast-math`; keine FMA-Kontraktion (`-ffp-contract=off`, ADR 0029, Nachtrag #373); macOS 26 (arm64, Apple clang) seit ADR 0047 |
 | 0012 | GUI später in Python (PySide6, pyvista/VTK, matplotlib) nur über die öffentliche API |
 | 0013 | Keine GPU in v1 |
 | 0014 | Laufzeit-Interface `Material` in `double`; Formelkerne als Templates |
@@ -566,7 +566,7 @@ Ein Feature ist erst fertig, wenn es mindestens einen Referenztest gegen eine un
 
 **Teststufen:** Unit-Tests mit Catch2 v3 in jeder Bibliothek; Property-Tests (RapidCheck, ab M1) für Energieerhaltung, |dir| = 1, P·k_ein = k_aus, Umkehrbarkeit, Invarianz bei starrer Bewegung; Golden-Tests mit Standardsystemen aus der Literatur; NSC-Tests (M9) gegen analytische Fälle (Lambert-Strahler, Etendue, Integrationskugel, Leistungsbilanz); Benchmarks mit Google Benchmark (Ziel ≥ 5 Mio. Strahl-Flächen-Schnitte pro Sekunde und Kern bei Sphären inkl. Polarisation, Regression > 10 % blockiert); Schema-Tests mit pytest.
 
-**CI (`.github/workflows/ci.yml`):** clang-format, JSON-Schema, Linux GCC (Release), Linux Clang mit clang-tidy (Release), Linux Clang mit ASan/UBSan (Debug), Windows MSVC (Release); Warnungen sind Fehler. Job Python (ADR 0018): Paket `raytatouille` in der CMake-Baumstruktur (Presets `ci-linux-python` mit Python 3.10 und 3.13, `ci-windows-python` mit 3.13), pytest einschließlich Bitvergleich mit C++ und mypy --strict über ctest; je OS ein Smoke-Test mit `pip install .`.
+**CI (`.github/workflows/ci.yml`):** clang-format, JSON-Schema, Linux GCC (Release), Linux Clang mit clang-tidy (Release), Linux Clang mit ASan/UBSan (Debug), Windows MSVC (Release), macOS 26 arm64 mit Apple clang (Release, ADR 0047); Warnungen sind Fehler. Job Python (ADR 0018): Paket `raytatouille` in der CMake-Baumstruktur (Presets `ci-linux-python` mit Python 3.10 und 3.13, `ci-windows-python` mit 3.13), pytest einschließlich Bitvergleich mit C++ und mypy --strict über ctest; je OS ein Smoke-Test mit `pip install .`.
 
 ## Roadmap und Abnahmekriterien
 
