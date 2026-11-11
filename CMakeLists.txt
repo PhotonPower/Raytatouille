@@ -2,10 +2,12 @@ cmake_minimum_required(VERSION 3.25)
 
 # macOS 26 is the minimum (ADR 0047): Apple's libc++ has std::from_chars for double only from
 # there. The default must be set before project(); MACOSX_DEPLOYMENT_TARGET in the environment
-# (e.g. from scikit-build-core) or -DCMAKE_OSX_DEPLOYMENT_TARGET take precedence.
+# (e.g. from scikit-build-core) or -DCMAKE_OSX_DEPLOYMENT_TARGET take precedence. FORCE, because
+# a build directory configured before this default holds the variable as an empty cache entry,
+# which a plain set(... CACHE) would keep (#373, follow-up).
 if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin" AND NOT CMAKE_OSX_DEPLOYMENT_TARGET
    AND NOT DEFINED ENV{MACOSX_DEPLOYMENT_TARGET})
-  set(CMAKE_OSX_DEPLOYMENT_TARGET "26.0" CACHE STRING "Minimum macOS version (ADR 0047)")
+  set(CMAKE_OSX_DEPLOYMENT_TARGET "26.0" CACHE STRING "Minimum macOS version (ADR 0047)" FORCE)
 endif()
 
 project(Raytatouille
