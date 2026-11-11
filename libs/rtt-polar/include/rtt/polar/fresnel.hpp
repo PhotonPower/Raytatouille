@@ -31,6 +31,7 @@
 #include <complex>
 #include <numbers>
 
+#include "rtt/math/complex.hpp"
 #include "rtt/math/real.hpp"
 
 namespace rtt::polar {
@@ -61,11 +62,13 @@ struct FresnelPower {
 template <math::Real T>
 [[nodiscard]] std::complex<T> normal_component(std::complex<T> n, T xi) noexcept {
   assert(n.real() > T(0) && n.imag() >= T(0) && xi >= T(0));
-  using std::sqrt;
   const std::complex<T> z = n * n - xi * xi;
-  // A negative zero imaginary part would put std::sqrt on the lower side of its branch cut
-  // (q = -i b for total internal reflection); Im(n^2 - xi^2) = 2 n' kappa >= 0 here.
-  std::complex<T> q = sqrt(std::complex<T>(z.real(), z.imag() == T(0) ? T(0) : z.imag()));
+  // A negative zero imaginary part would put the root on the lower side of its branch cut
+  // (q = -i b for total internal reflection); Im(n^2 - xi^2) = 2 n' kappa >= 0 here. The root is
+  // math::principal_sqrt, not std::sqrt: libc++ gives Re q ~ 1e-17 instead of 0 under total
+  // internal reflection (ADR 0046).
+  std::complex<T> q =
+      math::principal_sqrt(std::complex<T>(z.real(), z.imag() == T(0) ? T(0) : z.imag()));
   if (q.imag() < T(0) || (q.imag() == T(0) && q.real() < T(0))) q = -q;
   return q;
 }
