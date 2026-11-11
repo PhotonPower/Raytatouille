@@ -38,7 +38,7 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 | 0008 | Dateiformat JSON (nlohmann/json); strenger C++-Parser ist Referenz, JSON-Schema für externe Werkzeuge |
 | 0009 | Exceptions nur an API-Grenzen, Strahlprobleme als Status-Flags |
 | 0010 | Lizenz MIT, nur kompatible Abhängigkeiten |
-| 0011 | Linux und Windows; getestet mit GCC 13, Clang 18, MSVC 2022; kein `-ffast-math` |
+| 0011 | Linux und Windows; getestet mit GCC 13, Clang 18, MSVC 2022; kein `-ffast-math`; keine FMA-Kontraktion (`-ffp-contract=off`, ADR 0029, Nachtrag #373) |
 | 0012 | GUI später in Python (PySide6, pyvista/VTK, matplotlib) nur über die öffentliche API |
 | 0013 | Keine GPU in v1 |
 | 0014 | Laufzeit-Interface `Material` in `double`; Formelkerne als Templates |

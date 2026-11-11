@@ -8,6 +8,6 @@ rtt_target_defaults(rtt_math LIBRARY)
 if(RTT_BUILD_TESTS)
   rtt_add_test(rtt_math_tests
     SOURCES tests/test_units.cpp tests/test_isometry.cpp tests/test_complex.cpp
-            tests/test_bessel.cpp
+            tests/test_bessel.cpp tests/test_fp_contract.cpp
     LIBS rtt::math)
 endif()

@@ -1,5 +1,14 @@
 # Shared target settings for all Raytatouille libraries, apps and tests.
 
+# No floating-point contraction (FMA) in any target, so that a * b + c is rounded twice on every
+# platform (ADR 0029, addendum #373). Clang contracts by default where the target has an FMA
+# instruction (arm64, e.g. macOS), GCC even across statements. MSVC 2022 does not contract under
+# its default /fp:precise. A global option, because the physics templates are instantiated in
+# every target that includes them (libraries, tests, apps, Python module).
+if(NOT MSVC)
+  add_compile_options(-ffp-contract=off)
+endif()
+
 if(RTT_ENABLE_SANITIZERS AND NOT MSVC)
   add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all)
   add_link_options(-fsanitize=address,undefined)
