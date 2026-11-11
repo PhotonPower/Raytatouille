@@ -18,6 +18,7 @@
 #include "common.hpp"
 #include "fft.hpp"
 #include "rtt/diagnostics/codes.hpp"
+#include "rtt/math/bessel.hpp"
 
 namespace rtt::analysis {
 
@@ -891,9 +892,9 @@ std::vector<double> energy_of(const Spectral& part,
       }
       for (std::size_t i = 0; i < radii.size(); ++i) {
         const double r = radii[i];
-        const double kernel =
-            nu == 0.0 ? std::numbers::pi * r * r
-                      : r * std::cyl_bessel_j(1.0, 2.0 * std::numbers::pi * r * nu) / nu;
+        const double kernel = nu == 0.0
+                                  ? std::numbers::pi * r * r
+                                  : r * rtt::math::bessel_j1(2.0 * std::numbers::pi * r * nu) / nu;
         sums[i] += re * kernel;
       }
     }

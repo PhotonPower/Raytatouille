@@ -7,7 +7,8 @@
 // - MTF(x) = (2/pi)[acos x - x sqrt(1 - x^2)], x = nu / nu_c, nu_c = 1 / (lambda F#_w)
 //   (Shaw, EELE 582 "OTF/MTF", slides 10 and 11, with 2/pi instead of the misprinted 2/rho).
 // - EE(v) = 1 - J0(v)^2 - J1(v)^2, v = pi r / (lambda F#_w) (from DLMF (10.6.2), (10.6.3),
-//   (10.22.1)); first zero r0 = j11 lambda F#_w / pi, j11 by Newton on std::cyl_bessel_j.
+//   (10.22.1)); first zero r0 = j11 lambda F#_w / pi, j11 by Newton on rtt::math::bessel_j0,
+//   bessel_j1.
 // - F#_w = 1 / (2 |M_11|) from the mapping; the guard that ties M to the geometry and to
 //   first_order is in test_psf.cpp (ADR 0033, point 10).
 // Tolerances of ADR 0033, point 10: X at N and 2N, compare X_2N, bound e = 2 |X_N - X_2N|, and e
@@ -41,6 +42,7 @@
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/io/json_io.hpp"
 #include "rtt/material/material.hpp"
+#include "rtt/math/bessel.hpp"
 #include "rtt/model/model.hpp"
 #include "rtt/paraxial/paraxial.hpp"
 #include "rtt/trace/run_control.hpp"
@@ -101,16 +103,16 @@ double airy_unit(const PupilFunction& p) {
 double j11() {
   double x = 3.83;
   for (int i = 0; i < 50; ++i) {
-    const double j1 = std::cyl_bessel_j(1.0, x);
-    const double d = std::cyl_bessel_j(0.0, x) - j1 / x;
+    const double j1 = rtt::math::bessel_j1(x);
+    const double d = rtt::math::bessel_j0(x) - j1 / x;
     x -= j1 / d;
   }
   return x;
 }
 
 double ee_airy(double v) {
-  const double j0 = std::cyl_bessel_j(0.0, v);
-  const double j1 = std::cyl_bessel_j(1.0, v);
+  const double j0 = rtt::math::bessel_j0(v);
+  const double j1 = rtt::math::bessel_j1(v);
   return 1.0 - j0 * j0 - j1 * j1;
 }
 

@@ -35,6 +35,7 @@
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/io/json_io.hpp"
 #include "rtt/material/material.hpp"
+#include "rtt/math/bessel.hpp"
 #include "rtt/math/types.hpp"
 #include "rtt/model/model.hpp"
 #include "rtt/paraxial/paraxial.hpp"
@@ -114,8 +115,8 @@ void guard_mapping(const PupilFunction& p, double n_u) {
 double j11() {
   double x = 3.83;
   for (int i = 0; i < 50; ++i) {
-    const double j1 = std::cyl_bessel_j(1.0, x);
-    const double d = std::cyl_bessel_j(0.0, x) - j1 / x;
+    const double j1 = rtt::math::bessel_j1(x);
+    const double d = rtt::math::bessel_j0(x) - j1 / x;
     x -= j1 / d;
   }
   return x;
@@ -170,8 +171,8 @@ double mtf_circle(double x) {
 
 /// Encircled energy of the Airy pattern, 1 - J0(v)^2 - J1(v)^2, v = pi r / (lambda F#_w).
 double ee_airy(double v) {
-  const double j0 = std::cyl_bessel_j(0.0, v);
-  const double j1 = std::cyl_bessel_j(1.0, v);
+  const double j0 = rtt::math::bessel_j0(v);
+  const double j1 = rtt::math::bessel_j1(v);
   return 1.0 - j0 * j0 - j1 * j1;
 }
 
