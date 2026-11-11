@@ -39,6 +39,7 @@ void bind_result_methods(nb::module_& m) {
                            "PathOplDifference",
                            "Interferogram",
                            "GhostRanking",
+                           "IrradianceMap",
                            "RaytraceReport",
                            "SystemReport",
                            "DimensionReport",

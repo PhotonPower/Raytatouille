@@ -56,6 +56,7 @@ Präzisierungen und Ergänzungen einer angenommenen Entscheidung kommen als dati
 | [0045](0045.md) | CSV-Flächentabelle und ZMX-Export (M8 I2: koaxiale Teilmenge, Umkehrung von ADR 0044, kanonische Form, `rtt export`) | angenommen |
 | [0046](0046.md) | Komplexe Wurzel ohne Abhängigkeit von der Standardbibliothek (`rtt::math::principal_sqrt`, Totalreflexion unter libc++) | angenommen |
 | [0047](0047.md) | macOS 26 (arm64) als dritte Plattform (Mindestversion 26, Presets und CI, ersetzt „Verworfen: macOS“ in 0011) | angenommen |
+| [0048](0048.md) | Bestrahlungsstärke-Raster aus Strahltreffern (einfallendes Gewicht, RayPaths und RayBatch, projizierte Zellfläche) | angenommen |
 
 ## Vorlage
 

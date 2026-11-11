@@ -146,7 +146,7 @@ def test_the_surface_layout_result_carries_the_normalization_radius() -> None:
     validator = jsonschema.Draft202012Validator(RESULT_SCHEMA)
     s = layouts()["L1.S1"]
     envelope = json.loads(s.to_json())
-    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.18"
+    assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.19"
     assert envelope["data"]["normalization_radius"] == 4.0
     validator.validate(envelope)
     assert rt.results.load_json(s.to_json()).data["normalization_radius"] == 4.0

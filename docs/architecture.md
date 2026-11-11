@@ -407,11 +407,13 @@ Analysen liefern Datenobjekte, niemals Plots. Optimierung und Toleranzierung arb
 | Gruppe | v1 | v2 |
 | --- | --- | --- |
 | Erste Ordnung | Systemdaten, Pupillen, Vergrößerung, Seidel pro Fläche | parabasal |
-| Geometrisch | Spot (RMS, GEO, Schwerpunkt), Ray Fans, Footprint, Verzeichnung, Bildfeldwölbung, Farbfehler, Vignettierung | Bildsimulation |
+| Geometrisch | Spot (RMS, GEO, Schwerpunkt), Ray Fans, Footprint, Verzeichnung, Bildfeldwölbung, Farbfehler, Vignettierung, Bestrahlungsstärke-Raster auf einer Fläche (#379) | Bildsimulation |
 | Wellenfront | OPD gegen Referenzsphäre, Zernike-Fit, Strehl-Näherung | – |
 | Beugung | FFT-PSF, FFT-MTF, Through-Focus, Encircled Energy | Huygens-PSF, Beamlets, Faserkopplung |
 | Polarisation | Jones-Pupille, Diattenuations- und Retardance-Karten, Transmission je Pfad | Stokes-Detektoren |
 | Pfade | Transmission je Pfad, Ghost-Ranking | Interferogramm zweier Pfade |
+
+**Bestrahlungsstärke-Raster (`rtt/analysis/irradiance.hpp`, #379, ADR 0048):** Treffer der Strahlen auf einer Fläche, gebinnt in nx × ny Zellen ihrer lokalen x-y-Ebene, je Treffer mit dem **einfallenden** Gewicht (nach dem Weg zur Fläche, mit Volumenabsorption), geteilt durch die projizierte Zellfläche (Gewicht je mm²). Aus `RayPaths` für jede Fläche des Pfades, wählbar je Ereignis (ohne Angabe Summe über alle Durchgänge), oder aus dem `RayBatch` nach dem Trace für die letzte Fläche, wenn deren Ereignis das Gewicht nicht ändern kann (Detektor), ohne Speichergrenze. Raster standardmäßig das umschreibende Rechteck der Apertur; Verluste mit Zahl und Gewicht.
 
 **Pfadauswertung (`rtt/analysis/paths.hpp`, #122):** Transmission je Pfad und OPL-Differenz zweier Pfade für dieselben Startstrahlen; Grundlage der Michelson-Abnahme.
 
