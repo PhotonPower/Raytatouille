@@ -51,13 +51,30 @@ std::string json_string(const std::string& s) {
   return out + "\"";
 }
 
-/// optimize() with or without the overlay of a trial (ADR 0030, addendum #256).
+/// RFC 6902 patch from the input to the external values p: one "replace" per changed variable
+/// (ADR 0030, point 12), for OptimResult::patch and IterationState::patch alike (#378).
+std::string patch_of(const std::vector<Variable>& variables,
+                     std::span<const double> p,
+                     std::span<const std::uint8_t> changed) {
+  std::string patch = "[";
+  for (std::size_t j = 0; j < variables.size(); ++j) {
+    if (changed[j] == 0) continue;
+    if (patch.size() > 1) patch += ",";
+    patch += R"({"op":"replace","path":)" + json_string(variables[j].pointer) + R"(,"value":)" +
+             number(p[j]) + "}";
+  }
+  return patch + "]";
+}
+
+/// optimize() with or without the overlay of a trial (ADR 0030, addendum #256), with or without
+/// the live state (#378).
 OptimResult run(const model::System& system,
                 const material::MaterialLibrary& materials,
                 const coating::CoatingLibrary* coatings,
                 const OptimizeOptions& options,
                 const trace::RunControl& control,
-                const TrialOverlay* overlay) {
+                const TrialOverlay* overlay,
+                const IterationCallback* on_iteration) {
   // ADR 0030, point 11 (addendum #167): a cancellation requested before the start ends the run
   // before any compile or evaluation, with the input.
   if (control.cancel && control.cancel->cancelled()) {
@@ -128,6 +145,25 @@ OptimResult run(const model::System& system,
   // concurrent Jacobian evaluations.
   std::atomic<std::size_t> changed_sets{0};
 
+  // Sum of the weights for phi = 2 F / weights (ADR 0030, point 12), in the history and the live
+  // state alike.
+  double weights = 0.0;
+  for (const model::Operand& op : system.optimization.operands) {
+    weights += std::visit([](const auto& o) { return o.common.weight; }, op);
+  }
+  for (const model::Generator& g : system.optimization.generators) {
+    weights += std::visit([](const auto& o) { return o.weight; }, g);
+  }
+  const auto phi_of = [weights](double F) { return weights > 0.0 ? 2.0 * F / weights : 0.0; };
+  LmAcceptedCallback accepted;
+  if (on_iteration != nullptr && *on_iteration) {
+    accepted = [&variables, &phi_of, on_iteration](const LmIteration& it, std::span<const double> p,
+                                                   std::span<const std::uint8_t> changed) {
+      (*on_iteration)(IterationState{it.k, phi_of(it.F), std::vector<double>(p.begin(), p.end()),
+                                     patch_of(variables, p, changed)});
+    };
+  }
+
   const LmOptions lm_options{options.max_iterations, options.ftol, options.xtol,
                              options.gtol,           options.tau,  options.function_precision};
   const LmResult lm = levenberg_marquardt(
@@ -148,7 +184,7 @@ OptimResult run(const model::System& system,
         std::copy(e.residuals.begin(), e.residuals.end(), f.begin());
         return true;
       },
-      merit.size(), p0, bounds, lm_options, control);
+      merit.size(), p0, bounds, lm_options, control, accepted);
 
   OptimResult result;
   result.status = lm.status;
@@ -165,18 +201,11 @@ OptimResult run(const model::System& system,
     ++result.evaluations;
   }
 
-  double weights = 0.0;
   double squares = 0.0;
-  for (const model::Operand& op : system.optimization.operands) {
-    weights += std::visit([](const auto& o) { return o.common.weight; }, op);
-  }
-  for (const model::Generator& g : system.optimization.generators) {
-    weights += std::visit([](const auto& o) { return o.weight; }, g);
-  }
   for (const double r : end.residuals) squares += r * r;
   for (const LmIteration& it : lm.history) {
-    result.history.push_back({it.k, weights > 0.0 ? 2.0 * it.F / weights : 0.0, it.mu, it.rho,
-                              it.step_norm, it.accepted, it.evaluations});
+    result.history.push_back(
+        {it.k, phi_of(it.F), it.mu, it.rho, it.step_norm, it.accepted, it.evaluations});
   }
   for (std::size_t i = 0; i < end.values.size(); ++i) {
     const model::Operand& op = system.optimization.operands[i];
@@ -199,23 +228,16 @@ OptimResult run(const model::System& system,
          squares > 0.0 ? 100.0 * own / squares : 0.0, st.rays_launched, st.rays_lost});
   }
 
-  std::string patch = "[";
   for (std::size_t j = 0; j < variables.size(); ++j) {
     const Variable& v = variables[j];
-    const bool changed = lm.changed[j] != 0;
-    result.variables.push_back(
-        {v.pointer, v.row, v.configuration, v.start, lm.p[j], changed, lm.at_bound[j] != 0});
-    if (changed) {
-      if (patch.size() > 1) patch += ",";
-      patch += R"({"op":"replace","path":)" + json_string(v.pointer) + R"(,"value":)" +
-               number(lm.p[j]) + "}";
-    }
+    result.variables.push_back({v.pointer, v.row, v.configuration, v.start, lm.p[j],
+                                lm.changed[j] != 0, lm.at_bound[j] != 0});
     if (lm.at_bound[j] != 0) {
       result.diagnostics.push_back(diagnostic("optim.parameter_at_bound", v.pointer,
                                               "the result lies at a bound of the variable"));
     }
   }
-  result.patch = patch + "]";
+  result.patch = patch_of(variables, lm.p, lm.changed);
 
   if (lm.failed_evaluations > 0) {
     const std::size_t changed = changed_sets.load();
@@ -266,8 +288,9 @@ OptimResult optimize(const model::System& system,
                      const material::MaterialLibrary& materials,
                      const coating::CoatingLibrary* coatings,
                      const OptimizeOptions& options,
-                     const trace::RunControl& control) {
-  return run(system, materials, coatings, options, control, nullptr);
+                     const trace::RunControl& control,
+                     const IterationCallback& on_iteration) {
+  return run(system, materials, coatings, options, control, nullptr, &on_iteration);
 }
 
 OptimResult optimize(const model::System& system,
@@ -276,7 +299,7 @@ OptimResult optimize(const model::System& system,
                      const OptimizeOptions& options,
                      const trace::RunControl& control,
                      const TrialOverlay& overlay) {
-  return run(system, materials, coatings, options, control, &overlay);
+  return run(system, materials, coatings, options, control, &overlay, nullptr);
 }
 
 }  // namespace rtt::optim

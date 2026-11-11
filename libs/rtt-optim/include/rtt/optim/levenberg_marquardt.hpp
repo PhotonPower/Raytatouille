@@ -93,6 +93,24 @@ struct LmResult {
 /// so it must be thread-safe, and it must be deterministic (same p, same f).
 using Residuals = std::function<bool(std::span<const double> p, std::span<double> f)>;
 
+/// Called after every accepted solve (ADR 0030, addendum #378), for a live display:
+/// - `iteration`: the entry of this solve as it will stand in LmResult::history (k, F of the new
+///   state, mu, rho, step_norm; accepted is true), except `evaluations`, which counts up to the
+///   call (the history entry also counts the Jacobian that follows);
+/// - `p`: external values of the new state, n values in the units of the variables; a variable
+///   whose internal value did not change keeps its start value bitwise (as LmResult::p);
+/// - `changed`: per variable 1 if theta_j differs from the start (as LmResult::changed).
+///
+/// Called on the calling thread, never from the parallel part, right after the acceptance and
+/// before the Jacobian of the new state. It does not change the run: the result is bitwise the
+/// same with and without it. Any exception (std::bad_alloc included) ends the run like a
+/// cancellation, with status Cancelled and this state (the history ends with this solve); it is
+/// not rethrown. An exception of the progress callback later in this solve (RunControl) is
+/// rethrown as before; the state was then already reported.
+using LmAcceptedCallback = std::function<void(const LmIteration& iteration,
+                                              std::span<const double> p,
+                                              std::span<const std::uint8_t> changed)>;
+
 /// Minimizes 1/2 f(p)^T f(p) from p0 within the bounds (ADR 0030).
 ///
 /// @param residuals the residual function, see Residuals
@@ -104,12 +122,14 @@ using Residuals = std::function<bool(std::span<const double> p, std::span<double
 ///                  Jacobian and "optimize" with k_max solves). A cancellation ends the run
 ///                  with status Cancelled and the last accepted state, without an exception; an
 ///                  exception of the progress callback is rethrown.
+/// @param on_accepted optional, called after every accepted solve, see LmAcceptedCallback
 /// @throws std::invalid_argument for invalid input or if f is invalid at p0
 [[nodiscard]] LmResult levenberg_marquardt(const Residuals& residuals,
                                            std::size_t m,
                                            std::vector<double> p0,
                                            std::vector<Bounds> bounds,
                                            const LmOptions& options = {},
-                                           const trace::RunControl& control = {});
+                                           const trace::RunControl& control = {},
+                                           const LmAcceptedCallback& on_accepted = {});
 
 }  // namespace rtt::optim

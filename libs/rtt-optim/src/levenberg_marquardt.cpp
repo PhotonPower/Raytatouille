@@ -141,7 +141,8 @@ class Run {
       std::vector<double> p0,
       std::vector<Bounds> bounds,
       const LmOptions& options,
-      const trace::RunControl& control)
+      const trace::RunControl& control,
+      const LmAcceptedCallback& on_accepted)
       : residuals_(residuals),
         m_(m),
         n_(p0.size()),
@@ -149,6 +150,7 @@ class Run {
         bounds_(std::move(bounds)),
         options_(options),
         control_(control),
+        on_accepted_(on_accepted),
         optimize_(control, static_cast<std::size_t>(options.max_iterations), "optimize") {
     theta0_.resize(n_);
     for (std::size_t j = 0; j < n_; ++j) theta0_[j] = to_internal(p0_[j], bounds_[j]);
@@ -183,6 +185,7 @@ class Run {
   JacobianOutcome jacobian();
   void normal_equations();
   LmResult finish(LmStatus status);
+  bool report_accepted(const LmIteration& it);
 
   const Residuals& residuals_;
   std::size_t m_;
@@ -191,6 +194,7 @@ class Run {
   std::vector<Bounds> bounds_;
   const LmOptions& options_;
   const trace::RunControl& control_;
+  const LmAcceptedCallback& on_accepted_;
   trace::RunMonitor optimize_;
 
   std::vector<double> theta0_;
@@ -319,6 +323,22 @@ void Run::normal_equations() {
       a_[c * n_ + r] = sum;
     }
   }
+}
+
+// Reports the accepted state to on_accepted_ (ADR 0030, addendum #378); false if the callback
+// threw, which ends the run like a cancellation. Sequential: called from the solver loop only.
+bool Run::report_accepted(const LmIteration& it) {
+  if (!on_accepted_) return true;
+  std::vector<double> p(n_);
+  external(theta_, p);
+  std::vector<std::uint8_t> changed(n_);
+  for (std::size_t j = 0; j < n_; ++j) changed[j] = same_bits(theta_[j], theta0_[j]) ? 0 : 1;
+  try {
+    on_accepted_(it, p, changed);
+  } catch (...) {
+    return false;  // decision of #378: the run ends as Cancelled, the exception is not rethrown
+  }
+  return true;
 }
 
 LmResult Run::finish(LmStatus status) {
@@ -483,6 +503,14 @@ LmResult Run::run() {
       const double t = 2.0 * rho - 1.0;
       mu *= std::max(1.0 / kGamma, 1.0 - (kBeta - 1.0) * t * t * t);
       nu = kBeta;
+      // The live state (#378), before the Jacobian of the new state. `it` carries F and the
+      // evaluations up to here; record() below sets the same F (merit_ does not change).
+      it.F = merit_;
+      it.evaluations = evaluations_;
+      if (!report_accepted(it)) {
+        record();
+        return finish(LmStatus::Cancelled);
+      }
     } else {
       rejected();
     }
@@ -518,9 +546,10 @@ LmResult levenberg_marquardt(const Residuals& residuals,
                              std::vector<double> p0,
                              std::vector<Bounds> bounds,
                              const LmOptions& options,
-                             const trace::RunControl& control) {
+                             const trace::RunControl& control,
+                             const LmAcceptedCallback& on_accepted) {
   check_input(residuals, m, p0, bounds, options);
-  Run run(residuals, m, std::move(p0), std::move(bounds), options, control);
+  Run run(residuals, m, std::move(p0), std::move(bounds), options, control, on_accepted);
   return run.run();
 }
 
