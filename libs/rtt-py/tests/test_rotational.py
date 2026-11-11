@@ -186,7 +186,7 @@ def test_the_surface_layout_result_has_the_new_keys() -> None:
     for s in layouts().values():
         text = s.to_json()
         envelope = json.loads(text)
-        assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.18"
+        assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.19"
         assert {"normalization_radius", "axicon_angle_deg"} <= set(envelope["data"])
         validator.validate(envelope)
         loaded = rt.results.load_json(text)

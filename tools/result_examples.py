@@ -62,7 +62,20 @@ def monte_carlo_result() -> Any:
     return rt.tolerance.monte_carlo(system, materials=lib, trials=8)
 
 
+def irradiance_map() -> Any:
+    """Irradiance map of m1/singlet_const on IMG at field 1 (3.5 degree), 21 x 21 grid pupil,
+    from the batch after the trace; 9 x 7 cells around the spot, an odd number across its symmetry
+    axis x = 0 (#379)."""
+    import raytatouille as rt
+
+    cs = rt.compile(rt.load(REFERENCE / "m1" / "singlet_const.rtt.json"))
+    rays = rt.trace.make_rays(cs, rt.trace.GridPupil(21), fields=[1])
+    rt.trace.trace(cs, rays)
+    return rt.analysis.irradiance_map(cs, rays, nx=9, ny=7, extent=(-0.18, 0.18, 5.86, 6.30))
+
+
 GENERATORS: dict[str, Callable[[], Any]] = {
+    "IrradianceMap": irradiance_map,
     "ToleranceItems": tolerance_items,
     "ToleranceSensitivity": tolerance_sensitivity,
     "MonteCarloResult": monte_carlo_result,

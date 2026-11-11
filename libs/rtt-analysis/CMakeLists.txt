@@ -5,6 +5,7 @@ add_library(rtt_analysis
   src/fft.cpp
   src/field.cpp
   src/ghosts.cpp
+  src/irradiance.cpp
   src/jones.cpp
   src/nominal_reference.cpp
   src/opd.cpp
@@ -42,6 +43,7 @@ if(RTT_BUILD_TESTS)
       tests/test_surface_stop_ghosts.cpp
       tests/test_ideal_lens_analysis.cpp
       tests/test_interferogram.cpp
+      tests/test_irradiance.cpp
       tests/test_jones_pupil.cpp
       tests/test_loss_counter.cpp
       tests/test_losses.cpp

@@ -45,6 +45,7 @@
         "PathOplDifference",
         "Interferogram",
         "GhostRanking",
+        "IrradianceMap",
         "RaytraceReport",
         "SystemReport",
         "DimensionReport",
@@ -325,6 +326,38 @@
               "resolution_radius",
               "entries",
               "warnings"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "IrradianceMap"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "nx",
+              "ny",
+              "values",
+              "x_edges",
+              "y_edges",
+              "surface",
+              "surface_id",
+              "pointer",
+              "to_global",
+              "events",
+              "rays_counted",
+              "weight_counted",
+              "outside_grid",
+              "vignetted",
+              "not_reached"
             ]
           }
         }

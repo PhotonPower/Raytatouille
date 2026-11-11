@@ -54,7 +54,7 @@ __all__ = [
 ]
 
 FORMAT = "raytatouille-result"
-SCHEMA_VERSION = "0.1.18"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
+SCHEMA_VERSION = "0.1.19"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
 # 0.1.3: status Evanescent, status arrays one entry longer (#127); 0.1.4: PathTransmission,
 # PathOplDifference, GhostRanking (#133); 0.1.5: RayBatch wave_x/y/z, mode_index (#134);
 # 0.1.6: RaytraceReport, SystemReport, DimensionReport (#177);
@@ -71,6 +71,7 @@ SCHEMA_VERSION = "0.1.18"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84)
 # 0.1.16: MonteCarloResult (#261)
 # 0.1.17: SurfaceLayout curvature_x, conic_constant_x; shapes biconic, toroid, cylinder (#315)
 # 0.1.18: SurfaceLayout normalization_radius, axicon_angle_deg; shapes odd_asphere, axicon (#314)
+# 0.1.19: IrradianceMap (#379)
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a
@@ -166,6 +167,11 @@ _FIELDS: dict[str, tuple[str, ...]] = {
                             "intensity", "shear", "arrival", "status_a", "status_b"),
     "Interferogram": ("path_a", "path_b", "image_surface", "points", "max_shear", "losses_a",
                       "losses_b", "warnings"),
+    # irradiance map (#379)
+    "IrradianceLosses": ("count", "weight"),
+    "IrradianceMap": ("nx", "ny", "values", "x_edges", "y_edges", "surface", "surface_id",
+                      "pointer", "to_global", "events", "rays_counted", "weight_counted",
+                      "outside_grid", "vignetted", "not_reached"),
     "GhostEntries": ("path", "surface_j", "surface_i", "power", "relative_power", "rms_radius",
                      "rays_arrived", "relative_irradiance", "focus_offset",
                      "paraxial_blur_radius", "losses"),
@@ -266,7 +272,7 @@ TYPES: tuple[str, ...] = (
     "ZernikeFit", "JonesPupil", "StokesPupil", "Psf", "ThroughFocus", "Mtf", "EncircledEnergy",
     "LongitudinalColour", "LateralColour",
     "DistortionSweep", "DistortionPoint", "FieldCurvatureSweep", "FieldCurvaturePoint",
-    "PathTransmission", "PathOplDifference", "Interferogram", "GhostRanking",
+    "PathTransmission", "PathOplDifference", "Interferogram", "GhostRanking", "IrradianceMap",
     "RaytraceReport", "SystemReport", "DimensionReport",
     "OptimResult", "MeritEvaluation", "ToleranceItems", "ToleranceSensitivity",
     "MonteCarloResult",

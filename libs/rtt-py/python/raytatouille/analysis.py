@@ -68,6 +68,8 @@ from ._core import (
     Interferogram,
     InterferogramArrival,
     InterferogramPoints,
+    IrradianceLosses,
+    IrradianceMap,
     JonesBasis,
     JonesPupil,
     LateralColour,
@@ -117,6 +119,7 @@ from .trace import (
     PupilSampling,
     RandomPupil,
     RayBatch,
+    RayPaths,
     SinglePupilPoint,
 )
 
@@ -137,6 +140,8 @@ __all__ = [
     "Interferogram",
     "InterferogramArrival",
     "InterferogramPoints",
+    "IrradianceLosses",
+    "IrradianceMap",
     "JonesBasis",
     "JonesPupil",
     "LateralColour",
@@ -181,6 +186,7 @@ __all__ = [
     "field_curvature_at",
     "ghost_ranking",
     "interferogram",
+    "irradiance_map",
     "jones_pupil",
     "lateral_colour",
     "longitudinal_colour",
@@ -1124,6 +1130,63 @@ def opl_difference(
         Aiming.REAL if aiming is None else aiming, lost_warning_fraction, threads, cancel,
         progress,
     ))
+
+
+def irradiance_map(
+    system: SystemLike,
+    rays: RayPaths | RayBatch,
+    *,
+    surface: str | None = None,
+    path: int | str = 0,
+    nx: int = 64,
+    ny: int = 64,
+    extent: tuple[float, float, float, float] | None = None,
+    event: int | None = None,
+    wavelength: int | None = None,
+    materials: MaterialLibrary | None = None,
+) -> IrradianceMap:
+    """Irradiance on a surface from traced rays (#379, ADR 0048): the hit points binned into
+    ``nx`` x ``ny`` cells of the local x-y plane of the surface, each hit with its **incident**
+    weight (the power that reaches the surface; what happens there does not count), divided by
+    the projected cell area. ``values`` has the shape (ny, nx), in weight per mm^2;
+    ``x_edges``, ``y_edges`` and ``to_global`` place the cells on the geometry.
+
+    Two forms (decision of #379):
+
+    - ``rays`` a RayPaths (``rt.trace.trace(..., record_path=True)`` on ``path``): any
+      ``surface`` (its id, required) of the path. ``event`` chooses one event of the path at
+      that surface (0 = first event); None sums every event at it (a double pass), listed in
+      ``events``. If the medium before the surface absorbs, ``wavelength`` (the index the rays
+      were made at) is required: the incident weight includes the absorption on the last path.
+    - ``rays`` the RayBatch after ``rt.trace.trace`` on ``path``: the last surface of that path,
+      without a recording, so for any number of rays. Only if the last event cannot change the
+      weight (Transmit at a detector or dummy surface with fresnel or ideal_anti_reflection
+      between the same media); otherwise use a RayPaths. ``surface``, if given, must be that
+      surface; ``event`` must be None.
+
+    ``extent`` = (x_min, x_max, y_min, y_max) in mm, local; None: the bounding rectangle of the
+    surface aperture. Rays that do not count are reported with number and incident weight in
+    ``outside_grid``, ``vignetted`` and ``not_reached``. Raises ValueError for an unknown
+    surface or one that is not on the path, an event not at the surface, nx or ny < 1, an empty
+    or non-finite extent, no extent on a surface without aperture, or a last event that may
+    change the weight (batch form). ``system`` is the CompiledSystem the rays were traced in,
+    or a System (compiled with ``materials``).
+    """
+    if nx < 1 or ny < 1:
+        raise ValueError(f"irradiance_map: nx and ny must be >= 1, not {nx}, {ny}")
+    cs = compiled(system, materials)
+    if isinstance(rays, RayPaths):
+        if surface is None:
+            raise ValueError("irradiance_map: a RayPaths needs the surface")
+        return _core.irradiance_map_paths(cs, path, rays, surface, nx, ny, extent, event,
+                                          wavelength)
+    if event is not None or wavelength is not None:
+        raise ValueError("irradiance_map: event and wavelength apply to a RayPaths only")
+    result = _core.irradiance_map_rays(cs, path, rays, nx, ny, extent)
+    if surface is not None and surface != result.surface_id:
+        raise ValueError(f"irradiance_map: the batch form maps the last surface of the path, "
+                         f"{result.surface_id}, not {surface}")
+    return result
 
 
 def interferogram(

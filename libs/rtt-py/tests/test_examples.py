@@ -183,3 +183,11 @@ def test_tolerance_example(capsys: pytest.CaptureFixture[str]) -> None:
     assert namespace["main"]() == 0
     out = capsys.readouterr().out
     assert "26 items" in out and "Sensitivity" in out and "Monte Carlo, seed 20261012" in out
+
+
+def test_irradiance_example(capsys: pytest.CaptureFixture[str]) -> None:
+    # main() returns 1 if the map loses energy, misses rays or L1.S1 does not get weight 1 per ray.
+    namespace = runpy.run_path(str(REPO_ROOT / "examples" / "python" / "irradiance.py"))
+    assert namespace["main"]() == 0
+    out = capsys.readouterr().out
+    assert "energy conserved: True, incident weight on L1.S1: True" in out

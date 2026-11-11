@@ -36,6 +36,7 @@ nanobind_add_module(_core NB_STATIC NB_SUPPRESS_WARNINGS
   src/bind_analysis.cpp src/bind_pupil.cpp src/bind_psf.cpp
   src/bind_jones.cpp
   src/bind_paths.cpp
+  src/bind_irradiance.cpp
   src/bind_reports.cpp
   src/bind_optim.cpp
   src/bind_tolerance.cpp
