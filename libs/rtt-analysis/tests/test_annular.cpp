@@ -11,7 +11,8 @@
 // - PSF in Strehl units, I(v) = [(2 J1(v) / v - eps^2 2 J1(eps v) / (eps v)) / (1 - eps^2)]^2,
 //   v = pi r / (lambda F#_w) (Hakobyan 2018, Eq. (1); derived like the Airy pattern of ADR 0033,
 //   point 6, from DLMF (10.22.1)); the first zero is the first root of J1(v) - eps J1(eps v),
-//   found here by Newton on std::cyl_bessel_j with J1' = J0 - J1 / v (DLMF (10.6.2), (10.6.3)).
+//   found here by Newton on rtt::math::bessel_j0, bessel_j1 with J1' = J0 - J1 / v (DLMF (10.6.2),
+//   (10.6.3)).
 // - MTF(x) = [A(1, 1, d) - 2 A(1, eps, d) + A(eps, eps, d)] / (pi (1 - eps^2)), d = 2 x, x the
 //   frequency over the cut-off, with the lens area A of two circles (Weisstein, MathWorld
 //   "Circle-Circle Intersection", Eqs. (11), (12)): the overlap of two annuli, the same as
@@ -41,6 +42,7 @@
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/io/json_io.hpp"
 #include "rtt/material/material.hpp"
+#include "rtt/math/bessel.hpp"
 #include "rtt/model/model.hpp"
 
 using rtt::analysis::Point2;
@@ -88,8 +90,8 @@ double f_number(const PupilFunction& p) {
 /// The annular PSF in Strehl units (Hakobyan, Eq. (1)).
 double annular_psf(double v, double eps) {
   if (v == 0.0) return 1.0;
-  const double a = 2.0 * std::cyl_bessel_j(1.0, v) / v -
-                   eps * eps * 2.0 * std::cyl_bessel_j(1.0, eps * v) / (eps * v);
+  const double a = 2.0 * rtt::math::bessel_j1(v) / v -
+                   eps * eps * 2.0 * rtt::math::bessel_j1(eps * v) / (eps * v);
   const double s = a / (1.0 - eps * eps);
   return s * s;
 }
@@ -99,9 +101,9 @@ double annular_psf(double v, double eps) {
 double first_zero(double eps) {
   double v = 3.83;
   for (int i = 0; i < 50; ++i) {
-    const double g = std::cyl_bessel_j(1.0, v) - eps * std::cyl_bessel_j(1.0, eps * v);
-    const double d1 = std::cyl_bessel_j(0.0, v) - std::cyl_bessel_j(1.0, v) / v;
-    const double d2 = std::cyl_bessel_j(0.0, eps * v) - std::cyl_bessel_j(1.0, eps * v) / (eps * v);
+    const double g = rtt::math::bessel_j1(v) - eps * rtt::math::bessel_j1(eps * v);
+    const double d1 = rtt::math::bessel_j0(v) - rtt::math::bessel_j1(v) / v;
+    const double d2 = rtt::math::bessel_j0(eps * v) - rtt::math::bessel_j1(eps * v) / (eps * v);
     v -= g / (d1 - eps * eps * d2);
   }
   return v;
@@ -300,7 +302,7 @@ TEST_CASE("annular PSF: first zero, profile, energy and Strehl ratio", "[annular
     CHECK(std::abs(i128[k] - annular_psf(vs[k], kEpsilon)) <= e_max);
   }
   // Content guard: the annular profile differs from the Airy pattern at v = 3.
-  const double airy3 = std::pow(2.0 * std::cyl_bessel_j(1.0, 3.0) / 3.0, 2.0);
+  const double airy3 = std::pow(2.0 * rtt::math::bessel_j1(3.0) / 3.0, 2.0);
   CHECK(std::abs(annular_psf(3.0, kEpsilon) - airy3) > 0.01);
   // Without aberration the Strehl ratio is 1 and the lattice holds 1 - edge_energy_deficit.
   rtt::analysis::PsfOptions o;
