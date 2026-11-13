@@ -635,6 +635,10 @@ python -c "import raytatouille as rt; s = rt.load('meine_linse.rtt.json'); print
 python -m streamlit run rtt_explorer.py            # dann links "Datei hochladen"
 ```
 
+Das JSON-Schema des Formats liefert das Python-Paket mit: `rt.schema()` gibt es als `dict` zurück
+(ebenso `rt.schema("result")` und `rt.schema("coatings")`), etwa für Editoren mit Auswahllisten und
+Beschreibungen.
+
 Eine leere Liste bei `rt.validate` heißt, es gibt keine Befunde. Fehler nennen den JSON-Pointer der
 betroffenen Stelle, z. B. `/root/children/1/surfaces/1/id`. Für Glaskataloge und Coatings
 (`KATALOG:NAME`) braucht `rt.compile` die passenden Bibliotheken, der Explorer lädt sie anhand der

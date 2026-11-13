@@ -70,6 +70,7 @@ set(RTT_PY_SOURCES
   python/raytatouille/polar.py
   python/raytatouille/reports.py
   python/raytatouille/results.py
+  python/raytatouille/schemas.py
   python/raytatouille/tolerance.py
   python/raytatouille/trace.py
   python/raytatouille/py.typed)
@@ -82,6 +83,21 @@ foreach(file IN LISTS RTT_PY_SOURCES)
             "${CMAKE_CURRENT_SOURCE_DIR}/${file}" "${RTT_PY_PACKAGE_DIR}/${name}"
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${file}")
   list(APPEND RTT_PY_COPIES "${RTT_PY_PACKAGE_DIR}/${name}")
+endforeach()
+# The JSON schemas of the file formats (schema/, the only source) in the package (#386):
+# raytatouille/schema/*.schema.json in the build tree and in the wheel.
+set(RTT_PY_SCHEMAS
+  "${PROJECT_SOURCE_DIR}/schema/raytatouille.schema.json"
+  "${PROJECT_SOURCE_DIR}/schema/raytatouille-result.schema.json"
+  "${PROJECT_SOURCE_DIR}/schema/raytatouille-coatings.schema.json")
+foreach(file IN LISTS RTT_PY_SCHEMAS)
+  get_filename_component(name "${file}" NAME)
+  add_custom_command(
+    OUTPUT "${RTT_PY_PACKAGE_DIR}/schema/${name}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${RTT_PY_PACKAGE_DIR}/schema"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${file}" "${RTT_PY_PACKAGE_DIR}/schema/${name}"
+    DEPENDS "${file}")
+  list(APPEND RTT_PY_COPIES "${RTT_PY_PACKAGE_DIR}/schema/${name}")
 endforeach()
 add_custom_target(rtt_py_package ALL DEPENDS ${RTT_PY_COPIES})
 # Whoever builds _core (CI builds only named targets) gets the complete package in the build
@@ -186,6 +202,7 @@ add_custom_target(rtt_py_stub ALL DEPENDS "${RTT_PY_PACKAGE_DIR}/_core.pyi")
 # wheel.packages in pyproject.toml.
 install(TARGETS _core LIBRARY DESTINATION raytatouille RUNTIME DESTINATION raytatouille)
 install(FILES "${RTT_PY_PACKAGE_DIR}/_core.pyi" DESTINATION raytatouille)
+install(FILES ${RTT_PY_SCHEMAS} DESTINATION raytatouille/schema)
 if(WIN32)
   install(FILES "$<TARGET_FILE:TBB::tbb>" DESTINATION raytatouille)
 endif()
