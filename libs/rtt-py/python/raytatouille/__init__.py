@@ -30,6 +30,7 @@ from . import (
     polar,
     reports,
     results,
+    schemas,
     tolerance,
     trace,
 )
@@ -72,6 +73,8 @@ from .errors import (
     RaytatouilleWarning,
     UnknownMaterial,
 )
+
+from .schemas import schema
 
 __version__ = "0.9.0"
 
@@ -126,6 +129,8 @@ __all__ = [
     "reports",
     "results",
     "save",
+    "schema",
+    "schemas",
     "tolerance",
     "trace",
     "validate",
