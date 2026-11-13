@@ -28,7 +28,8 @@ def schema(name: str = "system") -> dict[str, Any]:
     file = _FILES.get(name)
     if file is None:
         raise ValueError(f"unknown schema {name!r}; one of: {', '.join(_FILES)}")
-    text = resources.files(__package__).joinpath("schema", file).read_text(encoding="utf-8")
+    # one step per "/" (Traversable.joinpath takes a single argument before Python 3.11)
+    text = (resources.files(__package__) / "schema" / file).read_text(encoding="utf-8")
     loaded: dict[str, Any] = json.loads(text)
     return loaded
 
