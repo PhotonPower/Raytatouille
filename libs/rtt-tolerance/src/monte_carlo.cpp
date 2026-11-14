@@ -143,10 +143,11 @@ std::vector<std::optional<TrialRecord>> run_trials(const TrialContext& context,
         trial_cancelled = true;
         continue;
       }
-      record.good =
-          record.result.status == TrialStatus::Valid &&
-          std::all_of(record.result.criteria.begin(), record.result.criteria.end(),
-                      [](const CriterionValue& c) { return c.satisfied.value_or(false); });
+      record.good = record.result.status == TrialStatus::Valid &&
+                    std::all_of(record.result.criteria.begin(), record.result.criteria.end(),
+                                [](const CriterionValue& c) {
+                                  return c.inactive || c.satisfied.value_or(false);  // ADR 0049
+                                });
       slots[idx] = std::move(record);
       monitor.add(1);
     }
@@ -178,6 +179,10 @@ CriterionStatistics statistics(const model::Criterion& criterion,
   c.id = criterion.id;
   std::vector<double> values;
   std::size_t good = 0;
+  if (!trials.empty() && trials.front().result.criteria[k].inactive) {
+    c.note = "left out: its surface belongs to an inactive node (ADR 0049)";
+    return c;
+  }
   for (const TrialRecord& t : trials) {
     const CriterionValue& v = t.result.criteria[k];
     if (v.value) {

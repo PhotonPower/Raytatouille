@@ -30,6 +30,8 @@ namespace rtt::optim {
 /// `optim.no_operands` (no operand and no generator) and `merit.operand_unsupported` (an
 /// operand on a path its analysis rejects, ADR 0030, points 3 and 10), with JSON pointers into
 /// the system file.
+/// The diagnostics are errors; with optim.no_variables they also carry the warnings
+/// optim.variable_inactive of the variable Params in inactive nodes (ADR 0049), as the reason.
 class OptimError : public std::invalid_argument {
  public:
   explicit OptimError(std::vector<model::Diagnostic> diagnostics);

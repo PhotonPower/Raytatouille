@@ -1003,8 +1003,8 @@ class Validator {
     } else if (!surface_active(id)) {
       report("merit.surface_inactive", loc + "/surface",
              "surface '" + id +
-                 "' belongs to an inactive node: the operand is left out of the merit function "
-                 "(ADR 0049)");
+                 "' belongs to an inactive node: the operand is left out (merit function or "
+                 "tolerance criterion, ADR 0049)");
     }
   }
 

@@ -78,7 +78,9 @@ void bind_enums(nb::module_& m) {
              "abbe without dispersion (CONST, VACUUM or a glass with n_F = n_C)")
       .value("SHAPE_TYPE", model::ClassSkip::ShapeType,
              "curvature_relative or conic at a base type without the kind (biconic, toroid, "
-             "cylinder, axicon)");
+             "cylinder, axicon)")
+      .value("INACTIVE", model::ClassSkip::Inactive,
+             "the target is in an inactive subtree (active false at the node or an ancestor)");
   nb::enum_<model::OverrideEffect>(m, "OverrideEffect",
                                    "What became of a single-value override (ADR 0035, point 5).")
       .value("APPLIED", model::OverrideEffect::Applied,
@@ -161,7 +163,10 @@ void bind_classes(nb::module_& m) {
               "in the unit of the kind (mm, degree, dimensionless).")
       .def_ro("origins", &ToleranceItems::origins, "Where each item comes from, same order.")
       .def_ro("classes", &ToleranceItems::classes,
-              "The class enumeration, with the skipped and replaced kinds and their reasons.");
+              "The class enumeration, with the skipped and replaced kinds and their reasons.")
+      .def_ro("warnings", &ToleranceItems::warnings,
+              "tolerances.target_inactive (ADR 0049): explicit items (left out of items), single "
+              "values and compensators at inactive nodes, in this order.");
 }
 
 /// A result class without value equality (as ToleranceItems): not hashable, no constructor.
@@ -187,7 +192,11 @@ void bind_trial(nb::module_& m) {
               "operand; None if not defined in this trial.")
       .def_ro("reason", &CriterionValue::reason, "Why value is None; empty if it has a value.")
       .def_ro("satisfied", &CriterionValue::satisfied,
-              "Whether the value meets the bounds of the criterion; None if undecidable.");
+              "Whether the value meets the bounds of the criterion; None if undecidable.")
+      .def_ro("inactive", &CriterionValue::inactive,
+              "True if the criterion is left out: a ray operand at a surface of an inactive node "
+              "(ADR 0049). value and satisfied are None; the trial stays valid and the criterion "
+              "does not count for the yield.");
 
   using tolerance::CompensatorValue;
   result_class<CompensatorValue>(m, "CompensatorValue",

@@ -204,7 +204,10 @@ void bind_optim(nb::module_& m) {
 
   m.def(
       "collect_variables", [](const model::System& system) { return collect_variables(system); },
-      "system"_a, "The variables of `system` in the order of ADR 0030, point 5.");
+      "system"_a,
+      "The variables of `system` in the order of ADR 0030, point 5. A variable Param in an "
+      "inactive node (active false at its element or an ancestor) is no variable (ADR 0049); "
+      "optimize reports it with the warning optim.variable_inactive.");
 
   auto history = columns<OptimIterations>(
       m, "OptimIterations",
@@ -274,8 +277,9 @@ void bind_optim(nb::module_& m) {
       .def_ro("variables", &OptimResult::variables,
               "Final state of the variables, order of ADR 0030, point 5.")
       .def_ro("diagnostics", &OptimResult::diagnostics,
-              "optim.parameter_at_bound, optim.evaluation_failed, optim.jacobian_failed, "
-              "optim.rays_lost, then the warnings of the analyses in the final state.")
+              "optim.variable_inactive (ADR 0049), optim.parameter_at_bound, "
+              "optim.evaluation_failed, optim.jacobian_failed, optim.rays_lost, then the warnings "
+              "of the analyses in the final state.")
       .def_ro("iterations", &OptimResult::iterations, "Number of solves.")
       .def_ro("evaluations", &OptimResult::evaluations,
               "Evaluations of the merit function in this call.")

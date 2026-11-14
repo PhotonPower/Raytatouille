@@ -64,7 +64,8 @@ struct TrialRecord {
   /// The evaluation: status (Valid or Invalid), reason, criterion values with `satisfied`,
   /// compensators, LM status, mu and the warnings of this trial.
   TrialResult result;
-  /// The trial is good: Valid and every criterion satisfied (ADR 0035, point 7).
+  /// The trial is good: Valid and every criterion satisfied (ADR 0035, point 7), criteria left
+  /// out at an inactive surface not counted (ADR 0049).
   bool good = false;
 };
 
@@ -105,7 +106,9 @@ struct CriterionStatistics {
   /// Good: the criterion is satisfied (CriterionValue::satisfied); a trial without a value counts
   /// as bad. Denominator N.
   Yield yield;
-  std::string note;  ///< "no valid values" for n = 0
+  /// "no valid values" for n = 0; for a criterion left out at an inactive surface (ADR 0049) a
+  /// note saying so, with all counts 0.
+  std::string note;
 };
 
 /// Result of monte_carlo() (ADR 0036, point 10).
@@ -115,7 +118,8 @@ struct MonteCarloResult {
   TrialResult nominal;                        ///< Phi_0 (TrialContext::nominal())
   std::vector<model::ToleranceItem> items;    ///< order of the values of each trial
   std::vector<CriterionStatistics> criteria;  ///< per criterion, order of the context
-  /// Good: Valid and every criterion satisfied; an Invalid trial counts as bad. Denominator N.
+  /// Good: Valid and every criterion satisfied (criteria left out at an inactive surface do
+  /// not count, ADR 0049); an Invalid trial counts as bad. Denominator N.
   Yield yield;
   /// The finished trials in ascending order: all with keep_trials, otherwise those that are not
   /// Valid.

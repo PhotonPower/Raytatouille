@@ -51,12 +51,18 @@ struct CriterionValue {
   std::string reason;  ///< why `value` is none; empty if it has a value
   /// satisfies(criterion, value, nominal value); none if that cannot be decided.
   std::optional<bool> satisfied;
+  /// Left out: the criterion is a ray operand at a surface of an inactive node (ADR 0049;
+  /// validate: merit.surface_inactive). `value` and `satisfied` are none, `reason` says why; the
+  /// trial stays valid and the criterion does not count for the yield.
+  bool inactive = false;
 };
 
 /// One compensator in one trial (ADR 0036, point 3).
 struct CompensatorValue {
-  double start = 0.0;       ///< the perturbed value before the run, unit of the target
-  double end = 0.0;         ///< the value after the run (start if not run or infeasible)
+  double start = 0.0;  ///< the perturbed value before the run, unit of the target
+  /// The value after the run (start if not run or infeasible, and at a compensator in an
+  /// inactive node, which is never run; ADR 0049).
+  double end = 0.0;
   bool at_bound = false;    ///< the end lies at a bound (travel or Param.min/max)
   bool infeasible = false;  ///< start not inside (min, max): kept at start, with a warning
 };
@@ -125,7 +131,10 @@ class TrialContext {
 /// Prepares the trials of `items` on `nominal` (ADR 0036, point 4): the criteria, compensators,
 /// compensator merit (compensator_merit, else optimization) and pivots come from
 /// `nominal.tolerances`; the items are those of expand() (#260) or any subset. Computes the
-/// nominal basis (rtt::optim::nominal_basis) and Phi_0 (nominal()).
+/// nominal basis (rtt::optim::nominal_basis) and Phi_0 (nominal()). ADR 0049: a compensator
+/// whose target acts in an inactive node is never run (its value stays); a criterion at a
+/// surface of an inactive node is left out (CriterionValue::inactive). Explicit items at
+/// inactive nodes are left out by expand() only; passed here they are perturbed without effect.
 /// @param nominal   a valid system; copied
 /// @param materials material library; must outlive the context
 /// @param coatings  coating library, or nullptr; must outlive the context

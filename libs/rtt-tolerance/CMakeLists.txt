@@ -21,7 +21,7 @@ if(RTT_BUILD_TESTS)
       tests/test_anamorphic_radius_sign.cpp tests/test_object_reference.cpp
       tests/test_rotational_tolerance.cpp tests/test_forbes_tolerance.cpp
       tests/test_radius_sign.cpp tests/test_random.cpp
-      tests/test_sensitivity.cpp tests/test_trial.cpp
+      tests/test_sensitivity.cpp tests/test_trial.cpp tests/test_inactive_tolerance.cpp
     LIBS rtt::tolerance rtt::io TBB::tbb)
   # src/: the kernels of the normal distribution (random_detail.hpp), the RSS reduction
   # (sensitivity_detail.hpp) and the statistics (monte_carlo_detail.hpp) are tested directly.

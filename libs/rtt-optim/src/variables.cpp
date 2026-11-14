@@ -9,6 +9,7 @@
 #include <variant>
 #include <vector>
 
+#include "rtt/diagnostics/codes.hpp"
 #include "rtt/model/parameters.hpp"
 
 namespace rtt::optim {
@@ -31,14 +32,32 @@ std::vector<Variable> collect_variables(const model::System& system) {
     }
     // An expression row is never variable (validate: parameters.variable_expression).
   }
-  // Then the model Params, in the order of for_each_param (the order of the edit form).
+  // Then the model Params, in the order of for_each_param (the order of the edit form); a Param
+  // in an inactive node is no variable (ADR 0049, point 4).
+  const std::vector<std::string> inactive = model::inactive_nodes(system);
   std::size_t index = 0;
   model::for_each_param(system, [&](std::string_view pointer, const model::Param& param) {
-    if (param.variable && !param.is_bound()) {
+    if (param.variable && !param.is_bound() && !model::in_inactive_node(inactive, pointer)) {
       out.push_back({std::string(pointer) + "/value", std::string(), std::nullopt, index,
                      param.value, Bounds{param.min, param.max}});
     }
     ++index;
+  });
+  return out;
+}
+
+std::vector<model::Diagnostic> inactive_variables(const model::System& system) {
+  constexpr diagnostics::DiagnosticCode kCode = "optim.variable_inactive";
+  std::vector<model::Diagnostic> out;
+  const std::vector<std::string> inactive = model::inactive_nodes(system);
+  if (inactive.empty()) return out;
+  model::for_each_param(system, [&](std::string_view pointer, const model::Param& param) {
+    if (param.variable && !param.is_bound() && model::in_inactive_node(inactive, pointer)) {
+      out.push_back({kCode.severity(), std::string(pointer),
+                     "the Param is variable but in an inactive node: it is not a variable and "
+                     "keeps its value (ADR 0049)",
+                     std::string(kCode.str())});
+    }
   });
   return out;
 }

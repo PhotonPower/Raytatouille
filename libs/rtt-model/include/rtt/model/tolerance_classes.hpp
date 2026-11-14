@@ -40,6 +40,9 @@ enum class ClassSkip : std::uint8_t {
   /// toroid, cylinder, axicon; ADR 0042, point 5, decision F2 of ADR 0041; ADR 0035, addendum
   /// #314)
   ShapeType,
+  /// the target is in an inactive subtree (active false at the node or an ancestor; ADR 0049,
+  /// point 5)
+  Inactive,
 };
 
 /// One kind at one target that a class would generate.
