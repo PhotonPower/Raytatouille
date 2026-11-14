@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "path_text.hpp"
 #include "rtt/material/agf.hpp"
 #include "rtt/material/air.hpp"
 
@@ -144,16 +145,18 @@ void MaterialLibrary::add_catalog(const std::filesystem::path& path,
   if (fs::is_directory(path)) {
     if (name) {
       throw std::invalid_argument("MaterialLibrary::add_catalog: a catalog name (" + *name +
-                                  ") needs a single .agf file, not the directory " + path.string());
+                                  ") needs a single .agf file, not the directory " +
+                                  detail::path_text(path));
     }
     for (const auto& entry : fs::directory_iterator(path)) {
-      std::string ext = entry.path().extension().string();
+      std::string ext = detail::path_text(entry.path().extension());
       for (char& c : ext) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
       if (entry.is_regular_file() && ext == ".agf") files.push_back(entry.path());
     }
     std::sort(files.begin(), files.end());
     if (files.empty()) {
-      throw std::invalid_argument("MaterialLibrary::add_catalog: no .agf file in " + path.string());
+      throw std::invalid_argument("MaterialLibrary::add_catalog: no .agf file in " +
+                                  detail::path_text(path));
     }
   } else {
     files.push_back(path);
@@ -164,7 +167,7 @@ void MaterialLibrary::add_catalog(const std::filesystem::path& path,
     if (name) cat.name = *name;
     if (cat.name.empty() || cat.name == "CONST") {
       throw std::invalid_argument("MaterialLibrary::add_catalog: catalog name '" + cat.name +
-                                  "' of " + file.string() + " is empty or reserved");
+                                  "' of " + detail::path_text(file) + " is empty or reserved");
     }
     catalogs.push_back(std::move(cat));
   }
@@ -228,6 +231,13 @@ void MaterialLibrary::register_catalogs(std::vector<AgfCatalog> catalogs, const 
       Entry entry{cat.name + ":" + glass.name, nullptr, {}};
       try {
         (void)agf_formula(glass, cat.file + ":" + std::to_string(glass.line));
+        // TD needs 7 values; with fewer the glass is unsupported, not the catalogue (review S1),
+        // with file and line of the TD record as the other reasons (#333).
+        if (glass.thermal && glass.thermal->size() != 7) {
+          throw std::invalid_argument(cat.file + ":" + std::to_string(glass.thermal_line) +
+                                      ": TD has " + std::to_string(glass.thermal->size()) +
+                                      " values; it needs D0 D1 D2 E0 E1 Ltk Temp (7 values)");
+        }
         entry.material = std::make_shared<const CatalogMaterial>(glass, cat.name);
       } catch (const std::invalid_argument& e) {
         entry.message = "unsupported material reference '" + entry.reference + "': " + e.what();

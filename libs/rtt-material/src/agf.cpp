@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "path_text.hpp"
 #include "rtt/diagnostics/codes.hpp"
 #include "rtt/material/air.hpp"
 
@@ -78,6 +79,9 @@ class Parser {
       fail(first_skipped_, "no CC or NM record: not an AGF catalogue");
     }
     finish_glass();
+    // A file without a glass (empty, only comments or only CC lines) is no usable catalogue; a
+    // wrong file or path shows at once (decision in #333).
+    if (catalog_.glasses.empty()) fail(0, "no glass in the catalogue (no NM record)");
     merge_duplicates();
     // Duplicates are found after the last line; keep all warnings in file order.
     std::stable_sort(catalog_.warnings.begin(), catalog_.warnings.end(),
@@ -117,6 +121,7 @@ class Parser {
         if (k.name != g.name) continue;
         AgfGlass a = k;
         a.line = g.line;
+        a.thermal_line = g.thermal_line;
         if (a == g) {
           same = &k;
         } else if (other == nullptr) {
@@ -381,6 +386,7 @@ class Parser {
       AgfGlass& g = current(m, line_no);
       if (g.thermal) fail(line_no, "second TD record for glass " + g.name);
       g.thermal = numbers(items, line_no);
+      g.thermal_line = line_no;
       // At most 7 values (D0 D1 D2 E0 E1 Ltk Temp), as for a continuation line (#35).
       if (g.thermal->size() > 7) fail(line_no, "TD has more than 7 values");
       continuable_ = Continuable::kTd;
@@ -503,18 +509,18 @@ AgfCatalog parse_agf(std::string_view text, std::string name, std::string file) 
 }
 
 AgfCatalog load_agf(const std::filesystem::path& file) {
-  const std::string display = file.filename().string();
+  const std::string display = detail::path_text(file.filename());
   std::ifstream in(file, std::ios::binary | std::ios::ate);
-  if (!in) throw AgfError(display, 0, "cannot open " + file.string());
+  if (!in) throw AgfError(display, 0, "cannot open " + detail::path_text(file));
   // Size, then one read (istreambuf_iterator trips GCC 13's -Wnull-dereference in Release).
   const std::streamoff size = in.tellg();
-  if (size < 0) throw AgfError(display, 0, "cannot read " + file.string());
+  if (size < 0) throw AgfError(display, 0, "cannot read " + detail::path_text(file));
   std::string bytes(static_cast<std::size_t>(size), '\0');
   in.seekg(0);
   if (!in.read(bytes.data(), static_cast<std::streamsize>(size))) {
-    throw AgfError(display, 0, "cannot read " + file.string());
+    throw AgfError(display, 0, "cannot read " + detail::path_text(file));
   }
-  return parse_agf(decode_agf_text(bytes, display), upper(file.stem().string()), display);
+  return parse_agf(decode_agf_text(bytes, display), upper(detail::path_text(file.stem())), display);
 }
 
 DispersionFormula agf_formula(const AgfGlass& glass, const std::string& where) {
@@ -606,8 +612,12 @@ CatalogMaterial::CatalogMaterial(AgfGlass glass, const std::string& catalog)
   if (glass_.thermal) {
     const std::vector<double>& td = *glass_.thermal;
     if (td.size() != 7) {
+      // MaterialLibrary reports it with file and line before (#333); here the line if known.
+      const std::string line =
+          glass_.thermal_line > 0 ? ", line " + std::to_string(glass_.thermal_line) : "";
       throw std::invalid_argument("CatalogMaterial: glass " + glass_.name + " of catalog " +
-                                  catalog + ": TD needs D0 D1 D2 E0 E1 Ltk Temp (7 values)");
+                                  catalog + line + ": TD has " + std::to_string(td.size()) +
+                                  " values; it needs D0 D1 D2 E0 E1 Ltk Temp (7 values)");
     }
     thermal_ = SchottThermalCoefficients{td[0], td[1], td[2], td[3], td[4], td[5], td[6]};
   }
