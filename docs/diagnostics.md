@@ -119,6 +119,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `merit.sampling_invalid` | Fehler | `rings`, `arms` oder `grid` < 1 | validate | `…/rings`, `…/arms`, `…/grid` |
 | `merit.selection_empty` | Fehler | leere Liste `fields` oder `wavelengths` eines Generators (in einer Datei ein Lesefehler) | validate | `…/fields`, `…/wavelengths` |
 | `merit.surface_ambiguous` | Fehler | `ray_x`/`ray_y` an einer Fläche, die der Pfad mehrmals trifft, ohne `occurrence` | validate | `…/surface` |
+| `merit.surface_inactive` | Warnung | `ray_x`/`ray_y` an einer Fläche eines inaktiven Knotens; der Operand entfällt aus der Merit-Funktion (Residuum 0, Wert NaN) und behält seinen Platz (ADR 0049) | validate | `…/surface` |
 | `merit.surface_not_on_path` | Fehler | `ray_x`/`ray_y` an einer Fläche, die der Pfad nicht trifft, oder `occurrence` zu groß | validate | `…/surface`, `…/occurrence` |
 | `merit.unknown_configuration` | Fehler | Merit-Funktion nennt eine unbekannte Konfiguration | validate | `…/configuration` |
 | `merit.unknown_parameter` | Fehler | `param_value` nennt eine unbekannte Zeile der Parametertabelle | validate | `…/parameter` |
@@ -133,7 +134,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `object.reference_surface_unknown` | Fehler | Der Bezug des Objektabstands nennt keine Fläche des Systems (ADR 0038) | validate | `/object/reference` |
 | `optim.evaluation_failed` | Warnung | Auswertungen der Merit-Funktion sind im Lauf gescheitert (Analysefehler, nicht definierter Wert oder geänderte Strahlmenge eines Generators oder eines Operanden `spot_rms`/`opd_rms`, deren Zahl die Meldung eigens nennt); diese Versuche galten als abgelehnt (ADR 0030, Punkt 10, Nachträge #289 und #299) | optim | `/optimization` |
 | `optim.jacobian_failed` | Fehler | eine Spalte der Jacobi-Matrix hat auf keiner Seite eine gültige Auswertung (ist nur eine Seite ungültig, gilt die einseitige Differenz, ADR 0030, Nachtrag #289); der Lauf endet mit Status `failed` und dem letzten angenommenen Stand | optim | Pointer der Variablen (kleinster Index) |
-| `optim.no_operands` | Fehler | Optimierung ohne Operanden und ohne Generatoren (ADR 0030, Nachtrag #167) | optim | leer |
+| `optim.no_operands` | Fehler | Optimierung ohne Operanden und ohne Generatoren (ADR 0030, Nachtrag #167), oder alle Operanden an Flächen inaktiver Knoten weggelassen und kein Generator (ADR 0049) | optim | leer |
 | `optim.no_variables` | Fehler | Optimierung ohne variables Param und ohne variable Tabellenzeile | optim | leer |
 | `optim.parameter_at_bound` | Warnung | Ergebniswert einer Variablen liegt an ihrer Grenze | optim | Pointer der Variablen |
 | `optim.rays_lost` | Warnung | Strahlen eines Generators (Residuen 0) oder eines Operanden `spot_rms`/`opd_rms` waren am Start verloren und bleiben für den Lauf draußen; die Menge der angekommenen Strahlen ist im ganzen Lauf die des Starts (ADR 0030, Nachträge #168, #289 und #299) | optim | `/optimization/generators/i`, `/optimization/operands/i` |
@@ -147,10 +148,14 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `parameters.unknown_name` | Fehler | Ausdruck nutzt einen Namen, der keine Zeile ist | validate | `/parameters/i/expression` |
 | `parameters.values_count` | Fehler | `values` mit einer anderen Anzahl als Konfigurationen | validate | `/parameters/i/values` |
 | `parameters.variable_expression` | Fehler | Zeile mit `expression` als `variable` markiert | validate | `/parameters/i/variable` |
+| `paths.all_inactive` | Warnung | ein Pfad hat kein Ereignis mehr, weil alle seine Elemente inaktiv sind; Analysen, Zielung und Optimierung auf ihm werfen `std::invalid_argument`, Paraxial `ParaxialError` (ADR 0049) | compile | `/paths/i` |
 | `paths.crystal_mode_required` | Fehler | Eintritt in einen Kristall mit `refract` statt `ordinary` oder `extraordinary` (ADR 0026) | compile | `/paths/i/events/k` |
 | `paths.empty` | Fehler | kein Pfad | validate | `/paths` |
 | `paths.events_empty` | Fehler | expliziter Pfad ohne Ereignisse | validate | `/paths/i/events` |
 | `paths.ideal_lens_event` | Fehler | `refract` oder `reflect` an einer Fläche mit idealer Linse oder Zylinderlinse; dort ist nur `transmit` erlaubt (ADR 0031, Punkt 7) | compile | `/paths/i/events/k` |
+| `paths.image_changed` | Warnung | das letzte Element des Baums ist inaktiv: Die Bildfläche automatischer Pfade ist eine andere Fläche als mit dem Element (ADR 0049) | compile | `/paths/i` |
+| `paths.inactive_mirror` | Warnung | ein inaktiver Spiegel auf einem automatischen Pfad: Die Faltung entfällt, die Strahlen laufen geradeaus weiter (ADR 0049) | compile | `…/el` (Spiegel) |
+| `paths.inactive_surface` | Warnung | ein Ereignis eines expliziten Pfades an einer Fläche eines inaktiven Knotens; es wird übersprungen (ADR 0049) | validate | `/paths/i/events/k` |
 | `paths.inner_surface_ambiguous` | Fehler | innere Fläche zwischen verschiedenen Materialien von außen betreten | compile | `/paths/i/events/k` |
 | `paths.mangin_mirror_automatic` | Fehler | Spiegel mit Substrat und mehreren Flächen auf einem automatischen Pfad | compile | `…/el/surfaces` |
 | `paths.mode_without_crystal` | Fehler | `ordinary` oder `extraordinary` an einem Ereignis, dessen Medium danach kein Kristall ist (Element ohne Kristall oder Austritt) | compile | `/paths/i/events/k` |
@@ -185,6 +190,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `shape.zernike_without_coefficients` | Warnung | Zernike-Term ohne Koeffizienten | validate | `…/s/shape/terms/i/coefficients` |
 | `stop.aperture_missing` | Fehler | Blendenelement oder Blendenfläche (`aperture.stop`, ADR 0039) ohne Apertur | validate | `…/el/surfaces/k/aperture` |
 | `stop.clips_beam` | Warnung | Strahlen der Abtastung enden an der Blende mit VIGNETTED: die Blendenöffnung beschneidet das Bündel, das die Systemapertur festlegt | analysis | Blendenfläche `…/s` |
+| `stop.inactive` | Warnung | Blenden sind definiert, aber keine ist aktiv: Das System hat keine Blende, was eine braucht, wirft `NoStopError` (ADR 0049) | validate | `/aperture/stop` bzw. `…/el` (erste Blende) |
 | `stop.multiple` | Fehler | mehr als ein Blendenelement, oder ein Blendenelement und `aperture.stop` (ADR 0039) | validate | `…/el` (zweite Blende) bzw. `/aperture/stop` |
 | `stop.not_on_path` | Warnung | ein Pfad besucht die Blende (Blendenelement oder Blendenfläche) nicht; Zielen, Pupillen, Seidel-Summen und OPD werfen auf ihm `NoStopError` | compile | `/paths/i` |
 | `stop.surface_kind` | Fehler | `aperture.stop` nennt eine Fläche eines Blenden- oder Detektorelements; zulässig sind Linse, Spiegel, Platte und dünnes Element (ADR 0039) | validate | `/aperture/stop` |

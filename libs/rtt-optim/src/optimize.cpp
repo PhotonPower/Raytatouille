@@ -97,10 +97,15 @@ OptimResult run(const model::System& system,
     errors.push_back(diagnostic("optim.no_variables", "",
                                 "no variable Param and no variable row of the parameter table"));
   }
-  if (system.optimization.empty()) {
-    errors.push_back(
-        diagnostic("optim.no_operands", "",
-                   "the system has no operand and no generator (section optimization)"));
+  // ADR 0049, point 4: operands left out because their surface is inactive do not count.
+  const std::vector<bool>& inactive = merit.inactive_operands();
+  if (system.optimization.generators.empty() &&
+      std::all_of(inactive.begin(), inactive.end(), [](bool b) { return b; })) {
+    errors.push_back(diagnostic(
+        "optim.no_operands", "",
+        system.optimization.empty()
+            ? "the system has no operand and no generator (section optimization)"
+            : "every operand is at a surface of an inactive node and no generator is left"));
   }
   if (!errors.empty()) throw OptimError(std::move(errors));
   const std::vector<double> p0 = merit.start();

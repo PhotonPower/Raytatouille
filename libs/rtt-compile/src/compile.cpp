@@ -33,15 +33,24 @@
 namespace rtt::compile {
 namespace {
 
-/// The surface of the system stop (ADR 0039, point 3): the surface named by aperture.stop, or
-/// the surface of the Stop element (validate allows only one of them and at most one Stop
-/// element: stop.multiple, stop.surface_unknown); none without either.
+/// The surface of the system stop (ADR 0039, point 3; ADR 0049, point 3): the surface named by
+/// aperture.stop if it is active, else the surface of the first active Stop element; none
+/// without an active stop. validate allows at most one active stop (stop.multiple) and checks
+/// that aperture.stop names a surface (stop.surface_unknown).
 std::optional<std::uint32_t> stop_surface_of(const std::vector<CompiledSurface>& surfaces,
                                              const model::SystemAperture& aperture) {
+  if (const std::optional<model::SurfaceId>& named = aperture.stop) {
+    const model::SurfaceId& id = named.value();
+    for (std::size_t i = 0; i < surfaces.size(); ++i) {
+      if (surfaces[i].id != id) continue;
+      if (surfaces[i].active) return static_cast<std::uint32_t>(i);
+      break;
+    }
+  }
   for (std::size_t i = 0; i < surfaces.size(); ++i) {
-    const bool stop = aperture.stop ? surfaces[i].id == *aperture.stop
-                                    : surfaces[i].element_kind == model::ElementKind::Stop;
-    if (stop) return static_cast<std::uint32_t>(i);
+    if (surfaces[i].element_kind == model::ElementKind::Stop && surfaces[i].active) {
+      return static_cast<std::uint32_t>(i);
+    }
   }
   return std::nullopt;
 }
@@ -133,6 +142,8 @@ struct ElementInfo {
   bool unresolved_crystal = false;
   /// A material of the element could not be resolved (reported): material changes are skipped.
   bool unresolved_material = false;
+  /// False if the element or an ancestor has active false (ADR 0049): no path visits it.
+  bool active = true;
   std::string location;             ///< JSON pointer of the element
   std::uint32_t first_surface = 0;  ///< surfaces [first_surface, first_surface + count)
   std::uint32_t surface_count = 0;
@@ -169,7 +180,7 @@ class Compiler {
     check_perturbation_values();
     const math::Isometry3 root = model::to_isometry(system_.root.pose);
     node_frames_.push_back({"/root", math::Isometry3::identity(), root});
-    add_assembly(system_.root, root, std::nullopt, "/root");
+    add_assembly(system_.root, root, std::nullopt, "/root", system_.root.active);
     check_perturbation_targets();
     // ADR 0038, point 3: the vertex z of the surface object.reference names, in its nominal frame.
     if (system_.object.reference) {
@@ -828,11 +839,14 @@ class Compiler {
   }
 
   /// Adds the children of an assembly whose nominal global transform is `to_global` and whose
-  /// subtree has the overlay `overlay`, each placed with place() (ADR 0028, point 2).
+  /// subtree has the overlay `overlay`, each placed with place() (ADR 0028, point 2). `active`
+  /// is the effective state of the assembly (ADR 0049, point 1): false if it or an ancestor has
+  /// active false. Inactive nodes are placed like active ones (ADR 0049, point 2).
   void add_assembly(const model::Assembly& assembly,
                     const math::Isometry3& to_global,
                     const std::optional<math::Isometry3>& overlay,
-                    const std::string& location) {
+                    const std::string& location,
+                    bool active) {
     math::Isometry3 previous;  // nominal transform of the preceding child (valid if i > 0)
     for (std::size_t i = 0; i < assembly.children.size(); ++i) {
       const std::string child_location = idx(location + "/children", i);
@@ -841,26 +855,30 @@ class Compiler {
       if (const auto* sub = std::get_if<model::Assembly>(&value)) {
         const Placed placed =
             place(sub->pose, to_global, sibling, child_location, overlay, node_motion(sub->name));
-        add_assembly(*sub, placed.nominal, placed.overlay, child_location);
+        add_assembly(*sub, placed.nominal, placed.overlay, child_location, active && sub->active);
         previous = placed.nominal;
       } else {
         const auto& element = std::get<model::Element>(value);
         const Placed placed = place(element.pose, to_global, sibling, child_location, overlay,
                                     node_motion(element.name));
-        add_element(element, placed, child_location);
+        add_element(element, placed, child_location, active && element.active);
         previous = placed.nominal;
       }
     }
   }
 
   /// `frame`: the frames of the element (place()); its surfaces are placed in the nominal frame
-  /// and moved with the overlay of the element, axes follow the perturbed frame.
+  /// and moved with the overlay of the element, axes follow the perturbed frame. `active`: the
+  /// effective state of the element (ADR 0049); an inactive element is compiled completely
+  /// (materials, coatings, structure checks), only the paths skip it.
   void add_element(const model::Element& element,
                    const Placed& frame,
-                   const std::string& location) {
+                   const std::string& location,
+                   bool active) {
     const math::Isometry3& to_global = frame.global;
     ElementInfo info;
     info.kind = element.kind;
+    info.active = active;
     info.location = location;
     info.first_surface = static_cast<std::uint32_t>(surfaces_.size());
     info.surface_count = static_cast<std::uint32_t>(element.surfaces.size());
@@ -917,6 +935,7 @@ class Compiler {
       c.ideal_conductor = element.kind == model::ElementKind::Mirror && !element.material;
       c.element = element_index;
       c.location = surface_location;
+      c.active = active;
       // Surface j > 0 may refer to surface j - 1, the last surface added and its preceding
       // sibling (ADR 0028, point 2); surface 0 is absolute (validate). Nominal frames, the
       // overlay of the element and the motion of the surface (ADR 0036, point 1b).
@@ -976,7 +995,8 @@ class Compiler {
       c.medium_back = state.current;
     }
     compiled_elements_.push_back(CompiledElement{element.name, element.kind, info.first_surface,
-                                                 info.surface_count, info.media, info.segmented});
+                                                 info.surface_count, info.media, info.segmented,
+                                                 active});
   }
 
   /// The resolved data of an ideal (cylinder) lens (ADR 0031, points 1, 3 and 4). validate()
@@ -1075,11 +1095,29 @@ class Compiler {
         shape.base);
   }
 
-  /// `location` is the JSON pointer of the path in the system file.
+  /// `location` is the JSON pointer of the path in the system file. Inactive elements are
+  /// skipped (ADR 0049, point 2): an automatic path leaves them out, with paths.inactive_mirror
+  /// for a mirror and paths.image_changed if the last element is inactive; an explicit path
+  /// drops its events at their surfaces (validate reports paths.inactive_surface). A path that
+  /// loses all its events this way gives paths.all_inactive.
   CompiledPath build_path(const model::Path& path, const std::string& location) {
     CompiledPath compiled{path.name, {}};
+    bool skipped = false;  // an event or element left out because it is inactive
+    // Index of each compiled event in the model path, for the locations of errors at events: an
+    // explicit path may skip events at inactive surfaces (ADR 0049).
+    std::vector<std::size_t> origin;
     if (path.automatic) {
       for (const ElementInfo& e : elements_) {
+        if (!e.active) {
+          skipped = true;
+          if (e.kind == model::ElementKind::Mirror &&
+              inactive_mirror_reported_.emplace(e.location).second) {
+            report("paths.inactive_mirror", e.location,
+                   "the mirror is inactive: the automatic path leaves it out, the fold is gone and "
+                   "the rays go straight on (ADR 0049)");
+          }
+          continue;
+        }
         // A mirror on a substrate with several surfaces (Mangin mirror) refracts at its front
         // surface; reflecting at every surface would be wrong (#6).
         if (e.kind == model::ElementKind::Mirror && !e.media.empty() && e.surface_count > 1) {
@@ -1103,6 +1141,7 @@ class Compiler {
         }
         const model::EventKind kind = automatic_event(e.kind);
         for (std::uint32_t s = 0; s < e.surface_count; ++s) {
+          origin.push_back(compiled.events.size());
           compiled.events.push_back({e.first_surface + s, kind, 0, 0, 0});
         }
       }
@@ -1111,18 +1150,34 @@ class Compiler {
         const model::Event& event = path.events[k];
         // validate() guarantees that every referenced surface exists.
         const std::uint32_t surface = surface_index_.at(event.surface);
-        compiled.events.push_back({surface, event.kind, event.order, 0, 0});
-        // Only transmit acts at an ideal lens (ADR 0031, point 7): a static path rule.
+        // Only transmit acts at an ideal lens (ADR 0031, point 7): a static path rule, checked
+        // also at inactive surfaces, so that switching on brings no new error (ADR 0049).
         if (surfaces_[surface].ideal_lens &&
             (event.kind == model::EventKind::Refract || event.kind == model::EventKind::Reflect)) {
           report("paths.ideal_lens_event", idx(location + "/events", k),
                  "surface " + event.surface.str() +
                      " is an ideal lens: only transmit is allowed there (ADR 0031)");
         }
+        if (!surfaces_[surface].active) {
+          skipped = true;  // paths.inactive_surface comes from validate
+          continue;
+        }
+        origin.push_back(k);
+        compiled.events.push_back({surface, event.kind, event.order, 0, 0});
       }
     }
-    assign_media(compiled.events, location + "/events");
-    check_crystal_events(compiled.events, location + "/events", path.automatic);
+    if (compiled.events.empty() && skipped) {
+      report("paths.all_inactive", location,
+             "path '" + path.name +
+                 "' has no event left: all its elements are inactive (ADR 0049); every "
+                 "computation on it throws");
+    } else if (path.automatic && !elements_.empty() && !elements_.back().active) {
+      report("paths.image_changed", location,
+             "the last element is inactive: the image surface of the automatic path '" + path.name +
+                 "' is another surface than with it (ADR 0049)");
+    }
+    assign_media(compiled.events, origin, location + "/events");
+    check_crystal_events(compiled.events, origin, location + "/events", path.automatic);
     return compiled;
   }
 
@@ -1130,12 +1185,14 @@ class Compiler {
   /// B is the medium before, A after, "beyond" the other side of the surface. Allowed: entry
   /// (B isotropic, A crystal) with Ordinary or Extraordinary; exit (B crystal, A isotropic) with
   /// Refract; Transmit from outside; Transmit inside with order 0 (the mode is kept); Reflect
-  /// from outside at an ideal_anti_reflection surface. Errors at the event (`location`/k):
+  /// from outside at an ideal_anti_reflection surface. Errors at the event (`location`/origin[k],
+  /// the index of compiled event k in the model path):
   /// Refract into a crystal: paths.crystal_mode_required; a mode whose A is not a crystal:
   /// paths.mode_without_crystal; crystal to crystal, Reflect inside a crystal, Reflect from
   /// outside at any other interaction, Transmit inside with order != 0: crystal.unsupported.
   /// An automatic path through a crystal element has no mode: crystal.unsupported at `location`.
   void check_crystal_events(std::vector<CompiledEvent>& events,
+                            const std::vector<std::size_t>& origin,
                             const std::string& location,
                             bool automatic) {
     if (!environment_resolved_) return;  // its error stops compile(); see environment_resolved_
@@ -1165,7 +1222,7 @@ class Compiler {
       const bool after = crystal(e.medium_after);
       const bool is_mode =
           e.kind == model::EventKind::Ordinary || e.kind == model::EventKind::Extraordinary;
-      const std::string at = idx(location, k);
+      const std::string at = idx(location, origin[k]);
       const std::string surface = "surface " + surfaces_[e.surface].id.str();
       e.crystal_mode = before ? mode : CrystalMode::None;
       if (is_mode && !after) {
@@ -1289,8 +1346,11 @@ class Compiler {
   /// so entering B while in A leaves A, and leaving B goes to the environment.
   /// medium_beyond is the medium a crossing would reach, also for events that do not cross
   /// (#61); from_inside tells whether the ray is inside the surface's element before the event.
-  /// `location` is the JSON pointer of the events; errors add the event index.
-  void assign_media(std::vector<CompiledEvent>& events, const std::string& location) {
+  /// `location` is the JSON pointer of the events; errors add the index of the event in the model
+  /// path, `origin[k]` for compiled event k (they differ after skipped events, ADR 0049).
+  void assign_media(std::vector<CompiledEvent>& events,
+                    const std::vector<std::size_t>& origin,
+                    const std::string& location) {
     // A path starts in the medium of the object space (the environment unless the object has a
     // medium of its own, ADR 0037).
     MediumState state{std::nullopt, 0, object_medium_};
@@ -1312,7 +1372,7 @@ class Compiler {
           const std::uint32_t element = surface_element_[event.surface];
           const ElementInfo& info = elements_[element];
           const std::uint32_t i = event.surface - info.first_surface;
-          report("paths.inner_surface_ambiguous", idx(location, k),
+          report("paths.inner_surface_ambiguous", idx(location, origin[k]),
                  "inner surface " + surfaces_[event.surface].id.str() + " of element '" +
                      surfaces_[event.surface].element_name +
                      "' reached from outside the element is ambiguous: the segments on its two "
@@ -1367,8 +1427,9 @@ class Compiler {
     bool crystal = false;
   };
   std::vector<MediumCheck> media_checks_;
-  std::set<std::string> mangin_reported_;         // mirrors already reported as Mangin mirrors
-  std::set<std::string> uniform_plate_reported_;  // plates already reported, see build_path
+  std::set<std::string> mangin_reported_;           // mirrors already reported as Mangin mirrors
+  std::set<std::string> uniform_plate_reported_;    // plates already reported, see build_path
+  std::set<std::string> inactive_mirror_reported_;  // inactive mirrors reported, see build_path
 };
 
 }  // namespace

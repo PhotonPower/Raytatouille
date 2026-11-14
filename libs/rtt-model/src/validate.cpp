@@ -229,6 +229,9 @@ class Validator {
     if (a.name.empty()) report("node.name_empty", loc + "/name", "assembly name must not be empty");
     check_name(a.name, loc);
     check_node_pose(a.pose, loc, has_sibling);
+    // The effective state of the subtree (ADR 0049, point 1), restored after it.
+    const bool outer = active_;
+    active_ = active_ && a.active;
     for (std::size_t i = 0; i < a.children.size(); ++i) {
       const std::string child_loc = idx(loc + "/children", i);
       const auto& v = a.children[i].value;
@@ -238,6 +241,7 @@ class Validator {
         check_element(std::get<Element>(v), child_loc, i > 0);
       }
     }
+    active_ = outer;
   }
 
   /// Reference of an assembly or element pose (ADR 0028, point 5): the preceding surface in tree
@@ -417,8 +421,9 @@ class Validator {
         }
         break;
     }
+    const bool active = active_ && e.active;
     if (e.kind == ElementKind::Stop) {
-      stops_.push_back(loc);
+      stops_.push_back({loc, active});
       if (n == 1 && !e.surfaces[0].aperture) {
         report("stop.aperture_missing", loc + "/surfaces/0/aperture", "a stop needs an aperture");
       }
@@ -438,8 +443,9 @@ class Validator {
       check_surface(e.surfaces[i], sloc);
       check_ideal_lens_place(e, i, sloc);
       // For aperture.stop (ADR 0039, point 8): the first surface of each id.
-      surface_info_.try_emplace(e.surfaces[i].id.str(),
-                                SurfaceInfo{e.kind, e.surfaces[i].aperture.has_value(), sloc});
+      surface_info_.try_emplace(
+          e.surfaces[i].id.str(),
+          SurfaceInfo{e.kind, e.surfaces[i].aperture.has_value(), sloc, active});
     }
   }
 
@@ -816,17 +822,27 @@ class Validator {
     }
   }
 
-  /// At most one stop: a Stop element or aperture.stop on a surface of a lens, mirror, plate or
-  /// thin element with an aperture (ADR 0039, points 2 and 8).
+  /// At most one active stop: a Stop element or aperture.stop on a surface of a lens, mirror,
+  /// plate or thin element with an aperture (ADR 0039, points 2 and 8). Inactive stops do not
+  /// count (ADR 0049, point 3), but their structure is checked; defined stops none of which is
+  /// active give stop.inactive.
   void check_stops() {
-    if (stops_.size() > 1) report("stop.multiple", stops_[1], "only one stop element is allowed");
+    std::vector<std::string> active_stops;
+    for (const StopInfo& stop : stops_) {
+      if (stop.active) active_stops.push_back(stop.location);
+    }
+    if (active_stops.size() > 1) {
+      report("stop.multiple", active_stops[1], "only one active stop element is allowed");
+    }
+    bool named_active = false;  // aperture.stop names a surface of an active element
     if (system_.aperture.stop) {
       const std::string id = system_.aperture.stop->str();
-      if (!stops_.empty()) {
-        report("stop.multiple", "/aperture/stop",
-               "a stop element and aperture.stop: only one stop is allowed");
-      }
       const auto it = surface_info_.find(id);
+      named_active = it != surface_info_.end() && it->second.active;
+      if (named_active && !active_stops.empty()) {
+        report("stop.multiple", "/aperture/stop",
+               "an active stop element and aperture.stop: only one stop is allowed");
+      }
       if (it == surface_info_.end()) {
         report("stop.surface_unknown", "/aperture/stop", "no surface '" + id + "' for the stop");
       } else if (it->second.kind == ElementKind::Stop || it->second.kind == ElementKind::Detector) {
@@ -842,6 +858,13 @@ class Validator {
         system_.aperture.type == SystemApertureType::StopSize) {
       report("aperture.stop_missing", "/aperture/type",
              "aperture type 'stop_size' requires a stop element or aperture.stop");
+    }
+    const bool defined = !stops_.empty() || (system_.aperture.stop &&
+                                             surface_info_.contains(system_.aperture.stop->str()));
+    if (defined && active_stops.empty() && !named_active) {
+      report("stop.inactive", system_.aperture.stop ? "/aperture/stop" : stops_.front().location,
+             "no stop is active: the system has no stop, aiming, pupils, Seidel sums and OPD "
+             "throw NoStopError (ADR 0049)");
     }
   }
 
@@ -865,6 +888,10 @@ class Validator {
         if (!surface_ids_.contains(e.surface.str())) {
           report("paths.unknown_surface", eloc + "/surface",
                  "unknown surface id '" + e.surface.str() + "'");
+        } else if (!surface_active(e.surface.str())) {
+          report("paths.inactive_surface", eloc,
+                 "surface '" + e.surface.str() +
+                     "' belongs to an inactive node: the event is skipped (ADR 0049)");
         }
         // ADR 0025: an event diffracts exactly when its surface has a phase layer.
         if (e.order != 0 && surface_ids_.contains(e.surface.str()) &&
@@ -949,7 +976,9 @@ class Validator {
   }
 
   /// The surface of a ray operand must be on its path; `occurrence` picks one of several events
-  /// at it. An automatic path meets every surface of the system once.
+  /// at it. An automatic path meets every surface of the system once. These checks ignore
+  /// active, so switching a part off never adds an error; an operand at a surface of an inactive
+  /// node then gives merit.surface_inactive and is left out (ADR 0049, point 4).
   void check_ray_surface(const Path& p, const RayOperand& op, const std::string& loc) {
     const std::string& id = op.surface.str();
     std::size_t count = 0;
@@ -971,7 +1000,18 @@ class Validator {
       report("merit.surface_ambiguous", loc + "/surface",
              "path '" + p.name + "' meets surface '" + id + "' " + std::to_string(count) +
                  " times; set occurrence");
+    } else if (!surface_active(id)) {
+      report("merit.surface_inactive", loc + "/surface",
+             "surface '" + id +
+                 "' belongs to an inactive node: the operand is left out of the merit function "
+                 "(ADR 0049)");
     }
+  }
+
+  /// False if the surface `id` belongs to an inactive node (ADR 0049); true for unknown ids.
+  [[nodiscard]] bool surface_active(const std::string& id) const {
+    const auto it = surface_info_.find(id);
+    return it == surface_info_.end() || it->second.active;
   }
 
   void check_operand(const SpotRmsOperand& op, const std::string& loc) {
@@ -1601,14 +1641,21 @@ class Validator {
     ElementKind kind = ElementKind::Lens;
     bool has_aperture = false;
     std::string location;
+    bool active = true;  ///< effective state of the element (ADR 0049)
   };
   std::unordered_map<std::string, SurfaceInfo> surface_info_;
   std::unordered_set<std::string> phase_surfaces_;  // ids of surfaces with a phase layer
   std::unordered_map<std::string, std::string> node_names_;
-  std::vector<std::string> stops_;
+  /// Location and effective state of each Stop element (ADR 0049, point 3).
+  struct StopInfo {
+    std::string location;
+    bool active = true;
+  };
+  std::vector<StopInfo> stops_;
   std::unordered_set<std::string> row_names_;    // names of the parameter rows (ADR 0029)
   std::unordered_set<std::string> system_rows_;  // rows of object distance and aperture (#255)
   std::size_t surfaces_seen_ = 0;                // surfaces before the node in tree order
+  bool active_ = true;  // effective state of the node being checked (ADR 0049, point 1)
 };
 
 }  // namespace

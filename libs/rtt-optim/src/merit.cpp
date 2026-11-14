@@ -24,6 +24,7 @@
 #include "rtt/compile/errors.hpp"
 #include "rtt/diagnostics/codes.hpp"
 #include "rtt/math/types.hpp"
+#include "rtt/model/element.hpp"
 #include "rtt/model/optimization.hpp"
 #include "rtt/model/parameters.hpp"
 #include "rtt/optim/generators.hpp"
@@ -153,8 +154,36 @@ const detail::PathData& nominal_path(const TrialOverlay& overlay,
 compile::PathId path_id(const compile::CompiledSystem& cs, const std::string& name) {
   const std::optional<compile::PathId> id = cs.find_path(name);
   if (!id) throw std::invalid_argument("optimize: unknown path '" + name + "'");
+  if (cs.path(*id).events.empty()) {
+    // ADR 0049, point 2: all elements of the path are inactive (paths.all_inactive).
+    throw std::invalid_argument("optimize: path '" + name +
+                                "' has no events (all its elements are inactive)");
+  }
   return *id;
 }
+
+/// True if the surface `id` belongs to an element that is inactive itself or below an inactive
+/// assembly (ADR 0049, point 1); false if no element has it.
+bool surface_inactive(const model::Assembly& assembly,
+                      const model::SurfaceId& id,
+                      bool inactive_above) {
+  const bool inactive = inactive_above || !assembly.active;
+  for (const model::Node& child : assembly.children) {
+    if (const auto* sub = std::get_if<model::Assembly>(&child.value)) {
+      if (surface_inactive(*sub, id, inactive)) return true;
+      continue;
+    }
+    const auto& element = std::get<model::Element>(child.value);
+    for (const model::Surface& s : element.surfaces) {
+      if (s.id == id) return inactive || !element.active;
+    }
+  }
+  return false;
+}
+
+/// Why an operand left out of the merit function has no value (ADR 0049, point 4).
+constexpr const char* kInactiveSurface =
+    "the surface of the operand belongs to an inactive node (merit.surface_inactive)";
 
 /// Value and, if undefined, the reason.
 struct Value {
@@ -336,6 +365,7 @@ MeritFunction::MeritFunction(const model::System& system,
 
   const model::Optimization& merit = system.optimization;
   std::vector<model::Diagnostic> unsupported;
+  inactive_.assign(merit.operands.size(), false);
   for (std::size_t i = 0; i < merit.operands.size(); ++i) {
     const model::Operand& op = merit.operands[i];
     const model::OperandCommon& common = common_of(op);
@@ -355,6 +385,9 @@ MeritFunction::MeritFunction(const model::System& system,
     }
     rows_.push_back(std::nullopt);
     compiled_.push_back(k);
+    if (const auto* r = std::get_if<model::RayOperand>(&op)) {
+      inactive_[i] = surface_inactive(system.root, r->surface, false);
+    }
     const auto* f = std::get_if<model::FirstOrderOperand>(&op);
     if (f != nullptr && f->quantity == model::FirstOrderQuantity::Magnification &&
         system.object.at_infinity) {
@@ -395,7 +428,7 @@ MeritFunction::MeritFunction(const model::System& system,
   for (const std::size_t k : compiled_) {
     const compile::CompiledSystem cs = compile_one(system, materials, coatings, k, overlay);
     for (std::size_t i = 0; i < merit.operands.size(); ++i) {
-      if (rows_[i] || configurations_[i] != k) continue;
+      if (rows_[i] || configurations_[i] != k || inactive_[i]) continue;
       const model::Operand& op = merit.operands[i];
       const std::uint16_t wl = wavelength_of(op).value_or(cs.reference_wavelength());
       if (overlay != nullptr) {
@@ -564,6 +597,14 @@ MeritEvaluation MeritFunction::evaluate(std::span<const double> values) const {
   out.operand_arrived.reserve(operands.size());
   for (std::size_t i = 0; i < operands.size(); ++i) {
     const model::Operand& op = operands[i];
+    if (inactive_[i]) {
+      // ADR 0049, point 4: left out, but in its place; value NaN, residual and contribution 0.
+      out.values.push_back(kNaN);
+      out.residuals.push_back(0.0);
+      out.undefined.emplace_back(kInactiveSurface);
+      out.operand_arrived.emplace_back();
+      continue;
+    }
     Value v;
     std::vector<std::uint8_t> arrived;  // spot_rms and opd_rms only (addendum #299)
     if (const std::optional<std::size_t> row = rows_[i]; row.has_value()) {

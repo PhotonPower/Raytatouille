@@ -21,7 +21,7 @@ if(RTT_BUILD_TESTS)
       tests/test_parabasal.cpp tests/test_parabasal_real_na.cpp tests/test_trial_overlay.cpp
       tests/test_variables.cpp
       tests/test_ideal_lens_optim.cpp tests/test_anamorphic_merit.cpp
-      tests/test_iteration_callback.cpp
+      tests/test_iteration_callback.cpp tests/test_active_merit.cpp
     LIBS rtt::optim rtt::io rtt::analysis rtt::paraxial TBB::tbb nlohmann_json::nlohmann_json)
   # Glass catalogues of the reference systems for the noise measurement ([.noise]).
   target_compile_definitions(rtt_optim_tests PRIVATE

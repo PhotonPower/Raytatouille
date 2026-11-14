@@ -135,6 +135,9 @@ struct CompiledSurface {
   bool ideal_conductor = false;
   /// Set for IdealLens and IdealCylinderLens: the resolved lens data (ADR 0031).
   std::optional<CompiledIdealLens> ideal_lens;
+  /// False if the owning element or one of its ancestors has active false (ADR 0049, point 2):
+  /// the surface keeps its place and frame, but no path has an event at it.
+  bool active = true;
 };
 
 /// A homogeneous medium evaluated at all system wavelengths: isotropic, or a uniaxial crystal
@@ -432,9 +435,10 @@ class CompiledSystem {
   /// @throws std::out_of_range if `id` does not belong to this system
   [[nodiscard]] const CompiledPath& path(PathId id) const { return paths_.at(id.index); }
 
-  /// Index of the surface of the system stop (ADR 0039, point 3): the surface named by
-  /// aperture.stop, or else the surface of the Stop element; none without either. The stop of a
-  /// path is its first event at this surface (stop_event()), whatever its kind.
+  /// Index of the surface of the system stop (ADR 0039, point 3; ADR 0049, point 3): the surface
+  /// named by aperture.stop if it is active, or else the surface of the first active Stop
+  /// element; none without an active stop. The stop of a path is its first event at this surface
+  /// (stop_event()), whatever its kind.
   [[nodiscard]] std::optional<std::uint32_t> stop_surface() const noexcept { return stop_surface_; }
 
   /// Index of the surface with this id, if any.

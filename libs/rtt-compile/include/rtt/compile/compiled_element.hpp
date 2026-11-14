@@ -25,6 +25,9 @@ struct CompiledElement {
   /// True if the media follow the segments (every Lens, and a Plate with different segment
   /// materials); otherwise a refraction toggles between inside and environment (ADR 0017).
   bool segmented = false;
+  /// False if the element or one of its ancestors has active false (ADR 0049, point 2): its
+  /// surfaces and media stay compiled, but no path has an event at them.
+  bool active = true;
 };
 
 }  // namespace rtt::compile
