@@ -33,6 +33,12 @@ results are read-only NumPy copies.
 Pupil samplings for spot() are objects of raytatouille.trace or a shorthand string:
 ``"hexapolar:N"`` (rings), ``"grid:N"``, ``"fan_x:N"``, ``"fan_y:N"``, ``"random:N"`` or
 ``"random:N:SEED"`` (count, seed; seed 0 if omitted) and ``"single:PX,PY"``.
+
+Practical size: ``hexapolar:N`` launches 1 + 3 N (N + 1) rays, ``grid:N`` up to N^2 and
+``random:N`` N rays. Each ray takes about 270 bytes in a RayBatch (more with Q), and an analysis
+keeps further arrays per ray, so a few million rays (``hexapolar:1000`` is about 3e6 rays,
+roughly 1 GB) are practical on a workstation; the parser itself only limits N to the 32-bit range
+(64 bit for the seed).
 """
 
 from __future__ import annotations
