@@ -209,7 +209,7 @@ def _surface_layout_0_1_18(version: str) -> dict:
     doc = _broken(lambda d: None, "SurfaceLayout.result.json")
     doc["data"].update(curvature_x=doc["data"]["curvature"],
                        conic_constant_x=doc["data"]["conic_constant"],
-                       normalization_radius=None, axicon_angle_deg=None)
+                       normalization_radius=None, axicon_angle_deg=None, active=True)
     doc["schema_version"] = version
     return doc
 
@@ -239,3 +239,51 @@ def test_the_rotational_values_are_numbers_or_null():
     doc["data"]["axicon_angle_deg"] = "-5"
     with pytest.raises(jsonschema.ValidationError):
         VALIDATOR.validate(doc)
+
+
+# SurfaceLayout, CompiledElement and the segments of DimensionReport gained active in 0.1.20
+# (#380, ADR 0049, point 7; ADR 0023 addendum): older files stay valid without it (every
+# element was active), from 0.1.20 on it is required and a boolean.
+def _with_active(name: str, version: str, active=True) -> dict:
+    doc = _broken(lambda d: None, name)
+    if name == "SurfaceLayout.result.json":
+        doc["data"].update(curvature_x=doc["data"]["curvature"],
+                           conic_constant_x=doc["data"]["conic_constant"],
+                           normalization_radius=None, axicon_angle_deg=None)
+    target = doc["data"]["segments"] if name == "DimensionReport.result.json" else doc["data"]
+    if active is not None:
+        target["active"] = active
+    doc["schema_version"] = version
+    return doc
+
+
+ACTIVE_EXAMPLES = ["SurfaceLayout.result.json", "CompiledElement.result.json",
+                   "DimensionReport.result.json"]
+
+
+def _active_value(name: str, value):
+    """A boolean for SurfaceLayout and CompiledElement, an array per segment otherwise."""
+    if name != "DimensionReport.result.json":
+        return value
+    doc = load(ROOT / "tests" / "reference" / "results" / name)
+    n = doc["data"]["segments"]["element"]["shape"][0]
+    return {"dtype": "bool", "shape": [n], "values": [value] * n}
+
+
+@pytest.mark.parametrize("name", ACTIVE_EXAMPLES)
+def test_older_results_without_active_are_valid(name: str):
+    for version in ("0.1.6", "0.1.19"):
+        VALIDATOR.validate(_with_active(name, version, active=None))
+
+
+@pytest.mark.parametrize("name", ACTIVE_EXAMPLES)
+def test_results_from_0_1_20_need_active(name: str):
+    VALIDATOR.validate(_with_active(name, "0.1.20", _active_value(name, False)))
+    with pytest.raises(jsonschema.ValidationError):
+        VALIDATOR.validate(_with_active(name, "0.1.20", active=None))
+
+
+@pytest.mark.parametrize("name", ["SurfaceLayout.result.json", "CompiledElement.result.json"])
+def test_active_is_a_boolean(name: str):
+    with pytest.raises(jsonschema.ValidationError):
+        VALIDATOR.validate(_with_active(name, "0.1.20", "yes"))

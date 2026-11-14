@@ -852,6 +852,17 @@ TEST_CASE("every export warning has a case", "[zmx][export]") {
     REQUIRE(export_zmx(s, schott()).text.find("\r\nNAME two lines and a tab\r\n") !=
             std::string::npos);
   }
+  {  // an inactive thin element (ADR 0049, point 6)
+    System s = singlet();
+    Element t{"T", ElementKind::ThinElement, {}, std::nullopt, {}};
+    Surface ts;
+    ts.id = SurfaceId("T.S1");
+    t.surfaces.push_back(ts);
+    t.pose = element(s, 1).pose;
+    t.active = false;
+    s.root.children.insert(s.root.children.begin() + 1, Node{t});
+    check(s, {"export.inactive_skipped"});
+  }
 
   std::set<std::string> registered;
   for (const auto& info : rtt::diagnostics::kCodes) {

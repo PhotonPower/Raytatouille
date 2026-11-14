@@ -282,3 +282,21 @@ TEST_CASE("dimension report: relative placement gives the same dimensions", "[re
   CHECK(relative.centre_thickness == absolute.centre_thickness);
   CHECK(relative.edge_thickness == absolute.edge_thickness);
 }
+
+TEST_CASE("dimension report: an inactive lens is listed with active false", "[reports][active]") {
+  // ADR 0049, point 7: the report describes the geometry, so it lists inactive elements too;
+  // the dimensions are those of the active lens.
+  System sys = load("m1/singlet_const.rtt.json");
+  const SegmentDimensions on =
+      rtt::analysis::dimension_report(rtt::compile::compile(sys, MaterialLibrary{})).segments.at(0);
+  std::get<Element>(sys.root.children[1].value).active = false;
+  const DimensionReport d =
+      rtt::analysis::dimension_report(rtt::compile::compile(sys, MaterialLibrary{}));
+  REQUIRE(d.segments.size() == 1);
+  const SegmentDimensions& off = d.segments[0];
+  CHECK(on.active);
+  CHECK_FALSE(off.active);
+  CHECK(off.centre_thickness == on.centre_thickness);
+  CHECK(off.edge_thickness == on.edge_thickness);
+  CHECK(off.diameter == on.diameter);
+}

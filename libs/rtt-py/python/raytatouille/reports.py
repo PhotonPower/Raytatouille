@@ -19,7 +19,7 @@ Layout per report:
   local_dy, local_dz, opl, weight, status.
 - DimensionReport: one line per segment, the columns of ``segments`` in their order: element,
   first_surface, coaxial, centre_thickness, semi_diameter_first, semi_diameter_second,
-  aperture_first, aperture_second, edge_thickness, diameter.
+  aperture_first, aperture_second, edge_thickness, diameter, active.
 - SystemReport: two columns ``key,value``, one line per value of ``to_dict()`` in its order.
   The key is the path to the value: object keys joined with ".", list and array indices as
   "[i]" (e.g. ``wavelengths_um[0]``, ``prescription.first_order.efl``,
@@ -68,7 +68,8 @@ RAYTRACE_COLUMNS: tuple[str, ...] = (
 #: Columns of the dimension report CSV, in order (the attributes of DimensionSegments).
 DIMENSION_COLUMNS: tuple[str, ...] = (
     "element", "first_surface", "coaxial", "centre_thickness", "semi_diameter_first",
-    "semi_diameter_second", "aperture_first", "aperture_second", "edge_thickness", "diameter")
+    "semi_diameter_second", "aperture_first", "aperture_second", "edge_thickness", "diameter",
+    "active")
 
 
 def _field(v: Any) -> str:

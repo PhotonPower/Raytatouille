@@ -113,9 +113,13 @@ struct SegmentDimensions {
   /// reach h (domain of the shape) or the segment is not coaxial.
   double edge_thickness = 0.0;
   double diameter = 0.0;  ///< 2 h, mm; NaN if a surface has no aperture (h undefined)
+  /// False if the element is inactive (CompiledElement::active, ADR 0049, point 7): the report
+  /// describes the geometry and lists inactive elements too.
+  bool active = true;
 };
 
-/// Dimension report: one entry per segment of every lens and plate, in element order.
+/// Dimension report: one entry per segment of every lens and plate, in element order, inactive
+/// ones included (SegmentDimensions::active).
 struct DimensionReport {
   std::vector<SegmentDimensions> segments;
 };

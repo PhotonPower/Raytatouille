@@ -236,8 +236,8 @@ def test_the_surface_layout_result_has_the_new_keys_at_the_end() -> None:
     for s in layouts().values():
         text = s.to_json()
         envelope = json.loads(text)
-        assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.19"
-        assert list(envelope["data"])[-2:] == ["curvature_x", "conic_constant_x"]
+        assert envelope["schema_version"] == rt.results.SCHEMA_VERSION == "0.1.20"
+        assert list(envelope["data"])[-3:] == ["curvature_x", "conic_constant_x", "active"]
         validator.validate(envelope)
         loaded = rt.results.load_json(text)
         assert loaded.data["curvature_x"] == s.curvature_x
@@ -259,7 +259,7 @@ def test_an_older_surface_layout_reads_with_x_equal_y() -> None:
         loaded = rt.results.load_json(json.dumps(old))
         assert loaded.data["curvature_x"] == loaded.data["curvature"]
         assert loaded.data["conic_constant_x"] == loaded.data["conic_constant"] == 0.25
-        assert list(loaded.data)[-2:] == ["curvature_x", "conic_constant_x"]
+        assert list(loaded.data)[-3:] == ["curvature_x", "conic_constant_x", "active"]
     for version in ("0.1.17", "0.1.20"):
         new = copy.deepcopy(envelope)
         new["schema_version"] = version

@@ -79,7 +79,10 @@ class SurfaceLayout(NamedTuple):
     The media of a path are in its events; a reflection or a path running backwards may see the
     surface differently. For plates and prisms of one material with more than two surfaces this
     is only the convention of the surface order (each refraction toggles inside/environment);
-    which side is glass follows from CompiledElement.media and CompiledElement.segmented."""
+    which side is glass follows from CompiledElement.media and CompiledElement.segmented.
+
+    ``active`` is False for a surface of an inactive element (active false at the element or
+    an ancestor, ADR 0049): it keeps its place and frame, but no path has an event at it."""
 
     id: str
     element: int
@@ -98,6 +101,7 @@ class SurfaceLayout(NamedTuple):
     axicon_angle_deg: float | None
     curvature_x: float
     conic_constant_x: float
+    active: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         """The data as plain Python values (ADR 0023, raytatouille.results)."""
@@ -122,12 +126,12 @@ def surfaces(system: CompiledSystem) -> list[SurfaceLayout]:
     for entry in _core.layout_surfaces(system):
         (sid, element, kind, rotation, translation,
          (shape, c, k, coefficients, c_x, k_x, rho, angle), max_radius, aperture, front,
-         back) = entry
+         back, active) = entry
         out.append(SurfaceLayout(sid, int(element), kind, rotation, translation, shape, float(c),
                                  float(k), list(coefficients), max_radius, aperture, int(front),
                                  int(back), None if rho is None else float(rho),
                                  None if angle is None else float(angle), float(c_x),
-                                 float(k_x)))
+                                 float(k_x), bool(active)))
     return out
 
 

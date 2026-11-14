@@ -117,13 +117,13 @@ class ExportError : public std::runtime_error {
 /// wavelengths are written as lambda_air = lambda_vac / n_air(lambda_vac), an F/# multiplied and
 /// an object-space NA divided by n_air(lambda_vac,ref), n_air after Ciddor at 20 degC and 1 atm.
 /// Numbers in the shortest form that reads back to the same double (std::to_chars).
+/// Inactive elements are left out with the warning export.inactive_skipped (ADR 0049, point 6).
 /// @param system    the system; compiled with `materials` and without coatings (a coating is
 ///                  dropped with a warning)
 /// @param materials the glass catalogues; the GCAT line lists the catalogues of the glasses used
 /// @throws ExportError for every rule of ADR 0045 that rejects the system
 /// @throws std::invalid_argument for an unknown path name or a configuration index beyond the
-///         configurations of the system, or a system with an inactive node (ADR 0049, point 6;
-///         supported later)
+///         configurations of the system
 /// @throws compile::CompileError if the system does not compile (validate errors, unknown
 ///         materials)
 [[nodiscard]] ZmxExport export_zmx(const model::System& system,
