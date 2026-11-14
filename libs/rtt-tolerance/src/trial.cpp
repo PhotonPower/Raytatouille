@@ -22,6 +22,7 @@
 #include <variant>
 #include <vector>
 
+#include "inactive_detail.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/diagnostics/codes.hpp"
 #include "rtt/math/types.hpp"
@@ -66,6 +67,8 @@ struct CompensatorTarget {
   bool row = false;
   std::size_t index = 0;  ///< Param (for_each_param order) or row
   std::string pointer;    ///< optim::Variable::pointer of the variable it becomes
+  /// At a node in an inactive subtree (ADR 0049, point 5): never made variable; its value stays.
+  bool inactive = false;
 };
 
 /// A base radius of the nominal system in one configuration (ADR 0036, addendum #293), or the
@@ -90,6 +93,9 @@ struct ContextData {
   std::vector<CompensatorTarget> compensators;
   model::Optimization compensator_merit;
   model::Optimization criteria;  ///< the criteria's operands, for the merit function
+  /// Per criterion: left out, a ray operand at a surface of an inactive node (ADR 0049, decision
+  /// in #380); value and satisfied stay none, the trial stays valid.
+  std::vector<bool> criteria_inactive;
   TrialOptions options;
   std::optional<optim::NominalBasis> basis;
   TrialResult nominal_result;
@@ -673,6 +679,11 @@ TrialResult run(const ContextData& d,
         variable = &p.variable;
       }
       CompensatorValue v{x, x, false, false};
+      if (t.inactive) {
+        // ADR 0049, point 5: skipped (expand() warns with tolerances.target_inactive).
+        r.compensators.push_back(v);
+        continue;
+      }
       // No inner start: x on or outside a bound of the Param stays (ADR 0036, point 3).
       if ((min->has_value() && !(x > min->value())) || (max->has_value() && !(x < max->value()))) {
         v.infeasible = true;
@@ -734,6 +745,14 @@ TrialResult run(const ContextData& d,
   for (std::size_t k = 0; k < r.criteria.size(); ++k) {
     CriterionValue& c = r.criteria[k];
     const std::optional<double> phi0 = nominal != nullptr ? (*nominal)[k].value : c.value;
+    if (d.criteria_inactive[k]) {
+      // Left out (ADR 0049, decision in #380): no value, not decided, the trial stays valid.
+      c.inactive = true;
+      c.value.reset();
+      c.satisfied.reset();
+      c.reason = "left out: its surface belongs to an inactive node (merit.surface_inactive)";
+      continue;
+    }
     c.satisfied = satisfies(criteria[k], c.value, phi0);
     if (!c.value && r.status == TrialStatus::Valid) {
       r.status = TrialStatus::Invalid;
@@ -839,6 +858,7 @@ TrialContext prepare(const model::System& nominal,
       const std::string pointer = anchors.of(c.target) + *c.target.param;
       t.index = param_index(params, nominal, pointer, "compensator");
       t.pointer = pointer + "/value";
+      t.inactive = detail::target_inactive(nominal, c.target);
     }
     d->compensators.push_back(std::move(t));
   }
@@ -855,8 +875,10 @@ TrialContext prepare(const model::System& nominal,
     const optim::TrialOverlay overlay{{}, basis};
     model::System s = nominal;
     s.optimization = d->criteria;
+    d->criteria_inactive.assign(d->criteria.operands.size(), false);
     if (!s.optimization.empty()) {
-      static_cast<void>(optim::MeritFunction(s, materials, coatings, &overlay));
+      const optim::MeritFunction merit(s, materials, coatings, &overlay);
+      d->criteria_inactive = merit.inactive_operands();
     }
     if (!d->compensators.empty()) {
       s.optimization = d->compensator_merit;

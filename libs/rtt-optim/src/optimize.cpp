@@ -86,6 +86,7 @@ OptimResult run(const model::System& system,
       result.variables.push_back({v.pointer, v.row, v.configuration, v.start, v.start, false,
                                   at_bound(v.start, v.bounds)});
     }
+    result.diagnostics = inactive_variables(system);
     return result;
   }
   const MeritFunction merit(system, materials, coatings, overlay);
@@ -107,7 +108,14 @@ OptimResult run(const model::System& system,
             ? "the system has no operand and no generator (section optimization)"
             : "every operand is at a surface of an inactive node and no generator is left"));
   }
-  if (!errors.empty()) throw OptimError(std::move(errors));
+  if (!errors.empty()) {
+    // Why there may be no variable: the variable Params of inactive nodes (ADR 0049, point 4).
+    if (variables.empty()) {
+      const std::vector<model::Diagnostic> left_out = inactive_variables(system);
+      errors.insert(errors.end(), left_out.begin(), left_out.end());
+    }
+    throw OptimError(std::move(errors));
+  }
   const std::vector<double> p0 = merit.start();
   std::vector<Bounds> bounds;
   bounds.reserve(variables.size());
@@ -194,6 +202,7 @@ OptimResult run(const model::System& system,
   OptimResult result;
   result.status = lm.status;
   result.iterations = lm.iterations;
+  result.diagnostics = inactive_variables(system);  // ADR 0049, point 4: first
   result.failed_evaluations = lm.failed_evaluations;
   result.system = with_values(system, variables, lm.p);
 

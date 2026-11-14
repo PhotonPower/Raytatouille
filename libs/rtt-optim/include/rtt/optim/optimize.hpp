@@ -113,6 +113,7 @@ struct OptimResult {
   std::vector<OperandValue> operands;      ///< final state, file order
   std::vector<GeneratorValue> generators;  ///< final state, file order
   std::vector<VariableValue> variables;    ///< order of ADR 0030, point 5
+  /// optim.variable_inactive (per variable Param in an inactive node, ADR 0049), then
   /// optim.parameter_at_bound (per variable), optim.evaluation_failed, optim.jacobian_failed
   /// (status Failed, error), optim.rays_lost (per spot_rms or opd_rms operand, then per
   /// generator, with lost rays in the final state), then the warnings of the analyses in the

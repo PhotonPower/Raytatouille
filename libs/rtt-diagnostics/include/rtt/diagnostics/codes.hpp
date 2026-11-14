@@ -223,6 +223,8 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "result value of a variable lies at its bound"},
     {"optim.rays_lost", Severity::Warning, "optim",
      "rays of a merit generator were lost in the final state"},
+    {"optim.variable_inactive", Severity::Warning, "optim",
+     "variable Param in an inactive node; it is not a variable and keeps its value"},
     {"param.bound_conflict", Severity::Error, "validate", "bound Param with variable or bounds"},
     {"param.unknown_parameter", Severity::Error, "validate",
      "Param bound to an unknown parameter row"},
@@ -391,6 +393,8 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
     {"tolerances.rss_negative", Severity::Warning, "tolerance",
      "the RSS sum Phi_0^2 + sum q_i or the prediction Phi_0^2 + sum c_i^2 q_i of a quadratic "
      "criterion is negative; reported as 0 (ADR 0036, point 6)"},
+    {"tolerances.target_inactive", Severity::Warning, "tolerance",
+     "explicit tolerance, single value or compensator at an inactive node; it is skipped"},
     {"tolerances.target_invalid", Severity::Error, "validate",
      "tolerance kind, anchor, param pointer or segment do not fit the target, a single value of "
      "a kind no class generates there, or a row the object distance or the system aperture "

@@ -13,6 +13,7 @@
 #include "rtt/model/system.hpp"
 #include "rtt/model/tolerance.hpp"
 #include "rtt/model/tolerance_classes.hpp"
+#include "rtt/model/validate.hpp"
 
 namespace rtt::tolerance {
 
@@ -38,12 +39,18 @@ struct ToleranceItems {
   std::vector<ItemOrigin> origins;
   /// The result of model::class_tolerances: also the kinds a class skips (with the reason) or an
   /// explicit item replaces, and what became of each single-value override. In addition abbe is
-  /// skipped (ConstAbbe) at a glass without dispersion, which only the catalogue shows.
+  /// skipped (ConstAbbe) at a glass without dispersion, which only the catalogue shows. Targets
+  /// in an inactive subtree are skipped with ClassSkip::Inactive (ADR 0049, point 5).
   model::ClassTolerances classes;
+  /// tolerances.target_inactive (ADR 0049, point 5), in the order explicit items
+  /// (/tolerances/items/<i>, left out of `items`), single values (/tolerances/overrides/<i>) and
+  /// compensators (/tolerances/compensators/<i>, which prepare() does not run) at inactive nodes.
+  std::vector<model::Diagnostic> warnings;
 };
 
 /// The items of `system.tolerances` (ADR 0036, point 9): only those a class generates (not
-/// skipped, not replaced by an explicit item) and all explicit items. Depends only on the tree,
+/// skipped, not replaced by an explicit item) and all explicit items whose target is not in an
+/// inactive subtree (ADR 0049, point 5; ToleranceItems::warnings). Depends only on the tree,
 /// the classes, the overrides and the items; adding an override does not change the ids of
 /// the other items and so not their random draws (ADR 0036, point 5).
 ///

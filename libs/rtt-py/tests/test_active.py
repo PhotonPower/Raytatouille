@@ -53,3 +53,28 @@ def test_root_cannot_be_inactive_and_old_files_cannot_hold_the_key() -> None:
     old["root"]["children"][1]["active"] = False
     with pytest.raises(ValueError, match="0.10"):
         rt.System.from_json(json.dumps(old))
+
+
+def test_inactive_nodes_in_tolerancing_and_variables() -> None:
+    """PR 4 of ADR 0049: an explicit item at an inactive node is left out with
+    tolerances.target_inactive (ToleranceItems.warnings), class items there are skipped with
+    ClassSkip.INACTIVE, and a variable Param there is no variable."""
+    from raytatouille import optim, tolerance
+
+    data = json.loads(
+        rt.load(REFERENCE_DIR / "m7" / "decentred_lens_finite.rtt.json").to_json()
+    )
+    data["root"]["children"][1]["active"] = False  # the lens
+    data["tolerances"]["class"] = "normal"
+    system = rt.System.from_json(json.dumps(data))
+    items = tolerance.expand(system)
+    assert [w.code for w in items.warnings] == ["tolerances.target_inactive"]
+    assert items.warnings[0].location == "/tolerances/items/0"
+    assert "lens-dy" not in [i.id for i in items.items]
+    at_lens = [c for c in items.classes.items if c.node == "lens"]
+    assert at_lens and all(c.skip == tolerance.ClassSkip.INACTIVE for c in at_lens)
+
+    z = {"value": 0.0, "variable": True}
+    data["root"]["children"][1]["pose"] = {"position": [0.0, 0.0, z]}
+    with_variable = rt.System.from_json(json.dumps(data))
+    assert optim.variables(with_variable) == []

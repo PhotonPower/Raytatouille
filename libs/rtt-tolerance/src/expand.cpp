@@ -10,8 +10,10 @@
 #include <variant>
 #include <vector>
 
+#include "inactive_detail.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/compile/perturbation.hpp"
+#include "rtt/diagnostics/codes.hpp"
 #include "rtt/model/validate.hpp"
 #include "rtt/tolerance/classes.hpp"
 
@@ -147,10 +149,32 @@ ToleranceItems expand(const model::System& system, const material::MaterialLibra
     out.origins.push_back({ItemOrigin::Source::Class, i});
   }
   if (!abbe.errors.empty()) throw compile::CompileError(std::move(abbe.errors));
-  // Then the explicit items in file order.
+  // Then the explicit items in file order; those at inactive nodes are skipped (ADR 0049,
+  // point 5), as are single values and compensators there (their warnings only).
+  constexpr diagnostics::DiagnosticCode kInactive = "tolerances.target_inactive";
+  const auto warn = [&](const std::string& location, const std::string& what) {
+    out.warnings.push_back({kInactive.severity(), location,
+                            what + " is at an inactive node and is skipped (ADR 0049)",
+                            std::string(kInactive.str())});
+  };
   for (std::size_t i = 0; i < set.items.size(); ++i) {
+    if (detail::target_inactive(system, set.items[i].target)) {
+      warn("/tolerances/items/" + std::to_string(i), "the tolerance '" + set.items[i].id + "'");
+      continue;
+    }
     out.items.push_back(set.items[i]);
     out.origins.push_back({ItemOrigin::Source::Explicit, i});
+  }
+  for (std::size_t i = 0; i < set.overrides.size(); ++i) {
+    const auto* v = std::get_if<model::ToleranceValueOverride>(&set.overrides[i]);
+    if (v != nullptr && detail::target_inactive(system, v->target)) {
+      warn("/tolerances/overrides/" + std::to_string(i), "the single value");
+    }
+  }
+  for (std::size_t i = 0; i < set.compensators.size(); ++i) {
+    if (detail::target_inactive(system, set.compensators[i].target)) {
+      warn("/tolerances/compensators/" + std::to_string(i), "the compensator");
+    }
   }
   return out;
 }

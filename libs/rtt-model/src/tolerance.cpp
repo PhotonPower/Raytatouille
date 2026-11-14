@@ -104,6 +104,7 @@ class ClassGenerator {
   }
 
   ClassTolerances run() {
+    inactive_ = !system_.root.active;  // an error of validate (node.root_inactive)
     walk(system_.root, system_.tolerances.tolerance_class);
     apply_items();
     apply_overrides();
@@ -121,17 +122,23 @@ class ClassGenerator {
       if (const auto* sub = std::get_if<Assembly>(&n.value)) {
         const ToleranceClass c = class_of(sub->name, inherited);
         effective_.emplace(sub->name, c);
+        const bool outer = inactive_;
+        inactive_ = inactive_ || !sub->active;
         if (c != ToleranceClass::None) {
           for (const ToleranceKind k : kAssemblyKinds) {
             add(node_target(sub->name), k, ToleranceLevel::Assembly, c, ClassSkip::None);
           }
         }
         walk(*sub, c);
+        inactive_ = outer;
       } else {
         const Element& e = std::get<Element>(n.value);
         const ToleranceClass c = class_of(e.name, inherited);
         effective_.emplace(e.name, c);
+        const bool outer = inactive_;
+        inactive_ = inactive_ || !e.active;
         if (c != ToleranceClass::None) element(e, c);
+        inactive_ = outer;
       }
     }
   }
@@ -237,7 +244,8 @@ class ClassGenerator {
     item.kind = kind;
     item.level = level;
     item.tolerance_class = c;
-    item.skip = skip;
+    // ADR 0049, point 5: no class item in an inactive subtree, whatever the other reason.
+    item.skip = inactive_ ? ClassSkip::Inactive : skip;
     out_.items.push_back(std::move(item));
   }
 
@@ -300,6 +308,7 @@ class ClassGenerator {
   std::unordered_map<std::string, ToleranceClass> classes_;    ///< class overrides by node
   std::unordered_map<std::string, ToleranceClass> effective_;  ///< effective class by node
   ClassTolerances out_;
+  bool inactive_ = false;  ///< the node being walked is in an inactive subtree (ADR 0049)
 };
 
 }  // namespace

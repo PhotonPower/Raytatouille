@@ -23,6 +23,7 @@
 #include "rtt/optim/generators.hpp"
 #include "rtt/optim/merit.hpp"
 #include "rtt/optim/optimize.hpp"
+#include "rtt/optim/variables.hpp"
 #include "rtt/paraxial/paraxial.hpp"
 #include "rtt/trace/sources.hpp"
 
@@ -185,4 +186,50 @@ TEST_CASE("active: computations on a path without events throw", "[active]") {
   CHECK_THROWS_WITH(MeritFunction(gen, lib, nullptr),
                     ContainsSubstring("all its elements are inactive"));
   CHECK_THROWS_AS(rtt::optim::optimize(gen, lib), std::invalid_argument);
+}
+
+TEST_CASE("active: a variable Param in an inactive node is no variable", "[active]") {
+  // ADR 0049, point 4: the thickness of the inactive window is variable in the file, but it is
+  // no variable of the run; it keeps its value and gives optim.variable_inactive.
+  const MaterialLibrary lib;
+  System s = with_inactive_window();
+  const std::string window_z = "/root/children/1/pose/position/2";
+  rtt::model::for_each_param(s, [&](std::string_view pointer, Param& p) {
+    if (pointer == window_z) p.variable = true;
+  });
+  const std::vector<rtt::optim::Variable> vars = rtt::optim::collect_variables(s);
+  REQUIRE(vars.size() == 1);  // the front radius of the lens only
+  CHECK(vars[0].pointer == "/root/children/2/surfaces/0/shape/base/radius/value");
+  const std::vector<rtt::model::Diagnostic> w = rtt::optim::inactive_variables(s);
+  REQUIRE(w.size() == 1);
+  CHECK(w[0].code == "optim.variable_inactive");
+  CHECK(w[0].location == window_z);
+  CHECK(w[0].severity == rtt::model::Severity::Warning);
+
+  s.optimization.operands = {efl(98.0)};
+  rtt::optim::OptimizeOptions options;
+  options.max_iterations = 2;
+  const rtt::optim::OptimResult r = rtt::optim::optimize(s, lib, nullptr, options);
+  REQUIRE_FALSE(r.diagnostics.empty());
+  CHECK(r.diagnostics[0].code == "optim.variable_inactive");
+  CHECK(r.diagnostics[0].location == window_z);
+  REQUIRE(r.variables.size() == 1);
+  // The window keeps its value in the result system.
+  double z = 0.0;
+  rtt::model::for_each_param(r.system, [&](std::string_view pointer, const Param& p) {
+    if (pointer == window_z) z = p.value;
+  });
+  CHECK(z == 1.0);
+
+  // Only the inactive Param variable: optim.no_variables, with the reason.
+  rtt::model::for_each_param(s, [&](std::string_view pointer, Param& p) {
+    if (pointer != window_z) p.variable = false;
+  });
+  try {
+    static_cast<void>(rtt::optim::optimize(s, lib));
+    FAIL("no OptimError");
+  } catch (const OptimError& e) {
+    CHECK(has_code(e, "optim.no_variables"));
+    CHECK(has_code(e, "optim.variable_inactive"));
+  }
 }

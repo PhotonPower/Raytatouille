@@ -105,7 +105,8 @@ def variables(system: System) -> list[Variable]:
     """The unknowns of ``system`` in the order of ADR 0030, point 5: the variable rows of the
     parameter table in table order (a ``values`` row once per configuration), then the
     variable model Params. Each has the JSON pointer its value has in the edit form, the start
-    value and the bounds (None if not set)."""
+    value and the bounds (None if not set). A variable Param in an inactive node (ADR 0049) is
+    no variable; optimize reports it with the warning optim.variable_inactive."""
     return _core.collect_variables(system)
 
 
@@ -141,7 +142,8 @@ def optimize(
     for KeyboardInterrupt in the callback too.
 
     Raises CompileError if the system is invalid or does not compile at the start; OptimError
-    with optim.no_variables and/or optim.no_operands, or merit.operand_unsupported; the
+    with optim.no_variables (with the warnings optim.variable_inactive, ADR 0049) and/or
+    optim.no_operands, or merit.operand_unsupported; the
     exception of an analysis at the start (ParaxialError, AnalysisError, NoStopError), or
     ValueError naming the operand or generator whose value is not defined at the start.
     """

@@ -209,7 +209,9 @@ class Cancelled(RaytatouilleError):
 class OptimError(RaytatouilleError, ValueError):
     """An optimization run that cannot start (ADR 0030, point 10): ``diagnostics`` carry the
     stable codes optim.no_variables and/or optim.no_operands (both if both apply), or
-    merit.operand_unsupported, with JSON pointers into the system file."""
+    merit.operand_unsupported, with JSON pointers into the system file. With
+    optim.no_variables it also carries the warnings optim.variable_inactive of variable Params in
+    inactive nodes (ADR 0049), which say why there is no variable."""
 
     def __init__(self, message: str, diagnostics: list[Diagnostic]) -> None:
         super().__init__(message)
