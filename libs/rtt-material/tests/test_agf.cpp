@@ -707,3 +707,28 @@ TEST_CASE("add_catalog rejects conflicts and registers nothing then", "[agf]") {
   REQUIRE_THROWS_AS(lib.add_catalog(empty.dir()), std::invalid_argument);
   REQUIRE_THROWS_AS(lib.add_catalog(empty.dir() / "missing.agf"), AgfError);
 }
+
+TEST_CASE("a glass with fewer than 7 TD values names the TD line when it is used (#333)", "[agf]") {
+  // The catalogue loads and only that glass is unsupported (review S1); the reason names the
+  // catalogue and the line of the TD record, which it did not before.
+  MaterialLibrary lib;
+  lib.add_catalog_text("CC c\nNM A 2 1 1.5 60\nCD 1 2\nTD 1 2 3\n4 5\nNM B 2 1 1.5 60\nCD 1 2\n",
+                       "TEST", "t.agf");
+  REQUIRE_THROWS_WITH(lib.resolve("TEST:A"), ContainsSubstring("t.agf:4: TD has 5 values"));
+  REQUIRE_NOTHROW(lib.resolve("TEST:B"));
+  // The parser keeps the line of the TD record.
+  const AgfCatalog cat =
+      parse_agf("CC c\nNM A 2 1 1.5 60\nCD 1 2\nTD 1 2 3 4 5 6 20\n", "TEST", "ok.agf");
+  REQUIRE(cat.glasses.at(0).thermal_line == 4);
+}
+
+TEST_CASE("paths in load errors are UTF-8 (#333)", "[agf]") {
+  // path::string() is the native narrow encoding (garbled outside ASCII on Windows); the
+  // messages use the UTF-8 bytes of the path. On Linux and macOS both agree, so only the
+  // Windows job tells them apart.
+  const std::filesystem::path missing =
+      std::filesystem::temp_directory_path() / std::filesystem::path(u8"rtt_gläser_333.agf");
+  const AgfError e = agf_error([&] { [[maybe_unused]] const AgfCatalog c = load_agf(missing); });
+  REQUIRE(e.file() == "rtt_gl\xc3\xa4ser_333.agf");
+  REQUIRE_THAT(e.what(), ContainsSubstring("rtt_gl\xc3\xa4ser_333.agf"));
+}

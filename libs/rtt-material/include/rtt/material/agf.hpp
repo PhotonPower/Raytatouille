@@ -125,7 +125,8 @@ struct AgfGlass {
   std::optional<AgfOtherData> other;
   std::vector<AgfTransmission> transmission;  ///< IT records in file order
   std::size_t line = 0;                       ///< line of the NM record
-  /// Equal data and line (parse_agf compares duplicates with the line set equal, #71).
+  std::size_t thermal_line = 0;               ///< line of the TD record; 0 without (#333)
+  /// Equal data and lines (parse_agf compares duplicates with the lines set equal, #71).
   bool operator==(const AgfGlass&) const = default;
 };
 
@@ -169,7 +170,8 @@ struct AgfCatalog {
 ///         (or follows an empty or comment line), more than 10 CD or (with continuation
 ///         lines) 7 TD values; MD, OD and IT with another number of values than 5, 6 and 3, a
 ///         second GC, MD or OD record, and NM extras that are not "_"/"-" or in range
-///         (exclude sub 0/1, status 0..4, melt freq an integer) or more than three of them
+///         (exclude sub 0/1, status 0..4, melt freq an integer) or more than three of them;
+///         with line 0 for a text without any glass (empty, only comments or CC lines; #333)
 [[nodiscard]] AgfCatalog parse_agf(std::string_view text, std::string name, std::string file);
 
 /// Reads, decodes and parses an AGF file; the catalogue name is the file name without

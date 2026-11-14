@@ -182,11 +182,12 @@ TEST_CASE("R3: a file without any CC or NM record is not an AGF catalogue", "[ag
   MaterialLibrary lib;
   REQUIRE_THROWS_AS(lib.add_catalog_text(json, "J", "j.agf"), AgfError);
   REQUIRE(lib.load_warnings().empty());
-  // Unchanged: a file without any text line is an empty catalogue.
-  const AgfCatalog empty = parse_agf("", "T", "t.agf");
-  REQUIRE((empty.glasses.empty() && empty.warnings.empty()));
-  const AgfCatalog comments = parse_agf("! comment\n\n", "T", "t.agf");
-  REQUIRE((comments.glasses.empty() && comments.warnings.empty()));
+  // A file without a glass is an error of the whole file (decision in #333; before, it was an
+  // empty catalogue).
+  REQUIRE(agf_error("").line() == 0);
+  REQUIRE(agf_error("! comment\n\n").line() == 0);
+  REQUIRE(agf_error("CC only a header\n").line() == 0);
+  REQUIRE_THAT(std::string(agf_error("").what()), ContainsSubstring("no glass"));
 }
 
 TEST_CASE("R4: a single word before the next NM is skipped with a warning", "[agf][load]") {
@@ -243,4 +244,22 @@ TEST_CASE("every agf code of the registry has a case in this file", "[agf][load]
     REQUIRE(info.severity == rtt::diagnostics::Severity::Warning);
   }
   for (const std::string& code : covered) REQUIRE(rtt::diagnostics::find_code(code) != nullptr);
+}
+
+TEST_CASE("R1 and R2 with TD records: the line of the TD record does not count (#333)",
+          "[agf][load]") {
+  // AgfGlass::thermal_line (#333) is a line, not data: identical blocks with TD at different
+  // lines stay one glass (agf.duplicate_glass); different TD values stay a conflict.
+  const std::string td = "TD 1e-6 2e-8 -3e-11 4e-7 5e-10 0.2 20\n";
+  const std::string text = "CC c\n" + block("A") + td + block("B") + block("A") + td;
+  const AgfCatalog same = parse_agf(text, "T", "t.agf");
+  REQUIRE(same.glasses.size() == 2);
+  REQUIRE(same.warnings.size() == 1);
+  REQUIRE(same.warnings[0].code == "agf.duplicate_glass");
+  const std::string other = "TD 1e-6 2e-8 -3e-11 4e-7 5e-10 0.2 25\n";
+  const AgfCatalog conflict =
+      parse_agf("CC c\n" + block("A") + td + block("A") + other, "T", "t.agf");
+  REQUIRE(conflict.warnings.size() == 1);
+  REQUIRE(conflict.warnings[0].code == "agf.duplicate_glass_conflict");
+  REQUIRE_THAT(conflict.warnings[0].message, ContainsSubstring("TD"));
 }
