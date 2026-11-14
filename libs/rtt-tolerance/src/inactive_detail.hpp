@@ -24,7 +24,7 @@ inline std::optional<std::string> anchor(const model::Assembly& a,
                                          const std::string& location,
                                          const model::ToleranceTarget& target) {
   for (std::size_t i = 0; i < a.children.size(); ++i) {
-    const std::string child = location + "/children/" + std::to_string(i);
+    std::string child = location + "/children/" + std::to_string(i);
     if (const auto* sub = std::get_if<model::Assembly>(&a.children[i].value)) {
       if (target.anchor == model::ToleranceAnchor::Node && sub->name == target.name) return child;
       if (std::optional<std::string> found = anchor(*sub, child, target)) return found;
