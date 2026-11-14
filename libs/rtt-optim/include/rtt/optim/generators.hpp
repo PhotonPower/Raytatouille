@@ -71,9 +71,10 @@ struct GeneratorStats {
 /// Writes the residuals of `generator` in `system` to `out` in the order above.
 /// @param out   generator_size(generator, system) values
 /// @param stats rays and mean square of this evaluation (overwritten)
-/// @throws std::invalid_argument for an `out` of another size, an unknown path, a field or
-///         wavelength index out of range, or chosen weights that sum to 0 (the start check of
-///         MeritFunction rejects these before a run)
+/// @throws std::invalid_argument for an `out` of another size, an unknown path, a path without
+///         events (all its elements inactive, ADR 0049), a field or wavelength index out of
+///         range, or chosen weights that sum to 0 (the start check of MeritFunction rejects
+///         these before a run)
 /// @throws as analysis::opd_points (rms_wavefront: chief ray lost or missing the sphere) and
 ///         trace::make_rays
 void generator_residuals(const model::Generator& generator,

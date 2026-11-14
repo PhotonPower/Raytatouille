@@ -171,8 +171,9 @@ using IterationCallback = std::function<void(const IterationState& state)>;
 ///                  the history; the last call has the result's values and patch, also when it
 ///                  threw and so ended the run.
 /// @throws compile::CompileError if the system is invalid or does not compile at the start
-/// @throws OptimError with optim.no_variables and/or optim.no_operands (both if both apply), or
-///         with merit.operand_unsupported
+/// @throws OptimError with optim.no_variables and/or optim.no_operands (both if both apply;
+///         no_operands also if every operand is left out at an inactive surface and there is no
+///         generator, ADR 0049), or with merit.operand_unsupported
 /// @throws the exception of an analysis at the start (ParaxialError, AnalysisError,
 ///         NoStopError), or std::invalid_argument naming the operand or generator if its value
 ///         or a residual is not defined at the start (ADR 0030, point 10)

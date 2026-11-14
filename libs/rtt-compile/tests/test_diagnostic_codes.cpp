@@ -564,6 +564,40 @@ std::vector<Case> cases() {
                             {{SurfaceId("L1.S1"), EventKind::Refract, 0},
                              {SurfaceId("L1.S2"), EventKind::Refract, 0}}});
        }},
+      // --- ADR 0049 (#380): nodes taken out of the computation with active false
+      {"stop.inactive", "/root/children/0", [](System& s) { element(s, 0).active = false; }},
+      {"stop.inactive", "/aperture/stop",
+       [](System& s) {
+         element(s, 0).kind = ElementKind::ThinElement;
+         element(s, 1).surfaces[0].aperture = CircularAperture{10.0, 0.0};
+         s.aperture.stop = SurfaceId("L1.S1");
+         element(s, 1).active = false;
+       }},
+      {"paths.inactive_surface", "/paths/1/events/1",
+       [](System& s) {
+         element(s, 1).active = false;
+         s.paths.push_back({"explicit",
+                            false,
+                            {{SurfaceId("STO"), EventKind::Transmit, 0},
+                             {SurfaceId("L1.S1"), EventKind::Refract, 0},
+                             {SurfaceId("L1.S2"), EventKind::Refract, 0},
+                             {SurfaceId("IMG"), EventKind::Transmit, 0}}});
+       }},
+      {"paths.inactive_mirror", "/root/children/2",
+       [](System& s) {
+         element(s, 2).kind = ElementKind::Mirror;
+         element(s, 2).active = false;
+       }},
+      {"paths.image_changed", "/paths/0", [](System& s) { element(s, 2).active = false; }},
+      {"paths.all_inactive", "/paths/0",
+       [](System& s) {
+         for (auto& child : s.root.children) std::get<Element>(child.value).active = false;
+       }},
+      {"merit.surface_inactive", "/optimization/operands/0/surface",
+       [](System& s) {
+         element(s, 1).active = false;
+         s.optimization.operands = {ray_y("L1.S1")};
+       }},
       // --- schema 0.4 (#162): relative placement (ADR 0028), parameter table (ADR 0029)
       {"pose.relative_first_surface", "/root/children/1/surfaces/0/pose/reference",
        [](System& s) {

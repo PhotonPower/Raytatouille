@@ -88,6 +88,11 @@ std::vector<double> normalised(const std::vector<double>& weights, const char* w
 compile::PathId path_of(const compile::CompiledSystem& cs, const std::string& name) {
   const std::optional<compile::PathId> id = cs.find_path(name);
   if (!id) throw std::invalid_argument("optimize: unknown path '" + name + "' of a generator");
+  if (cs.path(*id).events.empty()) {
+    // ADR 0049, point 2: all elements of the path are inactive (paths.all_inactive).
+    throw std::invalid_argument("optimize: path '" + name +
+                                "' of a generator has no events (all its elements are inactive)");
+  }
   return *id;
 }
 

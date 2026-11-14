@@ -112,7 +112,9 @@ class MeritFunction {
   /// @throws compile::CompileError if the start system does not compile in a used configuration
   ///         (with the overlay's perturbation)
   /// @throws std::invalid_argument if the overlay's nominal basis has another number of
-  ///         configurations or other path names than `system`
+  ///         configurations or other path names than `system`, or if an operand or generator
+  ///         that is not left out (inactive_operands()) is on a path without events (all its
+  ///         elements inactive, ADR 0049)
   /// @throws OptimError with merit.operand_unsupported for a magnification operand with the
   ///         object at infinity, an operand other than param_value or a generator on a path
   ///         that paraxial::first_order rejects (crystal, order != 0, not rotationally
@@ -142,6 +144,10 @@ class MeritFunction {
   [[nodiscard]] const std::vector<std::size_t>& generator_sizes() const noexcept {
     return generator_sizes_;
   }
+  /// True for each operand left out of the merit function, same order as the operands: a ray
+  /// operand at a surface of an inactive node (ADR 0049, point 4; merit.surface_inactive). Its
+  /// value is NaN, its residual 0, and MeritEvaluation::undefined gives the reason.
+  [[nodiscard]] const std::vector<bool>& inactive_operands() const noexcept { return inactive_; }
 
   /// Evaluates the operands with the variables at `values`. Thread-safe and deterministic:
   /// nothing is shared between calls except the read-only input and the libraries.
@@ -161,6 +167,7 @@ class MeritFunction {
   std::vector<std::optional<std::size_t>> rows_;       ///< table row of a param_value operand
   std::vector<std::size_t> generator_configurations_;  ///< configuration of each generator
   std::vector<std::size_t> generator_sizes_;           ///< residuals of each generator
+  std::vector<bool> inactive_;                         ///< operand left out (ADR 0049)
   std::size_t size_ = 0;                               ///< operands plus generator residuals
   /// With an overlay: configurations whose efl or bfl operands need the variant with the object
   /// at infinity, ascending.
