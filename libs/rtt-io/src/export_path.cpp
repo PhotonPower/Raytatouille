@@ -182,6 +182,14 @@ ExportPath walk_export_path(const model::System& system,
                             const ExportOptions& options) {
   ExportPath out;
 
+  // ADR 0049, point 6: until the export handles inactive nodes (thicknesses from the compiled
+  // vertices, export.inactive_skipped), a system with one is refused instead of written with
+  // wrong thicknesses.
+  if (const std::vector<std::string> inactive = model::inactive_nodes(system); !inactive.empty()) {
+    throw std::invalid_argument("the export does not support inactive nodes yet (ADR 0049): " +
+                                inactive.front());
+  }
+
   // Configuration (ADR 0045, point 3; F6).
   const std::size_t count = model::configuration_count(system);
   if (!options.configuration && count > 1) {

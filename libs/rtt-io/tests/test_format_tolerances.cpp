@@ -109,8 +109,8 @@ json changed(const std::function<void(json&)>& change) {
 
 }  // namespace
 
-TEST_CASE("schema version is 0.9.0", "[io][tolerances]") {
-  REQUIRE(kSchemaVersion == "0.9.0");
+TEST_CASE("schema version is 0.10.0", "[io][tolerances]") {
+  REQUIRE(kSchemaVersion == "0.10.0");
 }
 
 TEST_CASE("tolerances: the set round-trips in both forms", "[io][tolerances]") {
@@ -388,7 +388,7 @@ TEST_CASE("migration 0.5 -> 0.6 changes only the version", "[io][tolerances][mig
   json j = json::parse(rtt::io::to_json(test::make_singlet()));
   j["schema_version"] = "0.5.0";
   const System s = rtt::io::parse_system(j.dump());
-  CHECK(s.schema_version == "0.9.0");
+  CHECK(s.schema_version == "0.10.0");
   CHECK(s.tolerances.empty());
   json written = json::parse(rtt::io::to_json(s));
   written["schema_version"] = "0.5.0";

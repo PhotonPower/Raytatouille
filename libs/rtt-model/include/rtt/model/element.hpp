@@ -60,6 +60,10 @@ struct Element {
   /// Direction of the optic axis of the crystal in element coordinates, dimensionless, not
   /// normalised; the sign has no meaning (ADR 0026, point 2). Required exactly for a crystal.
   std::optional<std::array<double, 3>> optic_axis{};  // NOLINT(readability-redundant-member-init)
+  /// False takes the element out of the computation without deleting it (ADR 0049): it keeps its
+  /// geometry, paths and analyses skip it (from PR 3 of ADR 0049, point 9). Effective together
+  /// with its ancestors: inactive_nodes() and in_inactive_node() in rtt/model/parameters.hpp.
+  bool active = true;
   bool operator==(const Element&) const = default;
 
   /// Material of segment `segment` (between surfaces `segment` and `segment + 1`): the list
@@ -76,6 +80,9 @@ struct Assembly {
   std::string name;
   Pose pose;
   std::vector<Node> children;
+  /// False takes the assembly and all its children out of the computation (ADR 0049); not
+  /// allowed at the root (node.root_inactive).
+  bool active = true;
   bool operator==(const Assembly&) const;
 };
 

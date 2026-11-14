@@ -1,8 +1,8 @@
 # Systemdateien `.rtt.json` erzeugen
 
 Kurzanleitung für das Dateiformat, das die Engine, die CLI (`rtt`) und der Raytatouille Explorer
-laden. Alle Beispiele hier wurden gegen Schema `0.9.x` geprüft (nach Bibliothek 0.9.0). Dateien mit
-Schema 0.1 bis 0.8 liest `rtt` weiter und schreibt sie mit `rtt format` als 0.9; ein `pickup` aus
+laden. Alle Beispiele hier wurden gegen Schema `0.10.x` geprüft (Stand nach Bibliothek 0.9.0, Schema 0.10). Dateien mit
+Schema 0.1 bis 0.9 liest `rtt` weiter und schreibt sie mit `rtt format` als 0.10; ein `pickup` aus
 einer Datei vor 0.4 fällt dabei weg, mit der Warnung `io.pickup_dropped` (siehe
 „Parametertabelle“).
 Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/architecture.md`.
@@ -32,7 +32,7 @@ Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/a
 
 | Feld | Pflicht | Inhalt |
 | --- | --- | --- |
-| `schema_version` | ja | `"0.9.0"` (Muster `0.9.x`) |
+| `schema_version` | ja | `"0.10.0"` (Muster `0.10.x`) |
 | `name` | nein | Anzeigename |
 | `units` | ja | genau `{"length": "mm", "wavelength": "um"}` |
 | `environment` | nein | `temperature_c`, `pressure_atm`, `medium` (Standard: Luft nach Ciddor, 20 °C, 1 atm) |
@@ -234,6 +234,24 @@ Eine ideale Linse ohne Dicke ist eine Interaktion an der einzigen Planfläche ei
 - Paraxial ist die ideale Linse ein Schritt mit φ = |n|/f, n der Index des umgebenden Mediums:
   `rear_focal_length` = f, EFL = f/|n|, Seidel-Beiträge 0. Die Zylinderlinse ist paraxial ein
   `ParaxialError` (nicht rotationssymmetrisch); ihre Pfade brauchen eigene Startstrahlen.
+
+## Bauteile aus der Rechnung nehmen: `active` (ab Schema 0.10, ADR 0049)
+
+Jede Baugruppe und jedes Element kann `"active": false` tragen. Der Knoten bleibt im Modell und
+behält seine Geometrie (Lage, relative Bezüge, Layout), wird aber aus der Rechnung genommen;
+mit `false` an einer Baugruppe gilt das für alle ihre Kinder. Standard ist `true`, die kanonische
+Form schreibt den Schlüssel nur bei `false`, die Bearbeitungsform immer (ein Patch
+`{"op": "replace", "path": "/root/children/2/active", "value": false}` schaltet um). An der
+Wurzel ist `false` der Fehler `node.root_inactive`. Eine Datei vor 0.10 mit dem Schlüssel ist ein
+Lesefehler.
+
+```json
+{"type": "plate", "name": "Filter", "active": false, "material": "SCHOTT:N-BK7", "surfaces": [ … ]}
+```
+
+Wie Pfade, Blende, Optimierung, Toleranzierung und Export inaktive Knoten behandeln, legt
+ADR 0049 fest; die Rechnung beachtet das Flag ab der nächsten Ausbaustufe von #380 (bis dahin
+lehnt der Export Systeme mit inaktiven Knoten ab).
 
 ## Relative Platzierung (ab Schema 0.4, ADR 0028)
 
@@ -459,7 +477,7 @@ dahinter, der Detektor im paraxialen Fokus bei z = 106,442 mm.
 
 ```json
 {
-  "schema_version": "0.9.0",
+  "schema_version": "0.10.0",
   "name": "Plankonvex-Singlet",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": true}, {"um": 0.6563}],
@@ -540,7 +558,7 @@ def singlet(r1, r2, dicke, glas="CONST:1.5168", epd=20.0, bild_abstand=95.0, hal
 
     z_linse = 5.0
     return {
-        "schema_version": "0.9.0", "name": f"Singlet R1={r1} R2={r2}",
+        "schema_version": "0.10.0", "name": f"Singlet R1={r1} R2={r2}",
         "units": {"length": "mm", "wavelength": "um"},
         "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": True}, {"um": 0.6563}],
         "aperture": {"type": "epd", "value": epd},

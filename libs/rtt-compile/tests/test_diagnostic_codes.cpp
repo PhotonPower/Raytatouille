@@ -263,6 +263,7 @@ std::vector<Case> cases() {
       {"node.name_empty", "/root/children/1/name", [](System& s) { element(s, 1).name.clear(); }},
       {"node.name_duplicate", "/root/children/2/name",
        [](System& s) { element(s, 2).name = "L1"; }},
+      {"node.root_inactive", "/root/active", [](System& s) { s.root.active = false; }},
       {"element.surface_count", "/root/children/1/surfaces",
        [](System& s) { element(s, 1).surfaces.pop_back(); }},
       {"element.plate_surface_not_plane", "/root/children/1/surfaces/0/shape",

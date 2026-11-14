@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.9.0",
+  "schema_version": "0.10.0",
   "name": "Crossed plano-convex cylinder lenses, n = 1.5168, t = 4 mm: L1 R = 51.68 mm (f_y = 100 mm) at z = 5, L2 R = 38.76 mm (f = 75 mm) at z = 30 rotated by 90 degree about z (power in x); x focus at z = 106.363, y focus at z = 107.726 (L2 acts as a plate in y); VACUUM",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},

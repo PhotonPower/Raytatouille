@@ -122,7 +122,8 @@ class ExportError : public std::runtime_error {
 /// @param materials the glass catalogues; the GCAT line lists the catalogues of the glasses used
 /// @throws ExportError for every rule of ADR 0045 that rejects the system
 /// @throws std::invalid_argument for an unknown path name or a configuration index beyond the
-///         configurations of the system
+///         configurations of the system, or a system with an inactive node (ADR 0049, point 6;
+///         supported later)
 /// @throws compile::CompileError if the system does not compile (validate errors, unknown
 ///         materials)
 [[nodiscard]] ZmxExport export_zmx(const model::System& system,

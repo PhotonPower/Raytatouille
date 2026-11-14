@@ -104,6 +104,11 @@ class Validator {
     check_aperture();
     check_fields();
     check_object_and_environment();
+    // ADR 0049, point 1: only parts are switched off, not the system.
+    if (!system_.root.active) {
+      report("node.root_inactive", "/root/active",
+             "the root assembly cannot be inactive; switch off its children instead");
+    }
     check_assembly(system_.root, "/root", false);
     check_stops();
     check_object_reference();  // after the tree: needs the surface ids

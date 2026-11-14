@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.9.0",
+  "schema_version": "0.10.0",
   "name": "Immersion front: object in oil n = 1.52, index-matched hemisphere R = 1 mm around the object point, plane stop in vacuum; NA 1.45 read real (ADR 0040)",
   "units": {"length": "mm", "wavelength": "um"},
   "environment": {"medium": "VACUUM"},

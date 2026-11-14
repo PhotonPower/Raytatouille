@@ -613,3 +613,14 @@ def test_0_9_forbes_shapes_are_accepted(base):
 )
 def test_0_9_forbes_shape_errors_are_rejected(base):
     assert not VALIDATOR.is_valid(_base(base))
+
+
+def test_active_flag_of_nodes():
+    """Schema 0.10 (#380, ADR 0049): "active" is a boolean on assemblies and elements; the schema
+    accepts false also at the root, which rtt validate rejects (node.root_inactive)."""
+    doc = _broken(lambda d: _lens(d).update(active=False))
+    assert VALIDATOR.is_valid(doc)
+    doc["root"]["active"] = True
+    assert VALIDATOR.is_valid(doc)
+    assert not VALIDATOR.is_valid(_broken(lambda d: _lens(d).update(active="no")))
+    assert not VALIDATOR.is_valid(_broken(lambda d: d.update(schema_version="0.9.0")))

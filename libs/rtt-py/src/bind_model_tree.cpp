@@ -801,6 +801,9 @@ void bind_model_tree(nb::module_& m) {
               "Optic axis x, y, z of the crystal in element coordinates, dimensionless, not "
               "normalised; None without crystal.")
       .def_ro("surfaces", &model::Element::surfaces, "Surfaces in order.")
+      .def_ro("active", &model::Element::active,
+              "False: out of the computation, the geometry stays (ADR 0049); also inactive if an "
+              "ancestor assembly is. Switch with Editor.set(pointer + \"/active\", False).")
       .def("segment_material", &model::Element::segment_material, "segment"_a,
            "Material of segment `segment` (between surfaces `segment` and `segment + 1`): the "
            "list entry or the shorthand `material`. None if the element has no isotropic "
@@ -813,6 +816,9 @@ void bind_model_tree(nb::module_& m) {
       m, "Assembly", "Group of nodes moved and toleranced as one rigid body (read-only copy).")
       .def_ro("name", &model::Assembly::name, "Name, unique among assemblies and elements.")
       .def_ro("pose", &model::Assembly::pose, "Placement in the parent assembly.")
+      .def_ro("active", &model::Assembly::active,
+              "False: the assembly and its children are out of the computation, the geometry "
+              "stays (ADR 0049); never False at the root.")
       .def_prop_ro("children", &children,
                    "Child nodes in order: Assembly or Element. Each access copies the subtrees; "
                    "keep the list in a variable instead of reading it again in a loop.")

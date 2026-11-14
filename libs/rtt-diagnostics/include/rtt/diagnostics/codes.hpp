@@ -201,6 +201,8 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "weight of the merit function not finite or < 0"},
     {"node.name_duplicate", Severity::Error, "validate", "assembly or element name used twice"},
     {"node.name_empty", Severity::Error, "validate", "empty assembly or element name"},
+    {"node.root_inactive", Severity::Error, "validate",
+     "the root assembly cannot be taken out of the computation (active false)"},
     {"object.distance_invalid", Severity::Error, "validate",
      "finite object distance not finite or <= 0 mm"},
     {"object.medium_infinite", Severity::Error, "validate",

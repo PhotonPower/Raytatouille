@@ -114,16 +114,16 @@ void params_in(const ojson& j, const std::string& pointer, std::vector<std::stri
 
 }  // namespace
 
-TEST_CASE("schema version is 0.9.0", "[io][0.9]") {
-  REQUIRE(rtt::model::kSchemaVersion == "0.9.0");
+TEST_CASE("schema version is 0.10.0", "[io][0.9]") {
+  REQUIRE(rtt::model::kSchemaVersion == "0.10.0");
 }
 
-TEST_CASE("migration 0.8 -> 0.9: content unchanged, the version becomes 0.9.0", "[io][0.9]") {
+TEST_CASE("migration 0.8 -> 0.9: content unchanged, the version becomes 0.10.0", "[io][0.9]") {
   const System s = rtt::model::test::make_singlet();
   const System read = rtt::io::parse_system(with_version(s, "0.8.0"));
-  CHECK(read.schema_version == "0.9.0");
+  CHECK(read.schema_version == "0.10.0");
   CHECK(read == s);
-  CHECK(json::parse(rtt::io::to_json(read))["schema_version"] == "0.9.0");
+  CHECK(json::parse(rtt::io::to_json(read))["schema_version"] == "0.10.0");
 }
 
 TEST_CASE("biconic, toroid and cylinder: canonical form and round trip", "[io][0.9]") {

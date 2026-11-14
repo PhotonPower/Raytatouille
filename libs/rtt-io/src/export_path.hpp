@@ -72,7 +72,8 @@ struct ExportPath {
 /// and 3, and the interactions a sequential file can hold: fresnel, ideal_mirror at a mirror,
 /// ideal_lens at a thin element; coatings and ideal_anti_reflection are dropped with a warning.
 /// @throws ExportError with the codes of points 2 and 3 and export.interaction_unsupported
-/// @throws std::invalid_argument for an unknown path name or configuration index
+/// @throws std::invalid_argument for an unknown path name or configuration index, or a system with
+///         an inactive node (ADR 0049, point 6; supported later)
 /// @throws compile::CompileError if the system does not compile
 [[nodiscard]] ExportPath walk_export_path(const model::System& system,
                                           const material::MaterialLibrary& materials,

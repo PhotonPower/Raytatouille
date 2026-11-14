@@ -308,6 +308,46 @@ System resolve_parameters(const System& system, std::size_t configuration) {
   return out;
 }
 
+namespace {
+
+void collect_inactive(const Assembly& a, const std::string& loc, std::vector<std::string>& out) {
+  for (std::size_t i = 0; i < a.children.size(); ++i) {
+    const std::string child = loc + "/children/" + std::to_string(i);
+    const auto& value = a.children[i].value;
+    if (const auto* sub = std::get_if<Assembly>(&value)) {
+      if (!sub->active) {
+        out.push_back(child);  // the subtree is inactive; nothing below is listed
+      } else {
+        collect_inactive(*sub, child, out);
+      }
+    } else if (!std::get<Element>(value).active) {
+      out.push_back(child);
+    }
+  }
+}
+
+}  // namespace
+
+std::vector<std::string> inactive_nodes(const System& system) {
+  std::vector<std::string> out;
+  if (!system.root.active) {
+    out.emplace_back("/root");  // node.root_inactive; listed so that nothing counts as active
+    return out;
+  }
+  collect_inactive(system.root, "/root", out);
+  return out;
+}
+
+bool in_inactive_node(const std::vector<std::string>& inactive, std::string_view pointer) {
+  for (const std::string& node : inactive) {
+    if (pointer.size() >= node.size() && pointer.substr(0, node.size()) == node &&
+        (pointer.size() == node.size() || pointer[node.size()] == '/')) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void for_each_param(System& system,
                     const std::function<void(std::string_view pointer, Param& param)>& visit) {
   ParamWalker<System, std::function<void(std::string_view, Param&)>>(visit).run(system);

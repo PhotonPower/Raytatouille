@@ -126,6 +126,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `merit.weight_invalid` | Fehler | Gewicht der Merit-Funktion nicht endlich oder < 0 | validate | `…/weight` |
 | `node.name_duplicate` | Fehler | Name einer Baugruppe oder eines Elements doppelt | validate | `…/name` |
 | `node.name_empty` | Fehler | leerer Name einer Baugruppe oder eines Elements | validate | `…/name` |
+| `node.root_inactive` | Fehler | die Wurzel-Baugruppe hat `active: false`; nur Bauteile lassen sich aus der Rechnung nehmen (ADR 0049) | validate | `/root/active` |
 | `object.distance_invalid` | Fehler | endlicher Objektabstand nicht endlich oder ≤ 0 mm | validate | `/object/distance` |
 | `object.medium_infinite` | Fehler | Medium im Objektraum bei einem Objekt im Unendlichen (ADR 0037) | validate | `/object/medium` |
 | `object.reference_at_infinity` | Fehler | Bezug des Objektabstands bei einem Objekt im Unendlichen (ADR 0038) | validate | `/object/reference` |

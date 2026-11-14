@@ -94,7 +94,7 @@ def system() -> dict:
         "pose": pose(BACK["t"]),
     }
     return {
-        "schema_version": "0.9.0",
+        "schema_version": "0.10.0",
         "name": "Export singlet",
         "units": {"length": "mm", "wavelength": "um"},
         "environment": {"temperature_c": 20.0, "pressure_atm": 1.0, "medium": "AIR"},
