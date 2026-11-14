@@ -38,12 +38,13 @@ struct DimensionSegments {
   return static_cast<std::uint8_t>(kind);
 }
 
-/// Read-only NumPy bool copy of the coaxial flags (read_only_array needs vector::data(), which
-/// std::vector<bool> lacks).
-ReadOnlyArray<bool> coaxial_flags(const DimensionSegments& s) {
+/// A bool member of every segment (coaxial, active) as a read-only NumPy copy (read_only_array
+/// needs vector::data(), which std::vector<bool> lacks).
+template <bool analysis::SegmentDimensions::*Member>
+ReadOnlyArray<bool> segment_flags(const DimensionSegments& s) {
   const std::size_t n = s.points.size();
   auto data = std::make_unique<bool[]>(n);
-  for (std::size_t i = 0; i < n; ++i) data[i] = s.points[i].coaxial;
+  for (std::size_t i = 0; i < n; ++i) data[i] = s.points[i].*Member;
   const std::size_t shape[1] = {n};
   const bool* values = data.get();
   // The capsule owns the copy from here on and frees it with the array.
@@ -178,7 +179,7 @@ void bind_reports(nb::module_& m) {
       segments, "first_surface", [](const SegmentDimensions& s) { return s.first_surface; },
       "Surface j, index into surface_ids (copy).");
   segments.def_prop_ro(
-      "coaxial", &coaxial_flags, nb::rv_policy::reference,
+      "coaxial", &segment_flags<&SegmentDimensions::coaxial>, nb::rv_policy::reference,
       "True if surface j + 1 shares the axis of surface j (z axes parallel or antiparallel "
       "within a tilt of 1e-12 rad, vertex on the axis within 1e-9 mm); otherwise the "
       "thicknesses are NaN (copy).");
@@ -209,6 +210,10 @@ void bind_reports(nb::module_& m) {
   column<double>(
       segments, "diameter", [](const SegmentDimensions& s) { return s.diameter; },
       "2 h, mm; NaN if a surface has no aperture (copy).");
+  segments.def_prop_ro("active", &segment_flags<&SegmentDimensions::active>,
+                       nb::rv_policy::reference,
+                       "False for a segment of an inactive element (ADR 0049); the report lists "
+                       "inactive elements too (copy).");
 
   nb::class_<DimensionReport>(
       m, "DimensionReport",

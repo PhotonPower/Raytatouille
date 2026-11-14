@@ -71,9 +71,10 @@ struct ExportPath {
 /// coating library is needed) and walks the chosen path. Checks the rules of ADR 0045, points 2
 /// and 3, and the interactions a sequential file can hold: fresnel, ideal_mirror at a mirror,
 /// ideal_lens at a thin element; coatings and ideal_anti_reflection are dropped with a warning.
+/// Inactive elements are left out with export.inactive_skipped (ADR 0049, point 6): a row's
+/// thickness and the object distance run to the next active vertex.
 /// @throws ExportError with the codes of points 2 and 3 and export.interaction_unsupported
-/// @throws std::invalid_argument for an unknown path name or configuration index, or a system with
-///         an inactive node (ADR 0049, point 6; supported later)
+/// @throws std::invalid_argument for an unknown path name or configuration index
 /// @throws compile::CompileError if the system does not compile
 [[nodiscard]] ExportPath walk_export_path(const model::System& system,
                                           const material::MaterialLibrary& materials,

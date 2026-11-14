@@ -78,3 +78,36 @@ def test_inactive_nodes_in_tolerancing_and_variables() -> None:
     data["root"]["children"][1]["pose"] = {"position": [0.0, 0.0, z]}
     with_variable = rt.System.from_json(json.dumps(data))
     assert optim.variables(with_variable) == []
+
+
+def test_layout_reports_and_result_format_carry_active() -> None:
+    """PR 5 of ADR 0049: SurfaceLayout.active, CompiledElement.active and the column active of
+    the dimension report; the result format 0.1.20 writes them, older files read as true."""
+    from raytatouille import analysis, layout, results
+
+    data = json.loads(singlet().to_json())
+    data["root"]["children"][1]["active"] = False  # the lens L1
+    cs = rt.compile(rt.System.from_json(json.dumps(data)))
+    surfaces = layout.surfaces(cs)
+    assert [s.active for s in surfaces] == [True, False, False, True]
+    elements = layout.elements(cs)
+    assert [e.active for e in elements] == [True, False, True]
+    segments = analysis.dimension_report(cs).segments
+    assert list(segments.active) == [False]  # the lens is still listed
+    on = analysis.dimension_report(rt.compile(singlet())).segments
+    assert list(on.active) == [True]
+
+    text = surfaces[1].to_json()
+    assert json.loads(text)["schema_version"] == "0.1.20"
+    assert json.loads(text)["data"]["active"] is False
+    assert json.loads(results.to_json(elements[1]))["data"]["active"] is False
+    # An older file has no key active: it reads as true.
+    old = json.loads(text)
+    old["schema_version"] = "0.1.19"
+    del old["data"]["active"]
+    assert results.load_json(json.dumps(old)).data["active"] is True
+    report = json.loads(analysis.dimension_report(cs).to_json())
+    report["schema_version"] = "0.1.19"
+    del report["data"]["segments"]["active"]
+    loaded = results.load_json(json.dumps(report)).data["segments"]
+    assert list(loaded["active"]) == [True]

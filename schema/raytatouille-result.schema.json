@@ -103,6 +103,34 @@
       "if": {
         "properties": {
           "type": {
+            "const": "CompiledElement"
+          },
+          "schema_version": {
+            "not": {
+              "pattern": "^0\\.1\\.([0-9]|1[0-9])$"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "active"
+            ],
+            "properties": {
+              "active": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
             "const": "Diagnostic"
           }
         }
@@ -425,6 +453,34 @@
             "required": [
               "segments"
             ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "DimensionReport"
+          },
+          "schema_version": {
+            "not": {
+              "pattern": "^0\\.1\\.([0-9]|1[0-9])$"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [],
+            "properties": {
+              "segments": {
+                "required": [
+                  "active"
+                ]
+              }
+            }
           }
         }
       }
@@ -1082,6 +1138,34 @@
               "curvature_x",
               "conic_constant_x"
             ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "SurfaceLayout"
+          },
+          "schema_version": {
+            "not": {
+              "pattern": "^0\\.1\\.([0-9]|1[0-9])$"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "active"
+            ],
+            "properties": {
+              "active": {
+                "type": "boolean"
+              }
+            }
           }
         }
       }

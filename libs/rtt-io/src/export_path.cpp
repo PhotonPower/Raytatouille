@@ -182,14 +182,6 @@ ExportPath walk_export_path(const model::System& system,
                             const ExportOptions& options) {
   ExportPath out;
 
-  // ADR 0049, point 6: until the export handles inactive nodes (thicknesses from the compiled
-  // vertices, export.inactive_skipped), a system with one is refused instead of written with
-  // wrong thicknesses.
-  if (const std::vector<std::string> inactive = model::inactive_nodes(system); !inactive.empty()) {
-    throw std::invalid_argument("the export does not support inactive nodes yet (ADR 0049): " +
-                                inactive.front());
-  }
-
   // Configuration (ADR 0045, point 3; F6).
   const std::size_t count = model::configuration_count(system);
   if (!options.configuration && count > 1) {
@@ -260,6 +252,7 @@ ExportPath walk_export_path(const model::System& system,
 
   const std::optional<std::uint32_t> stop_surface = cs.stop_surface();
   std::set<std::uint32_t> visited;
+  std::vector<std::uint32_t> row_surface;  // tree index of the surface of each row
   for (std::size_t k = 0; k < path.events.size(); ++k) {
     const compile::CompiledEvent& e = path.events[k];
     const compile::CompiledSurface& cs_surface = cs.surfaces()[e.surface];
@@ -328,6 +321,7 @@ ExportPath walk_export_path(const model::System& system,
                                             "substrate of " + element.name + " not exported"));
     }
     out.rows.push_back(std::move(row));
+    row_surface.push_back(e.surface);
   }
 
   if (out.rows.empty() || out.rows.back().kind != ElementKind::Detector) {
@@ -347,7 +341,18 @@ ExportPath walk_export_path(const model::System& system,
                 "a rectangular or elliptical stop has no mapping");
   }
 
+  // Inactive elements are not exported (ADR 0049, point 6): one warning per element, and no
+  // export.surface_off_path for their surfaces. The compiled paths already skip them.
+  for (const compile::CompiledElement& el : cs.elements()) {
+    if (el.active) continue;
+    // compile writes surface locations as <element>/surfaces/<j>, and every element has one.
+    std::string location = cs.surfaces()[el.first_surface].location;
+    location.erase(location.rfind("/surfaces/"));
+    out.warnings.push_back(export_warning("export.inactive_skipped", location,
+                                          "element " + el.name + " is inactive and not exported"));
+  }
   for (std::size_t i = 0; i < cs.surfaces().size(); ++i) {
+    if (!cs.surfaces()[i].active) continue;
     if (!visited.contains(static_cast<std::uint32_t>(i))) {
       out.warnings.push_back(
           export_warning("export.surface_off_path", cs.surfaces()[i].location,
@@ -356,14 +361,25 @@ ExportPath walk_export_path(const model::System& system,
   }
 
   // Thicknesses (ADR 0045, point 4): the t of the poses if the system is canonical (then the
-  // path is automatic and visits every surface in tree order), else differences of z.
+  // path is automatic and visits every active surface in tree order), else differences of z.
+  // With inactive elements in a canonical system the rows skip tree surfaces: the thickness is
+  // the sum of the t up to the next active surface, and the object distance runs to the first
+  // active one (ADR 0049, point 6, addendum PR 5); without them the sums are the single t, so
+  // such systems stay bitwise.
   const bool exact = canonical(out.system);
+  const auto t_sum = [&](std::uint32_t from, std::uint32_t to) {  // t of tree (from, to]
+    double sum = tree[from + 1].t;
+    for (std::uint32_t i = from + 2; i <= to; ++i) sum += tree[i].t;
+    return sum;
+  };
   for (std::size_t k = 0; k + 1 < out.rows.size(); ++k) {
-    out.rows[k].thickness = exact ? tree[k + 1].t : out.rows[k + 1].z - out.rows[k].z;
+    out.rows[k].thickness =
+        exact ? t_sum(row_surface[k], row_surface[k + 1]) : out.rows[k + 1].z - out.rows[k].z;
   }
   if (!out.system.object.at_infinity) {
-    out.object_distance =
-        exact ? out.system.object.distance.value : out.rows.front().z - cs.object_z();
+    double distance = out.system.object.distance.value;
+    if (exact && row_surface.front() > 0) distance += t_sum(0, row_surface.front());
+    out.object_distance = exact ? distance : out.rows.front().z - cs.object_z();
   }
   return out;
 }

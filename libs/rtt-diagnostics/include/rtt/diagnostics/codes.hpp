@@ -132,6 +132,8 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "no GCAT order finds every glass in its own catalogue"},
     {"export.image_missing", Severity::Error, "export",
      "the last event of the path is not a detector"},
+    {"export.inactive_skipped", Severity::Warning, "export",
+     "an inactive element is not exported (ADR 0049)"},
     {"export.interaction_unsupported", Severity::Error, "export",
      "interaction or phase layer without a ZMX mapping"},
     {"export.limit_exceeded", Severity::Error, "export", "more than 12 fields or 24 wavelengths"},

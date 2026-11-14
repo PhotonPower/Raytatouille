@@ -54,7 +54,7 @@ __all__ = [
 ]
 
 FORMAT = "raytatouille-result"
-SCHEMA_VERSION = "0.1.19"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
+SCHEMA_VERSION = "0.1.20"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
 # 0.1.3: status Evanescent, status arrays one entry longer (#127); 0.1.4: PathTransmission,
 # PathOplDifference, GhostRanking (#133); 0.1.5: RayBatch wave_x/y/z, mode_index (#134);
 # 0.1.6: RaytraceReport, SystemReport, DimensionReport (#177);
@@ -72,6 +72,7 @@ SCHEMA_VERSION = "0.1.19"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84)
 # 0.1.17: SurfaceLayout curvature_x, conic_constant_x; shapes biconic, toroid, cylinder (#315)
 # 0.1.18: SurfaceLayout normalization_radius, axicon_angle_deg; shapes odd_asphere, axicon (#314)
 # 0.1.19: IrradianceMap (#379)
+# 0.1.20: SurfaceLayout, CompiledElement, DimensionSegments active (#380)
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a
@@ -91,7 +92,9 @@ _ADDED: dict[str, tuple[tuple[int, tuple[str, ...]], ...]] = {
     "PupilFunction": ((12, ("obscuration",)),  # 0.1.12 (#229 C, Python #209 P1b)
                       (14, ("mapping_limit",))),  # 0.1.14 (#286)
     "SurfaceLayout": ((17, ("curvature_x", "conic_constant_x")),  # 0.1.17 (#315)
-                      (18, ("normalization_radius", "axicon_angle_deg"))),  # 0.1.18 (#314)
+                      (18, ("normalization_radius", "axicon_angle_deg")),  # 0.1.18 (#314)
+                      (20, ("active",))),  # 0.1.20 (#380)
+    "CompiledElement": ((20, ("active",)),),  # 0.1.20 (#380)
 }
 _FIELDS: dict[str, tuple[str, ...]] = {
     # analysis
@@ -187,7 +190,7 @@ _FIELDS: dict[str, tuple[str, ...]] = {
                      "warnings"),
     "DimensionSegments": ("element", "first_surface", "coaxial", "centre_thickness",
                           "semi_diameter_first", "semi_diameter_second", "aperture_first",
-                          "aperture_second", "edge_thickness", "diameter"),
+                          "aperture_second", "edge_thickness", "diameter", "active"),
     "DimensionReport": ("segments",),
     # optimization (#169); OptimResult.system is not data (ADR 0023, addendum #169)
     "OptimIterations": ("k", "phi", "mu", "rho", "step_norm", "accepted", "evaluations"),
@@ -224,7 +227,7 @@ _FIELDS: dict[str, tuple[str, ...]] = {
                  "direction", "opl", "weight", "status", "count", "lost_at", "polarization",
                  "prt", "q"),
     # layout (#81)
-    "CompiledElement": ("name", "first_surface", "surface_count", "media", "segmented"),
+    "CompiledElement": ("name", "first_surface", "surface_count", "media", "segmented", "active"),
     # model
     "Field": ("x", "y", "weight"),
     "Diagnostic": ("severity", "code", "location", "message"),
@@ -509,11 +512,13 @@ def load_json(text: str) -> Result:
     A file of an older 0.1.x version may lack keys that its type gained later (RayBatch:
     wave_x, wave_y, wave_z and mode_index from 0.1.5, q from 0.1.9; RayPaths: polarization, prt
     and q from 0.1.9; SurfaceLayout: curvature_x and conic_constant_x from 0.1.17,
-    normalization_radius and axicon_angle_deg from 0.1.18); the data then contain them as the
+    normalization_radius and axicon_angle_deg from 0.1.18, active from 0.1.20; CompiledElement
+    and the segments of DimensionReport: active from 0.1.20); the data then contain them as the
     type's reading rule says (RayBatch: wave = dir, mode_index 0, ADR 0026, point 3; no Q and no
     P per slot: q and prt None, polarization False, since Q cannot be recomputed without the
     normals, ADR 0034; SurfaceLayout: the x section equals the y section, ADR 0042, point 5, and
-    no normalization radius and no axicon angle, ADR 0043, point 4).
+    no normalization radius and no axicon angle, ADR 0043, point 4; active is true, since an
+    older file knows no inactive element, ADR 0049, point 7).
     """
     envelope = json.loads(text, parse_constant=_no_constant, object_pairs_hook=_unique_keys)
     if not isinstance(envelope, dict):
@@ -542,6 +547,13 @@ def load_json(text: str) -> Result:
     data = _decode(envelope["data"], "/data")
     if older:
         data = _upgrade(type_name, data, absent)
+    if type_name == "DimensionReport" and minor < 20:
+        # Nested in DimensionReport (ADR 0023, addendum #380): before 0.1.20 every element was
+        # active.
+        segments = data.get("segments")
+        if isinstance(segments, dict) and "active" not in segments:
+            n = len(np.atleast_1d(segments.get("element", [])))
+            data = {**data, "segments": {**segments, "active": np.ones(n, dtype=np.bool_)}}
     return Result(type_name, version, data)
 
 
@@ -568,7 +580,10 @@ def _upgrade(type_name: str, data: dict[str, Any], absent: list[str]) -> dict[st
         # Files before 0.1.17 only have rotationally symmetric shapes (plane, conic,
         # even_asphere): the x section is the y section (ADR 0023, addendum #315).
         # Files before 0.1.18 have no odd asphere, Q type or axicon (ADR 0023, addendum #314).
+        # Files before 0.1.20 know no inactive element: active is true (ADR 0049, point 7).
         added = {"curvature_x": data["curvature"], "conic_constant_x": data["conic_constant"],
-                 "normalization_radius": None, "axicon_angle_deg": None}
+                 "normalization_radius": None, "axicon_angle_deg": None, "active": True}
+    elif type_name == "CompiledElement":
+        added = {"active": True}  # before 0.1.20 every element was active (ADR 0049, point 7)
     data = {**data, **{k: v for k, v in added.items() if k in absent and k not in data}}
     return {k: data[k] for k in _required(type_name)}

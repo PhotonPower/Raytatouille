@@ -218,7 +218,10 @@ void bind_layout(nb::module_& m) {
               "empty without material.")
       .def_ro("segmented", &compile::CompiledElement::segmented,
               "True if the media follow the segments (lenses, plates of different materials); "
-              "only these have outlines.");
+              "only these have outlines.")
+      .def_ro("active", &compile::CompiledElement::active,
+              "False if the element or an ancestor has active false (ADR 0049): it keeps its "
+              "place and geometry, but no path visits it.");
 
   m.def(
       "layout_node_frames",
@@ -262,7 +265,7 @@ void bind_layout(nb::module_& m) {
           out.append(nb::make_tuple(
               c.id.str(), c.element, kind_name(c.element_kind), owned(std::move(rotation), {3, 3}),
               owned(std::vector<double>{t.x(), t.y(), t.z()}, {3}), shape_data(c.shape), max_radius,
-              aperture_data(c.aperture), c.medium_front, c.medium_back));
+              aperture_data(c.aperture), c.medium_front, c.medium_back, c.active));
         }
         return out;
       },

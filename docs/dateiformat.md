@@ -250,8 +250,9 @@ Lesefehler.
 ```
 
 Wie Pfade, Blende, Optimierung, Toleranzierung und Export inaktive Knoten behandeln, legt
-ADR 0049 fest; die Rechnung beachtet das Flag ab der nächsten Ausbaustufe von #380 (bis dahin
-lehnt der Export Systeme mit inaktiven Knoten ab).
+ADR 0049 fest: Ein inaktiver Knoten behält Lage und Geometrie, aber kein Pfad besucht ihn, eine
+inaktive Blende zählt wie keine, Variablen, Toleranzen und Kriterien an ihm entfallen, und der
+ZMX/CSV-Export lässt ihn aus. Alle Folgen des Abschaltens sind Warnungen.
 
 ## Relative Platzierung (ab Schema 0.4, ADR 0028)
 

@@ -77,6 +77,7 @@ SegmentDimensions segment(const compile::CompiledSystem& system,
   SegmentDimensions d;
   d.element = element;
   d.first_surface = j;
+  d.active = system.elements()[element].active;
   std::tie(d.semi_diameter_first, d.aperture_first) = semi_diameter(first.aperture);
   std::tie(d.semi_diameter_second, d.aperture_second) = semi_diameter(second.aperture);
   // The larger semi-diameter; undefined (NaN) if a surface has no aperture.
