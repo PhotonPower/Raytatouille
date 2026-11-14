@@ -580,9 +580,12 @@ class Compiler {
       case model::ElementKind::Lens:
       case model::ElementKind::Plate:
         if (info.media.empty()) {
-          report("coating.no_substrate", location,
-                 "coating on an element without material: no substrate (ADR 0019)");
-        } else if (!info.segmented || j == 0) {
+          // Not reachable (decision in #338): validate requires a material for a lens or plate
+          // (element.material_missing), and an unresolved one keeps a placeholder medium, so
+          // media is never empty here. coating.no_substrate stays for the mirror below.
+          throw std::logic_error("compile: a lens or plate without media after validate");
+        }
+        if (!info.segmented || j == 0) {
           // Every face of a plate of one material bounds its inside; the first surface of a
           // segmented element bounds segment 0.
           substrate = info.media[0];

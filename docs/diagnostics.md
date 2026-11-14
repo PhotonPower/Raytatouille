@@ -44,7 +44,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `bounds.value_outside` | Warnung | Wert eines ungebundenen Params oder einer Zeile außerhalb seiner Grenzen (ein Startwert darf außerhalb liegen) | validate | `…/value` bzw. `/parameters/i/values/k` |
 | `coating.design_wavelength_out_of_range` | Fehler | QWOT-Designwellenlänge außerhalb des Bereichs des Schichtmaterials | compile | `…/s/interaction/name` |
 | `coating.layer_material_unknown` | Fehler | Material einer Schicht nicht auflösbar | compile | `…/s/interaction/name` |
-| `coating.no_substrate` | Fehler | Beschichtung auf Linse, Platte oder Spiegel ohne Material | compile | `…/s/interaction` |
+| `coating.no_substrate` | Fehler | Beschichtung auf einem Spiegel ohne Substratmaterial (Linse und Platte haben nach validate immer ein Material, #338) | compile | `…/s/interaction` |
 | `coating.not_allowed` | Fehler | Beschichtung auf dünnem Element, Blende oder Detektor (kein Substrat) | compile | `…/s/interaction` |
 | `coating.substrate_ambiguous` | Fehler | Beschichtung auf einer inneren Fläche zwischen zwei Segmenten | compile | `…/s/interaction` |
 | `coating.thickness_invalid` | Fehler | Schichtdicke nicht berechenbar (z. B. QWOT mit Re n ≤ 0) | compile | `…/s/interaction/name` |
