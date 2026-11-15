@@ -24,15 +24,25 @@ def _match(path: Path, pattern: str) -> str | None:
     return found.group(1) if found else None
 
 
+def _pyproject_version() -> str | None:
+    """[project] version; tomllib from Python 3.11, else the first version line."""
+    text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python 3.10
+        found = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
+        return found.group(1) if found else None
+    version = tomllib.loads(text).get("project", {}).get("version")
+    return version if isinstance(version, str) else None
+
+
 def versions() -> dict[str, str | None]:
     """The version stated by each place, None where it is not found."""
     return {
         "CMakeLists.txt (project VERSION)": _match(
-            ROOT / "CMakeLists.txt", r"^project\(Raytatouille\s+VERSION\s+([0-9][0-9.]*)"
+            ROOT / "CMakeLists.txt", r"^project\(\s*Raytatouille\s+VERSION\s+([0-9][0-9.]*)"
         ),
-        "pyproject.toml ([project] version)": _match(
-            ROOT / "pyproject.toml", r'^version\s*=\s*"([^"]+)"'
-        ),
+        "pyproject.toml ([project] version)": _pyproject_version(),
         "vcpkg.json (version-semver)": json.loads(
             (ROOT / "vcpkg.json").read_text(encoding="utf-8")
         ).get("version-semver"),
