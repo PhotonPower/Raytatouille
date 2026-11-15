@@ -116,7 +116,7 @@
               ]
             },
             "aperture": {"type": "elliptical", "semi_axis_x": 9.0, "semi_axis_y": 8.0},
-            "interaction": {"type": "coating", "name": "AR_VIS"}
+            "interaction": {"type": "coating", "name": "DEMO:AR_MGF2"}
           },
           {
             "id": "A.S2",

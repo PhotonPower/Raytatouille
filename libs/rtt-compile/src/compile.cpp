@@ -177,6 +177,7 @@ class Compiler {
       object_medium_ = medium(*system_.object.medium, "/object/medium").value_or(environment_);
     }
     check_object_na();
+    check_air_range();
     check_perturbation_values();
     const math::Isometry3 root = model::to_isometry(system_.root.pose);
     node_frames_.push_back({"/root", math::Isometry3::identity(), root});
@@ -487,6 +488,37 @@ class Compiler {
              "object-space NA " + std::to_string(na) + " is not below the index " +
                  std::to_string(n) + " of the object medium '" + *system_.object.medium + "'");
     }
+  }
+
+  /// AIR (the environment or the object space) outside the range of validity of the Ciddor
+  /// formula (docs/quellen.md, "Brechzahl der Luft (Ciddor)": NIST calculator 0.3 to 1.7 um,
+  /// -40 to 100 degC, 10 to 140 kPa): a warning, the index is extrapolated (decision in #335).
+  void check_air_range() {
+    const bool environment = system_.environment.medium == "AIR";
+    const bool object = system_.object.medium && *system_.object.medium == "AIR";
+    if (!environment && !object) return;
+    constexpr double kMinUm = 0.3;
+    constexpr double kMaxUm = 1.7;
+    constexpr double kMinC = -40.0;
+    constexpr double kMaxC = 100.0;
+    constexpr double kMinKpa = 10.0;
+    constexpr double kMaxKpa = 140.0;
+    constexpr double kKpaPerAtm = 101.325;
+    std::vector<std::string> outside;
+    for (const double wl : wavelengths_um_) {
+      if (wl < kMinUm || wl > kMaxUm) outside.push_back("wavelength " + number(wl) + " um");
+    }
+    const double t = system_.environment.temperature_c;
+    if (t < kMinC || t > kMaxC) outside.push_back("temperature " + number(t) + " degC");
+    const double p = system_.environment.pressure_atm * kKpaPerAtm;
+    if (p < kMinKpa || p > kMaxKpa) outside.push_back("pressure " + number(p) + " kPa");
+    if (outside.empty()) return;
+    std::string what;
+    for (const std::string& o : outside) what += (what.empty() ? "" : ", ") + o;
+    report("environment.air_out_of_range", environment ? "/environment/medium" : "/object/medium",
+           "AIR outside the range of the Ciddor formula (0.3 to 1.7 um, -40 to 100 degC, 10 to "
+           "140 kPa): " +
+               what + "; the index is extrapolated");
   }
 
   void check_wavelength_ranges() {
@@ -1299,7 +1331,8 @@ class Compiler {
   /// above; none if the side is ambiguous (inner surface between different materials reached
   /// from outside). An element without material does not change the state.
   [[nodiscard]] std::optional<MediumState> cross(std::uint32_t surface,
-                                                 const MediumState& s) const {
+                                                 const MediumState& s,
+                                                 bool* skipped_segment = nullptr) const {
     const std::uint32_t element = surface_element_[surface];
     const ElementInfo& info = elements_[element];
     if (info.media.empty()) return s;
@@ -1318,6 +1351,21 @@ class Compiler {
       if (!leave) segment = i - 1;
     } else if (s.inside == element) {
       leave = true;  // the surface does not bound the segment
+      // The segments between the current one and surface i are skipped (#335). That is only
+      // harmless if surface i is the outer surface in the direction of travel (the last one
+      // forwards, the first backwards), so that leaving into the environment is right, and every
+      // skipped segment is the same nominal glass as the current one.
+      if (skipped_segment != nullptr) {
+        const bool forward = i > segment;
+        const bool outer = forward ? i == last : i == 0;
+        const std::uint32_t lo = forward ? segment + 1 : i;
+        const std::uint32_t hi = forward ? i : segment;  // segments [lo, hi) are skipped
+        bool same_glass = true;
+        for (std::uint32_t k = lo; k < hi; ++k) {
+          same_glass = same_glass && info.structure_media[k] == info.structure_media[segment];
+        }
+        if (!outer || !same_glass) *skipped_segment = true;
+      }
     } else if (i == 0 || i == last) {
       segment = i == 0 ? 0 : last - 1;
     } else if (info.structure_media[i - 1] == info.structure_media[i]) {
@@ -1351,6 +1399,9 @@ class Compiler {
   /// (#61); from_inside tells whether the ray is inside the surface's element before the event.
   /// `location` is the JSON pointer of the events; errors add the index of the event in the model
   /// path, `origin[k]` for compiled event k (they differ after skipped events, ADR 0049).
+  /// Reports paths.segment_skipped for an event at a surface that does not bound the current
+  /// segment (except same glass up to the outer surface) and paths.transmit_medium_change for
+  /// transmit at a surface whose other side is another nominal medium (#335).
   void assign_media(std::vector<CompiledEvent>& events,
                     const std::vector<std::size_t>& origin,
                     const std::string& location) {
@@ -1364,10 +1415,35 @@ class Compiler {
       const bool crosses = event.kind == model::EventKind::Refract ||
                            event.kind == model::EventKind::Ordinary ||
                            event.kind == model::EventKind::Extraordinary;
-      const std::optional<MediumState> crossed = cross(event.surface, state);
+      bool skipped_segment = false;
+      const std::optional<MediumState> crossed = cross(event.surface, state, &skipped_segment);
       // The medium on the other side of the surface, also for events that do not cross it
       // (Fresnel and coatings on Reflect need it, #61); an ambiguous side counts as none.
       event.medium_beyond = crossed ? crossed->current : state.current;
+      if (skipped_segment) {
+        // Inside a segmented element the ray reaches a surface that does not bound its segment
+        // and would skip a segment (decision in #335), whatever the event: refract, reflect and
+        // transmit all reach that surface through the segments in between.
+        report("paths.segment_skipped", idx(location, origin[k]),
+               "surface " + surfaces_[event.surface].id.str() + " of element '" +
+                   surfaces_[event.surface].element_name +
+                   "' does not bound the segment the ray is in: the path skips a segment (pass a "
+                   "cemented group surface by surface, ADR 0017)");
+      }
+      // Nominal media (architecture.md, path rules): a perturbed segment keeps the reference of
+      // its nominal material, so compare the references (an unresolved one is reported anyway).
+      const auto reference = [&](std::uint32_t m) -> const std::string* {
+        return m < media_.size() ? &media_[m].reference : nullptr;
+      };
+      const std::string* beyond = reference(event.medium_beyond);
+      const std::string* current = reference(state.current);
+      if (event.kind == model::EventKind::Transmit && beyond != nullptr && current != nullptr &&
+          *beyond != *current) {
+        report("paths.transmit_medium_change", idx(location, origin[k]),
+               "transmit at surface " + surfaces_[event.surface].id.str() +
+                   ", whose other side is another medium: the ray keeps its medium (use refract "
+                   "to enter it)");
+      }
       if (crosses) {
         if (crossed) {
           state = *crossed;

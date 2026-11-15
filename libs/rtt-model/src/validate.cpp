@@ -764,8 +764,16 @@ class Validator {
           report("interaction.reflectance_invalid", loc, "reflectance must be in [0, 1]");
       }
     } else if (const auto* c = std::get_if<CoatingRef>(&i)) {
-      if (c->name.empty())
+      if (c->name.empty()) {
         report("interaction.coating_name_empty", loc + "/name", "coating name must not be empty");
+      } else if (const std::size_t colon = c->name.find(':');
+                 colon == std::string::npos || colon == 0 || colon + 1 == c->name.size() ||
+                 c->name.find(':', colon + 1) != std::string::npos) {
+        // CATALOG:NAME as the CoatingLibrary resolves it (ADR 0019); reported here, before
+        // compile needs a coating library (decision in #335).
+        report("interaction.coating_reference_invalid", loc + "/name",
+               "coating reference '" + c->name + "' must be CATALOG:NAME");
+      }
     } else if (const auto* pol = std::get_if<IdealPolarizer>(&i)) {
       if (!nonzero_axis(pol->transmission_axis))
         report("interaction.axis_invalid", loc + "/transmission_axis", "axis must be non-zero");
