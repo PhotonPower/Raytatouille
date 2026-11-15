@@ -162,8 +162,8 @@ def systems() -> Systems:
     schott_bk7 = rt.MaterialLibrary()  # N-BK7 of the feature tour
     schott_bk7.add_catalog(CATALOG_DIR / "schott.agf")
     # The feature tour shows every format element and does not compile as it is: without the
-    # Zernike term of A.S1 (M8) and with a bare Fresnel A.S1 instead of the coating "AR_VIS"
-    # (no catalog), as in paths_cases.cpp.
+    # Zernike term of A.S1 (M8) and with a bare Fresnel A.S1 instead of its coating (no coating
+    # library), as in paths_cases.cpp.
     tour = json.loads(rt.load(REFERENCE_DIR / "m0" / "feature_tour.rtt.json").to_json())
     a_s1 = tour["root"]["children"][2]["surfaces"][0]
     del a_s1["shape"]["terms"]

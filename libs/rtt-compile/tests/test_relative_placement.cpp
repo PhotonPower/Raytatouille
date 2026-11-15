@@ -83,7 +83,7 @@ struct Libraries {
 };
 
 /// The feature tour as it compiles (the same changes as test_m4_acceptance.cpp): without the
-/// Zernike term of A.S1 (M8) and with a bare Fresnel A.S1 instead of the coating "AR_VIS".
+/// Zernike term of A.S1 (M8) and with a bare Fresnel A.S1 instead of its coating.
 System compilable_tour() {
   System tour = rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m0/feature_tour.rtt.json");
   auto& a_s1 = std::get<Element>(tour.root.children[2].value).surfaces[0];

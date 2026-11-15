@@ -206,8 +206,8 @@ Systems load_systems(const fs::path& reference_dir, const fs::path& catalog_dir)
   material::MaterialLibrary schott_bk7;  // N-BK7 of the feature tour
   schott_bk7.add_catalog(catalog_dir / "schott.agf");
   // The feature tour shows every format element and does not compile as it is: without the
-  // Zernike term of A.S1 (M8) and with a bare Fresnel A.S1 instead of the coating "AR_VIS"
-  // (no catalog), as in test_m4_acceptance.cpp.
+  // Zernike term of A.S1 (M8) and with a bare Fresnel A.S1 instead of its coating (no coating
+  // library), as in test_m4_acceptance.cpp.
   model::System tour = io::load_system(reference_dir / "m0/feature_tour.rtt.json");
   element(tour, 2).surfaces[0].shape.terms.clear();
   element(tour, 2).surfaces[0].interaction = model::Fresnel{};

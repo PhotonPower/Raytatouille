@@ -279,9 +279,9 @@ TEST_CASE("M4 feature tour: the first order at the grating plate follows Mansuri
   // (7b): n2 t'_par = n1 t_par + m lambda0 G y_hat, with n1, n2 the compiled indices at the
   // ray's wavelength, and t'_z > 0 from |t'| = 1. A few operations: 1e-12.
   // The tour shows every element of the format and is not meant to compile as it is: A.S1 has a
-  // Zernike sag term (compile supports it from M8 on) and the coating "AR_VIS" without a
-  // catalog. The test removes the term (A.S1 stays an even asphere) and makes A.S1 a bare
-  // Fresnel surface; the grating plate G and the path are those of the file.
+  // Zernike sag term (compile supports it from M8 on) and a coating that needs a coating
+  // library ("DEMO:AR_MGF2" since #335). The test removes the term (A.S1 stays an even asphere) and
+  // makes A.S1 a bare Fresnel surface; the grating plate G and the path are those of the file.
   rtt::model::System tour = load("m0/feature_tour.rtt.json");
   auto& a_s1 = std::get<rtt::model::Element>(tour.root.children[2].value).surfaces[0];
   a_s1.shape.terms.clear();

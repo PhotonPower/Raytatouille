@@ -564,6 +564,31 @@ std::vector<Case> cases() {
                             {{SurfaceId("L1.S1"), EventKind::Refract, 0},
                              {SurfaceId("L1.S2"), EventKind::Refract, 0}}});
        }},
+      // --- #335: silent assumptions of compile and validate
+      {"environment.air_out_of_range", "/environment/medium",
+       [](System& s) { s.environment.temperature_c = 120.0; }},
+      {"interaction.coating_reference_invalid", "/root/children/1/surfaces/0/interaction/name",
+       [](System& s) { element(s, 1).surfaces[0].interaction = CoatingRef{"AR_VIS"}; }},
+      {"interaction.coating_reference_invalid", "/root/children/1/surfaces/0/interaction/name",
+       [](System& s) { element(s, 1).surfaces[0].interaction = CoatingRef{"A:B:C"}; }},
+      {"paths.segment_skipped", "/paths/0/events/2",
+       [](System& s) {
+         make_doublet(s);
+         s.paths = {{"skip",
+                     false,
+                     {{SurfaceId("STO"), EventKind::Transmit, 0},
+                      {SurfaceId("L1.S1"), EventKind::Refract, 0},
+                      {SurfaceId("L1.S3"), EventKind::Refract, 0},
+                      {SurfaceId("IMG"), EventKind::Transmit, 0}}}};
+       }},
+      {"paths.transmit_medium_change", "/paths/0/events/1",
+       [](System& s) {
+         s.paths = {{"tunnel",
+                     false,
+                     {{SurfaceId("STO"), EventKind::Transmit, 0},
+                      {SurfaceId("L1.S1"), EventKind::Transmit, 0},
+                      {SurfaceId("IMG"), EventKind::Transmit, 0}}}};
+       }},
       // --- ADR 0049 (#380): nodes taken out of the computation with active false
       {"stop.inactive", "/root/children/0", [](System& s) { element(s, 0).active = false; }},
       {"stop.inactive", "/aperture/stop",

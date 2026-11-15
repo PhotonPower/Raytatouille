@@ -75,6 +75,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `element.plate_surface_not_plane` | Fehler | Fläche einer Platte ist keine Ebene | validate | `…/el/surfaces/i/shape` |
 | `element.segment_count` | Fehler | Anzahl der Segmentmaterialien passt nicht zu den Flächen | validate | `…/el/material` |
 | `element.surface_count` | Fehler | falsche Flächenzahl für die Elementart | validate | `…/el/surfaces` |
+| `environment.air_out_of_range` | Warnung | Umgebung oder Objektraum ist AIR, aber eine Systemwellenlänge, die Temperatur oder der Druck liegt außerhalb des Bereichs der Ciddor-Formel (0,3–1,7 µm, −40…100 °C, 10–140 kPa); der Index wird extrapoliert (#335) | compile | `/environment/medium` bzw. `/object/medium` |
 | `environment.medium_empty` | Fehler | leeres Umgebungsmedium | validate | `/environment/medium` |
 | `environment.pressure_invalid` | Fehler | Druck nicht endlich oder < 0 atm | validate | `/environment/pressure_atm` |
 | `environment.temperature_invalid` | Fehler | Temperatur nicht endlich oder nicht über dem absoluten Nullpunkt | validate | `/environment/temperature_c` |
@@ -105,6 +106,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `fields.weight_invalid` | Fehler | Feldgewicht nicht endlich oder < 0 | validate | `/fields/points/i/weight` |
 | `interaction.axis_invalid` | Fehler | Achse von Polarisator oder Verzögerer null oder nicht endlich | validate | `…/s/interaction/transmission_axis`, `…/fast_axis` |
 | `interaction.coating_name_empty` | Fehler | leere Beschichtungsreferenz | validate | `…/s/interaction/name` |
+| `interaction.coating_reference_invalid` | Fehler | Coating-Referenz nicht in der Form `KATALOG:NAME` mit genau einem Doppelpunkt (#335) | validate | `…/s/interaction/name` |
 | `interaction.extinction_ratio_invalid` | Fehler | Extinktionsverhältnis des Polarisators außerhalb [0, 1] | validate | `…/s/interaction/extinction_ratio` |
 | `interaction.focal_length_invalid` | Fehler | Brennweite einer idealen Linse oder Zylinderlinse 0 oder nicht endlich (ADR 0031, Punkt 7); ein gebundener Wert wird nach der Auflösung von compile geprüft (ADR 0029) | validate | `…/s/interaction/focal_length` bzw. Pointer des Params |
 | `interaction.ideal_lens_not_allowed` | Fehler | ideale Linse oder Zylinderlinse nicht an der einzigen Planfläche eines `thin_element`, oder die Fläche hat `shape.terms` oder `phases` (ADR 0031, Punkt 1) | validate | `…/s/interaction` |
@@ -164,6 +166,8 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `paths.name_duplicate` | Fehler | Pfadname doppelt | validate | `/paths/i/name` |
 | `paths.name_empty` | Fehler | leerer Pfadname | validate | `/paths/i/name` |
 | `paths.order_not_allowed` | Fehler | Beugungsordnung an einem Ereignis, das nicht beugt: Fläche ohne Phasenschicht (ADR 0025) | validate | `/paths/i/events/k/order` |
+| `paths.segment_skipped` | Fehler | ein Ereignis eines expliziten Pfades (refract, reflect oder transmit) trifft innerhalb einer Linse oder segmentierten Platte eine Fläche, die das aktuelle Segment nicht begrenzt, und überspringt so ein Segment; erlaubt ist das nur bis zur Außenfläche in Laufrichtung, wenn alle übersprungenen Segmente dasselbe Glas sind (#335, ADR 0017) | compile | `/paths/i/events/k` |
+| `paths.transmit_medium_change` | Warnung | `transmit` an einer Fläche mit anderem Medium auf der anderen Seite: Das Medium bleibt (#335) | compile | `/paths/i/events/k` |
 | `paths.uniform_plate_automatic` | Fehler | Platte aus einem Material mit mehr als 2 Flächen auf einem automatischen Pfad | compile | `…/el/surfaces` |
 | `paths.unknown_surface` | Fehler | Ereignis an einer unbekannten Flächen-ID | validate | `/paths/i/events/k/surface` |
 | `phase.lines_per_mm_invalid` | Fehler | Liniendichte des Gitters nicht endlich oder ≤ 0 | validate | `…/s/phases/i/lines_per_mm` |

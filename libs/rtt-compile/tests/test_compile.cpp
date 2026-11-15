@@ -804,21 +804,20 @@ TEST_CASE("Refract at a surface that does not bound the current segment", "[comp
   System s = bare_system();
   s.root.children.push_back({segmented_lens(4, {"CONST:1.5", "CONST:1.6", "CONST:1.7"})});
 
-  SECTION("from inside the element: the ray leaves it into the environment") {
-    // Segment rule: through a surface, only the segments on its two sides are reached.
+  SECTION("from inside the element past a segment of another glass: CompileError") {
+    // Segment rule: through a surface, only the segments on its two sides are reached. Before
+    // #335 the ray silently left into the environment here and skipped segment 1 (CONST:1.6);
+    // now that is paths.segment_skipped (decision in #335).
     s.paths = {{"skip",
                 false,
                 {refract("L.S1"),
                  {SurfaceId("L.S2"), EventKind::Reflect, 0},
                  refract("L.S3"),
                  refract("L.S1")}}};
-    const MaterialLibrary lib;
-    const CompiledSystem cs = compile(s, lib);
-    require_events(cs, "skip",
-                   {{"L.S1", EventKind::Refract, "AIR", "CONST:1.5"},
-                    {"L.S2", EventKind::Reflect, "CONST:1.5", "CONST:1.5"},
-                    {"L.S3", EventKind::Refract, "CONST:1.5", "AIR"},
-                    {"L.S1", EventKind::Refract, "AIR", "CONST:1.5"}});
+    const CompileError e = compile_error(s);
+    REQUIRE(e.diagnostics().size() == 1);
+    REQUIRE(e.diagnostics()[0].code == "paths.segment_skipped");
+    REQUIRE(has_error_at(e, "/paths/0/events/2"));
   }
   SECTION("from outside through an inner surface between different glasses: CompileError") {
     s.paths = {{"inner",
@@ -1034,4 +1033,99 @@ TEST_CASE("ideal_conductor: the surfaces of a mirror without material, nothing e
     INFO(surface.id.str());
     CHECK(surface.ideal_conductor == (surface.id.str() == "M.S"));
   }
+}
+
+TEST_CASE("#335: a skipped segment is an error, except same glass up to the outer surface",
+          "[compile][cemented]") {
+  const MaterialLibrary lib;
+  const auto skip_error_at = [&](const System& s, const std::string& where) {
+    const CompileError e = compile_error(s);
+    REQUIRE(e.diagnostics().size() == 1);
+    CHECK(e.diagnostics()[0].code == "paths.segment_skipped");
+    CHECK(has_error_at(e, where));
+  };
+  // Same glass up to the outer surface in the direction of travel: harmless, the ray leaves into
+  // the environment there as it would surface by surface.
+  System same = bare_system();
+  same.root.children.push_back({segmented_lens(3, {"CONST:1.5", "CONST:1.5"})});
+  same.paths = {{"out", false, {refract("L.S1"), refract("L.S3")}}};
+  const CompiledSystem cs = compile(same, lib);
+  require_events(cs, "out",
+                 {{"L.S1", EventKind::Refract, "AIR", "CONST:1.5"},
+                  {"L.S3", EventKind::Refract, "CONST:1.5", "AIR"}});
+  // Same glass, but an inner target surface: the ray would land in the environment in front of
+  // segment 2 (review of #335): an error.
+  System inner = bare_system();
+  inner.root.children.push_back({segmented_lens(4, {"CONST:1.5", "CONST:1.5", "CONST:1.7"})});
+  inner.paths = {{"inner", false, {refract("L.S1"), refract("L.S3"), refract("L.S4")}}};
+  skip_error_at(inner, "/paths/0/events/1");
+  // Backwards: into segment 2 through L.S4, reflected at L.S3 (it stays in segment 2), then
+  // through L.S1 past segments 0 and 1 of another glass.
+  inner.paths = {{"back",
+                  false,
+                  {refract("L.S4"), {SurfaceId("L.S3"), EventKind::Reflect, 0}, refract("L.S1")}}};
+  skip_error_at(inner, "/paths/0/events/2");
+  // Reflect at a surface that does not bound the segment skips the segment in between too:
+  // [A, B, A], from segment 0 to L.S3 and back, through B without refracting at L.S2.
+  System reflect = bare_system();
+  reflect.root.children.push_back({segmented_lens(4, {"CONST:1.5", "CONST:1.7", "CONST:1.5"})});
+  reflect.paths = {
+      {"reflect",
+       false,
+       {refract("L.S1"), {SurfaceId("L.S3"), EventKind::Reflect, 0}, refract("L.S1")}}};
+  skip_error_at(reflect, "/paths/0/events/1");
+}
+
+TEST_CASE("#335: AIR outside the Ciddor range and transmit across a medium change warn",
+          "[compile]") {
+  const MaterialLibrary lib;
+  const auto count = [](const CompiledSystem& cs, const std::string& code,
+                        const std::string& where = {}) {
+    const auto& d = cs.diagnostics();
+    return std::count_if(d.begin(), d.end(), [&](const auto& x) {
+      return x.code == code && (where.empty() || x.location == where);
+    });
+  };
+  System s = bare_system();
+  s.root.children.push_back({segmented_lens(2, {"CONST:1.5"})});
+  s.paths = {{"main", true, {}}};
+  CHECK(count(compile(s, lib), "environment.air_out_of_range") == 0);  // 0.5876 um, 20 degC
+  // The limits of docs/quellen.md (NIST): 0.3 to 1.7 um, -40 to 100 degC, 10 to 140 kPa, with
+  // 1 atm = 101.325 kPa: 1.38 atm = 139.8 kPa is inside, 1.39 atm = 140.8 kPa outside.
+  const auto out = [&](void (*change)(System&)) {
+    System x = s;
+    change(x);
+    return count(compile(x, lib), "environment.air_out_of_range", "/environment/medium");
+  };
+  CHECK(out([](System& x) { x.wavelengths = {{0.25, 1.0, true}}; }) == 1);
+  CHECK(out([](System& x) { x.wavelengths = {{1.8, 1.0, true}}; }) == 1);
+  CHECK(out([](System& x) { x.wavelengths = {{1.7, 1.0, true}}; }) == 0);
+  CHECK(out([](System& x) { x.environment.temperature_c = -41.0; }) == 1);
+  CHECK(out([](System& x) { x.environment.temperature_c = 100.0; }) == 0);
+  CHECK(out([](System& x) { x.environment.pressure_atm = 1.38; }) == 0);
+  CHECK(out([](System& x) { x.environment.pressure_atm = 1.39; }) == 1);
+  CHECK(out([](System& x) { x.environment.pressure_atm = 0.0987; }) == 0);  // 10.001 kPa
+  CHECK(out([](System& x) { x.environment.pressure_atm = 0.0986; }) == 1);  // 9.991 kPa
+  // Without AIR no warning; AIR only in the object space: at /object/medium.
+  System vacuum = s;
+  vacuum.environment.medium = "VACUUM";
+  vacuum.wavelengths = {{0.25, 1.0, true}};
+  CHECK(count(compile(vacuum, lib), "environment.air_out_of_range") == 0);
+  System object = vacuum;
+  object.object.at_infinity = false;
+  object.object.distance = rtt::model::Param(50.0);
+  object.object.medium = "AIR";
+  object.aperture = {rtt::model::SystemApertureType::EntrancePupilDiameter, Param(5.0)};
+  object.fields = {rtt::model::FieldType::ObjectHeight, {{0.0, 0.0, 1.0}}};
+  CHECK(count(compile(object, lib), "environment.air_out_of_range", "/object/medium") == 1);
+
+  // transmit at a glass surface warns; the medium stays (the ray does not enter the glass).
+  System t = s;
+  t.paths = {{"tunnel", false, {{SurfaceId("L.S1"), EventKind::Transmit, 0}}}};
+  const CompiledSystem ct = compile(t, lib);
+  CHECK(count(ct, "paths.transmit_medium_change", "/paths/0/events/0") == 1);
+  CHECK(ct.path(rtt::compile::PathId{0}).events[0].medium_after == ct.environment_medium());
+  // refract there does not warn.
+  t.paths = {{"enter", false, {refract("L.S1"), refract("L.S2")}}};
+  CHECK(count(compile(t, lib), "paths.transmit_medium_change") == 0);
 }
