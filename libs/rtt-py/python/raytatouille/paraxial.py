@@ -24,8 +24,6 @@ from ._core import (
     Seidel,
     SeidelSurfaces,
     SeidelTerms,
-    first_order,
-    first_order_section,
     is_anamorphic,
     trace_ray_section,
 )
@@ -50,6 +48,45 @@ __all__ = [
     "seidel",
     "trace_ray_section",
 ]
+
+
+def first_order(
+    system: SystemLike,
+    path: int | str = 0,
+    wavelength: int | None = None,
+    *,
+    materials: MaterialLibrary | None = None,
+) -> FirstOrder:
+    """First-order data (EFL, focal and principal points, pupils, magnification) of a path.
+
+    ``system`` is a System (compiled with ``materials``) or a CompiledSystem, as for the other
+    functions of this module (#336); for several analyses compile once with rt.compile().
+    ``path`` is an index or a name, ``wavelength`` an index (None: reference). Conventions in
+    rtt/paraxial/paraxial.hpp.
+
+    Raises ParaxialError if the path is not rotationally symmetric or the path or wavelength
+    does not exist, ValueError for an unknown path name.
+    """
+    return _core.first_order(compiled(system, materials), path, wavelength)
+
+
+def first_order_section(
+    system: SystemLike,
+    section: Section,
+    path: int | str = 0,
+    wavelength: int | None = None,
+    *,
+    materials: MaterialLibrary | None = None,
+) -> FirstOrder:
+    """First-order data of a path in the section ``section`` (Section.X or Section.Y), ADR 0042;
+    the same quantities as first_order(), heights and pupil diameters along x or y. ``system``
+    is a System (compiled with ``materials``) or a CompiledSystem (#336).
+
+    Raises ParaxialError if a surface is decentred or tilted, the principal axes of an
+    anamorphic surface or an ideal cylinder lens are not aligned with x and y, or the path or
+    wavelength does not exist; ValueError for an unknown path name.
+    """
+    return _core.first_order_section(compiled(system, materials), section, path, wavelength)
 
 
 def prescription(
