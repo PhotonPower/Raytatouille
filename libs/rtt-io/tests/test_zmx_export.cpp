@@ -461,7 +461,7 @@ TEST_CASE("a lens turned by 180 degrees about x is written with mirrored shapes"
 
 TEST_CASE("a decentre up to 1e-12 mm is dropped silently, more is a coordinate break",
           "[zmx][export]") {
-  // Since ADR 0045, addendum #366 (rule 2, approved by the maintainer, 2026-11-10) a decentre or
+  // Since ADR 0045, addendum #366 (rule 2, approved by the maintainer, 2026-11-16) a decentre or
   // tilt beyond 1e-12 is written with coordinate breaks; the surface table stays coaxial.
   System s = singlet();
   element(s, 1).pose.position[0] = Param(1e-13);

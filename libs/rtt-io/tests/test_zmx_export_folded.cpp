@@ -23,6 +23,7 @@
 
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/io/json_io.hpp"
+#include "rtt/io/surface_table.hpp"
 #include "rtt/io/zmx.hpp"
 #include "rtt/material/material.hpp"
 #include "rtt/math/types.hpp"
@@ -443,6 +444,7 @@ TEST_CASE("random folded systems survive export and import", "[zmx][export][366]
   // random frames, the light folded by random angles, a detector in a random frame.
   Numbers rng(366);
   std::size_t turned = 0;
+  std::size_t exported = 0;
   for (int k = 0; k < 200; ++k) {
     INFO("system " << k);
     System s = rtt::io::load_system(kZmxDir + "export_singlet.rtt.json");
@@ -472,8 +474,7 @@ TEST_CASE("random folded systems survive export and import", "[zmx][export][366]
       e.surfaces.push_back(f);
       place(e, v, Vec3(rng.in(-180.0, 180.0), rng.in(-80.0, 80.0), rng.in(-180.0, 180.0)));
       s.root.children.push_back(Node{e});
-      // a new direction of the light, at least 10 deg away from the plane of nothing in
-      // particular: any unit vector
+      // a new direction of the light, a unit vector with the polar angle theta in [0.2, 2.9] rad
       const double theta = rng.in(0.2, 2.9);
       const double phi = rng.in(0.0, 6.28);
       dir = Vec3(std::sin(theta) * std::cos(phi), std::sin(theta) * std::sin(phi), std::cos(theta));
@@ -500,7 +501,10 @@ TEST_CASE("random folded systems survive export and import", "[zmx][export][366]
     require_sign_rule(out.text);
     const System back = import_zmx(out.text, schott()).system;
     turned += require_same_surfaces(s, back, schott(), 1e-11);
+    ++exported;
   }
+  // content guard: nearly every system is exported (review of #372), not skipped as ambiguous
+  REQUIRE(exported >= 190);
   REQUIRE(turned > 0);
 }
 
@@ -539,4 +543,75 @@ TEST_CASE("a folded path that the export cannot write", "[zmx][export][366]") {
     image.pose.position[2] = Param(15.0);
     require_export_error(s, "export.surface_unsupported");
   }
+}
+
+TEST_CASE("folded paths against the direction of the light are export.frame_ambiguous",
+          "[zmx][export][366]") {
+  // ADR 0045, addendum #366, point 2 and addendum of 2026-11-16 (review of #372).
+  {
+    // The light arrives at a thin element T after the fold and leaves it backwards: the image
+    // lies between the mirror and T. Content guard: with the image after T it exports.
+    System s = rtt::io::load_system(kZmxDir + "export_fold.rtt.json");
+    Element thin{"T", ElementKind::ThinElement, {}, std::nullopt, {}};
+    Surface t;
+    t.id = SurfaceId("T.S1");
+    t.aperture = rtt::model::CircularAperture{3.0, 0.0};
+    thin.surfaces.push_back(t);
+    thin.pose.reference = rtt::model::PoseReference::RelativeToPreceding;
+    thin.pose.order = rtt::model::PoseOrder::RotateFirst;
+    thin.pose.rotation_deg[0] = Param(-135.0);
+    thin.pose.position[2] = Param(10.0);
+    s.root.children.insert(s.root.children.begin() + 3, Node{thin});
+    Element& image = element(s, 4);
+    image.pose.order = rtt::model::PoseOrder::TranslateFirst;
+    image.pose.rotation_deg[0] = Param(0.0);
+    image.pose.position[2] = Param(15.0);
+    REQUIRE_FALSE(export_zmx(s, schott()).text.empty());
+    element(s, 4).pose.position[2] = Param(-5.0);
+    try {
+      (void)export_zmx(s, schott());
+      FAIL("no ExportError");
+    } catch (const ExportError& e) {
+      INFO(e.what());
+      REQUIRE(e.code() == "export.frame_ambiguous");
+      REQUIRE(e.surface() == "T.S1");
+    }
+  }
+  {
+    // A folded path that starts at a mirror (the stop on its surface, ADR 0039) and a finite
+    // object at z = -100 (ADR 0038: from the global origin), the mirror moved to z = -150,
+    // behind the object. At a mirror only d_out sets the frame, so the check of the first
+    // section from the object must catch it. Content guard: with the mirror at z = 20 it
+    // exports.
+    System s = rtt::io::load_system(kZmxDir + "export_fold.rtt.json");
+    s.root.children.erase(s.root.children.begin(), s.root.children.begin() + 2);
+    s.aperture.stop = SurfaceId("M.S");
+    element(s, 0).pose.reference = rtt::model::PoseReference::Absolute;
+    element(s, 0).surfaces[0].aperture = rtt::model::CircularAperture{5.0, 0.0};
+    s.object.at_infinity = false;
+    s.object.distance = Param(100.0);
+    s.fields = {rtt::model::FieldType::ObjectHeight, {{0.0, 0.0, 1.0}, {0.0, 2.0, 1.0}}};
+    REQUIRE_FALSE(export_zmx(s, schott()).text.empty());
+    element(s, 0).pose.position[2] = Param(-150.0);
+    require_export_error(s, "export.frame_ambiguous");
+  }
+}
+
+TEST_CASE("an ideal lens after a mirror is refused by the ZMX export only",
+          "[zmx][export][table][366]") {
+  // ADR 0045, addendum #366, point 5 concerns the PARAXIAL surface of a ZMX file; the surface
+  // table keeps point 2 (review of #372). A coaxial double pass with an ideal lens at z = 20
+  // between the plane mirror at z = 50 and the image at z = -10.
+  System s = rtt::io::load_system(kZmxDir + "export_double_pass.rtt.json");
+  Element lens{"IL2", ElementKind::ThinElement, {}, std::nullopt, {}};
+  Surface t;
+  t.id = SurfaceId("IL2");
+  t.interaction = rtt::model::IdealLens{Param(40.0), std::nullopt};
+  lens.surfaces.push_back(t);
+  lens.pose.position[2] = Param(20.0);
+  lens.pose.rotation_deg[0] = Param(180.0);
+  s.root.children.insert(s.root.children.begin() + 3, Node{lens});
+  require_export_error(s, "export.surface_unsupported");
+  const rtt::io::TableExport table = rtt::io::write_surface_table(s, schott());
+  REQUIRE(table.text.find("IL2") != std::string::npos);
 }

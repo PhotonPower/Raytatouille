@@ -321,6 +321,12 @@ void fold_path(ExportPath& out,
       // surface 0: its thickness along the global z, then one break with decenter and turn
       const math::Mat3 turn = frames[0].r;
       const math::Vec3 p = frames[0].o - entrance.o;
+      // from a finite object the light runs along +z of the global frame (addendum #366 of
+      // 2026-11-16, as for a coaxial path)
+      if (!infinite && p.z() < -kFrame) {
+        export_fail("export.frame_ambiguous", id,
+                    "the first surface lies before the object: the light runs along +z from it");
+      }
       out.object_distance = p.z();
       if (!is_identity(turn) || std::abs(p.x()) > kFrame || std::abs(p.y()) > kFrame) {
         out.object_breaks.push_back({p.x(), p.y(), xyz_angles_deg(turn), 0.0});
@@ -526,10 +532,12 @@ ExportPath walk_export_path(const model::System& system,
     }
   }
 
-  // An ideal lens after an odd number of mirrors (ADR 0045, addendum #366, point 5).
+  // An ideal lens after an odd number of mirrors (ADR 0045, addendum #366, point 5): PARAXIAL is
+  // a ZMX surface, so for the ZMX export only (the surface table keeps point 2).
   int mirrors = 0;
   for (const ExportRow& row : out.rows) {
-    if (std::holds_alternative<model::IdealLens>(row.surface.interaction) && mirrors % 2 != 0) {
+    if (folded && std::holds_alternative<model::IdealLens>(row.surface.interaction) &&
+        mirrors % 2 != 0) {
       export_fail("export.surface_unsupported", row.surface.id.str(),
                   "an ideal lens after an odd number of mirrors: no source gives the sign of the "
                   "focal length of a PARAXIAL surface with the light along -z");
@@ -543,10 +551,9 @@ ExportPath walk_export_path(const model::System& system,
     return out;
   }
   // The direction of the light (ADR 0045, addendum #366 of 2026-11-16): after m mirrors it runs
-  // along
-  // (-1)^m z ([UG] "Thickness", KA-01588), from the object (or along +z from infinity) through
-  // the vertices. A coaxial path against it, e.g. with an inactive fold mirror (ADR 0049), is a
-  // geometry the rays do not follow; a negative DISZ would let OpticStudio trace back to it.
+  // along (-1)^m z ([UG] "Thickness", KA-01588), from the object (or along +z from infinity)
+  // through the vertices. A coaxial path against it, e.g. with an inactive fold mirror (ADR 0049),
+  // is a geometry the rays do not follow; a negative DISZ would let OpticStudio trace back to it.
   // The criterion of point 2 for a folded path, along the z axis; for the ZMX export only (the
   // surface table keeps point 2 of ADR 0045).
   for (std::size_t k = 0, reflections = 0; folded && k < out.rows.size(); ++k) {
