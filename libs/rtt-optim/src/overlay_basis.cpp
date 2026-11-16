@@ -68,6 +68,11 @@ model::System variant_of(const model::System& system) {
   v.object.reference.reset();
   v.fields = {model::FieldType::AngleDeg, {{0.0, 0.0, 1.0}}};
   v.aperture = {model::SystemApertureType::StopSize, model::Param(0.0)};
+  // The variant is only compiled for aiming and paraxial data; nobody reads its merit function or
+  // tolerances. Their field indices refer to the fields of the system, not to the single field
+  // above (#340: validate would report merit.index_out_of_range).
+  v.optimization = {};
+  v.tolerances = {};
   return v;
 }
 

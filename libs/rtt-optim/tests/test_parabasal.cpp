@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <numbers>
@@ -372,4 +373,56 @@ TEST_CASE("parabasal: magnification with the object at infinity stays a start er
   const System s = singlet();
   const TrialOverlay o = overlay_of(s);
   CHECK_THROWS_AS(value(s, FirstOrderQuantity::Magnification, &o), rtt::optim::OptimError);
+}
+
+TEST_CASE("parabasal: efl and bfl of a trial with operands on field 1 (#340)",
+          "[optim][parabasal]") {
+  // #340, case 1: the variant with the object at infinity has a single field. It kept the
+  // optimization of the system, so an operand on field 1 failed validate (merit.index_out_of_
+  // range) and efl and bfl became merit.operand_unsupported. Hand value of the two lenses of
+  // doublet_finite() in vacuum with y-nu ray tracing (Greivenkamp, Field Guide to Geometrical
+  // Optics, p. 9-12: phi = -n'u'_k / y_1, BFD = -y_k / u'_k; refraction nu' = nu - y (n' - n) c,
+  // transfer y' = y + t nu' / n'): y_1 = 1, nu = 0 in front of L1.S1.
+  struct Refraction {
+    double z, radius, n_before, n_after;
+  };
+  const std::vector<Refraction> surfaces = {{0.0, 50.0, 1.0, 1.6},
+                                            {5.0, -200.0, 1.6, 1.0},
+                                            {15.0, 80.0, 1.0, 1.5},
+                                            {19.0, -80.0, 1.5, 1.0}};
+  double y = 1.0;
+  double nu = 0.0;
+  for (std::size_t i = 0; i < surfaces.size(); ++i) {
+    const Refraction& r = surfaces[i];
+    nu -= y * (r.n_after - r.n_before) / r.radius;
+    if (i + 1 < surfaces.size()) y += (surfaces[i + 1].z - r.z) * nu / r.n_after;
+  }
+  const double efl_hand = -1.0 / nu;  // n' = 1, y_1 = 1
+  const double bfl_hand = -y / nu;
+  REQUIRE(efl_hand > 0.0);
+
+  System s = doublet_finite();
+  REQUIRE(s.fields.points.size() == 2);
+  rtt::model::RayOperand ray;
+  ray.path = "main";
+  ray.surface = SurfaceId("IMG");
+  ray.field = 1;
+  ray.py = 1.0;
+  rtt::model::FirstOrderOperand efl;
+  efl.path = "main";
+  efl.quantity = FirstOrderQuantity::Efl;
+  rtt::model::FirstOrderOperand bfl = efl;
+  bfl.quantity = FirstOrderQuantity::Bfl;
+  s.optimization.operands = {ray, efl, bfl};
+  const TrialOverlay o = overlay_of(s);
+  const MeritFunction merit(s, library(), nullptr, &o);
+  const rtt::optim::MeritEvaluation e = merit.evaluate(merit.start());
+  INFO(e.undefined.at(1) << " / " << e.undefined.at(2));
+  // The parabasal values differ from the paraxial ones by O(delta^2) (addendum #256); 1e-6
+  // relative is far above that for this system and far below a wrong bundle.
+  CHECK(std::abs(e.values.at(1) - efl_hand) <= 1e-6 * efl_hand);
+  CHECK(std::abs(e.values.at(2) - bfl_hand) <= 1e-6 * std::abs(bfl_hand));
+  // Content guard: the ray on field 1 arrives off axis (object height 3 mm).
+  CHECK(std::isfinite(e.values.at(0)));
+  CHECK(std::abs(e.values.at(0)) > 1.0);
 }
