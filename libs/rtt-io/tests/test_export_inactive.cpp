@@ -183,3 +183,28 @@ TEST_CASE("export: an inactive first element, the object distance runs to the fi
   // Content guard: the object distance of 100 mm is in the file.
   CHECK(b.text.find("DISZ 100") != std::string::npos);
 }
+
+TEST_CASE(
+    "export: a coaxial path against the direction the mirrors give is "
+    "export.frame_ambiguous",
+    "[io][0.10][export][366]") {
+  // ADR 0045, addendum #366 of 2026-11-16 (decision of the maintainer on #366): after m mirrors the
+  // light runs along (-1)^m z. With the plane mirror at z = 50 inactive, the ideal lens at z = 1 is
+  // followed by the image at z = -10 behind it: the rays miss it (paths.inactive_mirror, ADR
+  // 0049), but DISZ -11 without a mirror would let OpticStudio trace back to it.
+  System s = rtt::io::load_system(std::string(RTT_ZMX_DIR) + "/export_double_pass.rtt.json");
+  // Content guard: with the mirror the path exports, with a negative thickness after it.
+  const std::vector<double> on = disz(rtt::io::export_zmx(s, library()).text);
+  REQUIRE(on.size() == 5);  // object, STO, IL, M, IMG
+  CHECK(on[2] == 49.0);
+  CHECK(on[3] == -60.0);
+
+  rtt::model::test::element(s, 2).active = false;
+  try {
+    static_cast<void>(rtt::io::export_zmx(s, library()));
+    FAIL("no ExportError");
+  } catch (const rtt::io::ExportError& e) {
+    CHECK(e.code() == "export.frame_ambiguous");
+    CHECK(e.surface() == "IL");
+  }
+}

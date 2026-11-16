@@ -130,6 +130,9 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
     {"export.event_unsupported", Severity::Error, "export",
      "path event without a ZMX surface (not the automatic kind, a mode or order, a surface twice, "
      "a detector before the end)"},
+    {"export.frame_ambiguous", Severity::Error, "export",
+     "the side of a surface the light runs on is not defined (folded path), or a coaxial path "
+     "runs against the direction its mirrors give"},
     {"export.glass_ambiguous", Severity::Error, "export",
      "no GCAT order finds every glass in its own catalogue"},
     {"export.image_missing", Severity::Error, "export",
@@ -149,7 +152,7 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
     {"export.name_changed", Severity::Warning, "export",
      "control characters of the system name replaced by spaces"},
     {"export.not_coaxial", Severity::Error, "export",
-     "surface off the z axis or tilted (only coaxial systems are exported)"},
+     "surface off the z axis or tilted (the surface table holds coaxial systems only)"},
     {"export.object_medium_unsupported", Severity::Error, "export",
      "glass in object space and the path does not start in a lens"},
     {"export.paraxial_opd", Severity::Warning, "export",

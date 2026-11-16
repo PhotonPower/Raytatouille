@@ -1,0 +1,119 @@
+{
+  "schema_version": "0.10.0",
+  "name": "Export: coaxial double pass, ideal lens f = 80 mm, plane mirror at z = 50, image at z = -10 (ADR 0045, addendum #366)",
+  "units": {
+    "length": "mm",
+    "wavelength": "um"
+  },
+  "environment": {
+    "temperature_c": 20.0,
+    "pressure_atm": 1.0,
+    "medium": "AIR"
+  },
+  "wavelengths": [
+    {
+      "um": 0.5877,
+      "reference": true
+    }
+  ],
+  "aperture": {
+    "type": "epd",
+    "value": 10.0
+  },
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "root",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {
+              "type": "circular",
+              "radius": 5.0
+            }
+          }
+        ]
+      },
+      {
+        "type": "thin_element",
+        "name": "IL",
+        "pose": {
+          "position": [
+            0,
+            0,
+            1
+          ]
+        },
+        "surfaces": [
+          {
+            "id": "IL",
+            "interaction": {
+              "type": "ideal_lens",
+              "focal_length": 80.0
+            }
+          }
+        ]
+      },
+      {
+        "type": "mirror",
+        "name": "M",
+        "pose": {
+          "position": [
+            0,
+            0,
+            50
+          ],
+          "rotation_deg": [
+            180,
+            0,
+            0
+          ]
+        },
+        "surfaces": [
+          {
+            "id": "M"
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {
+          "position": [
+            0,
+            0,
+            -10
+          ],
+          "rotation_deg": [
+            180,
+            0,
+            0
+          ]
+        },
+        "surfaces": [
+          {
+            "id": "IMG",
+            "aperture": {
+              "type": "circular",
+              "radius": 20.0
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {
+      "name": "main",
+      "events": "auto"
+    }
+  ]
+}
