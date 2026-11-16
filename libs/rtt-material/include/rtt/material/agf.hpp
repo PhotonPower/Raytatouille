@@ -29,8 +29,9 @@
 /// supported formulas against N(d) and V(d) of free vendor catalogues (docs/quellen.md): formula
 /// 1 (Schott) a0..a5 and formula 2 (Sellmeier 1) K1 L1 K2 L2 K3 L3 (SCHOTT, #24); formula 6
 /// (Sellmeier 3) K1 L1 .. K4 L4, formula 12 (Extended 2) a0..a6 and formula 13 (Extended 3)
-/// a0..a8 (NIKON-HIKARI, #42). All other formula numbers, and formula 12 with a7 != 0, are
-/// rejected when the glass is resolved.
+/// a0..a8 (NIKON-HIKARI, #42); formulas 7 and 8 (Handbook of Optics 1 and 2) A B C D and
+/// formula 9 (Sellmeier 4) A B C D E (birefringent.agf of ZemaxGlass 2.0.1, #334). All other
+/// formula numbers, and formula 12 with a7 != 0, are rejected when the glass is resolved.
 
 #include <cstddef>
 #include <filesystem>
@@ -161,6 +162,10 @@ struct AgfCatalog {
 ///   record is no catalogue and throws AgfError at the first skipped line;
 /// - a line of exactly one alphabetic word that is no record name is skipped if the next
 ///   line that is not empty is an NM record (agf.stray_line).
+/// One check of the data (#334): agf.nd_mismatch if N(d) of the NM record differs by more than
+/// kNdMismatch from the formula at the d line in air (587.5618 nm, SCHOTT TIE-29 p. 1), for a
+/// glass whose formula agf_formula resolves; N(d) = 1 (a placeholder in crystal and infrared
+/// catalogues) is not checked.
 /// @param text text of the file, see decode_agf_text
 /// @param name catalogue name stored in the result
 /// @param file file name for error messages
@@ -173,6 +178,10 @@ struct AgfCatalog {
 ///         (exclude sub 0/1, status 0..4, melt freq an integer) or more than three of them;
 ///         with line 0 for a text without any glass (empty, only comments or CC lines; #333)
 [[nodiscard]] AgfCatalog parse_agf(std::string_view text, std::string name, std::string file);
+
+/// Threshold of agf.nd_mismatch (decision on #334): rounded catalogues reproduce N(d) to 3.8e-5,
+/// known data errors differ by 1.25e-3 and more (2349 glasses of 23 catalogues, docs/quellen.md).
+inline constexpr double kNdMismatch = 1e-4;
 
 /// Reads, decodes and parses an AGF file; the catalogue name is the file name without
 /// extension in upper case (#24).
@@ -228,7 +237,8 @@ class CatalogMaterial final : public Material {
 
 /// Builds the dispersion formula of a glass (lambda in um, coefficients as in dispersion.hpp).
 /// Supported, with the verified CD order (docs/quellen.md): formula 1 (Schott, CD = a0..a5),
-/// 2 (Sellmeier 1, K1 L1 K2 L2 K3 L3), 6 (Sellmeier 3, K1 L1 .. K4 L4), 12 (Extended 2,
+/// 2 (Sellmeier 1, K1 L1 K2 L2 K3 L3), 6 (Sellmeier 3, K1 L1 .. K4 L4), 7 (Handbook of Optics 1,
+/// A B C D), 8 (Handbook of Optics 2, A B C D), 9 (Sellmeier 4, A B C D E), 12 (Extended 2,
 /// a0..a6; a7 must be 0) and 13 (Extended 3, a0..a8). Missing trailing coefficients count as 0
 /// (the format allows "up to 10"); CD values beyond those of the formula must be 0 (they are 0
 /// in all glasses of the verifying catalogues, and a value there most likely is a record whose

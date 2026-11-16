@@ -82,15 +82,17 @@ TEST_CASE("R1: identical duplicate glass blocks are merged with a warning", "[ag
 
 TEST_CASE("the former error case 'glass appears twice' under R1 and R2", "[agf][load]") {
   // Moved from the error table of test_agf.cpp (approved with #71): two identical blocks are
-  // one glass and a warning at line 4; with another V(d) they are a conflict at line 4.
+  // one glass and a warning at line 4; with another V(d) they are a conflict at line 4. N(d) is
+  // the placeholder 1.0, since these CD values give no index at the d line (agf.nd_mismatch,
+  // #334; rule 2, approved by the maintainer, 2026-11-16).
   const AgfCatalog same = parse_agf(
-      "CC c\nNM A 2 1 1.5 60\nCD 1 2 3 4 5 6\nNM A 2 1 1.5 60\nCD 1 2 3 4 5 6\n", "T", "t.agf");
+      "CC c\nNM A 2 1 1.0 60\nCD 1 2 3 4 5 6\nNM A 2 1 1.0 60\nCD 1 2 3 4 5 6\n", "T", "t.agf");
   REQUIRE(same.glasses.size() == 1);
   REQUIRE(same.warnings.size() == 1);
   REQUIRE(same.warnings[0].code == "agf.duplicate_glass");
   REQUIRE(same.warnings[0].line == 4);
   const AgfCatalog other = parse_agf(
-      "CC c\nNM A 2 1 1.5 60\nCD 1 2 3 4 5 6\nNM A 2 1 1.5 61\nCD 1 2 3 4 5 6\n", "T", "t.agf");
+      "CC c\nNM A 2 1 1.0 60\nCD 1 2 3 4 5 6\nNM A 2 1 1.0 61\nCD 1 2 3 4 5 6\n", "T", "t.agf");
   REQUIRE(other.glasses.size() == 2);
   REQUIRE(other.warnings.size() == 1);
   REQUIRE(other.warnings[0].code == "agf.duplicate_glass_conflict");
@@ -236,7 +238,8 @@ TEST_CASE("a failed catalogue adds no warnings", "[agf][load]") {
 
 TEST_CASE("every agf code of the registry has a case in this file", "[agf][load]") {
   const std::set<std::string> covered = {"agf.duplicate_glass", "agf.duplicate_glass_conflict",
-                                         "agf.preamble_skipped", "agf.stray_line"};
+                                         "agf.preamble_skipped", "agf.stray_line",
+                                         "agf.nd_mismatch"};
   for (const rtt::diagnostics::CodeInfo& info : rtt::diagnostics::kCodes) {
     if (info.producer != "agf") continue;
     INFO("no case for " << info.code);
@@ -262,4 +265,50 @@ TEST_CASE("R1 and R2 with TD records: the line of the TD record does not count (
   REQUIRE(conflict.warnings.size() == 1);
   REQUIRE(conflict.warnings[0].code == "agf.duplicate_glass_conflict");
   REQUIRE_THAT(conflict.warnings[0].message, ContainsSubstring("TD"));
+}
+
+TEST_CASE("agf.nd_mismatch: N(d) of the NM record far from the formula at the d line (#334)",
+          "[agf][load]") {
+  // Decision on #334: warn above 1e-4 (rounded catalogues differ by up to 3.8e-5, data errors
+  // by 1.25e-3 and more, e.g. CDGM H-TK9 with 3.4e-2). The CD record of block() gives
+  // N(d) = 1.516800 (N-BK7).
+  const auto nd_block = [](const std::string& name, const std::string& nd) {
+    return "NM " + name + " 2 517642 " + nd +
+           " 64.17 0 1 1\nCD 1.03961212 0.00600069867 0.231792344 0.0200179144 1.01046945 "
+           "103.560653\nLD 0.3 2.5\n";
+  };
+  const AgfCatalog cat =
+      parse_agf("CC excerpt\n" + nd_block("ROUNDED", "1.51685") + nd_block("OFF", "1.5170") +
+                    nd_block("H-TK9", "1.550000") + nd_block("PLACEHOLDER", "1.000000"),
+                "N", "n.agf");
+  REQUIRE(cat.glasses.size() == 4);
+  REQUIRE(cat.warnings.size() == 2);
+  REQUIRE(has_warning(cat.warnings, "agf.nd_mismatch", 5));  // OFF: 2e-4
+  REQUIRE(has_warning(cat.warnings, "agf.nd_mismatch", 8));  // H-TK9: 3.3e-2
+  REQUIRE_THAT(cat.warnings[0].message, ContainsSubstring("OFF") && ContainsSubstring("1.517") &&
+                                            ContainsSubstring("1.5168"));
+
+  // No check where the formula is not supported or cannot be resolved: formula 3 (Herzberger),
+  // and a CD value beyond the formula, which is an error when the glass is resolved (#42).
+  const AgfCatalog other = parse_agf(
+      "CC excerpt\nNM HERZ 3 0 1.2 50 0 1 1\nCD 1 0 0 0 0 0\nLD 0.3 2.5\n"
+      "NM LOST 2 517642 1.2 64.17 0 1 1\nCD 1.03961212 0.00600069867 0.231792344 0.0200179144 "
+      "1.01046945 103.560653 7\nLD 0.3 2.5\n",
+      "N", "n.agf");
+  REQUIRE(other.warnings.empty());
+
+  // A formula without a real index at the d line against a real N(d) warns as well: K1 = -5,
+  // L1 = 0 gives n^2 = 1 - 5 = -4 at every wavelength.
+  const AgfCatalog negative =
+      parse_agf("CC excerpt\nNM NEG 2 1 1.5 60\nCD -5 0 0 0 0 0\n", "N", "n.agf");
+  REQUIRE(negative.warnings.size() == 1);
+  REQUIRE(negative.warnings[0].code == "agf.nd_mismatch");
+  REQUIRE_THAT(negative.warnings[0].message, ContainsSubstring("no real index"));
+
+  // The library passes the warning on, and the glass stays usable.
+  MaterialLibrary lib;
+  lib.add_catalog_text("CC excerpt\n" + nd_block("OFF", "1.5170"), "N", "n.agf");
+  REQUIRE(lib.resolve("N:OFF") != nullptr);
+  REQUIRE(lib.load_warnings().size() == 1);
+  REQUIRE(lib.load_warnings()[0].code == "agf.nd_mismatch");
 }

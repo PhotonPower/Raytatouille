@@ -32,6 +32,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | --- | --- | --- | --- | --- |
 | `agf.duplicate_glass` | Warnung | Glas mit gleichen Werten aller gelesenen Datensätze wiederholt; die Wiederholung wird übergangen | agf | Datei:Zeile der Wiederholung |
 | `agf.duplicate_glass_conflict` | Warnung | Glas zweimal mit verschiedenen Daten; es ist mehrdeutig und nicht auflösbar (`UnknownMaterial` mit beiden Zeilen und Alias-Hinweis), beide Blöcke stehen im Listing | agf | Datei:Zeile des zweiten Blocks |
+| `agf.nd_mismatch` | Warnung | N(d) des NM-Datensatzes weicht um mehr als 1·10⁻⁴ von der Formel an der d-Linie in Luft (587,5618 nm) ab; Daten des Glases vermutlich fehlerhaft (z. B. CDGM H-TK9). Nur bei auflösbarer Formel; N(d) = 1 (Platzhalter) wird nicht geprüft (#334) | agf | Datei:Zeile des NM-Datensatzes |
 | `agf.preamble_skipped` | Warnung | Textzeile vor dem ersten Datensatz (CC/NM) übersprungen, z. B. die RadiantZemax-Kopfzeile | agf | Datei:Zeile |
 | `agf.stray_line` | Warnung | einzelnes Wort vor dem nächsten NM-Datensatz übersprungen, nur Leerzeilen dazwischen (NIKON-HIKARI_201911 Z. 10102) | agf | Datei:Zeile |
 | `aperture.na_exceeds_index` | Warnung | objektseitige NA ≥ Brechungsindex des Objektraums (bei `object.medium` ungleich `AIR`; für Luft meldet validate `aperture.na_not_physical`, ADR 0037) | compile | `/aperture/value` |

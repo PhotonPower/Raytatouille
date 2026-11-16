@@ -36,6 +36,8 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "glass repeated with identical data; the repetition is ignored"},
     {"agf.duplicate_glass_conflict", Severity::Warning, "agf",
      "glass defined twice with different data; it is ambiguous and cannot be resolved"},
+    {"agf.nd_mismatch", Severity::Warning, "agf",
+     "N(d) of the NM record differs from the formula at the d line by more than 1e-4"},
     {"agf.preamble_skipped", Severity::Warning, "agf", "text line before the first record skipped"},
     {"agf.stray_line", Severity::Warning, "agf", "single word before the next NM record skipped"},
     {"aperture.na_exceeds_index", Severity::Warning, "compile",

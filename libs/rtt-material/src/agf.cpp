@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdint>
 #include <fstream>
+#include <iomanip>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -83,6 +84,7 @@ class Parser {
     // wrong file or path shows at once (decision in #333).
     if (catalog_.glasses.empty()) fail(0, "no glass in the catalogue (no NM record)");
     merge_duplicates();
+    check_nd();
     // Duplicates are found after the last line; keep all warnings in file order.
     std::stable_sort(catalog_.warnings.begin(), catalog_.warnings.end(),
                      [](const LoadWarning& x, const LoadWarning& y) { return x.line < y.line; });
@@ -108,6 +110,40 @@ class Parser {
     return !m.empty() && std::all_of(m.begin(), m.end(), [](char c) {
       return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
     });
+  }
+
+  /// agf.nd_mismatch (#334): N(d) of the NM record against the formula at the d line in air
+  /// (587.5618 nm, SCHOTT TIE-29 p. 1; catalogue formulas take the wavelength in air). Only for
+  /// glasses whose formula resolves: an unsupported formula or a CD value beyond the formula is
+  /// reported when the glass is resolved (agf_formula). N(d) = 1 is a placeholder (crystal and
+  /// infrared catalogues) and not checked.
+  void check_nd() {
+    constexpr double kLineDAirUm = 0.5875618;
+    for (const AgfGlass& g : catalog_.glasses) {
+      if (g.nd == 1.0) continue;
+      std::optional<DispersionFormula> formula;
+      try {
+        formula = agf_formula(g, catalog_.file);
+      } catch (const std::invalid_argument&) {
+        continue;  // reported when the glass is resolved
+      }
+      const double nd = refractive_index(*formula, kLineDAirUm);
+      if (std::abs(nd - g.nd) <= kNdMismatch) continue;  // also warns for NaN
+      if (std::isnan(nd)) {
+        warn("agf.nd_mismatch", g.line,
+             "glass " + g.name +
+                 ": the formula of the CD record gives no real index at 587.5618 nm (n^2 < 0), "
+                 "but the NM record has N(d) " +
+                 std::to_string(g.nd) + "; the data of the glass may be wrong");
+        continue;
+      }
+      std::ostringstream text;
+      text << "glass " << g.name << ": N(d) " << g.nd << " of the NM record differs from "
+           << std::fixed << std::setprecision(6) << nd << " of the CD record at 587.5618 nm by "
+           << std::scientific << std::setprecision(1) << std::abs(nd - g.nd) << " (more than "
+           << kNdMismatch << "); the data of the glass may be wrong";
+      warn("agf.nd_mismatch", g.line, text.str());
+    }
   }
 
   /// R1/R2 (#71): a repeated glass with the same data (all records equal, line aside) is read
@@ -554,6 +590,15 @@ DispersionFormula agf_formula(const AgfGlass& glass, const std::string& where) {
     case 6:  // Sellmeier 3: CD = K1 L1 .. K4 L4 (order verified, docs/quellen.md, #42)
       require_unused_zero(8, "Sellmeier 3");
       return Sellmeier3Coefficients{{c(0), c(2), c(4), c(6)}, {c(1), c(3), c(5), c(7)}};
+    case 7:  // Handbook of Optics 1: CD = A B C D (order verified, docs/quellen.md, #334)
+      require_unused_zero(4, "Handbook of Optics 1");
+      return HandbookOfOptics1Coefficients{c(0), c(1), c(2), c(3)};
+    case 8:  // Handbook of Optics 2: CD = A B C D (order verified, docs/quellen.md, #334)
+      require_unused_zero(4, "Handbook of Optics 2");
+      return HandbookOfOptics2Coefficients{c(0), c(1), c(2), c(3)};
+    case 9:  // Sellmeier 4: CD = A B C D E (order verified, docs/quellen.md, #334)
+      require_unused_zero(5, "Sellmeier 4");
+      return Sellmeier4Coefficients{c(0), c(1), c(2), c(3), c(4)};
     case 12:  // Extended 2: CD = a0..a6 verified (docs/quellen.md, #42); a7 is 0 in every
               // catalogue glass, so its position is not verified and a7 != 0 is rejected.
       if (c(7) != 0.0) {
@@ -592,8 +637,8 @@ DispersionFormula agf_formula(const AgfGlass& glass, const std::string& where) {
   text << "glass " << glass.name << " (" << where << "): AGF dispersion formula " << glass.formula
        << " (" << kNames[index]
        << ") is not supported: its coefficient order is not verified; supported are 1 (Schott), 2 "
-          "(Sellmeier 1), 6 (Sellmeier 3), 12 (Extended 2 with a7 = 0) and 13 (Extended 3), "
-          "see #42";
+          "(Sellmeier 1), 6 (Sellmeier 3), 7 (Handbook of Optics 1), 8 (Handbook of Optics 2), 9 "
+          "(Sellmeier 4), 12 (Extended 2 with a7 = 0) and 13 (Extended 3), see #42, #334";
   throw std::invalid_argument(text.str());
 }
 
