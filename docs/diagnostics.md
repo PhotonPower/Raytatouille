@@ -10,6 +10,8 @@ Jede Diagnose (`rtt::model::Diagnostic`, in Python `rt.Diagnostic`) trägt einen
 - Ein pytest gleicht diese Tabelle mit der Registry ab (Code, Schwere und Erzeuger).
 - Catch2-Tests erzeugen jeden Code an seinem Ort: `libs/rtt-compile/tests/test_diagnostic_codes.cpp` die Codes von validate und compile (bei mehreren Erzeugungsorten jeden), `libs/rtt-analysis/tests/test_warnings.cpp` die der Analysen, `libs/rtt-optim/tests/test_optimize.cpp` die von `optimize` (`optim.rays_lost` und `merit.operand_unsupported` an Generatoren in `libs/rtt-optim/tests/test_generators.cpp`).
 
+**Gebundene Params (ADR 0029, Nachtrag #353):** Die Bereichsfehler von validate an einem Param, das an die Parametertabelle gebunden ist, meldet compile nach dem Auflösen, mit demselben Code und Pointer; die Meldung nennt die Konfiguration. Die Spalte Erzeuger nennt weiter validate.
+
 **Ausgabe:** `to_string` und `rtt validate` schreiben `error [code] /pointer: Meldung`, z. B. `error [material.unknown] /root/children/1/material: …`.
 
 **Wer erzeugt:**

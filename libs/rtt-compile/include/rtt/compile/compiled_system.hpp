@@ -291,8 +291,11 @@ class CompiledSystem;
 /// configuration (model::resolve_parameters); without bound Params the system is compiled as it
 /// is, so the result does not depend on `configuration` beyond configuration() and
 /// configuration_name(). Errors of the table are diagnostics of validate() and come as
-/// CompileError; an index >= model::configuration_count(system) is a CompileError with
-/// config.unknown at "/configurations" ("" without a configurations section).
+/// CompileError. A resolved value outside its range (a bound radius 0, an axicon angle >= 90 deg,
+/// ...) is a CompileError as well, with the code and JSON pointer validate() gives an unbound
+/// value and the configuration in the message (#353); an index >=
+/// model::configuration_count(system) is a CompileError with config.unknown at "/configurations"
+/// ("" without a configurations section).
 ///
 /// The result holds no references or pointers into `system`, `materials` or `coatings`.
 /// @throws CompileError as described above
