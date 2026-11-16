@@ -593,7 +593,14 @@ TEST_CASE("folded paths against the direction of the light are export.frame_ambi
     s.fields = {rtt::model::FieldType::ObjectHeight, {{0.0, 0.0, 1.0}, {0.0, 2.0, 1.0}}};
     REQUIRE_FALSE(export_zmx(s, schott()).text.empty());
     element(s, 0).pose.position[2] = Param(-150.0);
-    require_export_error(s, "export.frame_ambiguous");
+    try {
+      (void)export_zmx(s, schott());
+      FAIL("no ExportError");
+    } catch (const ExportError& e) {
+      INFO(e.what());
+      REQUIRE(e.code() == "export.frame_ambiguous");
+      REQUIRE(e.surface() == "M.S");
+    }
   }
 }
 
