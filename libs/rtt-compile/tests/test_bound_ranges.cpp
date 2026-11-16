@@ -158,3 +158,43 @@ TEST_CASE("valid bound shape values compile as the literal values (#353)", "[bou
     CHECK(c.grad(1.25, -0.5) == d.grad(1.25, -0.5));
   }
 }
+
+TEST_CASE("a bound value from an expression row is checked (#353)", "[bound]") {
+  // R2 = 50 - R1: 0 in configuration b. No configurations section at all would also do; here the
+  // message names the configuration.
+  System s = lens(rtt::model::Conic{Param::bound("R2"), Param(0.0)});
+  table(s, "R1", 20.0, 50.0);
+  rtt::model::ParameterRow r2;
+  r2.name = "R2";
+  r2.form = rtt::model::ParameterExpression{"50 - R1"};
+  s.parameters.push_back(r2);
+  CHECK_NOTHROW(compiled(s, 0));
+  const std::vector<rtt::model::Diagnostic> d = errors(s, 1);
+  REQUIRE(only(d, "shape.radius_invalid", kFront + "/shape/base/radius"));
+  CHECK(d[0].message.find("configuration 'b'") != std::string::npos);
+}
+
+TEST_CASE("without configurations the message names the parameter table (#353)", "[bound]") {
+  System s = lens(rtt::model::Axicon{Param::bound("A")});
+  rtt::model::ParameterRow row;
+  row.name = "A";
+  row.form = 90.0;
+  s.parameters.push_back(row);
+  const std::vector<rtt::model::Diagnostic> d = errors(s, 0);
+  REQUIRE(only(d, "shape.axicon_angle_invalid", kFront + "/shape/base/angle_deg"));
+  CHECK(d[0].message.find("(value from the parameter table)") != std::string::npos);
+}
+
+TEST_CASE("warnings of resolved values do not stop compile (#353)", "[bound]") {
+  // shape.conic_without_curvature is a warning (a conic at c = 0 has no effect); the second
+  // validate run keeps only errors, so a valid system still compiles.
+  System s = lens(rtt::model::OddAsphere{Param::bound("C"), Param(-0.5), {Param(1e-4)}});
+  table(s, "C", 0.0, 0.01);
+  const std::vector<rtt::model::Diagnostic> resolved =
+      rtt::model::validate(rtt::model::resolve_parameters(s, 0));
+  bool warned = false;
+  for (const auto& d : resolved) warned = warned || d.code == "shape.conic_without_curvature";
+  REQUIRE(warned);  // content guard: the resolved system does warn
+  CHECK_NOTHROW(compiled(s, 0));
+  CHECK_NOTHROW(compiled(s, 1));
+}

@@ -1035,8 +1035,8 @@ class Compiler {
   }
 
   /// The resolved data of an ideal (cylinder) lens (ADR 0031, points 1, 3 and 4). validate()
-  /// has checked unbound values; a Param bound to the parameter table is checked here after the
-  /// resolution (ADR 0029) and reported at the pointer of the Param.
+  /// has checked unbound values, and since #353 also bound ones (its run on the resolved system
+  /// in compile()); the checks here are a second guard.
   CompiledIdealLens ideal_lens(const model::Param& focal_length,
                                const std::optional<model::Param>& object_distance,
                                std::optional<double> axis_deg,
