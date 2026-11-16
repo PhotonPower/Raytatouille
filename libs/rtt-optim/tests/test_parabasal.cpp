@@ -378,11 +378,12 @@ TEST_CASE("parabasal: magnification with the object at infinity stays a start er
 TEST_CASE("parabasal: efl and bfl of a trial with operands on field 1 (#340)",
           "[optim][parabasal]") {
   // #340, case 1: the variant with the object at infinity has a single field. It kept the
-  // optimization of the system, so an operand on field 1 failed validate (merit.index_out_of_
-  // range) and efl and bfl became merit.operand_unsupported. Hand value of the two lenses of
-  // doublet_finite() in vacuum with y-nu ray tracing (Greivenkamp, Field Guide to Geometrical
-  // Optics, p. 9-12: phi = -n'u'_k / y_1, BFD = -y_k / u'_k; refraction nu' = nu - y (n' - n) c,
-  // transfer y' = y + t nu' / n'): y_1 = 1, nu = 0 in front of L1.S1.
+  // optimization and the tolerances of the system, so an operand or a criterion on field 1 failed
+  // validate (merit.index_out_of_range) and efl and bfl became merit.operand_unsupported. Hand
+  // value of the two lenses of doublet_finite() in vacuum with y-nu ray tracing (Greivenkamp,
+  // OPTI-201/202 lecture notes, Sec. 9: refraction nu' = nu - y (n' - n) c and transfer
+  // y' = y + t nu' / n' on p. 9-2, phi = -n'u'_k / y_1 and BFD = -y_k / u'_k on p. 9-12):
+  // y_1 = 1, nu = 0 in front of L1.S1.
   struct Refraction {
     double z, radius, n_before, n_after;
   };
@@ -407,22 +408,29 @@ TEST_CASE("parabasal: efl and bfl of a trial with operands on field 1 (#340)",
   ray.path = "main";
   ray.surface = SurfaceId("IMG");
   ray.field = 1;
-  ray.py = 1.0;
+  ray.py = 0.0;  // the chief ray: 0 on field 0, off axis on field 1
   rtt::model::FirstOrderOperand efl;
   efl.path = "main";
   efl.quantity = FirstOrderQuantity::Efl;
   rtt::model::FirstOrderOperand bfl = efl;
   bfl.quantity = FirstOrderQuantity::Bfl;
   s.optimization.operands = {ray, efl, bfl};
+  // The same ray as a criterion of the tolerance set (the case of #340 through rtt-tolerance).
+  rtt::model::Criterion criterion;
+  criterion.id = "chief y on field 1";
+  criterion.operand = ray;
+  criterion.max_change = 0.1;
+  s.tolerances.criteria = {criterion};
   const TrialOverlay o = overlay_of(s);
   const MeritFunction merit(s, library(), nullptr, &o);
   const rtt::optim::MeritEvaluation e = merit.evaluate(merit.start());
   INFO(e.undefined.at(1) << " / " << e.undefined.at(2));
   // The parabasal values differ from the paraxial ones by O(delta^2) (addendum #256); 1e-6
-  // relative is far above that for this system and far below a wrong bundle.
+  // relative is far above that for this system (about 4e-8 measured) and far below a wrong
+  // bundle.
   CHECK(std::abs(e.values.at(1) - efl_hand) <= 1e-6 * efl_hand);
   CHECK(std::abs(e.values.at(2) - bfl_hand) <= 1e-6 * std::abs(bfl_hand));
-  // Content guard: the ray on field 1 arrives off axis (object height 3 mm).
-  CHECK(std::isfinite(e.values.at(0)));
-  CHECK(std::abs(e.values.at(0)) > 1.0);
+  // Content guard: the chief ray of field 1 (object height 3 mm) arrives off axis, paraxially
+  // at about -1.6 mm; the chief ray of field 0 would give 0.
+  CHECK(e.values.at(0) < -1.0);
 }
