@@ -1114,7 +1114,7 @@ class Compiler {
             return geom::OddAsphere<double>(base.curvature.value, base.conic.value,
                                             values(base.coefficients));
           } else if constexpr (std::is_same_v<B, model::Axicon>) {
-            // angle_deg in rad; validate() guarantees |alpha| < 90 deg.
+            // angle_deg in rad; validate() guarantees |alpha| < 90 deg, also bound (#353).
             return geom::Axicon<double>(math::deg_to_rad(base.angle_deg.value));
           } else if constexpr (std::is_same_v<B, model::QCon>) {
             // c as is (F10), rho and the a_m in mm; validate() guarantees c finite, rho > 0.
@@ -1598,7 +1598,23 @@ CompiledSystem compile(const model::System& input,
     bound = bound || p.is_bound();
   });
   std::optional<model::System> resolved;
-  if (bound) resolved = model::resolve_parameters(input, configuration);
+  if (bound) {
+    resolved = model::resolve_parameters(input, configuration);
+    // validate() skips the ranges of bound Params (#353). The resolved system has none, and the
+    // input had no error, so every error here comes from a value of the table: the same code and
+    // JSON pointer as for an unbound value.
+    std::vector<model::Diagnostic> range = model::validate(*resolved);
+    std::erase_if(range,
+                  [](const model::Diagnostic& d) { return d.severity != model::Severity::Error; });
+    if (!range.empty()) {
+      const std::string where = input.configurations.empty()
+                                    ? std::string(" (value from the parameter table)")
+                                    : " (value from the parameter table, configuration '" +
+                                          input.configurations[configuration].name + "')";
+      for (model::Diagnostic& d : range) d.message += where;
+      throw CompileError(std::move(range));
+    }
+  }
   const model::System& system = resolved ? *resolved : input;
   // ADR 0038, point 5: the nominal vertex z of the reference, one per configuration.
   const std::vector<double>& reference_z = perturbation.object_reference_z;
