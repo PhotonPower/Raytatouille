@@ -129,6 +129,14 @@ class Parser {
       }
       const double nd = refractive_index(*formula, kLineDAirUm);
       if (std::abs(nd - g.nd) <= kNdMismatch) continue;  // also warns for NaN
+      if (std::isnan(nd)) {
+        warn("agf.nd_mismatch", g.line,
+             "glass " + g.name +
+                 ": the formula of the CD record gives no real index at 587.5618 nm (n^2 < 0), "
+                 "but the NM record has N(d) " +
+                 std::to_string(g.nd) + "; the data of the glass may be wrong");
+        continue;
+      }
       std::ostringstream text;
       text << "glass " << g.name << ": N(d) " << g.nd << " of the NM record differs from "
            << std::fixed << std::setprecision(6) << nd << " of the CD record at 587.5618 nm by "
@@ -629,8 +637,8 @@ DispersionFormula agf_formula(const AgfGlass& glass, const std::string& where) {
   text << "glass " << glass.name << " (" << where << "): AGF dispersion formula " << glass.formula
        << " (" << kNames[index]
        << ") is not supported: its coefficient order is not verified; supported are 1 (Schott), 2 "
-          "(Sellmeier 1), 6 (Sellmeier 3), 12 (Extended 2 with a7 = 0) and 13 (Extended 3), "
-          "see #42";
+          "(Sellmeier 1), 6 (Sellmeier 3), 7 (Handbook of Optics 1), 8 (Handbook of Optics 2), 9 "
+          "(Sellmeier 4), 12 (Extended 2 with a7 = 0) and 13 (Extended 3), see #42, #334";
   throw std::invalid_argument(text.str());
 }
 

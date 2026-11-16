@@ -297,6 +297,14 @@ TEST_CASE("agf.nd_mismatch: N(d) of the NM record far from the formula at the d 
       "N", "n.agf");
   REQUIRE(other.warnings.empty());
 
+  // A formula without a real index at the d line against a real N(d) warns as well: K1 = -5,
+  // L1 = 0 gives n^2 = 1 - 5 = -4 at every wavelength.
+  const AgfCatalog negative =
+      parse_agf("CC excerpt\nNM NEG 2 1 1.5 60\nCD -5 0 0 0 0 0\n", "N", "n.agf");
+  REQUIRE(negative.warnings.size() == 1);
+  REQUIRE(negative.warnings[0].code == "agf.nd_mismatch");
+  REQUIRE_THAT(negative.warnings[0].message, ContainsSubstring("no real index"));
+
   // The library passes the warning on, and the glass stays usable.
   MaterialLibrary lib;
   lib.add_catalog_text("CC excerpt\n" + nd_block("OFF", "1.5170"), "N", "n.agf");

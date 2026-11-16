@@ -13,6 +13,8 @@ using rtt::material::ConradyCoefficients;
 using rtt::material::DispersionMaterial;
 using rtt::material::Extended2Coefficients;
 using rtt::material::Extended3Coefficients;
+using rtt::material::HandbookOfOptics1Coefficients;
+using rtt::material::HandbookOfOptics2Coefficients;
 using rtt::material::HerzbergerCoefficients;
 using rtt::material::refractive_index;
 using rtt::material::SchottCoefficients;
@@ -79,6 +81,22 @@ TEST_CASE("Sellmeier 4: n^2 = A + B l^2/(l^2 - C) + D l^2/(l^2 - E)", "[dispersi
   require_n(refractive_index(c, 1.0), std::sqrt(1.5 + 4.0 / 3.0 - 1.0 / 16.0));
   // l = 2: 1.5 + 4/3.75 + 2/(-5) = 1.5 + 16/15 - 0.4
   require_n(refractive_index(c, 2.0), std::sqrt(1.5 + 16.0 / 15.0 - 0.4));
+}
+
+TEST_CASE("Handbook of Optics 1: n^2 = A + B/(l^2 - C) - D l^2", "[dispersion]") {
+  const HandbookOfOptics1Coefficients c{1.5, 0.5, 0.25, 0.1};
+  // l = 1: 1.5 + 0.5/0.75 - 0.1 (B without l^2, minus D)
+  require_n(refractive_index(c, 1.0), std::sqrt(1.5 + 2.0 / 3.0 - 0.1));
+  // l = 2: 1.5 + 0.5/3.75 - 0.4
+  require_n(refractive_index(c, 2.0), std::sqrt(1.5 + 2.0 / 15.0 - 0.4));
+}
+
+TEST_CASE("Handbook of Optics 2: n^2 = A + B l^2/(l^2 - C) - D l^2", "[dispersion]") {
+  const HandbookOfOptics2Coefficients c{1.5, 0.5, 0.25, 0.1};
+  // l = 1: 1.5 + 0.5/0.75 - 0.1
+  require_n(refractive_index(c, 1.0), std::sqrt(1.5 + 2.0 / 3.0 - 0.1));
+  // l = 2: 1.5 + 2/3.75 - 0.4 (B with l^2)
+  require_n(refractive_index(c, 2.0), std::sqrt(1.5 + 8.0 / 15.0 - 0.4));
 }
 
 TEST_CASE("Herzberger: n = A + B L + C L^2 + D l^2 + E l^4 + F l^6, L = 1/(l^2 - 0.028)",
