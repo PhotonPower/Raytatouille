@@ -131,7 +131,8 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "path event without a ZMX surface (not the automatic kind, a mode or order, a surface twice, "
      "a detector before the end)"},
     {"export.frame_ambiguous", Severity::Error, "export",
-     "the side of a surface the light runs on is not defined (folded path)"},
+     "the side of a surface the light runs on is not defined (folded path), or a coaxial path "
+     "runs against the direction its mirrors give"},
     {"export.glass_ambiguous", Severity::Error, "export",
      "no GCAT order finds every glass in its own catalogue"},
     {"export.image_missing", Severity::Error, "export",

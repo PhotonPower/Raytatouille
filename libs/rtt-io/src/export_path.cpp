@@ -412,7 +412,7 @@ ExportPath walk_export_path(const model::System& system,
   const std::optional<std::uint32_t> stop_surface = cs.stop_surface();
   std::set<std::uint32_t> visited;
   std::vector<std::uint32_t> row_surface;  // tree index of the surface of each row
-  std::vector<math::Mat3> rot;  // global frames of the rows
+  std::vector<math::Mat3> rot;             // global frames of the rows
   std::vector<math::Vec3> pos;
   std::vector<bool> axis_down;  // the axis of the row is -e_z (coaxial path)
   bool coaxial_path = true;
@@ -541,6 +541,27 @@ ExportPath walk_export_path(const model::System& system,
     // a folded path (ADR 0045, addendum #366): frames, mirrored shapes, coordinate breaks
     fold_path(out, rot, pos, cs.object_z());
     return out;
+  }
+  // The direction of the light (ADR 0045, addendum #366 of 2026-11-16): after m mirrors it runs
+  // along
+  // (-1)^m z ([UG] "Thickness", KA-01588), from the object (or along +z from infinity) through
+  // the vertices. A coaxial path against it, e.g. with an inactive fold mirror (ADR 0049), is a
+  // geometry the rays do not follow; a negative DISZ would let OpticStudio trace back to it.
+  // The criterion of point 2 for a folded path, along the z axis; for the ZMX export only (the
+  // surface table keeps point 2 of ADR 0045).
+  for (std::size_t k = 0, reflections = 0; folded && k < out.rows.size(); ++k) {
+    // the section that ends at row k, after the mirrors of rows 0 .. k - 1; from a finite object
+    // for k = 0 (from infinity it runs along +z by construction)
+    const bool from_object = k == 0 && !out.system.object.at_infinity;
+    const double dz = k > 0 ? out.rows[k].z - out.rows[k - 1].z
+                            : (from_object ? out.rows[k].z - cs.object_z() : 1.0);
+    if (std::abs(dz) > kCoaxial && (dz > 0.0) != (reflections % 2 == 0)) {
+      export_fail("export.frame_ambiguous", out.rows[k > 0 ? k - 1 : 0].surface.id.str(),
+                  "the light runs against the direction the " + std::to_string(reflections) +
+                      " mirrors before give it (along -z after an odd number), e.g. past an "
+                      "inactive fold mirror");
+    }
+    if (out.rows[k].mirror) ++reflections;
   }
   for (std::size_t k = 0; k < out.rows.size(); ++k) {
     if (axis_down[k]) mirror_shape(out.rows[k].surface.shape);
