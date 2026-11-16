@@ -194,9 +194,10 @@ def test_material_library_still_compiles_systems(catalog_dir: Path, reference_di
 
 def test_supported_matches_index(catalog_dir: Path) -> None:
     # S1 of the review: supported is False exactly when index() raises, also for a TD record
-    # without 7 values (CatalogMaterial rejects it like an unverified formula).
+    # without 7 values (CatalogMaterial rejects it like an unverified formula). N(d) of TD6 is that
+    # of its CD record (agf.nd_mismatch, #334; rule 2, approved by the maintainer, 2026-11-16).
     lib = rt.MaterialLibrary()
-    lib.add_catalog_text(ALL + "NM TD6 2 1 1.5 60\nCD 1 0.01 0 0 0 0\nTD 1 2 3 4 5 6\n", "ALLCAT")
+    lib.add_catalog_text(ALL + "NM TD6 2 1 1.424721 60\nCD 1 0.01 0 0 0 0\nTD 1 2 3 4 5 6\n", "ALLCAT")
     lib.add_catalog(catalog_dir / "nikon" / "nikon-hikari.agf")
     td6 = lib.glass("ALLCAT:TD6")
     assert not td6.supported and td6.unsupported_reason is not None and "TD" in td6.unsupported_reason

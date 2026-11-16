@@ -67,10 +67,14 @@ def traced(cs: rt.CompiledSystem) -> tuple[rt.trace.RayBatch, rt.trace.TraceStat
 
 
 def preamble_warning() -> rt.LoadWarning:
-    """The warning of a catalogue excerpt with the RadiantZemax header line (#71)."""
+    """The warning of a catalogue excerpt with the RadiantZemax header line (#71).
+
+    N(d) is that of the rounded CD record (agf.nd_mismatch, #334; rule 2, approved by the
+    maintainer, 2026-11-16).
+    """
     lib = rt.MaterialLibrary()
     text = ("Reproduced here by permission of RadiantZemax (www.radiantzemax.com).\n"
-            "CC excerpt\nNM A 2 517642 1.5168 64.17\nCD 1.04 0.006 0.23 0.02 1.01 103.6\n")
+            "CC excerpt\nNM A 2 517642 1.516299 64.17\nCD 1.04 0.006 0.23 0.02 1.01 103.6\n")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         lib.add_catalog_text(text, "Z", "z.agf")

@@ -30,12 +30,15 @@ using rtt::material::decode_agf_text;
 using rtt::material::DispersionMaterial;
 using rtt::material::Extended2Coefficients;
 using rtt::material::Extended3Coefficients;
+using rtt::material::HandbookOfOptics1Coefficients;
+using rtt::material::HandbookOfOptics2Coefficients;
 using rtt::material::load_agf;
 using rtt::material::MaterialLibrary;
 using rtt::material::parse_agf;
 using rtt::material::SchottCoefficients;
 using rtt::material::Sellmeier1Coefficients;
 using rtt::material::Sellmeier3Coefficients;
+using rtt::material::Sellmeier4Coefficients;
 using rtt::material::UnknownMaterial;
 using rtt::material::WavelengthRange;
 
@@ -731,4 +734,58 @@ TEST_CASE("paths in load errors are UTF-8 (#333)", "[agf]") {
   const AgfError e = agf_error([&] { [[maybe_unused]] const AgfCatalog c = load_agf(missing); });
   REQUIRE(e.file() == "rtt_gl\xc3\xa4ser_333.agf");
   REQUIRE_THAT(e.what(), ContainsSubstring("rtt_gl\xc3\xa4ser_333.agf"));
+}
+
+TEST_CASE("CD order of formulas 7, 8 and 9 reproduces N(d) and V(d) of the NM record (#334)",
+          "[agf]") {
+  // Reference for the coefficient order (docs/quellen.md, #334): tests/catalogs/birefringent/
+  // birefringent.agf copies six crystals byte for byte from birefringent.agf of ZemaxGlass 2.0.1
+  // ("Reproduced here by permission of RadiantZemax"). With CD = A B C D (formulas 7 and 8) and
+  // A B C D E (formula 9), as in the equations of the OpticStudio User Guide 2025 R1 ("The
+  // Handbook of Optics 1/2 Formula", "The Sellmeier 4 Formula"), the catalogue's own N(d) and
+  // V(d) come out to half a unit of their sixth decimal at the exact d, F and C lines (SCHOTT
+  // TIE-29, p. 1). No other order of the used positions meets N(d), except for formula 9 the
+  // exchange of its two Sellmeier terms, which leaves n unchanged.
+  constexpr double kD = 0.5875618;
+  constexpr double kF = 0.4861327;
+  constexpr double kC = 0.6562725;
+  constexpr double kTolerance = 5e-7 + 1e-12;  // half a unit of the sixth decimal
+  const AgfCatalog cat = load_agf(kCatalogDir / "birefringent" / "birefringent.agf");
+  REQUIRE(cat.name == "BIREFRINGENT");
+  REQUIRE(cat.glasses.size() == 6);
+  REQUIRE(cat.warnings.empty());  // also no agf.nd_mismatch
+  std::map<int, int> per_formula;
+  for (const AgfGlass& glass : cat.glasses) {
+    INFO(glass.name);
+    ++per_formula[glass.formula];
+    const CatalogMaterial m(glass, cat.name);
+    const auto n = [&](double wl) { return rtt::material::refractive_index(m.formula(), wl); };
+    REQUIRE(std::abs(n(kD) - glass.nd) <= kTolerance);
+    REQUIRE(std::abs((n(kD) - 1.0) / (n(kF) - n(kC)) - glass.vd) <= kTolerance);
+  }
+  REQUIRE(per_formula == std::map<int, int>{{7, 2}, {8, 2}, {9, 2}});
+  REQUIRE(std::holds_alternative<HandbookOfOptics1Coefficients>(
+      CatalogMaterial(cat.glasses[0], cat.name).formula()));
+  REQUIRE(std::holds_alternative<HandbookOfOptics2Coefficients>(
+      CatalogMaterial(cat.glasses[4], cat.name).formula()));
+  REQUIRE(std::holds_alternative<Sellmeier4Coefficients>(
+      CatalogMaterial(cat.glasses[2], cat.name).formula()));
+
+  // Counter-checks: an exchange of B and C misses N(d) by far more than the tolerance (by
+  // 4.3e-4 for BBO, whose B and C are close).
+  const auto n_d = [&](const rtt::material::DispersionFormula& f) {
+    return rtt::material::refractive_index(f, kD);
+  };
+  const std::vector<double>& bbo = cat.glasses[0].coefficients;
+  REQUIRE(cat.glasses[0].name == "BBO");
+  REQUIRE(std::abs(n_d(HandbookOfOptics1Coefficients{bbo[0], bbo[2], bbo[1], bbo[3]}) -
+                   cat.glasses[0].nd) > 1e-4);
+  const std::vector<double>& zno = cat.glasses[4].coefficients;
+  REQUIRE(cat.glasses[4].name == "ZNO");
+  REQUIRE(std::abs(n_d(HandbookOfOptics2Coefficients{zno[0], zno[2], zno[1], zno[3]}) -
+                   cat.glasses[4].nd) > 1e-4);
+  const std::vector<double>& lin = cat.glasses[2].coefficients;
+  REQUIRE(cat.glasses[2].name == "LINBO3-E");
+  REQUIRE(std::abs(n_d(Sellmeier4Coefficients{lin[0], lin[2], lin[1], lin[3], lin[4]}) -
+                   cat.glasses[2].nd) > 1e-4);
 }

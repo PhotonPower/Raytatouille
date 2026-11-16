@@ -13,8 +13,9 @@
 ///
 /// Sources (docs/quellen.md): Ansys Zemax OpticStudio User Guide, Release 2025 R1, "The Glass
 /// Dispersion Formulas" (one page per formula, each with a single unnumbered equation, lambda in
-/// um; Extended 2 and 3 added for #42); Cauchy: J. M. Palmer, "Models for fitting refractive index
-/// n vs. lambda", University of Arizona, p. 1, equation CAUCHY.
+/// um; Extended 2 and 3 added for #42, Handbook of Optics 1 and 2 for #334); Cauchy: J. M.
+/// Palmer, "Models for fitting refractive index n vs. lambda", University of Arizona, p. 1,
+/// equation CAUCHY.
 
 #include <array>
 #include <cmath>
@@ -69,6 +70,28 @@ struct Sellmeier4Coefficients {
   double d = 0.0;  ///< dimensionless
   double e = 0.0;  ///< um^2
   bool operator==(const Sellmeier4Coefficients&) const = default;
+};
+
+/// Handbook of Optics 1: n^2 = A + B / (l^2 - C) - D l^2
+/// (OpticStudio User Guide, "The Handbook of Optics 1 Formula"). Note n^2, B without l^2 and the
+/// minus sign of the last term.
+struct HandbookOfOptics1Coefficients {
+  double a = 0.0;  ///< dimensionless
+  double b = 0.0;  ///< um^2
+  double c = 0.0;  ///< um^2
+  double d = 0.0;  ///< um^-2
+  bool operator==(const HandbookOfOptics1Coefficients&) const = default;
+};
+
+/// Handbook of Optics 2: n^2 = A + B l^2 / (l^2 - C) - D l^2
+/// (OpticStudio User Guide, "The Handbook of Optics 2 Formula"). As Handbook of Optics 1 with
+/// l^2 in the numerator of the second term.
+struct HandbookOfOptics2Coefficients {
+  double a = 0.0;  ///< dimensionless
+  double b = 0.0;  ///< dimensionless
+  double c = 0.0;  ///< um^2
+  double d = 0.0;  ///< um^-2
+  bool operator==(const HandbookOfOptics2Coefficients&) const = default;
 };
 
 /// Herzberger: n = A + B L + C L^2 + D l^2 + E l^4 + F l^6 with L = 1 / (l^2 - 0.028)
@@ -163,6 +186,22 @@ template <math::Real T>
   return index_from_square(c.a + c.b * l2 / (l2 - c.c) + c.d * l2 / (l2 - c.e));
 }
 
+/// Handbook of Optics 1, see HandbookOfOptics1Coefficients. @param wavelength_um vacuum
+/// wavelength in um
+template <math::Real T>
+[[nodiscard]] T refractive_index(const HandbookOfOptics1Coefficients& c, T wavelength_um) {
+  const T l2 = wavelength_um * wavelength_um;
+  return index_from_square(c.a + c.b / (l2 - c.c) - c.d * l2);
+}
+
+/// Handbook of Optics 2, see HandbookOfOptics2Coefficients. @param wavelength_um vacuum
+/// wavelength in um
+template <math::Real T>
+[[nodiscard]] T refractive_index(const HandbookOfOptics2Coefficients& c, T wavelength_um) {
+  const T l2 = wavelength_um * wavelength_um;
+  return index_from_square(c.a + c.b * l2 / (l2 - c.c) - c.d * l2);
+}
+
 /// Herzberger, see HerzbergerCoefficients. @param wavelength_um vacuum wavelength in um
 template <math::Real T>
 [[nodiscard]] T refractive_index(const HerzbergerCoefficients& c, T wavelength_um) {
@@ -220,7 +259,9 @@ using DispersionFormula = std::variant<SchottCoefficients,
                                        ConradyCoefficients,
                                        CauchyCoefficients,
                                        Extended2Coefficients,
-                                       Extended3Coefficients>;
+                                       Extended3Coefficients,
+                                       HandbookOfOptics1Coefficients,
+                                       HandbookOfOptics2Coefficients>;
 
 /// Real index n(lambda) of a formula. @param wavelength_um vacuum wavelength in um
 template <math::Real T>
