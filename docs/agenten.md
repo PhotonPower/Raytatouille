@@ -88,6 +88,10 @@ Wenn ein Meilenstein abgeschlossen ist, schlage die Issues für den nächsten vo
 7. Changelog: Jeder PR legt ein Fragment in `changelog.d/` an, statt `CHANGELOG.md` zu ändern
    (keine Konflikte zwischen parallelen PRs). Beim Release führt der Koordinator die Fragmente mit
    `python tools/changelog.py release <version> "<Titel>"` zusammen, im Versions-PR vor dem Tag.
+   Im Versions-PR steht die Version an vier Stellen, die `python tools/check_version.py` in der
+   CI abgleicht (Job „JSON schema“, #336): `CMakeLists.txt` (`project(... VERSION)`),
+   `pyproject.toml`, `vcpkg.json` und `libs/rtt-py/python/raytatouille/__init__.py`
+   (`__version__`). Dazu kommt von Hand die Zeile „Stand: Version …“ in `README.md`.
 
 ## Wenn etwas schiefgeht
 

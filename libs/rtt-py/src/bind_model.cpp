@@ -8,6 +8,7 @@
 #include <nanobind/stl/vector.h>
 
 #include <filesystem>
+#include <new>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -155,6 +156,20 @@ void bind_model(nb::module_& m) {
           "tolerances", [](const model::System& s) { return s.tolerances; },
           "The tolerance set (copy, ADR 0035): class, overrides, items, compensators, "
           "criteria; empty without one.")
+      // Pickling (#336), e.g. for multiprocessing: the canonical file form, which reads back to
+      // an equal System (the round trip of rtt-io, test_roundtrip.cpp).
+      .def(
+          "__getstate__", [](const model::System& s) { return io::to_json(s); },
+          "The canonical file text (as to_json()) for pickle, protocol 2 or higher; copy.copy and "
+          "copy.deepcopy go through it too.")
+      .def(
+          "__setstate__",
+          [](model::System& s, const std::string& text) {
+            new (&s) model::System(io::parse_system(text));
+          },
+          "state"_a,
+          "Restores a pickled System from its file text. A state of a newer schema version than "
+          "this library reads raises ParseError.")
       .def("to_dict", &edit_dict, nb::sig("def to_dict(self) -> dict[str, typing.Any]"),
            "The edit form (ADR 0024) as Python objects: the system file with every value written "
            "(defaults included) and every Param as {\"value\": ..., \"variable\": ...}, keys in "
