@@ -73,8 +73,20 @@ jobs:
       - name: Check dependency pins
         if: matrix.preset == 'ci-linux-gcc'
         run: python3 tools/check_pins.py "$VCPKG_ROOT"
+      # ci-linux-clang also builds the Python bindings, so that clang-tidy checks them (#336).
+      - uses: actions/setup-python@v5
+        if: matrix.preset == 'ci-linux-clang'
+        id: python
+        with:
+          python-version: "3.13"
+      - name: Install Python build and test tools
+        if: matrix.preset == 'ci-linux-clang'
+        run: python -m pip install -r libs/rtt-py/tests/requirements.txt
       - name: Configure
-        run: cmake --preset ${{ matrix.preset }}
+        # The interpreter of setup-python explicitly (see the Python job).
+        run: >-
+          cmake --preset ${{ matrix.preset }}
+          ${{ matrix.preset == 'ci-linux-clang' && format('"-DPython_EXECUTABLE={0}"', steps.python.outputs.python-path) || '' }}
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
       - name: Test

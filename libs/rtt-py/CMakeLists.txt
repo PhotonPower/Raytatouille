@@ -48,7 +48,9 @@ target_link_libraries(_core PRIVATE
   rtt::io rtt::diagnostics rtt::model rtt::material rtt::coating rtt::compile rtt::paraxial
   rtt::trace rtt::analysis rtt::optim rtt::tolerance
   rtt::polar TBB::tbb)
-rtt_target_defaults(_core)
+# LIBRARY: clang-tidy checks the bindings like the libraries (#336); the preset ci-linux-clang
+# builds the Python package for this.
+rtt_target_defaults(_core LIBRARY)
 # The $<1:...> keeps multi-config generators from appending a configuration directory.
 set_target_properties(_core PROPERTIES
   LIBRARY_OUTPUT_DIRECTORY "$<1:${RTT_PY_PACKAGE_DIR}>"

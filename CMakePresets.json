@@ -38,7 +38,8 @@
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_CXX_COMPILER": "clang++",
         "RTT_WARNINGS_AS_ERRORS": "ON",
-        "RTT_ENABLE_CLANG_TIDY": "ON"
+        "RTT_ENABLE_CLANG_TIDY": "ON",
+        "RTT_BUILD_PYTHON": "ON"
       }
     },
     {
