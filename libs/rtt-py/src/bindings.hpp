@@ -78,7 +78,7 @@ auto released(std::optional<int> threads, F&& f) {
 
 /// Capsule that takes over `data` and frees it when Python releases the capsule (the base object
 /// of a NumPy array that views `data`). nanobind creates the capsule without throwing (it aborts
-/// if Python cannot allocate it), so the hand-over cannot leak.
+/// if Python cannot allocate it; nanobind 2.13, src/common.cpp), so the hand-over cannot leak.
 template <typename T>
 [[nodiscard]] nanobind::capsule owning_capsule(std::unique_ptr<T> data) {
   T* const raw = data.release();

@@ -109,6 +109,12 @@ Fehlerquellen, die nur die CI sieht, vorab lokal prüfen:
   die das lokale clang-tidy 22 nicht meldet (#227, #233, #235). Ein `std::optional` deshalb nach
   der Prüfung einmal in eine Referenz binden und danach nur diese nutzen; nach einem Umbau
   `using`-Deklarationen von Hand prüfen.
+  Seit #336 prüft der Job auch die Python-Bindungen `_core`; das Preset `ci-linux-clang` braucht
+  deshalb ein Python mit den Paketen aus `libs/rtt-py/tests/requirements.txt`
+  (`-DPython_EXECUTABLE=…`). Unter macOS 26 scheitert clang-tidy 18 aus Homebrew (`llvm@18`) an
+  der libc++ des SDK; mit seinen eigenen Headern läuft es über die `compile_commands.json` eines
+  vorhandenen Builds: `clang-tidy -p <build> <datei> --extra-arg=-nostdinc++
+  --extra-arg=-isystem/opt/homebrew/opt/llvm@18/include/c++/v1`.
 - **MSVC wertet Verengungen in Bereichsschleifen als Fehler.** `for (const std::uint16_t x : {0, 1})`
   wandelt `int`-Literale um (C4244, mit `/WX` ein Fehler); die Literale typisieren, z. B.
   `{std::uint16_t{0}, std::uint16_t{1}}` (#220, #223).
