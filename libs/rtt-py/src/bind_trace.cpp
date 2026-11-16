@@ -39,8 +39,8 @@ using trace::RayBatch;
 using trace::RayStatus;
 
 // RayBatch.status is exposed as uint8 through an unsigned char pointer (bind_trace below).
-static_assert(std::is_same_v<std::underlying_type_t<RayStatus>, std::uint8_t> &&
-              std::is_same_v<std::uint8_t, unsigned char>);
+static_assert(std::is_same_v<std::underlying_type_t<RayStatus>, std::uint8_t>);
+static_assert(std::is_same_v<std::uint8_t, unsigned char>);
 
 template <typename T>
 using Column = nb::ndarray<nb::numpy, T, nb::ndim<1>, nb::c_contig>;
@@ -349,17 +349,15 @@ void bind_trace(nb::module_& m) {
         for (int row = 0; row < 3; ++row) {
           for (int col = 0; col < 3; ++col) {
             const auto element = rays.prt(row, col);
-            for (std::size_t i = 0; i < n; ++i) (*data)[9 * i + 3 * row + col] = element[i];
+            const std::size_t offset =
+                (3 * static_cast<std::size_t>(row)) + static_cast<std::size_t>(col);
+            for (std::size_t i = 0; i < n; ++i) (*data)[(9 * i) + offset] = element[i];
           }
         }
         const std::size_t shape[3] = {n, 3, 3};
         math::Complex* values = data->data();
         // The capsule owns the copy from here on and frees it with the array.
-        nb::capsule owner(data.get(), [](void* p) noexcept {
-          const std::unique_ptr<std::vector<math::Complex>> owned(
-              static_cast<std::vector<math::Complex>*>(p));
-        });
-        static_cast<void>(data.release());
+        const nb::capsule owner = owning_capsule(std::move(data));
         return nb::ndarray<nb::numpy, math::Complex, nb::shape<-1, 3, 3>, nb::c_contig>(
             values, 3, shape, owner);
       },
@@ -397,16 +395,15 @@ void bind_trace(nb::module_& m) {
         for (int row = 0; row < 3; ++row) {
           for (int col = 0; col < 3; ++col) {
             const auto element = rays.q(row, col);
-            for (std::size_t i = 0; i < n; ++i) (*data)[9 * i + 3 * row + col] = element[i];
+            const std::size_t offset =
+                (3 * static_cast<std::size_t>(row)) + static_cast<std::size_t>(col);
+            for (std::size_t i = 0; i < n; ++i) (*data)[(9 * i) + offset] = element[i];
           }
         }
         const std::size_t shape[3] = {n, 3, 3};
         double* values = data->data();
         // The capsule owns the copy from here on and frees it with the array.
-        nb::capsule owner(data.get(), [](void* p) noexcept {
-          const std::unique_ptr<std::vector<double>> owned(static_cast<std::vector<double>*>(p));
-        });
-        static_cast<void>(data.release());
+        const nb::capsule owner = owning_capsule(std::move(data));
         return nb::ndarray<nb::numpy, double, nb::shape<-1, 3, 3>, nb::c_contig>(values, 3, shape,
                                                                                  owner);
       },

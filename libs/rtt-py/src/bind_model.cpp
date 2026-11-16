@@ -8,6 +8,7 @@
 #include <nanobind/stl/vector.h>
 
 #include <filesystem>
+#include <iterator>
 #include <new>
 #include <stdexcept>
 #include <string>
@@ -64,6 +65,7 @@ void bind_model(nb::module_& m) {
       "diagnostic_codes",
       [] {
         std::vector<std::tuple<std::string, model::Severity, std::string, std::string>> codes;
+        codes.reserve(std::size(diagnostics::kCodes));
         for (const diagnostics::CodeInfo& info : diagnostics::kCodes) {
           codes.emplace_back(std::string(info.code), info.severity, std::string(info.producer),
                              std::string(info.summary));

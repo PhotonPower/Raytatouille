@@ -43,10 +43,7 @@ nb::ndarray<nb::numpy, T> owned(std::vector<T>&& values, const std::vector<std::
   auto data = std::make_unique<std::vector<T>>(std::move(values));
   T* pointer = data->data();
   // The capsule owns the copy from here on and frees it with the array.
-  nb::capsule owner(data.get(), [](void* p) noexcept {
-    const std::unique_ptr<std::vector<T>> owned_data(static_cast<std::vector<T>*>(p));
-  });
-  static_cast<void>(data.release());
+  const nb::capsule owner = owning_capsule(std::move(data));
   return nb::ndarray<nb::numpy, T>(pointer, shape.size(), shape.data(), owner);
 }
 

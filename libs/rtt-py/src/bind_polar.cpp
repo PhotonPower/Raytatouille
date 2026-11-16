@@ -55,10 +55,7 @@ Out<T> owned(std::vector<T>&& values, std::initializer_list<std::size_t> shape) 
   auto data = std::make_unique<std::vector<T>>(std::move(values));
   T* pointer = data->data();
   // The capsule owns the copy from here on and frees it with the array.
-  nb::capsule owner(data.get(), [](void* p) noexcept {
-    const std::unique_ptr<std::vector<T>> owned_data(static_cast<std::vector<T>*>(p));
-  });
-  static_cast<void>(data.release());
+  const nb::capsule owner = owning_capsule(std::move(data));
   return Out<T>(pointer, shape.size(), shape.begin(), owner);
 }
 
@@ -133,7 +130,8 @@ Matrix mat3(const Array& a, const char* name) {
 Out<Complex> cmat3_out(const CMat3& m) {
   std::vector<Complex> data(9);
   for (int r = 0; r < 3; ++r) {
-    for (int c = 0; c < 3; ++c) data[static_cast<std::size_t>(3 * r + c)] = m(r, c);
+    for (int c = 0; c < 3; ++c)
+      data[(3 * static_cast<std::size_t>(r)) + static_cast<std::size_t>(c)] = m(r, c);
   }
   return owned(std::move(data), {3, 3});
 }
@@ -217,7 +215,8 @@ void bind_polar(nb::module_& m) {
                                                        unit(normal, "normal"), reflection);
         std::vector<double> data(9);
         for (int r = 0; r < 3; ++r) {
-          for (int c = 0; c < 3; ++c) data[static_cast<std::size_t>(3 * r + c)] = q(r, c);
+          for (int c = 0; c < 3; ++c)
+            data[(3 * static_cast<std::size_t>(r)) + static_cast<std::size_t>(c)] = q(r, c);
         }
         return owned(std::move(data), {3, 3});
       },
