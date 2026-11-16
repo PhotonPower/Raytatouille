@@ -76,6 +76,16 @@ auto released(std::optional<int> threads, F&& f) {
   return with_threads(threads, std::forward<F>(f));
 }
 
+/// Capsule that takes over `data` and frees it when Python releases the capsule (the base object
+/// of a NumPy array that views `data`). nanobind creates the capsule without throwing (it aborts
+/// if Python cannot allocate it; nanobind 2.13, src/common.cpp), so the hand-over cannot leak.
+template <typename T>
+[[nodiscard]] nanobind::capsule owning_capsule(std::unique_ptr<T> data) {
+  T* const raw = data.release();
+  return nanobind::capsule(
+      raw, [](void* p) noexcept { const std::unique_ptr<T> owned(static_cast<T*>(p)); });
+}
+
 /// Read-only one-dimensional NumPy array.
 template <typename T>
 using ReadOnlyArray =
@@ -91,10 +101,7 @@ ReadOnlyArray<T> read_only_array(const Items& items, Get get) {
   const std::size_t shape[1] = {data->size()};
   const T* values = data->data();
   // The capsule owns the copy from here on and frees it with the array.
-  nanobind::capsule owner(data.get(), [](void* p) noexcept {
-    const std::unique_ptr<std::vector<T>> owned(static_cast<std::vector<T>*>(p));
-  });
-  static_cast<void>(data.release());
+  const nanobind::capsule owner = owning_capsule(std::move(data));
   return ReadOnlyArray<T>(values, 1, shape, owner);
 }
 

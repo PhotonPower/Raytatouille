@@ -56,8 +56,9 @@ Array<double, 2> homogeneous(const math::Isometry3& pose) {
   const math::Vec3 t = pose.apply_point(math::Vec3::Zero());
   std::vector<double> m(16, 0.0);
   for (int i = 0; i < 3; ++i) {
-    for (int j = 0; j < 3; ++j) m[static_cast<std::size_t>(4 * i + j)] = r(i, j);
-    m[static_cast<std::size_t>(4 * i + 3)] = t[i];
+    for (int j = 0; j < 3; ++j)
+      m[(4 * static_cast<std::size_t>(i)) + static_cast<std::size_t>(j)] = r(i, j);
+    m[(4 * static_cast<std::size_t>(i)) + 3] = t[i];
   }
   m[15] = 1.0;
   return owned<double, 2>(std::move(m), {4, 4});

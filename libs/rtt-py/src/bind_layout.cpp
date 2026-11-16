@@ -52,10 +52,8 @@ template <typename T>
 Out<T> owned(std::vector<T>&& values, std::initializer_list<std::size_t> shape) {
   auto data = std::make_unique<std::vector<T>>(std::move(values));
   T* pointer = data->data();
-  nb::capsule owner(data.get(), [](void* p) noexcept {
-    const std::unique_ptr<std::vector<T>> owned_data(static_cast<std::vector<T>*>(p));
-  });
-  static_cast<void>(data.release());
+  // The capsule owns the copy from here on and frees it with the array.
+  const nb::capsule owner = owning_capsule(std::move(data));
   return Out<T>(pointer, shape.size(), shape.begin(), owner);
 }
 
@@ -229,8 +227,10 @@ void bind_layout(nb::module_& m) {
         const auto matrix = [](const math::Isometry3& t) {
           std::vector<double> v(16, 0.0);
           for (int i = 0; i < 3; ++i) {
-            for (int j = 0; j < 3; ++j) v[static_cast<std::size_t>(4 * i + j)] = t.rotation()(i, j);
-            v[static_cast<std::size_t>(4 * i + 3)] = t.translation()(i);
+            for (int j = 0; j < 3; ++j)
+              v[(4 * static_cast<std::size_t>(i)) + static_cast<std::size_t>(j)] =
+                  t.rotation()(i, j);
+            v[(4 * static_cast<std::size_t>(i)) + 3] = t.translation()(i);
           }
           v[15] = 1.0;
           return owned(std::move(v), {4, 4});
@@ -258,7 +258,8 @@ void bind_layout(nb::module_& m) {
           const Vec3 t = c.to_global.apply_point(Vec3::Zero());
           std::vector<double> rotation(9);
           for (int i = 0; i < 3; ++i) {
-            for (int j = 0; j < 3; ++j) rotation[static_cast<std::size_t>(3 * i + j)] = r(i, j);
+            for (int j = 0; j < 3; ++j)
+              rotation[(3 * static_cast<std::size_t>(i)) + static_cast<std::size_t>(j)] = r(i, j);
           }
           const auto max_radius =
               std::visit([](const auto& sh) { return sh.max_radius(); }, c.shape);
