@@ -6,7 +6,8 @@ the builtin-baseline. This script compares
 
 - RTT_POCKETFFT_REF and RTT_POCKETFFT_SHA512 in cmake/RttPocketfft.cmake with REF and SHA512 in
   <vcpkg root>/ports/pocketfft/portfile.cmake (CI checks vcpkg out at the builtin-baseline), and
-- VCPKG_COMMIT in .github/workflows/ci.yml with "builtin-baseline" in vcpkg.json,
+- VCPKG_COMMIT in .github/workflows/ci.yml and release.yml (#404) with "builtin-baseline" in
+  vcpkg.json,
 
 and exits with 1 on any difference, a missing file or a value it cannot read; it is never
 silently green.
@@ -27,6 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CMAKE_PIN = ROOT / "cmake" / "RttPocketfft.cmake"
 VCPKG_JSON = ROOT / "vcpkg.json"
 CI_YML = ROOT / ".github" / "workflows" / "ci.yml"
+RELEASE_YML = ROOT / ".github" / "workflows" / "release.yml"
 
 
 class PinError(Exception):
@@ -63,15 +65,20 @@ def check(vcpkg_root: Path) -> list[str]:
         baseline = json.loads(read(VCPKG_JSON))["builtin-baseline"]
     except (json.JSONDecodeError, KeyError) as e:
         raise PinError(f"{VCPKG_JSON}: no builtin-baseline ({e})") from e
-    ci_commit = one(r"^\s*VCPKG_COMMIT:\s*([0-9a-f]{40})\s*$", read(CI_YML), f"{CI_YML} VCPKG_COMMIT")
+    commits = {
+        path: one(r"^\s*VCPKG_COMMIT:\s*([0-9a-f]{40})\s*$", read(path), f"{path} VCPKG_COMMIT")
+        for path in (CI_YML, RELEASE_YML)
+    }
 
     diffs = []
     if ours_ref != port_ref:
         diffs.append(f"pocketfft REF: {CMAKE_PIN.name} {ours_ref} != port {port_ref}")
     if ours_sha != port_sha:
         diffs.append(f"pocketfft SHA512: {CMAKE_PIN.name} {ours_sha} != port {port_sha}")
-    if baseline != ci_commit:
-        diffs.append(f"vcpkg: builtin-baseline {baseline} != VCPKG_COMMIT {ci_commit} in ci.yml")
+    for path, commit in commits.items():
+        if baseline != commit:
+            diffs.append(
+                f"vcpkg: builtin-baseline {baseline} != VCPKG_COMMIT {commit} in {path.name}")
     return diffs
 
 

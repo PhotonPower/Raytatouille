@@ -10,8 +10,10 @@ name = "raytatouille"
 version = "0.9.0"
 description = "Raytracing engine for optical design"
 readme = "README.md"
-license = "MIT"
-license-files = ["LICENSE"]
+# The wheel embeds third-party code (ADR 0018, addendum #404): oneTBB (Apache-2.0), nanobind and
+# pocketfft (BSD-3-Clause), robin-map and nlohmann-json (MIT), Eigen (MPL-2.0); LICENSES/README.md.
+license = "MIT AND Apache-2.0 AND BSD-3-Clause AND MPL-2.0"
+license-files = ["LICENSE", "LICENSES/*"]
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.24"]
 
@@ -24,12 +26,49 @@ cmake.version = ">=3.25"
 cmake.build-type = "Release"
 build-dir = "build/skbuild/{wheel_tag}"
 wheel.packages = ["libs/rtt-py/python/raytatouille"]
-sdist.exclude = ["build", ".claude", ".github"]
+# tests/catalogs holds excerpts of manufacturer catalogues for the tests; ADR 0010: catalogues
+# are not distributed (decision of the maintainer in #404). Building needs none of them.
+sdist.exclude = ["build", ".claude", ".github", "tests/catalogs"]
 
 [tool.scikit-build.cmake.define]
 RTT_BUILD_PYTHON = "ON"
 RTT_BUILD_TESTS = "OFF"
 RTT_BUILD_APPS = "OFF"
+
+[tool.cibuildwheel]
+# Wheels for PyPI (.github/workflows/release.yml, #404). CPython 3.10-3.14, no free-threaded
+# builds; Linux x86-64 (manylinux_2_28), Windows x64, macOS arm64 (minimum 26.0, ADR 0047). The
+# C++ dependencies come from vcpkg at the CI pin: vcpkg itself, CMAKE_ARGS and (Linux) the
+# before-all step and the binary cache are set by the workflow, not here.
+build = ["cp310-*", "cp311-*", "cp312-*", "cp313-*", "cp314-*"]
+skip = ["*t-*", "*-musllinux_*"]
+build-verbosity = 1
+# Smoke test of every wheel: the Python tests from the source tree, outside it (as the CI job
+# "Python", pip install .). The bitwise comparisons with C++ skip without their variables. Not
+# libs/rtt-py/tests/requirements.txt: its exact NumPy pins exist for 3.10 and 3.13 (the CI), not
+# for every version 3.10-3.14 (numpy 2.5.3 has no wheel for 3.11); pip picks a matching NumPy
+# above the runtime bound here.
+test-requires = ["pytest==9.1.1", "numpy>=1.24", "matplotlib>=3.8", "jsonschema>=4.18"]
+test-command = "pytest -q -p no:cacheprovider {project}/libs/rtt-py/tests"
+# No display on the runners and in the container; as ctest does.
+test-environment = { MPLBACKEND = "Agg" }
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64"]
+# Explicitly, so that an update of cibuildwheel does not change it silently.
+manylinux-x86_64-image = "manylinux_2_28"
+
+[tool.cibuildwheel.macos]
+archs = ["arm64"]
+environment = { MACOSX_DEPLOYMENT_TARGET = "26.0" }
+
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]
+# delvewheel vendors msvcp140.dll of the dynamic C++ runtime, which CPython does not ship
+# (LICENSES/README.md); _core and tbb12.dll need it. tbb12.dll itself sits next to _core in the
+# package (libs/rtt-py/CMakeLists.txt), where the import finds it; delvewheel does not search
+# the wheel, so it is excluded here.
+repair-wheel-command = "delvewheel repair --exclude tbb12.dll -w {dest_dir} -v {wheel}"
 
 [tool.mypy]
 strict = true

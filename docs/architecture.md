@@ -571,6 +571,8 @@ Ein Feature ist erst fertig, wenn es mindestens einen Referenztest gegen eine un
 
 **CI (`.github/workflows/ci.yml`):** clang-format, JSON-Schema, Linux GCC (Release), Linux Clang mit clang-tidy (Release, auch für die Python-Bindungen `_core`, #336), Linux Clang mit ASan/UBSan (Debug), Windows MSVC (Release), macOS 26 arm64 mit Apple clang (Release, ADR 0047); Warnungen sind Fehler. Job Python (ADR 0018): Paket `raytatouille` in der CMake-Baumstruktur (Presets `ci-linux-python` mit Python 3.10 und 3.13, `ci-windows-python` mit 3.13), pytest einschließlich Bitvergleich mit C++ und mypy --strict über ctest; je OS ein Smoke-Test mit `pip install .`.
 
+**Release (`.github/workflows/release.yml`, #404):** baut von Hand Wheels für CPython 3.10–3.14 (Linux x86-64, Windows x64, macOS arm64) und ein sdist, testet jedes Wheel mit den Python-Tests und lädt über Trusted Publishing nach TestPyPI oder PyPI (PyPI nur von einem Tag `v<version>`); im PR nur Bau und Test. Lizenztexte der eingebetteten Bibliotheken in `LICENSES/` (ADR 0018, Nachtrag #404).
+
 ## Roadmap und Abnahmekriterien
 
 Nach M1 können bis zu drei Agenten parallel arbeiten. M4 und M6 brauchen M2 und M3; M5 braucht nur M2. Ein Meilenstein ist erreicht, wenn alle Kriterien in der CI grün sind.

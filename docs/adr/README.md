@@ -26,7 +26,7 @@ Präzisierungen und Ergänzungen einer angenommenen Entscheidung kommen als dati
 | [0015](0015.md) | Real umfasst nur double | angenommen, präzisiert 0006 |
 | [0016](0016.md) | CompiledSystem in eigener Bibliothek rtt-compile | angenommen, präzisiert die Schichten in `docs/architecture.md` (kein früheres ADR) |
 | [0017](0017.md) | Kittglieder: Material je Segment | angenommen |
-| [0018](0018.md) | Python-Build-Abhängigkeiten über pyproject.toml statt vcpkg | angenommen |
+| [0018](0018.md) | Python-Build-Abhängigkeiten über pyproject.toml statt vcpkg (Nachtrag #33: matplotlib; Nachtrag #404: Wheels auf PyPI) | angenommen |
 | [0019](0019.md) | Coating-Kataloge als eigene JSON-Dateien | angenommen |
 | [0020](0020.md) | Gemeinsamer strikter JSON-Parser in der Basisschicht | angenommen |
 | [0021](0021.md) | Interaktionen im Tracer, Semantik von prt und weight | angenommen |
