@@ -529,6 +529,7 @@ TEST_CASE("parabasal: efl and bfl of a trial with the object in a medium (#397)"
   s.object.medium = "CONST:1.33";
   // Without overlay (rtt::paraxial on the finite system) the same power.
   CHECK(std::abs(value(s, FirstOrderQuantity::Efl) - efl_hand) <= 1e-12 * efl_hand);
+  CHECK(std::abs(value(s, FirstOrderQuantity::Bfl) - bfl_hand) <= 1e-12 * std::abs(bfl_hand));
   const TrialOverlay o = overlay_of(s);
   // Parabasal against paraxial: O(delta^2), as in the test of #340.
   CHECK(std::abs(value(s, FirstOrderQuantity::Efl, &o) - efl_hand) <= 1e-6 * efl_hand);
