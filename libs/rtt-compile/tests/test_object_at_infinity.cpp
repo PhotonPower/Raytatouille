@@ -4,13 +4,16 @@
 // is the input's, the medium of the object space included (ADR 0037).
 
 #include <catch2/catch_test_macros.hpp>
+#include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <string>
-#include <utility>
-#include <variant>
 
+#include "rtt/coating/catalog.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/compile/errors.hpp"
+#include "rtt/compile/perturbation.hpp"
 #include "rtt/material/material.hpp"
 #include "rtt/model/model.hpp"
 
@@ -29,11 +32,11 @@ using rtt::model::System;
 
 namespace {
 
-Surface surface(const std::string& id, double z_mm, double radius) {
+Surface surface(const std::string& id, double z_mm, double radius_mm) {
   Surface s;
   s.id = SurfaceId(id);
   s.pose = Pose::along_z(z_mm);
-  s.shape.base = rtt::model::Conic{Param(radius), Param(0.0)};
+  s.shape.base = rtt::model::Conic{Param(radius_mm), Param(0.0)};
   return s;
 }
 
@@ -68,9 +71,10 @@ System finite_system() {
   return s;
 }
 
-CompiledSystem compiled(const System& s) {
+CompiledSystem compiled(const System& s, const rtt::compile::Perturbation& p = {}) {
   const MaterialLibrary lib;
-  return rtt::compile::compile(s, lib);
+  const rtt::coating::CoatingLibrary coatings;
+  return rtt::compile::compile(s, lib, coatings, 0, p);
 }
 
 /// The model variant of the addendum #256 as rtt-optim built it before #397.
@@ -87,6 +91,11 @@ System model_variant(const System& s) {
 
 /// Same surfaces, media and paths, bit for bit.
 void check_same_optics(const CompiledSystem& a, const CompiledSystem& b) {
+  // Content guard: lens L.S1, L.S2 and the detector, one path through them, the stop on L.S2.
+  REQUIRE(a.surfaces().size() == 3);
+  REQUIRE(a.paths().size() == 1);
+  REQUIRE(a.paths()[0].events.size() == 3);
+  REQUIRE(a.stop_surface() == std::optional<std::uint32_t>(1));
   REQUIRE(a.surfaces().size() == b.surfaces().size());
   for (std::size_t i = 0; i < a.surfaces().size(); ++i) {
     CHECK(a.surfaces()[i].id == b.surfaces()[i].id);
@@ -155,7 +164,13 @@ TEST_CASE("with_object_at_infinity keeps the medium of the object space (#397)",
   // compiled system keeps the medium, so the first surface still refracts out of n_obj.
   System s = finite_system();
   s.object.medium = "CONST:1.33";
-  CHECK_THROWS_AS(compiled(model_variant(s)), CompileError);
+  try {
+    static_cast<void>(compiled(model_variant(s)));
+    FAIL("the model variant compiled");
+  } catch (const CompileError& e) {
+    REQUIRE(e.diagnostics().size() == 1);
+    CHECK(e.diagnostics()[0].code == "object.medium_infinite");
+  }
   const CompiledSystem nominal = compiled(s);
   const CompiledSystem v = with_object_at_infinity(nominal);
   CHECK(v.object().medium == std::optional<std::string>("CONST:1.33"));
@@ -178,4 +193,35 @@ TEST_CASE("with_object_at_infinity of an object at infinity changes only fields 
   CHECK(v.fields().points.size() == 1);
   CHECK(v.aperture().type == rtt::model::SystemApertureType::StopSize);
   check_same_optics(v, nominal);
+}
+
+TEST_CASE("with_object_at_infinity keeps the perturbation of a trial (#397)",
+          "[compile][variant]") {
+  // ADR 0030, addendum #256: the variant of a trial carries its perturbation, without the
+  // nominal z of object.reference (the variant has no reference). The variant of the compiled
+  // trial equals the model variant compiled with the same perturbation.
+  const System s = finite_system();
+  rtt::compile::Perturbation p;
+  rtt::compile::RigidMotion tilt;
+  tilt.translation_mm = rtt::math::Vec3(0.05, 0.0, 0.02);
+  tilt.rotation_rad = rtt::math::Vec3(1e-3, 0.0, 0.0);
+  p.surfaces[SurfaceId("L.S2")] = tilt;
+  p.materials[rtt::compile::MaterialTarget{"L", std::nullopt}] = {0.002, 0.0};
+  p.object_reference_z = {10.0};
+  rtt::compile::Perturbation p_variant = p;
+  p_variant.object_reference_z.clear();
+  const CompiledSystem trial = compiled(s, p);
+  const CompiledSystem a = with_object_at_infinity(trial);
+  const CompiledSystem b = compiled(model_variant(s), p_variant);
+  CHECK(a.object() == b.object());
+  CHECK(a.fields() == b.fields());
+  CHECK(a.aperture() == b.aperture());
+  CHECK_FALSE(a.object_reference_z().has_value());
+  check_same_optics(a, b);
+  // Content guard: the perturbation is in the variant (surface moved, index changed).
+  const CompiledSystem nominal = compiled(s);
+  CHECK(a.surfaces()[1].to_global.translation() != nominal.surfaces()[1].to_global.translation());
+  const auto& first = a.paths()[0].events[0];
+  CHECK(a.media()[first.medium_after].index[0].real() ==
+        nominal.media()[nominal.paths()[0].events[0].medium_after].index[0].real() + 0.002);
 }

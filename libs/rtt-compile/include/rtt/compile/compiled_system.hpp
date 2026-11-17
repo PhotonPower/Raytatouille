@@ -356,9 +356,9 @@ class CompiledSystem;
 ///   infinity in a medium (object.medium_infinite); this variant is not a model and is only for
 ///   the axis-parallel bundle at 0 degree, whose direction +z needs no convention for a plane
 ///   wave in the medium.
-/// - object_z() keeps its value; it has no meaning for an object at infinity.
-/// - Only the fields, the object and the aperture of the copy differ from `system`; without an
-///   object medium it equals compile() of the model with these changes.
+/// - Without an object medium it equals compile() of the model with these changes (and the
+///   perturbation without object_reference_z) except object_z(), which keeps its value and has
+///   no meaning for an object at infinity, and diagnostics(), which are the input's warnings.
 [[nodiscard]] CompiledSystem with_object_at_infinity(const CompiledSystem& system);
 
 /// compile() with an empty CoatingLibrary: a system with a CoatingRef gives a CompileError.
