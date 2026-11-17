@@ -36,7 +36,8 @@ RTT_BUILD_APPS = "OFF"
 [tool.cibuildwheel]
 # Wheels for PyPI (.github/workflows/release.yml, #404). CPython 3.10-3.14, no free-threaded
 # builds; Linux x86-64 (manylinux_2_28), Windows x64, macOS arm64 (minimum 26.0, ADR 0047). The
-# C++ dependencies come from vcpkg at the CI pin; CMAKE_ARGS is set per platform in the workflow.
+# C++ dependencies come from vcpkg at the CI pin: vcpkg itself, CMAKE_ARGS and (Linux) the
+# before-all step and the binary cache are set by the workflow, not here.
 build = ["cp310-*", "cp311-*", "cp312-*", "cp313-*", "cp314-*"]
 skip = ["*t-*", "*-musllinux_*"]
 build-verbosity = 1
@@ -44,9 +45,13 @@ build-verbosity = 1
 # "Python", pip install .). The bitwise comparisons with C++ skip without their variables.
 before-test = "pip install -r {project}/libs/rtt-py/tests/requirements.txt"
 test-command = "pytest -q -p no:cacheprovider {project}/libs/rtt-py/tests"
+# No display on the runners and in the container; as ctest does.
+test-environment = { MPLBACKEND = "Agg" }
 
 [tool.cibuildwheel.linux]
 archs = ["x86_64"]
+# Explicitly, so that an update of cibuildwheel does not change it silently.
+manylinux-x86_64-image = "manylinux_2_28"
 
 [tool.cibuildwheel.macos]
 archs = ["arm64"]
@@ -54,8 +59,9 @@ environment = { MACOSX_DEPLOYMENT_TARGET = "26.0" }
 
 [tool.cibuildwheel.windows]
 archs = ["AMD64"]
-# tbb12.dll sits next to _core in the package (libs/rtt-py/CMakeLists.txt); nothing to vendor.
-repair-wheel-command = ""
+# The default delvewheel repair: _core and tbb12.dll (next to _core in the package,
+# libs/rtt-py/CMakeLists.txt) need msvcp140.dll of the dynamic C++ runtime, which CPython does
+# not ship (LICENSES/README.md); delvewheel vendors it.
 
 [tool.mypy]
 strict = true
