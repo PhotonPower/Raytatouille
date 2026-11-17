@@ -434,3 +434,49 @@ TEST_CASE("parabasal: efl and bfl of a trial with operands on field 1 (#340)",
   // at about -1.6 mm; the chief ray of field 0 would give 0.
   CHECK(e.values.at(0) < -1.0);
 }
+
+namespace {
+
+/// efl and bfl of the two lenses of doublet_finite() in vacuum by y-nu ray tracing, as in the
+/// test of #340 (Greivenkamp, OPTI-201/202 lecture notes, Sec. 9, p. 9-2 and p. 9-12).
+std::pair<double, double> doublet_efl_bfl() {
+  struct Refraction {
+    double z, radius, n_before, n_after;
+  };
+  const std::vector<Refraction> surfaces = {{0.0, 50.0, 1.0, 1.6},
+                                            {5.0, -200.0, 1.6, 1.0},
+                                            {15.0, 80.0, 1.0, 1.5},
+                                            {19.0, -80.0, 1.5, 1.0}};
+  double y = 1.0;
+  double nu = 0.0;
+  for (std::size_t i = 0; i < surfaces.size(); ++i) {
+    const Refraction& r = surfaces[i];
+    nu -= y * (r.n_after - r.n_before) / r.radius;
+    if (i + 1 < surfaces.size()) y += (surfaces[i + 1].z - r.z) * nu / r.n_after;
+  }
+  return {-1.0 / nu, -y / nu};
+}
+
+}  // namespace
+
+TEST_CASE("parabasal: efl and bfl of a trial with a stop on a surface (#400)",
+          "[optim][parabasal]") {
+  // #400: the variant with the object at infinity replaced the whole system aperture and lost
+  // aperture.stop (ADR 0039); without a Stop element it had no stop (aperture.stop_missing), and
+  // efl and bfl of a trial became merit.operand_unsupported. doublet_finite() with the stop on
+  // L1.S2 (r = 8) instead of the Stop element: efl and bfl do not depend on the stop.
+  System s = doublet_finite();
+  REQUIRE(std::get<Element>(s.root.children.at(1).value).kind == ElementKind::Stop);
+  s.root.children.erase(s.root.children.begin() + 1);
+  std::get<Element>(s.root.children.at(0).value).surfaces.at(1).aperture =
+      rtt::model::CircularAperture{8.0, 0.0};
+  s.aperture.stop = SurfaceId("L1.S2");
+  const auto [efl_hand, bfl_hand] = doublet_efl_bfl();
+  REQUIRE(efl_hand > 0.0);
+  // Content guard: without overlay (rtt::paraxial) the system has these values.
+  CHECK(std::abs(value(s, FirstOrderQuantity::Efl) - efl_hand) <= 1e-12 * efl_hand);
+  const TrialOverlay o = overlay_of(s);
+  // Parabasal against paraxial: O(delta^2), about 4e-8 relative for this system (#340).
+  CHECK(std::abs(value(s, FirstOrderQuantity::Efl, &o) - efl_hand) <= 1e-6 * efl_hand);
+  CHECK(std::abs(value(s, FirstOrderQuantity::Bfl, &o) - bfl_hand) <= 1e-6 * std::abs(bfl_hand));
+}

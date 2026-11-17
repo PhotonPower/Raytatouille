@@ -67,7 +67,11 @@ model::System variant_of(const model::System& system) {
   // A reference of the object distance only exists for a finite object (ADR 0038, point 7).
   v.object.reference.reset();
   v.fields = {model::FieldType::AngleDeg, {{0.0, 0.0, 1.0}}};
-  v.aperture = {model::SystemApertureType::StopSize, model::Param(0.0)};
+  // Only type and value: a stop on a surface (aperture.stop, ADR 0039) stays the stop (#400). The
+  // reading belongs to object_na only (ADR 0040, validate: aperture.reading_not_na).
+  v.aperture.type = model::SystemApertureType::StopSize;
+  v.aperture.value = model::Param(0.0);
+  v.aperture.reading = model::ApertureReading::Paraxial;
   // The variant is only compiled for aiming and paraxial data; nobody reads its merit function or
   // tolerances. Their field indices refer to the fields of the system, not to the single field
   // above (#340: validate would report merit.index_out_of_range).
