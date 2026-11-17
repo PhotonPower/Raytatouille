@@ -1,0 +1,177 @@
+# Wheels and sdist of the Python package raytatouille, upload to TestPyPI or PyPI (#404,
+# ADR 0018, addendum #404). Trusted Publishing (OIDC): no token; PyPI and TestPyPI each have a
+# (pending) publisher for this repository, this workflow file and the environment of the job.
+#
+# - Pull request that changes this file, pyproject.toml or LICENSES/: build and test only.
+# - By hand (Actions -> Release -> Run workflow): choose the ref (a tag v* for PyPI) and the
+#   target: none (build only), testpypi or pypi.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Upload target: none (build only), testpypi or pypi (only from a tag v*)"
+        type: choice
+        options: [none, testpypi, pypi]
+        default: none
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "pyproject.toml"
+      - "LICENSES/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # The same vcpkg commit as ci.yml (the builtin-baseline of vcpkg.json).
+  VCPKG_COMMIT: 9e593bb18ea69cc5095e012465dcd675a822ed0d
+
+jobs:
+  check:
+    name: Version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: One version everywhere
+        run: python tools/check_version.py
+      - name: Tag matches the version
+        # PyPI only from a tag v<version>; a tag must name the version of pyproject.toml.
+        shell: bash
+        run: |
+          version="$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")"
+          echo "version $version, ref $GITHUB_REF"
+          if [[ "$GITHUB_REF" == refs/tags/v* && "$GITHUB_REF" != "refs/tags/v$version" ]]; then
+            echo "::error::tag ${GITHUB_REF#refs/tags/} does not match version $version"; exit 1
+          fi
+          if [[ "${{ inputs.target }}" == "pypi" && "$GITHUB_REF" != "refs/tags/v$version" ]]; then
+            echo "::error::PyPI only from the tag v$version"; exit 1
+          fi
+
+  wheels:
+    name: Wheels ${{ matrix.os }}
+    needs: check
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, triplet: x64-linux }
+          - { os: windows-2022, triplet: x64-windows }
+          - { os: macos-26, triplet: arm64-osx }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up vcpkg (Windows, macOS)
+        # Linux builds in the manylinux container; vcpkg is set up there (CIBW_BEFORE_ALL_LINUX).
+        if: runner.os != 'Linux'
+        shell: bash
+        run: |
+          root="$RUNNER_TEMP/vcpkg"
+          git clone -q https://github.com/microsoft/vcpkg.git "$root"
+          git -C "$root" checkout -q "$VCPKG_COMMIT"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            "$root/bootstrap-vcpkg.bat" -disableMetrics
+            root="$(cygpath -m "$root")"
+          else
+            "$root/bootstrap-vcpkg.sh" -disableMetrics
+          fi
+          # As the smoke test of ci.yml: toolchain and triplet explicitly, forward slashes.
+          echo "CMAKE_ARGS=-DCMAKE_TOOLCHAIN_FILE=$root/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}" >> "$GITHUB_ENV"
+      - name: Build and test wheels
+        uses: pypa/cibuildwheel@v4.3.5
+        env:
+          # manylinux_2_28 (AlmaLinux 8): tools for vcpkg, vcpkg at the pin, one binary cache
+          # for all Python versions of the container.
+          CIBW_BEFORE_ALL_LINUX: >-
+            dnf install -y -q git curl zip unzip tar perl-IPC-Cmd &&
+            git clone -q https://github.com/microsoft/vcpkg.git /opt/vcpkg &&
+            git -C /opt/vcpkg checkout -q ${{ env.VCPKG_COMMIT }} &&
+            /opt/vcpkg/bootstrap-vcpkg.sh -disableMetrics &&
+            mkdir -p /opt/vcpkg-cache
+          CIBW_ENVIRONMENT_LINUX: >-
+            CMAKE_ARGS="-DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-linux"
+            VCPKG_DEFAULT_BINARY_CACHE=/opt/vcpkg-cache
+        with:
+          output-dir: dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-wheels-${{ matrix.os }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  sdist:
+    name: sdist
+    needs: check
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build sdist
+        run: |
+          python -m pip install -q build==1.6.1
+          python -m build --sdist --outdir dist
+      - name: Content of the sdist
+        # Content guard: sources, licenses and the package metadata are in the archive.
+        shell: bash
+        run: |
+          tar -tzf dist/*.tar.gz > "$RUNNER_TEMP/sdist.txt"
+          for f in LICENSE LICENSES/Eigen-MPL-2.0.txt pyproject.toml CMakeLists.txt \
+                   libs/rtt-py/CMakeLists.txt vcpkg.json; do
+            grep -q "/$f\$" "$RUNNER_TEMP/sdist.txt" || { echo "::error::$f missing in the sdist"; exit 1; }
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-sdist
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  testpypi:
+    name: Upload to TestPyPI
+    needs: [wheels, sdist]
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
+    runs-on: ubuntu-24.04
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/raytatouille
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+      - uses: pypa/gh-action-pypi-publish@v1.14.3
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          # TestPyPI keeps every file forever; a repeated trial of the same version is no error.
+          skip-existing: true
+
+  pypi:
+    name: Upload to PyPI
+    needs: [wheels, sdist]
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'pypi'
+    runs-on: ubuntu-24.04
+    environment:
+      name: pypi
+      url: https://pypi.org/p/raytatouille
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+      - uses: pypa/gh-action-pypi-publish@v1.14.3
