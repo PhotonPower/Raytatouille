@@ -17,6 +17,7 @@ if(RTT_BUILD_TESTS)
             tests/test_object_z.cpp tests/test_stop.cpp tests/test_surface_stop.cpp
             tests/test_anamorphic_compile.cpp tests/test_rotational_compile.cpp
             tests/test_forbes_compile.cpp tests/test_active.cpp tests/test_bound_ranges.cpp
+            tests/test_object_at_infinity.cpp
     LIBS rtt::compile rtt::io rtt::model_test_support)
   target_compile_definitions(rtt_compile_tests PRIVATE
     RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs")

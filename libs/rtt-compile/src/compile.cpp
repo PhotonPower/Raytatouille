@@ -1572,6 +1572,20 @@ CompiledSystem compile(const model::System& system,
   return compile(system, materials, coatings, configuration, Perturbation{});
 }
 
+CompiledSystem with_object_at_infinity(const CompiledSystem& system) {
+  CompiledSystem v = system;
+  v.object_.at_infinity = true;
+  v.object_.reference.reset();
+  v.object_reference_z_.reset();
+  v.fields_ = {model::FieldType::AngleDeg, {{0.0, 0.0, 1.0}}};
+  // Type and value only: a stop on a surface stays the stop (ADR 0039, #400); the reading belongs
+  // to object_na (ADR 0040).
+  v.aperture_.type = model::SystemApertureType::StopSize;
+  v.aperture_.value = model::Param(0.0);
+  v.aperture_.reading = model::ApertureReading::Paraxial;
+  return v;
+}
+
 CompiledSystem compile(const model::System& input,
                        const material::MaterialLibrary& materials,
                        const coating::CoatingLibrary& coatings,
