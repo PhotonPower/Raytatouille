@@ -141,6 +141,10 @@ jobs:
                    libs/rtt-py/CMakeLists.txt vcpkg.json; do
             grep -q "/$f\$" "$RUNNER_TEMP/sdist.txt" || { echo "::error::$f missing in the sdist"; exit 1; }
           done
+          # No manufacturer catalogues (ADR 0010; tests/catalogs is excluded, #404).
+          if grep -q "/tests/catalogs/" "$RUNNER_TEMP/sdist.txt"; then
+            echo "::error::tests/catalogs in the sdist"; exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: dist-sdist

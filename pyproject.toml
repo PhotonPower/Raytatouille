@@ -26,7 +26,9 @@ cmake.version = ">=3.25"
 cmake.build-type = "Release"
 build-dir = "build/skbuild/{wheel_tag}"
 wheel.packages = ["libs/rtt-py/python/raytatouille"]
-sdist.exclude = ["build", ".claude", ".github"]
+# tests/catalogs holds excerpts of manufacturer catalogues for the tests; ADR 0010: catalogues
+# are not distributed (decision of the maintainer in #404). Building needs none of them.
+sdist.exclude = ["build", ".claude", ".github", "tests/catalogs"]
 
 [tool.scikit-build.cmake.define]
 RTT_BUILD_PYTHON = "ON"
