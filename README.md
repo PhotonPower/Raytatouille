@@ -4,11 +4,14 @@ Raytracing-Engine für Optikdesign: Linsen (sphärisch, asphärisch, Freiform), 
 Beschichtungen, Strahlteiler, Polarisatoren und Retarder; Polarisation von Anfang an.
 C++20 mit Python-API, Linux, Windows und macOS 26 (Apple Silicon), MIT-Lizenz.
 
-**Stand:** Version 0.9.0, Toleranzierung erreicht (M7): Toleranzsatz in der Systemdatei mit
-Toleranzklassen, Einzelwerten und expliziten Toleranzen auf Fläche, Element und Baugruppe (Kippung
-um den Pivot, starre Bewegung aller Kinder), auf Brechzahl, Abbe-Zahl und Konfigurationszeilen;
-Kompensatoren mit Levenberg-Marquardt; Sensitivität mit RSS und inverser Sensitivität; Monte Carlo
-mit Seed, bitgleich für jede Threadzahl, Statistik, Perzentile und Ausbeute mit Wilson-Intervall;
+**Stand:** Version 0.10.0, auf PyPI (`pip install raytatouille`, Wheels für Python 3.10–3.14 unter
+Linux, Windows und macOS 26): neue Flächentypen (ungerade Asphäre, Axicon, Forbes-Asphären Q-con
+und Q-bfs, Bikonus, Torus und Zylinder) mit Zielung und erster Ordnung je Schnitt für anamorphe
+Pfade; ZMX-Import und -Export, auch gefalteter und gekippter Systeme, und eine CSV-Flächentabelle;
+Blende auf einer Fläche, Objektabstand zu einer Bezugsfläche und `object_na` real gelesen;
+aktive und inaktive Baugruppen; Zwischenstände der Optimierung für eine Live-Anzeige; macOS 26
+auf Apple Silicon. Davor: Toleranzierung (M7) mit Toleranzsatz in der Systemdatei,
+Toleranzklassen, Kompensatoren, Sensitivität und Monte Carlo (bitgleich für jede Threadzahl),
 alles auch aus Python. Davor: Beugung (M6) mit Pupillenfunktion, Zernike-Fit (Noll) und Strehl,
 FFT-PSF, MTF und Encircled Energy, Jones-Pupille mit Diattenuations-, Retardance- und Stokes-Karten,
 Interferogramm zweier Pfade und die ideale Linse; Optimierung mit Levenberg-Marquardt,
