@@ -438,7 +438,9 @@ TEST_CASE("parabasal: efl and bfl of a trial with operands on field 1 (#340)",
 namespace {
 
 /// efl and bfl of the two lenses of doublet_finite() in vacuum by y-nu ray tracing, as in the
-/// test of #340 (Greivenkamp, OPTI-201/202 lecture notes, Sec. 9, p. 9-2 and p. 9-12).
+/// test of #340 (Greivenkamp, OPTI-201/202 lecture notes, Sec. 9: refraction
+/// nu' = nu - y (n' - n) c and transfer y' = y + t nu' / n' on p. 9-2, phi = -n'u'_k / y_1 and
+/// BFD = -y_k / u'_k on p. 9-12), with y_1 = 1, nu = 0 in front of L1.S1 and n' = 1.
 std::pair<double, double> doublet_efl_bfl() {
   struct Refraction {
     double z, radius, n_before, n_after;
@@ -477,6 +479,19 @@ TEST_CASE("parabasal: efl and bfl of a trial with a stop on a surface (#400)",
   CHECK(std::abs(value(s, FirstOrderQuantity::Efl) - efl_hand) <= 1e-12 * efl_hand);
   const TrialOverlay o = overlay_of(s);
   // Parabasal against paraxial: O(delta^2), about 4e-8 relative for this system (#340).
+  CHECK(std::abs(value(s, FirstOrderQuantity::Efl, &o) - efl_hand) <= 1e-6 * efl_hand);
+  CHECK(std::abs(value(s, FirstOrderQuantity::Bfl, &o) - bfl_hand) <= 1e-6 * std::abs(bfl_hand));
+}
+
+TEST_CASE("parabasal: efl of a trial with a real reading of the object-space NA (#400)",
+          "[optim][parabasal]") {
+  // The variant resets the reading to paraxial: a reading belongs to object_na only (ADR 0040,
+  // validate: aperture.reading_not_na), and the variant has the type StopSize.
+  System s = doublet_finite();
+  REQUIRE(s.aperture.type == rtt::model::SystemApertureType::ObjectSpaceNA);
+  s.aperture.reading = rtt::model::ApertureReading::Real;
+  const auto [efl_hand, bfl_hand] = doublet_efl_bfl();
+  const TrialOverlay o = overlay_of(s);
   CHECK(std::abs(value(s, FirstOrderQuantity::Efl, &o) - efl_hand) <= 1e-6 * efl_hand);
   CHECK(std::abs(value(s, FirstOrderQuantity::Bfl, &o) - bfl_hand) <= 1e-6 * std::abs(bfl_hand));
 }
