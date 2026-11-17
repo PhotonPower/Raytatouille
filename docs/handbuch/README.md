@@ -39,8 +39,12 @@ abgedruckten Ausgaben stammen von macOS 26 arm64 mit Python 3.14 und sind dort a
 Python 3.11 und NumPy 2.4 gleich.
 
 Die CI führt die Beispiele im Job „Python 3.13 ci-macos-python“ nach dem Smoke-Test
-`pip install .` aus, gegen das gerade gebaute Paket. Ändert ein PR eine Ausgabe, schlägt der
-Schritt fehl; dann die Ausgabe prüfen und mit `--update` übernehmen.
+`pip install .` aus, gegen das gerade gebaute Paket, also auch zwischen Releases. Ändert ein PR
+eine Ausgabe (etwa eine neue Schema-Version in `ex02` und `ex16` oder ein anderes Ergebnis),
+schlägt der Schritt fehl; dann die Ausgabe prüfen und im selben PR mit `--update` übernehmen.
+Das Handbuch zeigt so immer den Stand von main; Titelseite und „Stand und Gültigkeit“ nennen die
+Version erst beim nächsten Release neu. Beispiele dürfen nichts drucken, was von Zeit oder
+Threads abhängt (etwa die Zahl der Fortschrittsmeldungen).
 
 ## Bei einem neuen Release
 

@@ -3736,11 +3736,12 @@ from rtt_bausteine import singlet
 
 cs = rt.compile(singlet())
 
-# 1. Fortschritt: progress(done, total, stage), höchstens alle 50 ms, zuletzt done == total
+# 1. Fortschritt: progress(done, total, stage), höchstens alle 50 ms, zuletzt done == total.
+#    Wie viele Meldungen dazwischen kommen, hängt von Zeit und Threads ab; sicher ist die letzte.
 meldungen = []
 rt.analysis.spot(cs, field=2, rays="hexapolar:40",
                  progress=lambda done, total, stage: meldungen.append((stage, done, total)))
-print("letzte Meldungen:", meldungen[-2:], "| Anzahl:", len(meldungen))
+print("letzte Meldung:", meldungen[-1], "| mindestens eine:", len(meldungen) >= 1)
 
 # 2. Abbruch aus einem anderen Thread (z. B. ein GUI-Knopf)
 token = rt.CancelToken()
@@ -3774,7 +3775,7 @@ with ThreadPoolExecutor(max_workers=3) as pool:
 print("RMS je Feld (µm):", np.round(np.array(werte) * 1e3, 2).tolist())
 \end{pycode}
 \begin{ausgabe}
-letzte Meldungen: [('trace', 153, 4921), ('trace', 4921, 4921)] | Anzahl: 12
+letzte Meldung: ('trace', 4921, 4921) | mindestens eine: True
 Lauf: abgebrochen | token.cancelled: True
 threads=1 und alle Threads bitgleich: True
 RMS je Feld (µm): [59.87, 97.44, 138.15]

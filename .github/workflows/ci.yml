@@ -238,11 +238,12 @@ jobs:
       - name: Examples of the user manual (#322)
         # The 24 examples of docs/handbuch/raytatouille-handbuch.tex against the package installed
         # by the smoke test, with the printed outputs compared character by character. Only on
-        # macOS: the outputs come from macOS arm64, and other platforms may differ in the last
-        # digits (libm, ADR 0011); matplotlib comes from the test requirements.
+        # macOS: the outputs come from macOS arm64 (ADR 0047), and results are bitwise equal only
+        # per platform and compiler (ADR 0011). matplotlib comes from the test requirements.
         if: matrix.smoke && runner.os == 'macOS'
+        timeout-minutes: 15
         shell: bash
-        run: python tools/handbuch_beispiele.py --python "$(command -v python)"
+        run: python tools/handbuch_beispiele.py
       - name: Editable install over an editable install (#271)
         if: matrix.editable
         shell: bash

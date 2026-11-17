@@ -88,6 +88,9 @@ def main(argv: list[str]) -> int:
         print(f"{TEX.relative_to(ROOT)}: new outputs written")
     total = len([m for m in blocks if m["name"].startswith("ex")])
     print(f"{total} examples, {failed} differing, {crashed} failed")
+    if total == 0:  # content guard: the pattern found nothing (changed markup)
+        print(f"no titled ex*.py blocks found in {TEX.relative_to(ROOT)}")
+        crashed = 1
     if args.keep is None:
         shutil.rmtree(work, ignore_errors=True)
     else:
