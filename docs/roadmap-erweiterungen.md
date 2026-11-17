@@ -1,6 +1,6 @@
 # Roadmap-Erweiterungen
 
-> **Status: entschieden** (2026-10-09, Koordinator im Auftrag des Maintainers; siehe [Entscheidungen](#entscheidungen)). Stand nach 0.9.0 (M7 abgeschlossen; die Einträge sind gegen ADR 0028 bis 0037 und Schema 0.7.0 abgeglichen; neu ist der Abschnitt [Offene Punkte nach M7](#offene-punkte-nach-m7)). Verbindlich ist ein Eintrag erst, wenn er unter „Entscheidungen“ als freigegeben steht; Einträge mit „Ideenliste“ werden beim Planen des jeweiligen Meilensteins neu bewertet. Die Roadmap-Tabelle in [architecture.md](architecture.md) bleibt die Quelle für die Meilensteine.
+> **Status: entschieden** (2026-10-09, Koordinator im Auftrag des Maintainers; siehe [Entscheidungen](#entscheidungen)). Stand nach 0.9.0 (M7 abgeschlossen; die Einträge sind gegen ADR 0028 bis 0037 und Schema 0.7.0 abgeglichen; neu ist der Abschnitt [Offene Punkte nach M7](#offene-punkte-nach-m7)). Release 0.10.0 (Flächentypen, ZMX-Austausch, macOS, erste Version auf PyPI) liegt zwischen M7 und M8; die Einträge hier sind dafür nicht neu abgeglichen. Verbindlich ist ein Eintrag erst, wenn er unter „Entscheidungen“ als freigegeben steht; Einträge mit „Ideenliste“ werden beim Planen des jeweiligen Meilensteins neu bewertet. Die Roadmap-Tabelle in [architecture.md](architecture.md) bleibt die Quelle für die Meilensteine.
 
 ## Herkunft und Umgang mit der Quelle
 

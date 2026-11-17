@@ -7,7 +7,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "raytatouille"
-version = "0.9.0"
+version = "0.10.0"
 description = "Raytracing engine for optical design"
 readme = "README.md"
 # The wheel embeds third-party code (ADR 0018, addendum #404): oneTBB (Apache-2.0), nanobind and
@@ -16,6 +16,12 @@ license = "MIT AND Apache-2.0 AND BSD-3-Clause AND MPL-2.0"
 license-files = ["LICENSE", "LICENSES/*"]
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.24"]
+
+[project.urls]
+Repository = "https://github.com/PhotonPower/Raytatouille"
+Changelog = "https://github.com/PhotonPower/Raytatouille/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/PhotonPower/Raytatouille/blob/main/docs/architecture.md"
+Issues = "https://github.com/PhotonPower/Raytatouille/issues"
 
 [project.optional-dependencies]
 plot = ["matplotlib>=3.8"]
@@ -64,7 +70,7 @@ environment = { MACOSX_DEPLOYMENT_TARGET = "26.0" }
 
 [tool.cibuildwheel.windows]
 archs = ["AMD64"]
-# delvewheel vendors msvcp140.dll of the dynamic C++ runtime, which CPython does not ship
+# delvewheel vendors msvcp140.dll (and msvcp140_2.dll) of the dynamic C++ runtime, which CPython does not ship
 # (LICENSES/README.md); _core and tbb12.dll need it. tbb12.dll itself sits next to _core in the
 # package (libs/rtt-py/CMakeLists.txt), where the import finds it; delvewheel does not search
 # the wheel, so it is excluded here.

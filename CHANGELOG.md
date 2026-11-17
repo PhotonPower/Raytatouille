@@ -6,6 +6,296 @@ Neue Einträge stehen bis zum nächsten Release als Fragmente in [`changelog.d/`
 
 ## [Unreleased]
 
+## [0.10.0] – Flächentypen, ZMX-Austausch, macOS und PyPI
+
+### Hinzugefügt
+- `rtt-compile`: `CompiledSystem::stop_surface()` und `compile::stop_event(system, path)` bestimmen die Blende an einer Stelle; alle Nutzer (Zielung, Pupillen, parabasale Operanden, Verlustzählung, Berichte) lesen nur noch diese (ADR 0039, Punkt 3; #53).
+- Dateiformat 0.8: optionales Feld `aperture.stop` (`{"surface": "<id>"}`, ADR 0039). Die Apertur
+  dieser Fläche einer Linse, eines Spiegels, einer Platte oder eines dünnen Elements ist die
+  Systemblende, z. B. die Fassung von L2.S1 beim Cooke-Triplett; ihr Ereignis behält seine Art.
+  Die Austrittspupille ist das Bild der Blende durch die Fläche selbst und alle folgenden; bei der
+  Toleranzierung folgt die Blende der gestörten Fläche. `validate` meldet `stop.surface_unknown`
+  und `stop.surface_kind`; `stop.multiple` gilt auch für ein `stop`-Element zusammen mit
+  `aperture.stop`. Python: `SystemAperture.stop` (`SurfaceReference`). Referenzsystem
+  `tests/reference/m2/cooke_triplet_surface_stop.rtt.json` (#53).
+- `rtt-analysis`, Python: Radien der eingeschlossenen Energie relativ zu `radius_max` (`relative_radii`, in Python `relative=True` oder eine Anzahl k), damit die Kurve über den ganzen erlaubten Bereich nur einen Lauf braucht (#267).
+- Dateiformat 0.8.0: optionales Feld `object.reference` (ADR 0038). Mit
+  `{"surface": "<id>"}` liegt ein endliches Objekt `distance` vor dem nominalen Scheitel dieser
+  Fläche statt vor dem globalen Ursprung; bei der Optimierung folgt es der Fläche, bei der
+  Toleranzierung bleibt es am nominalen Ort. `validate` meldet
+  `object.reference_surface_unknown` und `object.reference_at_infinity`; Migration von 0.7
+  ändert nur die Version. `CompiledSystem::object_z()` (auch in Python `object_z`) ist die eine
+  Stelle für die Lage des Objekts; Python liest `ObjectSpace.reference` (`SurfaceReference`).
+  Referenzsystem `tests/reference/r3/object_reference.rtt.json` (#288).
+- `object_na` real gelesen: `aperture.reading: "real"` (Schema 0.8) zielt die Strahlen auf den
+  Kegel mit n_ref sin U = NA des realen Randstrahls vom axialen Objektpunkt bei der
+  Referenzwellenlänge; die paraxialen Größen bleiben bei u = NA / n. Neu sind
+  `rtt::trace::paraxial_stop_radius()`, `rtt::trace::ApertureError` (Python `rt.ApertureError`
+  mit `.code`) für `aperture.na_unreachable`, der validate-Code `aperture.reading_not_na` und in
+  Python `SystemAperture.reading` mit `ApertureReading` (ADR 0040; #296).
+- `rtt-analysis`: `SpotDiagram::arrived` nennt je gestartetem Strahl, ob er die Bildfläche
+  erreicht hat (nur C++, nicht im Ergebnisformat; ADR 0032, Nachtrag #299; #299).
+- `rtt-bench`: misst zusätzlich das Cooke-Triplett mit geraden Asphären statt Kugeln, damit der
+  Newton-Schnitt im Benchmark vorkommt; jedes Ergebnis nennt sein System (`system`) und die
+  angekommenen Strahlen (`arrived`) (#313).
+- `rtt-geom`, `rtt-model`, `rtt-io`, `rtt-compile`: Basisformen `odd_asphere` (`curvature`,
+  `conic`, `coefficients` A1, A2, …; die Basis als Krümmung, c = 0 ist eine ebene Basis) und
+  `axicon` (`angle_deg`) nach ADR 0043; Schema bleibt 0.9.0, in einer Datei vor 0.9 sind die
+  neuen Typen ein Lesefehler. Das Axicon schneidet analytisch mit auslöschungsfreier
+  Diskriminante; seine Spitze und eine ungerade Asphäre mit A1 ≠ 0 haben kein paraxiales Modell,
+  mit A3 ≠ 0 gibt es die erste Ordnung, aber keine Seidel-Summen (#314).
+- `rtt-diagnostics`: neue Codes `shape.curvature_invalid`, `shape.conic_without_curvature` und
+  `shape.axicon_angle_invalid`; `shape.asphere_without_coefficients` gilt auch für die ungerade
+  Asphäre (#314).
+- `rtt-model`, `rtt-tolerance`: `curvature_relative` stört an der ungeraden Asphäre die Krümmung,
+  C′ = C (1 + δ), und `conic` die Konik; eine Krümmung durch 0 bleibt ein gültiger Prüfling. Am
+  Axicon gibt es nur `param` auf `angle_deg`; ein Prüfling, dessen Winkel das Vorzeichen wechselt
+  oder 90° erreicht, ist ungültig (#314).
+- `rtt-py`: Klassen `OddAsphere` und `Axicon` in `raytatouille.model`. `SurfaceLayout` bekommt
+  `normalization_radius` und `axicon_angle_deg` und die Formen `odd_asphere` und `axicon`;
+  Ergebnisformat 0.1.18, ältere Dateien lesen sich mit beiden Werten `None`. Beispiele unter
+  `examples/rotational` (#314).
+- `rtt-geom`, `rtt-model`, `rtt-io`, `rtt-compile`: Forbes-Asphären `qcon` und `qbfs`
+  (`curvature`, `conic`, `normalization_radius`, `coefficients` a₀, a₁, …) nach ADR 0043; die
+  Polynome werden nach Clenshaw summiert (Forbes 2010a und 2010b), Q-bfs mit Konik nach
+  Forbes 2011, Gl. (2.4), und dem Gebiet φ > 0. Neue Codes `shape.normalization_radius_invalid`
+  und `shape.normalization_radius_exceeded` (Apertur jenseits des Normierungsradius) (#314).
+- `rtt-model`: Eine Grenze `curvature_relative` ≥ 1 ist an Flächen mit Krümmung
+  (`odd_asphere`, `qcon`, `qbfs`) erlaubt, an Flächen mit Radius weiter `tolerances.limit_invalid`
+  (#314).
+- `rtt-py`: Klassen `QCon` und `QBfs`; `SurfaceLayout.normalization_radius` trägt ρ. Beispiele
+  `qcon_singlet` und `qbfs_singlet` unter `examples/forbes` (#314).
+- `rtt-geom`, `rtt-model`, `rtt-io`, `rtt-compile`: anamorphe Basisformen `biconic` (`radius_x`,
+  `radius_y`, `conic_x`, `conic_y`), `toroid` (Profil `radius`, `conic`, `coefficients` und
+  `radius_of_rotation`) und `cylinder` (Profil, flach in x) nach ADR 0042; Schema 0.9.0 mit
+  Migration 0.8 → 0.9 (nur die Version), die neuen Typen in einer Datei vor 0.9 sind ein Lesefehler
+  (#315).
+- `rtt-geom`: optionales `in_domain(x, y)` (Concept `DomainShape`) für Formen, deren Gebiet kein
+  Kreis ist; der Newton-Schnitt prüft damit Startpunkt und Iterierte, `max_radius()` ist die
+  äußere Ausdehnung des Gebiets. `rtt-compile`: Die Profile des Layouts enden an der
+  Gebietsgrenze, ohne NaN (#315).
+- `rtt-model`: Toleranzklassen überspringen `curvature_relative` und `conic` an den anamorphen
+  Typen mit dem neuen Grund `ClassSkip::ShapeType` (Python `SHAPE_TYPE`) (#315).
+- `rtt-py`: Klassen `Biconic`, `Toroid` und `Cylinder` in `raytatouille.model`. `SurfaceLayout`
+  bekommt `curvature_x` und `conic_constant_x` (x-Schnitt durch den Scheitel) und die Formen
+  `biconic`, `toroid`, `cylinder`; Ergebnisformat 0.1.17, ältere Dateien lesen sich mit
+  x-Schnitt gleich y-Schnitt. Beispiele unter `examples/anamorphic` (#315).
+- `rtt-tolerance`: Die Vorzeichenprüfung der Radien (#293) erfasst auch `radius_x`, `radius_y` und
+  `radius_of_rotation`; der Grund nennt das Feld (#315).
+- `rtt-paraxial`: erste Ordnung je Schnitt für anamorphe Pfade (ADR 0042, Punkt 2): `Section`,
+  `first_order_section`, `trace_ray_section` und `is_anamorphic`. Biconic, Toroid, Zylinder und die
+  ideale Zylinderlinse gehen mit ihrer Krümmung bzw. Brechkraft im Schnitt x-z oder y-z ein, wenn
+  ihre Hauptachsen auf x und y liegen; ein Schnitt ohne Brechkraft ist afokal. `first_order`,
+  `trace_ray`, `prescription` und `seidel` lehnen anamorphe Pfade weiter ab (#315).
+- `rtt-py`: `Section`, `RayAtEvent`, `first_order_section`, `trace_ray_section` und `is_anamorphic` in
+  `raytatouille.paraxial` (#315).
+- `rtt-trace`: Zielung je Schnitt für anamorphe Pfade (ADR 0042, Punkt 3): Eintrittspupille,
+  Blendenziel und Startstrahl je Schnitt x-z und y-z, Feldwinkel bei endlichem Objekt und
+  paraxiale Bildhöhen je Schnitt, Startebene mit beiden Eintrittspupillen, `AimReference` mit den
+  Daten je Schnitt. Fehler für eine Eintrittspupille im Unendlichen in nur einem Schnitt,
+  verschiedene Pupillenorientierung der Schnitte, bildseitige Blendenzahl, real gelesene
+  `object_na` und paraxiale Bildhöhen mit afokalem Schnitt. Rotationssymmetrische Pfade zielen
+  bitgleich wie bisher (#315).
+- `rtt-optim`: Spot- und Strahloperanden und der Spot-Generator laufen auf anamorphen Pfaden,
+  auch im Overlay der Toleranzierung; paraxiale Operanden, `opd_rms` und der
+  Wellenfront-Generator melden dort `merit.operand_unsupported` (ADR 0042, Punkt 4; Nachtrag zu
+  ADR 0030) (#315).
+- `rtt-io`, `rtt` CLI: ZMX-Import des sequenziellen Teils nach ADR 0044, `rtt::io::import_zmx` und
+  `load_zmx` (`rtt/io/zmx.hpp`) und `rtt import <datei.zmx> <ausgabe.rtt.json> --catalog <agf>...`.
+  Abgebildet werden `STANDARD` und `EVENASPH` (bei c = 0 als `odd_asphere`), Linsen und
+  Kittglieder, Spiegel (`ideal_mirror`), die Blende als Element oder auf einer Fläche, `CLAP` und
+  `FLAP`, die Systemaperturen `ENPD`, `FNUM`, `OBNA` und `FLOA`, die Feldtypen Winkel,
+  Objekthöhe und paraxiale Bildhöhe und die Einheiten MM, CM, IN und METER. Wellenlängen werden
+  von Luft auf Vakuum umgerechnet, F/# und NA mit n_Luft; Gläser kommen über die `GCAT`-Kataloge.
+  Merit-, Toleranz- und Konfigurationsblock werden übergangen, mehr als eine Konfiguration ist ein
+  Fehler (#317).
+- ZMX-Import, zweiter Teil (ADR 0044, Nachtrag PR C): Koordinatensprünge (`COORDBRK`) als Posen,
+  gekippte Ebenen (`TILTSURF`, auch als gekippte Bildfläche), Faltspiegel und Spiegel außer Achse,
+  die ideale Linse (`PARAXIAL`, in Luft) und Rechteck- und Ellipsenaperturen (`SQAP`, `ELAP`).
+  Ein unbekanntes Schlüsselwort in einem Flächenblock ist jetzt ein Fehler. Gefaltete oder
+  gekippte Systeme haben kein paraxiales Modell (#357) und geben eine Warnung (#317).
+- `rtt-diagnostics`: 36 Codes `zmx.*` mit dem Erzeuger `zmx` (#317).
+- `rtt-io`, `rtt` CLI: ZMX-Export eines koaxialen Systems nach ADR 0045, `rtt::io::export_zmx`
+  und `save_zmx` (`rtt/io/zmx.hpp`) und `rtt export <system.rtt.json> <ausgabe.zmx> --catalog
+  <agf>... [--path <name>] [--config <i>]`, die Umkehrung des Imports aus ADR 0044. Geschrieben
+  wird ein Pfad einer Konfiguration: `STANDARD`, `EVENASPH` (auch für die `odd_asphere` mit c = 0),
+  `PARAXIAL` für die ideale Linse, Spiegel auf der Achse mit negativen Dicken danach, gespiegelte
+  Formen für Flächen mit der Achse −e_z, die Blende mit festem Halbdurchmesser, `CLAP`, `SQAP` und
+  `ELAP`, Wellenlängen in Luft, F/# und NA relativ zu Luft, die `GCAT`-Kataloge in einer
+  Reihenfolge, in der der Import jedes Glas in seinem Katalog findet, und Zahlen in der kürzesten
+  bitgenauen Darstellung. Jede exportierte Datei liest der Import wieder (#318).
+- `rtt-io`, `rtt` CLI: CSV-Flächentabelle nach ADR 0045, Punkt 7, in beide Richtungen:
+  `rtt::io::write_surface_table` und `read_surface_table` (`rtt/io/surface_table.hpp`), `rtt export
+  <system.rtt.json> <ausgabe.csv>` und `rtt import <tabelle.csv> <ausgabe.rtt.json> --base
+  <system.rtt.json>`. Eine Zeile je Fläche des Pfades mit Form, Dicke, Material, Apertur, Blende
+  und idealer Linse; Wellenlängen, Felder und Systemapertur bleiben im Basissystem. Format nach
+  RFC 4180 (CRLF geschrieben, CRLF und LF gelesen, UTF-8), beschrieben in `docs/dateiformat.md`
+  (#318).
+- `rtt-diagnostics`: 21 Codes `export.*` mit dem Erzeuger `export` und 6 Codes `table.*` mit dem
+  Erzeuger `table` (#318).
+- `rtt-material`: AGF-Formeln 7 (Handbook of Optics 1), 8 (Handbook of Optics 2) und 9
+  (Sellmeier 4) mit belegter Reihenfolge der CD-Koeffizienten; damit laden etwa die Kristalle
+  aus `birefringent.agf`. Neue Lade-Warnung `agf.nd_mismatch`, wenn N(d) des NM-Datensatzes um
+  mehr als 1·10⁻⁴ von der Formel abweicht (#334).
+- `rtt-py`: `System` lässt sich pickeln (über die kanonische Dateiform, Protokoll ≥ 2), etwa für
+  Multiprocessing; `copy.copy` und `copy.deepcopy` gehen dadurch ebenfalls über die Dateiform. `paraxial.first_order` und `first_order_section` nehmen wie die übrigen
+  Analysen auch ein `System` (mit `materials`). `tools/check_version.py` prüft in der CI, dass
+  CMake, `pyproject.toml`, `vcpkg.json` und `raytatouille.__version__` dieselbe Version nennen
+  (#336).
+- `rtt-io`: Der ZMX-Import liest die Flächentypen `ODDASPHE` (als `odd_asphere`), `TOROIDAL`
+  (als `toroid`, mit Drehradius 0 als `cylinder`), `BICONICX` (als `biconic`, Grenzfälle als
+  `cylinder` oder `plane`) und `QED_TYPE` (als `q_con` bzw. `q_bfs`, aus den Zusatzdaten
+  `XDAT`). Eine Fläche mit Brechkraft nur in x wird ein um 90° gedrehter `cylinder`. Nach ADR
+  0044, Nachträge #360 (#360).
+- `rtt-io`: Der ZMX-Export schreibt auch gefaltete und gekippte Systeme: Faltspiegel, Spiegel
+  außer Achse, gekippte und dezentrierte Elemente und gekippte Bildflächen, mit Koordinatensprüngen
+  (Flag 0) und den Rahmen nach der Vorzeichenregel von OpticStudio (Dicken nach einer ungeraden
+  Zahl von Spiegeln negativ). Neuer Fehler `export.frame_ambiguous`; `export.not_coaxial` gibt es
+  nur noch für die Flächentabelle. In OpticStudio ungeprüft (ADR 0045, Nachtrag #366) (#366).
+- `rtt-io`: Der ZMX-Export lehnt einen koaxialen Pfad ab, der gegen die Richtung läuft, die seine
+  Spiegel vorgeben (z. B. hinter einem inaktiven Faltspiegel), mit `export.frame_ambiguous`, statt
+  eine negative Dicke ohne Spiegel zu schreiben (ADR 0045, Nachtrag #366 vom 2026-11-16) (#366).
+- `rtt-io`: Der ZMX-Export schreibt eine `odd_asphere` mit Termen bis A8 als `ODDASPHE` (`CURV` c,
+  `CONI` k, `PARM 1` … `PARM 8` = A1 … A8), die Umkehrung des Imports aus #360. Eine Fläche, die
+  `EVENASPH` aufnimmt (c = 0, nur gerade Terme bis A16), bleibt `EVENASPH`; nur was keine der
+  beiden Formen aufnimmt, ist `export.surface_unsupported` (ADR 0045, Nachtrag #368) (#368).
+- macOS 26 auf Apple Silicon ist unterstützte Plattform: Presets `ci-macos-clang` und
+  `ci-macos-python`, CI-Jobs auf `macos-26` für C++ und Python, Mindestversion 26.0 als Vorgabe
+  in CMake mit klarer Fehlermeldung darunter, Bauanleitung mit Homebrew (ADR 0047; #373).
+- `rtt-optim`, `rtt-py`: `optimize` meldet nach jeder angenommenen Iteration den Zwischenstand
+  (`on_iteration` mit `IterationState`: k, φ wie im Verlauf, Werte der Variablen und Patch von der
+  Eingabe), etwa für eine Live-Anzeige in einer GUI. Ergebnisse bleiben bitgleich; eine Exception
+  im Callback beendet den Lauf wie ein Abbruch mit dem letzten Stand (ADR 0030, Nachtrag #378;
+  #378).
+- `rtt-analysis`, `rtt-py`: Bestrahlungsstärke-Raster auf einer Fläche aus Strahltreffern
+  (`irradiance_map`, `rt.analysis.irradiance_map`): einfallendes Gewicht je projizierter
+  Zellfläche, aus `RayPaths` für jede Fläche und wählbares Ereignis oder aus dem `RayBatch` für
+  die Bildfläche ohne Speichergrenze; neuer Ergebnistyp `IrradianceMap` im Ergebnisformat
+  0.1.19 (ADR 0048; #379).
+- `rtt-model`, `rtt-io`, `rtt-py`: Dateiformat 0.10.0 mit dem Schlüssel `active` an Baugruppen und
+  Elementen, um Bauteile vorübergehend aus der Rechnung zu nehmen, ohne sie zu löschen (kanonisch
+  nur bei `false`, in der Bearbeitungsform immer, umschaltbar per Patch mit Undo; an der Wurzel
+  der Fehler `node.root_inactive`). Dateien bis 0.9 lesen sich unverändert. In Python
+  `Assembly.active` und `Element.active` (ADR 0049; #380).
+- `rtt-compile`, `rtt-model`, `rtt-optim`: Das Flag `active` wirkt in der Rechnung. Inaktive
+  Elemente behalten Lage und Geometrie (`CompiledSurface::active`, `CompiledElement::active`),
+  aber automatische Pfade überspringen sie, und explizite Pfade lassen Ereignisse an ihren Flächen
+  weg. Eine inaktive Blende zählt wie keine Blende. Ein Strahl-Operand an einer inaktiven Fläche
+  entfällt aus der Merit-Funktion und behält dabei seinen Platz. Alle Folgen des Abschaltens sind
+  Warnungen: `paths.inactive_surface`, `paths.inactive_mirror`, `paths.image_changed`,
+  `paths.all_inactive`, `stop.inactive`, `merit.surface_inactive` (ADR 0049; #380).
+- `rtt-optim`, `rtt-tolerance`, `rtt-model`, `rtt-py`: Inaktive Knoten in Optimierung und
+  Toleranzierung. Ein variabler Param in einem inaktiven Knoten ist keine Variable, mit der
+  Warnung `optim.variable_inactive` (neu: `inactive_variables`). Klassentoleranzen entstehen dort
+  nicht (Grund `ClassSkip::Inactive`). Explizite Toleranzen, Einzelwerte und Kompensatoren an
+  inaktiven Knoten werden mit der Warnung `tolerances.target_inactive` übersprungen
+  (`ToleranceItems::warnings`, auch in Python). Ein Kriterium an einer inaktiven Fläche entfällt
+  (`CriterionValue::inactive`); der Prüfling bleibt gültig (ADR 0049; #380).
+- `rtt-analysis`, `rtt-io`, `rtt-diagnostics`, `rtt-py`: Das Flag `active` im Layout
+  (`SurfaceLayout.active`, `CompiledElement.active`), im Maßreport (Spalte `active`) und im
+  Ergebnisformat 0.1.20; ältere Ergebnisdateien lesen sich mit `active = true`. Der ZMX/CSV-Export
+  lässt inaktive Elemente mit der Warnung `export.inactive_skipped` aus, statt das System
+  abzulehnen (ADR 0049, ADR 0023; #380).
+- `rtt-py`: Das Paket liefert die JSON-Schemas der Dateiformate mit (`raytatouille/schema/`, beim
+  Bauen aus `schema/` kopiert); `rt.schema("system" | "result" | "coatings")` gibt sie als `dict`
+  zurück (#386).
+- `rtt-compile`: `with_object_at_infinity(cs)` bildet aus einem übersetzten System die Variante mit
+  Objekt im Unendlichen, einem Feld 0° und der Systemapertur `StopSize` für efl und bfl; Medien,
+  auch das des Objektraums, Blende und Störung bleiben (ADR 0030, Nachtrag #397; #397).
+- Veröffentlichung auf PyPI: `.github/workflows/release.yml` baut Wheels für CPython 3.10–3.14
+  (Linux x86-64, Windows x64, macOS arm64) und ein sdist und lädt sie über Trusted Publishing nach
+  TestPyPI oder PyPI. Die Wheels enthalten die Lizenztexte der eingebetteten Bibliotheken
+  (`LICENSES/`; ADR 0018, Nachtrag #404; #404).
+
+### Geändert
+- `rtt-optim`: Ein Generator (`rms_spot`, `rms_wavefront`) behält im ganzen Lauf die Menge der
+  Strahlen, die am Start ankommen. Eine Auswertung, in der ein Strahl verloren geht oder ein am
+  Start verlorener wiederkommt, ist ungültig; die Optimierung kann die Merit-Funktion also nicht
+  mehr senken, indem sie Strahlen abschattet. Ist nur eine Seite einer Jacobi-Spalte ungültig,
+  rechnet der Löser einseitig; `failed` gilt erst, wenn beide Seiten ungültig sind. Das gilt auch
+  für die Kompensatorläufe der Toleranzierung. Ohne solche Kanten sind alle Ergebnisse bitgleich
+  (ADR 0030, Nachtrag #289; #289).
+- `rtt-optim`: Die Operanden `spot_rms` und `opd_rms` behalten im ganzen Lauf die Menge der
+  Strahlen, die am Start ankommen, wie die Generatoren seit #289. Abschatten senkt ihren Wert also
+  nicht mehr; eine Auswertung mit anderer Strahlmenge ist ungültig, auch in Kompensatorläufen.
+  `optim.rays_lost` meldet am Start verlorene Strahlen jetzt auch je Operand. Ohne solche Kanten
+  sind alle Ergebnisse bitgleich (ADR 0030, Nachtrag #299; #299).
+- `rtt-trace`: Scheitert die reale Zielung an einem Ziel außerhalb der Blendenapertur (überfüllte
+  Blende), endet der Strahl mit `Vignetted` an der Blende statt mit `NoConvergence`, wie bei
+  paraxialer Zielung. Der Strahl trägt die Blende als `last_surface`; die Analysen zählen ihn
+  unter `Vignetted`, und ein `AnalysisError` nennt die Blende (ADR 0007, Nachtrag #310; #310).
+- `rtt-model`: `tolerances.target_invalid` nennt bei Radius-, Krümmungs- und Konik-Toleranzen den
+  Typ der Basis (z. B. `base type "plane"`) statt immer „not a plane“ (#313).
+- `rtt-compile`, `rtt-model`, `rtt-io`, `rtt-py`: Kompilieren, Prüfen, Parameter, Toleranzklassen,
+  Schreiben der Datei und die Python-Layoutdaten besuchen jeden Flächentyp vollständig; ein neuer
+  Typ ist dort ein Übersetzungsfehler statt still eine Ebene oder gerade Asphäre (#313).
+- `rtt-material`: Eine AGF-Datei ohne Glas (leer, nur Kommentare oder nur CC-Zeilen) ist jetzt ein
+  `AgfError` statt still ein leerer Katalog (Entscheidung in #333). Ein Glas mit weniger als 7
+  TD-Werten bleibt ein nicht unterstütztes Glas; die Begründung nennt jetzt die Zeile des
+  TD-Datensatzes (`AgfGlass::thermal_line`). Pfade in Ladefehlern stehen in UTF-8, auch unter
+  Windows (#333).
+- `rtt-compile`, `rtt-model`: Meldungen für bisher still angenommene Fälle (#335):
+  - `environment.air_out_of_range` (Warnung): AIR außerhalb des Bereichs der Ciddor-Formel;
+  - `paths.transmit_medium_change` (Warnung): `transmit` an einer Fläche mit Medienwechsel;
+  - `paths.segment_skipped` (Fehler): Ein Ereignis eines expliziten Pfades überspringt ein
+    Linsensegment; erlaubt ist das nur bei gleichem Glas bis zur Außenfläche. Bisher gültige
+    Pfade dieser Art werden damit abgelehnt;
+  - `interaction.coating_reference_invalid` (Fehler in validate): Coating-Referenz nicht in
+    der Form `KATALOG:NAME`; solche Dateien sind jetzt ungültig.
+  `feature_tour.rtt.json` verweist jetzt auf `DEMO:AR_MGF2`.
+- CI: clang-tidy prüft auch die Python-Bindungen `_core`; der Job `ci-linux-clang` baut dafür
+  das Python-Paket mit (#336).
+- Aufräumen aus #35 (#338): Nachtrag zu ADR 0016 (`rtt-py` und `apps/rtt-cli` dürfen `rtt-io`
+  nutzen); die praktische Größe der Pupillenabtastungen im Docstring von
+  `raytatouille.analysis`; `coating.no_substrate` bei Linse und Platte ist eine interne Invariante
+  (`std::logic_error`), der Code bleibt für den Spiegel ohne Substrat.
+- `rtt-io`: Der ZMX-Export lehnt eine ideale Linse nach einer ungeraden Zahl von Spiegeln ab
+  (`export.surface_unsupported`), auch in koaxialen Systemen, die er vorher schrieb; die
+  Flächentabelle schreibt sie weiter (ADR 0045, Nachtrag #366, Punkt 5) (#366).
+- `rtt-math`: Neue Funktionen `bessel_j0` und `bessel_j1`. Sie nehmen `std::cyl_bessel_j`, wo die
+  Standardbibliothek es hat (libstdc++, MSVC), sonst `j0`/`j1` der C-Bibliothek (libc++, macOS).
+  `rtt-analysis` nutzt sie für die Encircled Energy; damit übersetzt die Bibliothek auch mit
+  libc++ (ADR 0033, Nachtrag #373; #373).
+- Build: Alle Ziele übersetzen mit GCC und Clang ohne FMA-Kontraktion (`-ffp-contract=off`).
+  Damit rechnen die Grundrechenarten auf arm64 (z. B. macOS) wie auf x86-64, und die exakte
+  Symmetrie der Pupillenzellen bleibt erhalten. Unter Linux und Windows auf x86-64 ändert sich
+  nichts (ADR 0029, Nachtrag #373; #373).
+
+### Behoben
+- `rtt-tolerance`: Ein Toleranzprüfling rechnet nicht mehr still mit einem Radius, der über eine
+  Zeile der Parametertabelle (auch eine Ausdruckszeile oder nur in einer Konfiguration) oder
+  durch einen Kompensatorlauf sein Vorzeichen gewechselt hat, 0 oder unendlich geworden ist. Der
+  Prüfling ist dann `Invalid` mit Fläche, Konfiguration und Zeile im Grund; Sensitivität und Monte
+  Carlo schließen ihn wie andere ungültige Prüflinge aus (ADR 0036, Nachtrag #293; #293).
+- `rtt-optim`, `rtt-tolerance`: `efl` und `bfl` eines Prüflings mit endlichem Objekt sind nicht
+  mehr `merit.operand_unsupported`, sobald ein anderer Operand oder ein Kriterium Feld 1 oder höher
+  nutzt (ADR 0030, Nachtrag #256; #340).
+- `rtt-compile`: Werte aus der Parametertabelle werden nach dem Auflösen auf ihren Wertebereich
+  geprüft, mit denselben Codes und Pointern wie ungebundene Werte (z. B. ein gebundener
+  Axicon-Winkel von 95° als `shape.axicon_angle_invalid`, ein gebundener Radius 0 als
+  `shape.radius_invalid`). Vorher übersetzte `compile` sie still; ein gebundener
+  Normierungsradius ≤ 0 einer Radialphase war ein `std::invalid_argument` (ADR 0029, Nachtrag
+  #353; #353).
+- `rtt-polar`, `rtt-coating`: Die Normalkomponente q = √(n² − ξ²) nutzt die neue Funktion
+  `rtt::math::principal_sqrt` (A&S 3.7.27) statt `std::sqrt` für komplexe Zahlen. Unter libc++
+  (macOS) war q bei Totalreflexion nicht rein imaginär (Re q ≈ 10⁻¹⁷); die ideale Beschichtung
+  erkannte die Totalreflexion dann nicht und ließ Licht durch (ADR 0046; #373).
+- Build (macOS): Die Vorgabe 26.0 für `CMAKE_OSX_DEPLOYMENT_TARGET` greift jetzt auch in einem
+  Build-Verzeichnis, das vor ihr angelegt wurde und die Variable als leeren Cache-Eintrag hält;
+  bisher brach das Konfigurieren dort mit der Meldung zur Mindestversion ab (ADR 0047; #373).
+- `rtt-optim`, `rtt-tolerance`: `efl` und `bfl` eines Prüflings mit endlichem Objekt in einem
+  Medium (`object.medium`) sind nicht mehr `merit.operand_unsupported`. Die Variante mit dem
+  Objekt im Unendlichen entsteht aus dem übersetzten System und behält das Medium; je Auswertung
+  entfällt dabei ein `compile` je Konfiguration mit efl oder bfl (ADR 0030, Nachtrag #397; #397).
+- `rtt-optim`, `rtt-tolerance`: `efl` und `bfl` eines Prüflings mit endlichem Objekt und einer
+  Blende auf einer Fläche (`aperture.stop`) sind nicht mehr `merit.operand_unsupported`; die
+  Variante mit dem Objekt im Unendlichen verlor die Blende (ADR 0030, Nachtrag #400; #400).
+
+### Entfernt
+- `rtt-geom`: Die virtuelle Basisklasse `Shape<T>` entfällt. Formen sind eigenständige
+  `final`-Klassen und erfüllen das Concept `IntersectableShape`; der generische Newton-Schnitt
+  heißt `intersect_newton<T, S>` und ist ein Template über die konkrete Form (#313).
+
 ## [0.9.0] – M7 Toleranzierung
 
 ### Hinzugefügt

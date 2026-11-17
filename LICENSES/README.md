@@ -15,10 +15,10 @@ diesem Verzeichnis und stehen in jedem Wheel unter `raytatouille-<version>.dist-
 | nanobind | 2.13.0 (`libs/rtt-py/tests/requirements.txt`) | BSD-3-Clause | `nanobind-BSD-3-Clause.txt` | in `_core` übersetzt |
 | robin-map (in nanobind) | wie nanobind | MIT | `robin-map-MIT.txt` | in `_core` übersetzt |
 
-**Microsoft Visual C++ Runtime (nur Windows):** Das Windows-Wheel enthält `msvcp140.dll`
-(vendored von delvewheel), weil `_core` und `tbb12.dll` gegen die DLL-Laufzeit gebaut sind und
-CPython nur `vcruntime140*.dll` mitbringt. Die DLL ist eine weitergebbare Datei des Visual
-Studio Redistributable und wird nach dessen Lizenzbedingungen unverändert weitergegeben.
+**Microsoft Visual C++ Runtime (nur Windows):** Das Windows-Wheel enthält `msvcp140.dll` und
+`msvcp140_2.dll` (von delvewheel in `raytatouille.libs/` gelegt), weil `_core` und `tbb12.dll`
+gegen die DLL-Laufzeit gebaut sind und CPython nur `vcruntime140*.dll` mitbringt. Die DLLs sind weitergebbare Dateien des Visual
+Studio Redistributable und werden nach dessen Lizenzbedingungen unverändert weitergegeben.
 Die übrigen Systemlaufzeiten (libstdc++ aus gcc-toolset unter der GCC Runtime Library Exception,
 libc++ unter Apache-2.0 WITH LLVM-exception) verlangen in Binärform keinen Hinweis.
 

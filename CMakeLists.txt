@@ -11,7 +11,7 @@ if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin" AND NOT CMAKE_OSX_DEPLOYMENT_TARGET
 endif()
 
 project(Raytatouille
-  VERSION 0.9.0
+  VERSION 0.10.0
   DESCRIPTION "Raytracing engine for optical design"
   LANGUAGES CXX)
 
