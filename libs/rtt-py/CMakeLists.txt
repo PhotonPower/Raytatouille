@@ -64,6 +64,7 @@ set(RTT_PY_SOURCES
   python/raytatouille/edit.py
   python/raytatouille/errors.py
   python/raytatouille/layout.py
+  python/raytatouille/llm_reference.md
   python/raytatouille/materials.py
   python/raytatouille/model.py
   python/raytatouille/optim.py
