@@ -35,7 +35,12 @@ python tools/handbuch_beispiele.py --python … --keep arbeit/    # Dateien und 
 
 Die venv braucht die beschriebene Version von `raytatouille` (am besten das Wheel von PyPI) und
 matplotlib. Zahlen in den letzten Stellen können zwischen Plattformen abweichen (libm); die
-abgedruckten Ausgaben stammen von macOS 26 arm64 mit Python 3.14.
+abgedruckten Ausgaben stammen von macOS 26 arm64 mit Python 3.14 und sind dort auch mit
+Python 3.11 und NumPy 2.4 gleich.
+
+Die CI führt die Beispiele im Job „Python 3.13 ci-macos-python“ nach dem Smoke-Test
+`pip install .` aus, gegen das gerade gebaute Paket. Ändert ein PR eine Ausgabe, schlägt der
+Schritt fehl; dann die Ausgabe prüfen und mit `--update` übernehmen.
 
 ## Bei einem neuen Release
 

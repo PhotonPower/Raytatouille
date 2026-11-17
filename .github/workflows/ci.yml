@@ -235,6 +235,14 @@ jobs:
           cd "$RUNNER_TEMP"
           python -c "import raytatouille as rt; print(rt.__version__, rt.__file__)"
           python -m pytest -q -p no:cacheprovider "$GITHUB_WORKSPACE/libs/rtt-py/tests"
+      - name: Examples of the user manual (#322)
+        # The 24 examples of docs/handbuch/raytatouille-handbuch.tex against the package installed
+        # by the smoke test, with the printed outputs compared character by character. Only on
+        # macOS: the outputs come from macOS arm64, and other platforms may differ in the last
+        # digits (libm, ADR 0011); matplotlib comes from the test requirements.
+        if: matrix.smoke && runner.os == 'macOS'
+        shell: bash
+        run: python tools/handbuch_beispiele.py --python "$(command -v python)"
       - name: Editable install over an editable install (#271)
         if: matrix.editable
         shell: bash
