@@ -24,9 +24,9 @@ struct ParabasalValue {
 /// real aiming and the nominal aiming data: the chief ray and the rays at (+-delta, 0) and
 /// (0, +-delta) (addendum #256).
 /// @param trial          the compiled trial (with its overlay)
-/// @param trial_infinite the trial's variant "object at infinity" (variant_of()), compiled with
-///                       the same overlay; required for efl and bfl with a finite object, else
-///                       unused
+/// @param trial_infinite the trial's variant "object at infinity"
+///                       (compile::with_object_at_infinity of `trial`, addendum #397); required
+///                       for efl and bfl with a finite object, else unused
 /// @param nominal        the nominal data of the operand's path and wavelength
 /// @param reference      the nominal aiming data of the path (analysis::NominalReference)
 /// @param object_at_infinity whether the system's object is at infinity

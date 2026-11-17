@@ -495,3 +495,43 @@ TEST_CASE("parabasal: efl of a trial with a real reading of the object-space NA 
   CHECK(std::abs(value(s, FirstOrderQuantity::Efl, &o) - efl_hand) <= 1e-6 * efl_hand);
   CHECK(std::abs(value(s, FirstOrderQuantity::Bfl, &o) - bfl_hand) <= 1e-6 * std::abs(bfl_hand));
 }
+
+TEST_CASE("parabasal: efl and bfl of a trial with the object in a medium (#397)",
+          "[optim][parabasal]") {
+  // #397: the variant with the object at infinity was a model and failed validate with an object
+  // medium (object.medium_infinite, ADR 0037); efl and bfl of a trial were unsupported. It is now
+  // built from the compiled system and keeps the medium. Hand value: the y-nu trace of
+  // doublet_efl_bfl() with the first surface refracting out of n_obj = 1.33 (Greivenkamp,
+  // OPTI-201/202 lecture notes, Sec. 9: nu' = nu - y (n' - n) c, y' = y + t nu' / n' on p. 9-2,
+  // phi = -n'u'_k / y_1 and BFD = -y_k / u'_k on p. 9-12; n' = 1 in the image space, so
+  // efl = 1/phi = -1/nu_k and bfl = -y_k/nu_k with y_1 = 1).
+  constexpr double kNObject = 1.33;
+  struct Refraction {
+    double z, radius, n_before, n_after;
+  };
+  const std::vector<Refraction> surfaces = {{0.0, 50.0, kNObject, 1.6},
+                                            {5.0, -200.0, 1.6, 1.0},
+                                            {15.0, 80.0, 1.0, 1.5},
+                                            {19.0, -80.0, 1.5, 1.0}};
+  double y = 1.0;
+  double nu = 0.0;
+  for (std::size_t i = 0; i < surfaces.size(); ++i) {
+    const Refraction& r = surfaces[i];
+    nu -= y * (r.n_after - r.n_before) / r.radius;
+    if (i + 1 < surfaces.size()) y += (surfaces[i + 1].z - r.z) * nu / r.n_after;
+  }
+  const double efl_hand = -1.0 / nu;
+  const double bfl_hand = -y / nu;
+  // Content guard: the medium changes the power (the vacuum values of doublet_efl_bfl() differ).
+  REQUIRE(std::abs(efl_hand - doublet_efl_bfl().first) > 1.0);
+
+  System s = doublet_finite();
+  s.object.medium = "CONST:1.33";
+  // Without overlay (rtt::paraxial on the finite system) the same power.
+  CHECK(std::abs(value(s, FirstOrderQuantity::Efl) - efl_hand) <= 1e-12 * efl_hand);
+  CHECK(std::abs(value(s, FirstOrderQuantity::Bfl) - bfl_hand) <= 1e-12 * std::abs(bfl_hand));
+  const TrialOverlay o = overlay_of(s);
+  // Parabasal against paraxial: O(delta^2), as in the test of #340.
+  CHECK(std::abs(value(s, FirstOrderQuantity::Efl, &o) - efl_hand) <= 1e-6 * efl_hand);
+  CHECK(std::abs(value(s, FirstOrderQuantity::Bfl, &o) - bfl_hand) <= 1e-6 * std::abs(bfl_hand));
+}

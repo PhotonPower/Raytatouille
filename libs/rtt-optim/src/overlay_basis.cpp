@@ -59,29 +59,6 @@ std::string message_of(const std::exception_ptr& error) {
 
 }  // namespace
 
-namespace detail {
-
-model::System variant_of(const model::System& system) {
-  model::System v = system;
-  v.object.at_infinity = true;
-  // A reference of the object distance only exists for a finite object (ADR 0038, point 7).
-  v.object.reference.reset();
-  v.fields = {model::FieldType::AngleDeg, {{0.0, 0.0, 1.0}}};
-  // Only type and value: a stop on a surface (aperture.stop, ADR 0039) stays the stop (#400). The
-  // reading belongs to object_na only (ADR 0040, validate: aperture.reading_not_na).
-  v.aperture.type = model::SystemApertureType::StopSize;
-  v.aperture.value = model::Param(0.0);
-  v.aperture.reading = model::ApertureReading::Paraxial;
-  // The variant is only compiled for aiming and paraxial data; nobody reads its merit function or
-  // tolerances. Their field indices refer to the fields of the system, not to the single field
-  // above (#340: validate would report merit.index_out_of_range).
-  v.optimization = {};
-  v.tolerances = {};
-  return v;
-}
-
-}  // namespace detail
-
 std::size_t NominalBasis::configurations() const noexcept {
   return data_->configurations.size();
 }
@@ -92,23 +69,14 @@ NominalBasis nominal_basis(const model::System& nominal,
   auto data = std::make_shared<detail::BasisData>();
   data->wavelengths = nominal.wavelengths.size();
   const std::size_t count = model::configuration_count(nominal);
-  const model::System variant = detail::variant_of(nominal);
   for (std::size_t k = 0; k < count; ++k) {
     const compile::CompiledSystem cs = compile_one(nominal, materials, coatings, k);
     detail::ConfigurationData config;
     config.object_at_infinity = nominal.object.at_infinity;
-    // The variant of a finite object, compiled once per configuration; its failure only
-    // concerns efl and bfl.
+    // The variant of a finite object from the compiled system (addendum #397): no second compile,
+    // and it keeps the medium of the object space (ADR 0037).
     std::optional<compile::CompiledSystem> inf;
-    std::string inf_error;
-    if (!config.object_at_infinity) {
-      try {
-        inf.emplace(compile_one(variant, materials, coatings, k));
-      } catch (...) {
-        inf_error = "the variant with the object at infinity does not compile: " +
-                    message_of(std::current_exception());
-      }
-    }
+    if (!config.object_at_infinity) inf.emplace(compile::with_object_at_infinity(cs));
     for (std::uint32_t p = 0; p < cs.paths().size(); ++p) {
       const compile::PathId path{p};
       detail::PathData pd{cs.path(path).name, analysis::nominal_reference(cs, path), {}};
@@ -143,8 +111,6 @@ NominalBasis nominal_basis(const model::System& nominal,
           } catch (...) {
             wd.infinite_unsupported = message_of(std::current_exception());
           }
-        } else if (!inf) {
-          wd.infinite_unsupported = inf_error;
         } else {
           try {
             wd.infinite_aim = trace::aim_reference(*inf, path, wl);
