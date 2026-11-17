@@ -1,4 +1,4 @@
-"""raytatouille: Python API of the Raytatouille raytracing engine for optical design.
+"""raytatouille: raytracing engine for optical design (agents: raytatouille.llm_reference()).
 
 Agents and language models: start with ``raytatouille.llm_reference()``, a compact reference
 (workflow, conventions, file format, recipes, API index) shipped with the package as

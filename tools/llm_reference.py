@@ -132,7 +132,7 @@ def _signature(name: str, obj: object) -> str:
     return _clean(f"{name}({', '.join(kept)}){ret}")
 
 
-def public_functions(heading: str, module: str, cls: str) -> list[tuple[str, object]]:
+def public_functions(module: str, cls: str) -> list[tuple[str, object]]:
     import raytatouille as rt
 
     if cls:
@@ -145,9 +145,6 @@ def public_functions(heading: str, module: str, cls: str) -> list[tuple[str, obj
     for n in names:
         obj = getattr(mod, n, None)
         if obj is None or isinstance(obj, type) or not callable(obj) or n[0].isupper():
-            continue
-        if module == "" and n == "llm_reference":
-            out.append((n, obj))
             continue
         out.append((n, obj))
     return out
@@ -165,7 +162,7 @@ def classes(module: str) -> list[str]:
 def index() -> str:
     lines: list[str] = []
     for heading, module, cls in SECTIONS:
-        funcs = public_functions(heading, module, cls)
+        funcs = public_functions(module, cls)
         if not funcs:
             continue
         lines.append(f"### {heading}")

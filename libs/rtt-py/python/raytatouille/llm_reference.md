@@ -9,7 +9,8 @@ The code blocks run in order as one session (a test checks that).
 Sequential raytracing engine for optical design (C++20 core, NumPy results): lenses, mirrors,
 prisms, gratings, crystals, coatings, polarization, paraxial optics, aberrations, wavefront,
 PSF/MTF, optimization (Levenberg-Marquardt) and tolerancing (sensitivity, Monte Carlo).
-Headless, deterministic, thread-safe. `import raytatouille as rt`.
+Headless and deterministic; a `CompiledSystem` is immutable and may be shared between threads, and
+analyses parallelise internally (`threads=`). `import raytatouille as rt`.
 
 ## Lifecycle (always the same)
 
@@ -27,11 +28,12 @@ Headless, deterministic, thread-safe. `import raytatouille as rt`.
 
 | Topic | Rule |
 | --- | --- |
-| Units | mm, µm (vacuum wavelength), degrees in files and API (`*_deg`), °C, atm |
+| Units | mm, µm (vacuum wavelength), °C, atm; names ending in `_deg` are degrees, every other angle (Zernike θ, retardance, phases) is rad |
 | Axes | right-handed, optical axis +z, y meridional |
-| Rotation | intrinsic X→Y→Z, R = Rx·Ry·Rz; pose default: translate first |
+| Pose | `position` [x, y, z] is a location in the frame of the parent node (`reference: absolute`, default), not a thickness; `relative_to_preceding` places after the last surface before it, so one value is an air gap |
+| Rotation | `rotation_deg` [a, b, c], intrinsic X→Y→Z, R = Rx·Ry·Rz, about the optional `pivot`; `order`: `translate_first` (default) or `rotate_first` (a coordinate break). +a about x turns local +z towards −y |
 | Radius sign | R > 0 if the centre of curvature lies at +z of the vertex; `plane` has no radius |
-| Indices | absolute; `AIR` = Ciddor air at 20 °C, 1 atm (environment) |
+| Indices | absolute; `AIR` = Ciddor air at 20 °C, 1 atm (environment). EFL in AIR is n_air times smaller than in tools that set n_air = 1 (Zemax); to compare, set `environment.medium` to `VACUUM` |
 | Fields | `angle_deg` (direction ∝ (tan θx, tan θy, 1)), `object_height` mm, `paraxial_image_height` mm |
 | Pupil | unit circle = rim of the paraxial entrance pupil, +py meridional |
 | OPD | W = OPL_ref − OPL, positive = leading, in waves at the reference wavelength |
@@ -86,14 +88,25 @@ Format essentials (`rt.schema("system")` returns the full JSON schema as a dict)
 - Surface `shape.base`: `plane`, `conic` (`radius`, `conic`), `even_asphere` (+ `coefficients`
   A4, A6, …), `odd_asphere` (`curvature`, `conic`, A1, A2, …), `axicon` (`angle_deg`), `qcon` /
   `qbfs` (`curvature`, `conic`, `normalization_radius`, `coefficients`), `biconic`, `toroid`,
-  `cylinder`. `aperture`: `circular` (`radius`, `inner_radius`), `rectangular`, `elliptical`.
+  `cylinder`. `aperture`: `circular` (`radius`, `inner_radius`), `rectangular` (`half_width_x`,
+  `half_width_y`), `elliptical` (`semi_axis_x`, `semi_axis_y`). `phases`: `linear_grating`
+  (`lines_per_mm`, `orientation_deg`), `radial_phase` (`normalization_radius`, `coefficients`
+  in rad), with optional `diffraction_efficiency`. `shape.terms` (`zernike_sag`) is read but
+  not compiled (`shape.zernike_unsupported`).
   `interaction`: `fresnel` (default), `ideal_mirror`, `absorber`, `ideal_beam_splitter`,
   `ideal_polarizer`, `ideal_retarder`, `ideal_lens`, `coating` (`"name": "CAT:NAME"`), … .
 - Materials: `CONST:n` or `CONST:n,k`, `AIR`, `VACUUM`, `CATALOG:NAME` from a loaded AGF file
-  (catalog name = file stem upper-case). No glass catalogs ship with the package.
+  (catalog name = file stem upper-case, or `add_catalog(path, name=…)`). No glass catalogs ship
+  with the package; AGF files come from the glass makers' web sites. Uniaxial crystals:
+  `"material": {"ordinary": "CAT:X", "extraordinary": "CAT:X-E"}` plus `"optic_axis": [x, y, z]`
+  on the element.
 - Numbers that may vary are Params: `51.68`, `{"value": 51.68, "variable": true, "min": 40}`
-  or `{"param": "ROW"}` (row of the parameter table).
-- Paths: `{"name": "main", "events": "auto"}` (all active surfaces in tree order) or explicit
+  or `{"param": "ROW"}` (row of the parameter table). Configurations (zoom):
+  `"configurations": [{"name": "wide"}, {"name": "tele"}]`, `"parameters": [{"name": "D",
+  "values": [10.0, 25.0]}]` and `{"param": "D"}` at a Param; rows may also be
+  `{"name": …, "value": v}` or `{"name": …, "expression": "2*D"}`.
+- Paths: `{"name": "main", "events": "auto"}` (all active surfaces in tree order: lenses and
+  plates refract, mirrors reflect, thin elements, stops and detectors transmit) or explicit
   events `{"surface": id, "kind": "refract" | "reflect" | "transmit" | "ordinary" |
   "extraordinary", "order": m}`.
 
@@ -142,10 +155,12 @@ rt.trace.trace(cs, rays)                    # in place; columns are NumPy views
 ok = rays.status == rt.trace.RayStatus.ALIVE
 print(int(ok.sum()), rays.size, float(rays.pos_y[ok].max()))
 stats, paths = rt.trace.trace(cs, rt.trace.make_rays(cs, rt.trace.FanYPupil(n=5)),
-                              record_path=True)  # RayPaths: .position (event, ray, 3), .status
+                              record_path=True)  # RayPaths: .position (ray, slot, 3), slot 0 = start
 ```
 
-`RayBatch` columns: `pos_x/y/z`, `dir_x/y/z`, `wl` (index), `opl`, `weight`, `field`,
+`make_rays` without `wavelength` makes rays at the reference wavelength only and without `fields`
+for all fields; `spot` without `wavelength` uses all wavelengths (`hexapolar:N` counts per field
+and wavelength). `RayBatch` columns: `pos_x/y/z`, `dir_x/y/z`, `wl` (index), `opl`, `weight`, `field`,
 `pupil_x/y`, `status`, `last_surface`. Ray problems are status values (`MISSED`, `VIGNETTED`,
 `TIR`, `NO_CONVERGENCE`, `ABSORBED`, `EVENT_IMPOSSIBLE`, `EVANESCENT`), never exceptions. Own
 start rays: fill a `rt.trace.RayBatch(n)` and call `trace`; needed for tilted, decentred or
@@ -220,13 +235,14 @@ t["tolerances"] = {
     "criteria": [{"id": "efl", "operand": {"type": "efl", "path": "main"}, "max_change": 0.3}],
     "monte_carlo": {"seed": 1, "trials": 50}}
 ts = rt.System.from_json(json.dumps(t))
-sens = rt.tolerance.sensitivity(ts)        # .criteria[i].rss, .items[k] (ItemContribution)
+sens = rt.tolerance.sensitivity(ts)        # .criteria[i].rss, .criteria[i].items[k] (ItemContribution)
 mc = rt.tolerance.monte_carlo(ts)          # .yield_.fraction, .criteria[i].percentiles
 print(round(sens.criteria[0].rss, 4), mc.yield_.good, "/", mc.yield_.total)
 ```
 
 Item `kind`: `radius`, `curvature_relative`, `conic`, `thickness`, `param`, `parameter`,
-`decenter_x/y`, `shift_z`, `tilt_x/y/z_deg`, `index`, `abbe`. Targets are anchors
+`decenter_x/y`, `shift_z`, `tilt_x/y/z_deg`, `index`, `abbe`. A compensator that reaches its
+travel gives the warning `optim.parameter_at_bound` (as above for some trials). Targets are anchors
 (`surface`, `node`, `parameter`) plus an optional `param` pointer, never indices. `"class":
 "coarse" | "normal" | "precise"` generates items from a table (`rt.tolerance.expand` lists them).
 
@@ -248,10 +264,13 @@ function per result type, `rt.plot.spot(diagram, ax=None) -> Axes` and likewise 
 
 ## Errors and warnings
 
-- Exceptions (all `rt.RaytatouilleError`): `ParseError` (file text, with pointer), `CompileError`
-  and `OptimError` (`.diagnostics`, `.codes`), `ParaxialError`, `AnalysisError`, `NoStopError`,
-  `ApertureError`, `EditError`, `AgfError`, `CoatingCatalogError`, `UnknownMaterial`.
-  `Cancelled` only from analyses with a `cancel` token.
+- Exceptions of the library (all `rt.RaytatouilleError`): `ParseError` (file text, with
+  pointer), `CompileError` and `OptimError` (`.diagnostics`, `.codes`), `ParaxialError`,
+  `AnalysisError`, `NoStopError`, `ApertureError`, `EditError`, `AgfError`,
+  `CoatingCatalogError`, `UnknownMaterial`. Wrong arguments raise the built-in `ValueError`,
+  `TypeError` or `IndexError`.
+- Cancel: analyses, `make_rays` and `trace` raise `rt.Cancelled`; `optimize`, `sensitivity` and
+  `monte_carlo` do not raise but end with status `CANCELLED` and what they have.
 - Warnings are `rt.RaytatouilleWarning` (Python `warnings`), e.g. lost rays or extrapolated
   material data; results also keep them in `.warnings`.
 - Diagnostic codes are stable strings (`material.unknown`, `shape.radius_invalid`, …); the
@@ -260,7 +279,8 @@ function per result type, `rt.plot.spot(diagram, ax=None) -> Axes` and likewise 
 ## Limits of 0.10
 
 No freeform surfaces (Zernike sag, XY, grid) yet; automatic aiming only for rotationally
-symmetric and anamorphic paths; sequential tracing only; scalar diffraction; ZMX import and
+symmetric and anamorphic paths; no non-sequential tracing (paths are explicit event lists, also
+several per system); scalar diffraction; ZMX import and
 export only in the command-line tool `rtt` (not in the wheel); only `System` pickles.
 
 ## API index (generated)
