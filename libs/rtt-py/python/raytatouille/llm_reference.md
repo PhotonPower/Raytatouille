@@ -130,6 +130,10 @@ ee = rt.analysis.encircled_energy(cs, [0.005, 0.01, 0.02], field=0)   # radii in
 print(round(psf.strehl, 3), ee.energy.shape)
 ```
 
+This singlet (1.4 waves RMS on axis) warns `psf.pupil_undersampled` and `psf.aliasing` (raise
+`grid`) and `pupil.mapping_nonlinear` (a fast system; the pupil-to-image mapping is not linear).
+Warnings say how far to trust a result; they never stop a run.
+
 ### Rays
 
 ```python
@@ -261,76 +265,81 @@ export only in the command-line tool `rtt` (not in the wheel); only `System` pic
 
 ## API index (generated)
 
+One line per public function. `…` stands for the keywords many functions share:
+`materials`, `coatings`, `threads`, `cancel`, `progress` and the warning limits
+`lost_warning_fraction`, `undersampled_waves`, `mapping_warning`, `mapping_limit`
+(see `help(function)`). `SystemLike` = `System | CompiledSystem`.
+
 <!-- BEGIN GENERATED: python tools/llm_reference.py --write -->
 ### raytatouille
 ```text
-apply_patch(system: System, patch: Patch, *, check: Check = no_new_errors) -> System
-apply_patch_with_inverse(system: System, patch: Patch, *, check: Check = no_new_errors) -> PatchResult
-compile(*args, **kwargs)
-compile_with_ghosts(*args, **kwargs)
-ghost_paths(*args, **kwargs)
+apply_patch(system: System, patch: Patch, *, check: Check = 'no_new_errors') -> System
+apply_patch_with_inverse(system: System, patch: Patch, *, check: Check = 'no_new_errors') -> PatchResult
+compile(system: System, materials: MaterialLibrary | None = None, coatings: CoatingLibrary | None = None, *, configuration: int | str = 0) -> CompiledSystem
+compile_with_ghosts(system: System, base: int | str = 0, materials: MaterialLibrary | None = None, coatings: CoatingLibrary | None = None, *, max_paths: int = 10000, configuration: int | str = 0) -> GhostSystem
+ghost_paths(system: CompiledSystem, base: int | str = 0, *, max_paths: int = 10000) -> list[Path]
 llm_reference() -> str
-load(*args, **kwargs)
-save(*args, **kwargs)
-schema(name: str = system) -> dict[str, Any]
-validate(*args, **kwargs)
+load(file: str | os.PathLike) -> System
+save(system: System, file: str | os.PathLike) -> None
+schema(name: str = 'system') -> dict[str, Any]
+validate(system: System) -> list[Diagnostic]
 ```
 Classes: `CancelToken`, `CoatingLibrary`, `CompiledMedium`, `CompiledSystem`, `Diagnostic`, `Editor`, `Environment`, `Field`, `GhostPaths`, `GhostSystem`, `LoadWarning`, `MaterialLibrary`, `PatchResult`, `System`, `Wavelength`.
 
 ### rt.paraxial
 ```text
-first_order(system: SystemLike, path: int | str = 0, wavelength: int | None = None, *, materials: MaterialLibrary | None = None) -> FirstOrder
-first_order_section(system: SystemLike, section: Section, path: int | str = 0, wavelength: int | None = None, *, materials: MaterialLibrary | None = None) -> FirstOrder
-is_anamorphic(*args, **kwargs)
-prescription(system: SystemLike, path: int | str = 0, wavelength: int | None = None, *, materials: MaterialLibrary | None = None) -> Prescription
-seidel(system: SystemLike, path: int | str = 0, wavelength: int | None = None, *, pair: ChromaticPair | tuple[int, int] | None = None, materials: MaterialLibrary | None = None) -> Seidel
-trace_ray_section(*args, **kwargs)
+first_order(system: SystemLike, path: int | str = 0, wavelength: int | None = None, *, …) -> FirstOrder
+first_order_section(system: SystemLike, section: Section, path: int | str = 0, wavelength: int | None = None, *, …) -> FirstOrder
+is_anamorphic(system: CompiledSystem, path: int | str = 0) -> bool
+prescription(system: SystemLike, path: int | str = 0, wavelength: int | None = None, *, …) -> Prescription
+seidel(system: SystemLike, path: int | str = 0, wavelength: int | None = None, *, pair: ChromaticPair | tuple[int, int] | None = None, …) -> Seidel
+trace_ray_section(system: CompiledSystem, section: Section, z0: float, h0: float, u0: float, path: int | str = 0, wavelength: int | None = None) -> list[RayAtEvent]
 ```
 Classes: `ChromaticPair`, `FirstOrder`, `Prescription`, `PrescriptionSurfaces`, `Pupil`, `RayAtEvent`, `RayStart`, `Seidel`, `SeidelSurfaces`, `SeidelTerms`.
 
 ### rt.trace
 ```text
-gauss_pupil_weights(*args, **kwargs)
-make_rays(*args, **kwargs)
-trace(system: CompiledSystem, rays: RayBatch, *, path: int | str = 0, threads: int | None = None, record_path: bool = False, record_rays: npt.ArrayLike | None = None, max_recorded_rays: int = 10000, polarization: bool = False, cancel: CancelToken | None = None, progress: ProgressCallback | None = None) -> TraceStats | tuple[TraceStats, RayPaths]
+gauss_pupil_weights(gauss: GaussPupil) -> list[float]
+make_rays(system: CompiledSystem, sampling: PupilSampling, *, path: int | str = 0, fields: Sequence[int] | None = None, wavelength: int | None = None, aiming: Aiming = Aiming.REAL, …) -> RayBatch
+trace(system: CompiledSystem, rays: RayBatch, *, path: int | str = 0, record_path: bool = False, record_rays: npt.ArrayLike | None = None, polarization: bool = False, …) -> TraceStats | tuple[TraceStats, RayPaths]
 ```
 Classes: `CancelToken`, `FanXPupil`, `FanYPupil`, `GaussPupil`, `GridPupil`, `HexapolarPupil`, `PointListPupil`, `RandomPupil`, `RayBatch`, `RayPaths`, `SinglePupilPoint`, `TraceStats`.
 
 ### rt.analysis
 ```text
-dimension_report(system: SystemLike, *, materials: MaterialLibrary | None = None) -> DimensionReport
-distortion(system: SystemLike, path: int | str = 0, wavelength: int | None = None, *, samples: int = 11, aiming: Aiming = Aiming.REAL, materials: MaterialLibrary | None = None, threads: int | None = None, cancel: CancelToken | None = None, progress: ProgressCallback | None = None) -> DistortionSweep
-distortion_at(system: SystemLike, field: Field | tuple[float, float], path: int | str = 0, wavelength: int | None = None, *, aiming: Aiming = Aiming.REAL, materials: MaterialLibrary | None = None, threads: int | None = None) -> DistortionPoint
-encircled_energy(system: SystemLike | PupilFunction, radii: Sequence[float] | int | np.integer[Any], path: int | str | None = None, field: int | None = None, *, relative: bool = False, centre: EeCentre = EeCentre.REFERENCE, wavelengths: Sequence[int] | None = None, grid: int | None = None, apodization: float | None = None, focus_shift: float | None = None, aiming: Aiming | None = None, undersampled_waves: float | None = None, materials: MaterialLibrary | None = None, threads: int | None = None, lost_warning_fraction: float | None = None, mapping_warning: float | None = None, mapping_limit: float | None = None, cancel: CancelToken | None = None, progress: ProgressCallback | None = None) -> EncircledEnergy
-field_curvature(system: SystemLike, path: int | str = 0, wavelength: int | None = None, *, samples: int = 11, delta: float = 0.001, aiming: Aiming = Aiming.REAL, materials: MaterialLibrary | None = None, threads: int | None = None, cancel: CancelToken | None = None, progress: ProgressCallback | None = None) -> FieldCurvatureSweep
-field_curvature_at(system: SystemLike, field: Field | tuple[float, float], path: int | str = 0, wavelength: int | None = None, *, delta: float = 0.001, aiming: Aiming = Aiming.REAL, materials: MaterialLibrary | None = None, threads: int | None = None) -> FieldCurvaturePoint
-ghost_ranking(ghosts: GhostSystem, field: int = 0, wavelength: int | None = None, *, rays: str | PupilSampling = hexapolar:6, aiming: Aiming = Aiming.REAL, resolution_radius: float = 0.005, threads: int | None = None, lost_warning_fraction: float = 0.5, cancel: CancelToken | None = None, progress: ProgressCallback | None = None) -> GhostRanking
-interferogram(system: SystemLike, path_a: int | str, path_b: int | str, *, start: RayBatch | None = None, field: int | None = None, wavelength: int | None = None, rays: str | PupilSampling | None = None, aiming: Aiming | None = None, materials: MaterialLibrary | None = None, threads: int | None = None, lost_warning_fraction: float = 0.5, cancel: CancelToken | None = None, progress: ProgressCallback | None = None) -> Interferogram
-irradiance_map(system: SystemLike, rays: RayPaths | RayBatch, *, surface: str | None = None, path: int | str = 0, nx: int = 64, ny: int = 64, extent: tuple[float, float, float, float] | None = None, event: int | None = None, wavelength: int | None = None, materials: MaterialLibrary | None = None) -> IrradianceMap
-jones_pupil(system: SystemLike, path: int | str = 0, *, start: RayBatch | None = None, chief: int | None = None, field: int | None = None, wavelength: int | None = None, rays: str | PupilSampling | None = None, aiming: Aiming | None = None, basis: JonesBasis = JonesBasis.DOUBLE_POLE, remove_global_phase: bool = False, field_amplitude: bool = False, materials: MaterialLibrary | None = None, threads: int | None = None, lost_warning_fraction: float = 0.5, cancel: CancelToken | None = None, progress: ProgressCallback | None = None) -> JonesPupil
-lateral_colour(system: SystemLike, path: int | str = 0, field: int = 0, *, aiming: Aiming = Aiming.REAL, materials: MaterialLibrary | None = None, threads: int | None = None, cancel: CancelToken | None = None, progress: ProgressCallback | None = None) -> LateralColour
-longitudinal_colour(system: SystemLike, path: int | str = 0, *, pair: ChromaticPair | tuple[int, int] | None = None, zone: float = 1.0, aiming: Aiming = Aiming.REAL, materials: MaterialLibrary | None = None, threads: int | None = None, cancel: CancelToken | None = None, progress: ProgressCallback | None = None) -> LongitudinalColour
-mtf(system: SystemLike | PupilFunction, path: int | str | None = None, field: int | None = None, *, wavelengths: Sequence[int] | None = None, grid: int | None = None, map: bool = False, complex_otf: bool = False, apodization: float | None = None, focus_shift: float | None = None, aiming: Aiming | None = None, undersampled_waves: float | None = None, materials: MaterialLibrary | None = None, threads: int | None = None, lost_warning_fraction: float | None = None, mapping_warning: float | None = None, mapping_limit: float | None = None, cancel: CancelToken | None = None, progress: ProgressCallback | None = None) -> Mtf
+dimension_report(system: SystemLike, *, …) -> DimensionReport
+distortion(system: SystemLike, path: int | str = 0, wavelength: int | None = None, *, samples: int = 11, aiming: Aiming = Aiming.REAL, …) -> DistortionSweep
+distortion_at(system: SystemLike, field: Field | tuple[float, float], path: int | str = 0, wavelength: int | None = None, *, aiming: Aiming = Aiming.REAL, …) -> DistortionPoint
+encircled_energy(system: SystemLike | PupilFunction, radii: Sequence[float] | int | np.integer[Any], path: int | str | None = None, field: int | None = None, *, relative: bool = False, centre: EeCentre = EeCentre.REFERENCE, wavelengths: Sequence[int] | None = None, grid: int | None = None, apodization: float | None = None, focus_shift: float | None = None, aiming: Aiming | None = None, …) -> EncircledEnergy
+field_curvature(system: SystemLike, path: int | str = 0, wavelength: int | None = None, *, samples: int = 11, delta: float = 0.001, aiming: Aiming = Aiming.REAL, …) -> FieldCurvatureSweep
+field_curvature_at(system: SystemLike, field: Field | tuple[float, float], path: int | str = 0, wavelength: int | None = None, *, delta: float = 0.001, aiming: Aiming = Aiming.REAL, …) -> FieldCurvaturePoint
+ghost_ranking(ghosts: GhostSystem, field: int = 0, wavelength: int | None = None, *, rays: str | PupilSampling = 'hexapolar:6', aiming: Aiming = Aiming.REAL, resolution_radius: float = 0.005, …) -> GhostRanking
+interferogram(system: SystemLike, path_a: int | str, path_b: int | str, *, start: RayBatch | None = None, field: int | None = None, wavelength: int | None = None, rays: str | PupilSampling | None = None, aiming: Aiming | None = None, …) -> Interferogram
+irradiance_map(system: SystemLike, rays: RayPaths | RayBatch, *, surface: str | None = None, path: int | str = 0, nx: int = 64, ny: int = 64, extent: tuple[float, float, float, float] | None = None, event: int | None = None, wavelength: int | None = None, …) -> IrradianceMap
+jones_pupil(system: SystemLike, path: int | str = 0, *, start: RayBatch | None = None, chief: int | None = None, field: int | None = None, wavelength: int | None = None, rays: str | PupilSampling | None = None, aiming: Aiming | None = None, basis: JonesBasis = JonesBasis.DOUBLE_POLE, remove_global_phase: bool = False, field_amplitude: bool = False, …) -> JonesPupil
+lateral_colour(system: SystemLike, path: int | str = 0, field: int = 0, *, aiming: Aiming = Aiming.REAL, …) -> LateralColour
+longitudinal_colour(system: SystemLike, path: int | str = 0, *, pair: ChromaticPair | tuple[int, int] | None = None, zone: float = 1.0, aiming: Aiming = Aiming.REAL, …) -> LongitudinalColour
+mtf(system: SystemLike | PupilFunction, path: int | str | None = None, field: int | None = None, *, wavelengths: Sequence[int] | None = None, grid: int | None = None, map: bool = False, complex_otf: bool = False, apodization: float | None = None, focus_shift: float | None = None, aiming: Aiming | None = None, …) -> Mtf
 noll_from_nm(n: int, m: int, sine: bool = False) -> int
 noll_to_nm(j: int) -> NollIndex
-opd_fan(system: SystemLike, path: int | str = 0, field: int = 0, wavelength: int | None = None, *, points: int = 21, aiming: Aiming = Aiming.REAL, focus_shift: float = 0.0, materials: MaterialLibrary | None = None, threads: int | None = None, lost_warning_fraction: float = 0.5, cancel: CancelToken | None = None, progress: ProgressCallback | None = None) -> OpdFan
-opd_map(system: SystemLike, path: int | str = 0, field: int = 0, wavelength: int | None = None, *, grid: int = 33, aiming: Aiming = Aiming.REAL, focus_shift: float = 0.0, materials: MaterialLibrary | None = None, threads: int | None = None, lost_warning_fraction: float = 0.5, cancel: CancelToken | None = None, progress: ProgressCallback | None = None) -> OpdMap
-opd_points(system: SystemLike, path: int | str = 0, field: int = 0, wavelength: int | None = None, *, rays: str | PupilSampling = hexapolar:6, aiming: Aiming = Aiming.REAL, focus_shift: float = 0.0, materials: MaterialLibrary | None = None, threads: int | None = None, lost_warning_fraction: float = 0.5, cancel: CancelToken | None = None, progress: ProgressCallback | None = None) -> OpdPupilPoints
-opl_difference(system: SystemLike, path_a: int | str, path_b: int | str, *, start: RayBatch | None = None, field: int | None = None, wavelength: int | None = None, rays: str | PupilSampling | None = None, aiming: Aiming | None = None, materials: MaterialLibrary | None = None, threads: int | None = None, lost_warning_fraction: float = 0.5, cancel: CancelToken | None = None, progress: ProgressCallback | None = None) -> PathOplDifference
-path_transmission(system: SystemLike, path: int | str = 0, *, start: RayBatch | None = None, field: int | None = None, wavelength: int | None = None, rays: str | PupilSampling | None = None, aiming: Aiming | None = None, materials: MaterialLibrary | None = None, threads: int | None = None, lost_warning_fraction: float = 0.5, cancel: CancelToken | None = None, progress: ProgressCallback | None = None) -> PathTransmission
-psf(system: SystemLike, path: int | str = 0, field: int = 0, *, wavelengths: Sequence[int] | None = None, grid: int = 64, padding: int = 4, apodization: float = 0.0, focus_shift: float = 0.0, aiming: Aiming = Aiming.REAL, aliasing_factor: float = 3.0, undersampled_waves: float = 0.5, materials: MaterialLibrary | None = None, threads: int | None = None, lost_warning_fraction: float = 0.5, mapping_warning: float = 0.01, mapping_limit: float = 0.05, cancel: CancelToken | None = None, progress: ProgressCallback | None = None) -> Psf
+opd_fan(system: SystemLike, path: int | str = 0, field: int = 0, wavelength: int | None = None, *, points: int = 21, aiming: Aiming = Aiming.REAL, focus_shift: float = 0.0, …) -> OpdFan
+opd_map(system: SystemLike, path: int | str = 0, field: int = 0, wavelength: int | None = None, *, grid: int = 33, aiming: Aiming = Aiming.REAL, focus_shift: float = 0.0, …) -> OpdMap
+opd_points(system: SystemLike, path: int | str = 0, field: int = 0, wavelength: int | None = None, *, rays: str | PupilSampling = 'hexapolar:6', aiming: Aiming = Aiming.REAL, focus_shift: float = 0.0, …) -> OpdPupilPoints
+opl_difference(system: SystemLike, path_a: int | str, path_b: int | str, *, start: RayBatch | None = None, field: int | None = None, wavelength: int | None = None, rays: str | PupilSampling | None = None, aiming: Aiming | None = None, …) -> PathOplDifference
+path_transmission(system: SystemLike, path: int | str = 0, *, start: RayBatch | None = None, field: int | None = None, wavelength: int | None = None, rays: str | PupilSampling | None = None, aiming: Aiming | None = None, …) -> PathTransmission
+psf(system: SystemLike, path: int | str = 0, field: int = 0, *, wavelengths: Sequence[int] | None = None, grid: int = 64, padding: int = 4, apodization: float = 0.0, focus_shift: float = 0.0, aiming: Aiming = Aiming.REAL, aliasing_factor: float = 3.0, …) -> Psf
 psf_at(pupil: PupilFunction, points: npt.ArrayLike) -> npt.NDArray[np.float64]
 psf_positions(result: Psf) -> npt.NDArray[np.float64]
 pupil_cells(grid: int, obscuration: float = 0.0) -> PupilCells
-pupil_function(system: SystemLike, path: int | str = 0, field: int = 0, wavelength: int | None = None, *, grid: int = 64, apodization: float = 0.0, focus_shift: float = 0.0, aiming: Aiming = Aiming.REAL, with_prt: bool = False, materials: MaterialLibrary | None = None, threads: int | None = None, lost_warning_fraction: float = 0.5, mapping_warning: float = 0.01, mapping_limit: float = 0.05, cancel: CancelToken | None = None, progress: ProgressCallback | None = None) -> PupilFunction
-ray_fan(system: SystemLike, path: int | str = 0, field: int = 0, wavelength: int | None = None, *, points: int = 21, aiming: Aiming = Aiming.REAL, materials: MaterialLibrary | None = None, threads: int | None = None, lost_warning_fraction: float = 0.5, cancel: CancelToken | None = None, progress: ProgressCallback | None = None) -> RayFan
-raytrace_report(system: SystemLike, path: int | str = 0, *, start: RayBatch, materials: MaterialLibrary | None = None, threads: int | None = None) -> RaytraceReport
-refocus(system: SystemLike, pupil: PupilFunction, focus_shift: float, *, materials: MaterialLibrary | None = None) -> PupilFunction
+pupil_function(system: SystemLike, path: int | str = 0, field: int = 0, wavelength: int | None = None, *, grid: int = 64, apodization: float = 0.0, focus_shift: float = 0.0, aiming: Aiming = Aiming.REAL, with_prt: bool = False, …) -> PupilFunction
+ray_fan(system: SystemLike, path: int | str = 0, field: int = 0, wavelength: int | None = None, *, points: int = 21, aiming: Aiming = Aiming.REAL, …) -> RayFan
+raytrace_report(system: SystemLike, path: int | str = 0, *, start: RayBatch, …) -> RaytraceReport
+refocus(system: SystemLike, pupil: PupilFunction, focus_shift: float, *, …) -> PupilFunction
 sampling(rays: str | PupilSampling) -> PupilSampling
-seidel(system: SystemLike, path: int | str = 0, wavelength: int | None = None, *, pair: ChromaticPair | tuple[int, int] | None = None, materials: MaterialLibrary | None = None) -> Seidel
-spot(system: SystemLike, path: int | str = 0, field: int = 0, wavelength: int | None = None, *, rays: str | PupilSampling = hexapolar:6, aiming: Aiming = Aiming.REAL, materials: MaterialLibrary | None = None, threads: int | None = None, lost_warning_fraction: float = 0.5, cancel: CancelToken | None = None, progress: ProgressCallback | None = None) -> SpotDiagram
+seidel(system: SystemLike, path: int | str = 0, wavelength: int | None = None, *, pair: ChromaticPair | tuple[int, int] | None = None, …) -> Seidel
+spot(system: SystemLike, path: int | str = 0, field: int = 0, wavelength: int | None = None, *, rays: str | PupilSampling = 'hexapolar:6', aiming: Aiming = Aiming.REAL, …) -> SpotDiagram
 stokes_pupil(jones: JonesPupil, e1: complex, e2: complex) -> StokesPupil
-system_report(system: SystemLike, path: int | str = 0, wavelength: int | None = None, *, materials: MaterialLibrary | None = None) -> SystemReport
+system_report(system: SystemLike, path: int | str = 0, wavelength: int | None = None, *, …) -> SystemReport
 zernike(j: int, rho: float, theta: float) -> float
 zernike_fit(pupil: PupilFunction, *, terms: int = 37, incomplete_warning_fraction: float = 0.01) -> ZernikeFit
 zernike_radial(n: int, m: int, rho: float) -> float
@@ -345,7 +354,7 @@ initial_directions(rays: RayBatch) -> FloatArray
 physical_retardance(p: npt.ArrayLike, q: npt.ArrayLike, k_in: npt.ArrayLike) -> Retardance
 prt_matrix(k_in: npt.ArrayLike, k_out: npt.ArrayLike, normal: npt.ArrayLike, a_s: complex, a_p: complex) -> ComplexArray
 retardance(rays: RayBatch | npt.ArrayLike, k: npt.ArrayLike | None = None) -> Retardances | Retardance
-stokes(rays: RayBatch | npt.ArrayLike, polarization: npt.ArrayLike, axis: npt.ArrayLike, /) -> FloatArray
+stokes(rays: RayBatch | npt.ArrayLike, polarization: npt.ArrayLike, axis: npt.ArrayLike) -> FloatArray
 transmission(rays: RayBatch, polarization: npt.ArrayLike | None = None) -> FloatArray
 transverse_polarization(rays: RayBatch, polarization: npt.ArrayLike) -> ComplexArray
 ```
@@ -353,7 +362,7 @@ Classes: `Diattenuation`, `Diattenuations`, `Retardance`, `Retardances`.
 
 ### rt.optim
 ```text
-optimize(system: System, *, materials: MaterialLibrary | None = None, coatings: CoatingLibrary | None = None, options: OptimizeOptions | None = None, threads: int | None = None, cancel: CancelToken | None = None, progress: ProgressCallback | None = None, on_iteration: IterationCallback | None = None) -> OptimResult
+optimize(system: System, *, options: OptimizeOptions | None = None, on_iteration: IterationCallback | None = None, …) -> OptimResult
 variables(system: System) -> list[Variable]
 ```
 Classes: `GeneratorStats`, `GeneratorValue`, `IterationState`, `MeritEvaluation`, `MeritFunction`, `OperandValue`, `OptimIterations`, `OptimResult`, `OptimizeOptions`, `Variable`, `VariableValue`.
@@ -362,9 +371,9 @@ Classes: `GeneratorStats`, `GeneratorValue`, `IterationState`, `MeritEvaluation`
 ```text
 abbe_share(tolerance_class: ToleranceClass) -> float
 class_limit(tolerance_class: ToleranceClass, kind: ToleranceKind, level: ToleranceLevel) -> float
-expand(system: System, *, materials: MaterialLibrary | None = None) -> ToleranceItems
-monte_carlo(system: System, *, materials: MaterialLibrary | None = None, coatings: CoatingLibrary | None = None, trials: int | None = None, seed: int | None = None, percentiles: Sequence[float] = (0.5, 0.9, 0.95, 0.99), z: float = 1.959963984540054, keep_trials: bool = True, compensators: OptimizeOptions | None = None, threads: int | None = None, cancel: CancelToken | None = None, progress: ProgressCallback | None = None) -> MonteCarloResult
-sensitivity(system: System, *, materials: MaterialLibrary | None = None, coatings: CoatingLibrary | None = None, confirm: bool = True, compensators: OptimizeOptions | None = None, threads: int | None = None, cancel: CancelToken | None = None, progress: ProgressCallback | None = None) -> ToleranceSensitivity
+expand(system: System, *, …) -> ToleranceItems
+monte_carlo(system: System, *, trials: int | None = None, seed: int | None = None, percentiles: Sequence[float] = (0.5, 0.9, 0.95, 0.99), z: float = 1.959963984540054, keep_trials: bool = True, compensators: OptimizeOptions | None = None, …) -> MonteCarloResult
+sensitivity(system: System, *, confirm: bool = True, compensators: OptimizeOptions | None = None, …) -> ToleranceSensitivity
 sigma_ratio(distribution: ToleranceDistribution) -> float
 ```
 Classes: `ClassTolerance`, `ClassTolerances`, `CompensatorValue`, `Confirmation`, `CriterionSensitivity`, `CriterionStatistics`, `CriterionValue`, `InverseSensitivity`, `ItemContribution`, `ItemOrigin`, `ItemTrials`, `MonteCarloResult`, `OverrideStatus`, `Percentile`, `ToleranceItems`, `ToleranceSensitivity`, `TrialResult`, `TrialTable`, `Yield`.
@@ -373,9 +382,9 @@ Classes: `ClassTolerance`, `ClassTolerances`, `CompensatorValue`, `Confirmation`
 ```text
 elements(system: CompiledSystem) -> list[CompiledElement]
 node_frames(system: CompiledSystem) -> list[NodeFrame]
-normal(system: CompiledSystem, surface: int | str, x: npt.ArrayLike, y: npt.ArrayLike, frame: str = local) -> FloatArray
-outlines(system: CompiledSystem, element: int, plane: SectionPlane = yz, samples: int = 101) -> list[FloatArray]
-profile(system: CompiledSystem, surface: int | str, plane: SectionPlane = yz, samples: int = 101) -> list[FloatArray]
+normal(system: CompiledSystem, surface: int | str, x: npt.ArrayLike, y: npt.ArrayLike, frame: str = 'local') -> FloatArray
+outlines(system: CompiledSystem, element: int, plane: SectionPlane = 'yz', samples: int = 101) -> list[FloatArray]
+profile(system: CompiledSystem, surface: int | str, plane: SectionPlane = 'yz', samples: int = 101) -> list[FloatArray]
 reference_frame(system: CompiledSystem, node: str) -> FloatArray
 sag(system: CompiledSystem, surface: int | str, x: npt.ArrayLike, y: npt.ArrayLike) -> FloatArray
 surfaces(system: CompiledSystem) -> list[SurfaceLayout]
@@ -419,7 +428,7 @@ locate_node(name: str) -> str | None
 locate_path(name: str) -> str | None
 locate_parameter(name: str) -> str | None
 resolved(configuration: int | str = 0) -> System
-from_json(*args, **kwargs)
+from_json(text: str) -> System
 save(file: str | os.PathLike) -> None
 ```
 

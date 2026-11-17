@@ -45,21 +45,91 @@ SECTIONS: list[tuple[str, str, str]] = [
 ]
 
 
+# Keywords that many functions share; the index writes them as one "…" (explained in the text).
+COMMON = {"materials", "coatings", "threads", "cancel", "progress", "lost_warning_fraction",
+          "undersampled_waves", "mapping_warning", "mapping_limit", "max_recorded_rays"}
+
+
 def _clean(t: str) -> str:
     t = re.sub(r"raytatouille\._core\.|raytatouille\.[a-z_]+\.|collections\.abc\.|typing\.", "", t)
     t = re.sub(r"numpy\.ndarray\[[^\]]*\]", "ndarray", t)
+    t = t.replace("SinglePupilPoint | HexapolarPupil | GridPupil | FanXPupil | FanYPupil | "
+                  "RandomPupil | GaussPupil | PointListPupil", "PupilSampling")
     return t.replace("NoneType", "None")
 
 
-def _signature(name: str, obj: object) -> str:
+def _split_params(inner: str) -> list[str]:
+    out, depth, cur = [], 0, ""
+    for ch in inner:
+        depth += ch in "([{"
+        depth -= ch in ")]}"
+        if ch == "," and depth == 0:
+            out.append(cur.strip())
+            cur = ""
+        else:
+            cur += ch
+    if cur.strip():
+        out.append(cur.strip())
+    return out
+
+
+def _ann(a: object) -> str:
+    return a if isinstance(a, str) else inspect.formatannotation(a)
+
+
+def _params(obj: object) -> tuple[list[str], str]:
+    """Parameters as text and the return annotation (" -> T" or "")."""
     try:
         sig = inspect.signature(obj)  # type: ignore[arg-type]
-        text = str(sig)
     except (TypeError, ValueError):
-        doc = (getattr(obj, "__doc__", None) or "").strip().splitlines()
-        text = doc[0][doc[0].index("("):] if doc and "(" in doc[0] else "(...)"
-    text = text.replace("'", "").replace("self, ", "").replace("(self)", "()")
-    return _clean(f"{name}{text}")
+        sig = None
+    if sig is not None and not any(p.kind == p.VAR_POSITIONAL and p.name == "args"
+                                   for p in sig.parameters.values()):
+        ps: list[str] = []
+        star = False
+        for p in sig.parameters.values():
+            if p.name == "self":
+                continue
+            if p.kind == p.KEYWORD_ONLY and not star:
+                ps.append("*")
+                star = True
+            if p.kind == p.VAR_POSITIONAL:
+                ps.append("*" + p.name)
+                star = True
+                continue
+            if p.kind == p.VAR_KEYWORD:
+                ps.append("**" + p.name)
+                continue
+            ann = "" if p.annotation is p.empty else ": " + _ann(p.annotation)
+            default = "" if p.default is p.empty else " = " + repr(p.default)
+            ps.append(p.name + ann + default)
+        ret = ("" if sig.return_annotation is sig.empty
+               else " -> " + _ann(sig.return_annotation))
+        return ps, ret
+    # nanobind functions: the first docstring line is "name(params) -> ret"
+    doc = (getattr(obj, "__doc__", None) or "").strip().splitlines()
+    m = re.match(r"\w+\((.*)\)(\s*->\s*(.*))?$", doc[0]) if doc else None
+    if m is None:
+        return ["..."], ""
+    ps = [x for x in _split_params(m.group(1)) if x != "self" and not x.startswith("self:")]
+    return ps, (" -> " + m.group(3) if m.group(3) else "")
+
+
+def _signature(name: str, obj: object) -> str:
+    ps, ret = _params(obj)
+    kept: list[str] = []
+    keyword_only = dropped = False
+    for p in ps:
+        keyword_only = keyword_only or p == "*" or p.startswith("*")
+        if keyword_only and p.split(":")[0].split("=")[0].strip() in COMMON:
+            dropped = True
+            continue
+        kept.append(p)
+    if dropped:
+        kept.append("…")
+    if kept and kept[-1] == "*":
+        kept.pop()
+    return _clean(f"{name}({', '.join(kept)}){ret}")
 
 
 def public_functions(heading: str, module: str, cls: str) -> list[tuple[str, object]]:

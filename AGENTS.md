@@ -137,6 +137,11 @@ Fehlerquellen, die nur die CI sieht, vorab lokal prüfen:
   u. a.) fehlen, darum `rtt::math::bessel_j0`/`bessel_j1` bzw. eine Hilfsfunktion in `rtt-math`;
   `std::from_chars` für `double` gibt es erst ab macOS 26. Wer ohne Mac arbeitet, sieht diese
   Fehler erst im CI-Job `macOS ci-macos-clang`.
+- **Befehlsreferenz für Sprachmodelle nachziehen.** `raytatouille/llm_reference.md` (#408) endet
+  mit einem erzeugten Index aller öffentlichen Python-Funktionen. Wer eine öffentliche Funktion
+  hinzufügt, umbenennt oder entfernt, schreibt ihn mit
+  `PYTHONPATH=build/<preset>/python python tools/llm_reference.py --write` neu;
+  `test_llm_reference.py` schlägt sonst fehl. Geänderte Abläufe auch in den Rezepten nachziehen.
 - **Plot-Tests brauchen matplotlib.** Fehlt matplotlib in der lokalen venv, überspringt pytest
   die Plot- und Beispieltests still; dann deckt sie nur die CI ab. Beim Ändern von Plot-Helfern
   matplotlib installieren oder die CI-Läufe gezielt ansehen.
