@@ -232,8 +232,9 @@ Eine ideale Linse ohne Dicke ist eine Interaktion an der einzigen Planfläche ei
   Unendlichen etwa 11 λ am Rand. Seidel zeigt für die ideale Linse trotzdem 0. Auf einem
   Rückweg gilt die Konjugierte gegen dessen Ausbreitung.
 - Paraxial ist die ideale Linse ein Schritt mit φ = |n|/f, n der Index des umgebenden Mediums:
-  `rear_focal_length` = f, EFL = f/|n|, Seidel-Beiträge 0. Die Zylinderlinse ist paraxial ein
-  `ParaxialError` (nicht rotationssymmetrisch); ihre Pfade brauchen eigene Startstrahlen.
+  `rear_focal_length` = f, EFL = f/|n|, Seidel-Beiträge 0. Die Zylinderlinse ist anamorph
+  (ADR 0042): `first_order` lehnt sie mit `ParaxialError` ab, `first_order_section` gibt die
+  erste Ordnung je Schnitt, und Zielung und Spot laufen je Schnitt.
 
 ## Bauteile aus der Rechnung nehmen: `active` (ab Schema 0.10, ADR 0049)
 

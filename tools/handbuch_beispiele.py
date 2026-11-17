@@ -21,6 +21,7 @@ import argparse
 import difflib
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -36,7 +37,8 @@ BLOCK = re.compile(
 
 
 def main(argv: list[str]) -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--python", default=sys.executable, help="interpreter with raytatouille")
     ap.add_argument("--update", action="store_true", help="write the new outputs into the manual")
     ap.add_argument("--keep", type=Path, help="run in this directory and keep the files (figures)")
@@ -50,7 +52,8 @@ def main(argv: list[str]) -> int:
         (work / m["name"]).write_text(m["code"], encoding="utf-8")
 
     env = dict(os.environ, MPLBACKEND="Agg", PYTHONIOENCODING="utf-8")
-    failed = 0
+    failed = 0  # examples whose output differs
+    crashed = 0  # examples that raised or exited with a non-zero status
     new_tex = tex
     for m in blocks:
         name = m["name"]
@@ -59,20 +62,20 @@ def main(argv: list[str]) -> int:
         run = subprocess.run([args.python, name], cwd=work, env=env, capture_output=True,
                              text=True, encoding="utf-8")
         if run.returncode != 0:
-            print(f"FEHLER {name}: Exit {run.returncode}\n{run.stderr.strip()[-2000:]}")
-            failed += 1
+            print(f"ERROR  {name}: exit {run.returncode}\n{run.stderr.strip()[-2000:]}")
+            crashed += 1
             continue
         got = run.stdout.rstrip("\n")
         if m["out"] is None:
-            print(f"ok     {name} (ohne abgedruckte Ausgabe)")
+            print(f"ok     {name} (no printed output)")
             continue
         want = m["text"].rstrip("\n")
         if got == want:
             print(f"ok     {name}")
             continue
         failed += 1
-        print(f"ANDERS {name}:")
-        for line in difflib.unified_diff(want.splitlines(), got.splitlines(), "Handbuch", "Lauf",
+        print(f"DIFF   {name}:")
+        for line in difflib.unified_diff(want.splitlines(), got.splitlines(), "manual", "run",
                                          lineterm="", n=0):
             print("   " + line)
         if args.update:
@@ -82,10 +85,14 @@ def main(argv: list[str]) -> int:
 
     if args.update and new_tex != tex:
         TEX.write_text(new_tex, encoding="utf-8")
-        print(f"{TEX.relative_to(ROOT)}: neue Ausgaben geschrieben")
-    print(f"{len([m for m in blocks if m['name'].startswith('ex')])} Beispiele, {failed} abweichend"
-          f" oder fehlerhaft; Arbeitsverzeichnis {work}")
-    return 1 if failed and not args.update else 0
+        print(f"{TEX.relative_to(ROOT)}: new outputs written")
+    total = len([m for m in blocks if m["name"].startswith("ex")])
+    print(f"{total} examples, {failed} differing, {crashed} failed")
+    if args.keep is None:
+        shutil.rmtree(work, ignore_errors=True)
+    else:
+        print(f"files kept in {work}")
+    return 1 if crashed or (failed and not args.update) else 0
 
 
 if __name__ == "__main__":

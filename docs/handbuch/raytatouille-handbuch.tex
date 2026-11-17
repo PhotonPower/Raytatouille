@@ -218,8 +218,8 @@ abweichen: Vor Version~1.0 sind nicht alle Schnittstellen stabil, und das Dateif
 umgedeutet, nur ergänzt.
 
 \begin{hinweis}[Neu seit der Ausgabe für 0.8]
-Die Beispiele der Ausgabe für 0.8 laufen unverändert; ihre Ausgaben sind bis auf Versionsnummern
-und eine neue Spalte gleich geblieben. Neu beschrieben sind:
+Die Beispiele der Ausgabe für 0.8 laufen unverändert; ihre Ausgaben sind bis auf Versionsnummern,
+eine neue Spalte und eine letzte Stelle gleich geblieben. Neu beschrieben sind:
 \begin{itemize}
   \item die Installation von PyPI und macOS~26 als Plattform (Kapitel~\ref{chap:installation});
   \item das Dateiformat bis Schema~0.10: neue Flächentypen, Blende auf einer Fläche, Bezugsfläche
@@ -309,7 +309,7 @@ pip install raytatouille            # oder: pip install "raytatouille[plot]"  (m
 Die Wheels enthalten die übersetzte Erweiterung \code{raytatouille._core}, die reinen
 Python-Module, Typ-Stubs (\code{_core.pyi}, \code{py.typed}), die JSON-Schemas der
 Dateiformate (Abschnitt~\ref{sec:schemas}) und die Lizenztexte der eingebetteten Bibliotheken
-(oneTBB, Eigen, nlohmann-json, pocketfft, nanobind). Glaskataloge liefert Raytatouille nicht mit;
+(oneTBB, Eigen, nlohmann-json, pocketfft, nanobind, robin-map). Glaskataloge liefert Raytatouille nicht mit;
 eigene AGF-Kataloge lädt man mit \code{MaterialLibrary.add_catalog} (Kapitel~\ref{chap:material}).
 
 \section{Bau und Installation aus den Quellen}
@@ -854,8 +854,9 @@ die OPD -- ist nur für Objekte in der Ebene \code{object_distance} exakt (posit
 reelles Objekt davor; fehlt das Feld: Objekt im Unendlichen). Bei einer anderen Konjugierten
 bleibt ein Rest $\propto r^4$; im Beispiel $f=\SI{50}{mm}$, Objekt bei \SI{75}{mm} statt im
 Unendlichen, sind das etwa 11,8 Wellen PV. An der Linse ist nur \code{transmit} erlaubt.
-Paraxial ist sie ein Schritt mit $\varphi=|n|/f$; die Zylinderlinse hat dagegen kein paraxiales
-Modell, ihre Pfade brauchen eigene Startstrahlen.
+Paraxial ist sie ein Schritt mit $\varphi=|n|/f$. Die Zylinderlinse ist anamorph: Sie hat eine
+erste Ordnung je Schnitt und wird je Schnitt gezielt (Kapitel~\ref{chap:flaechen});
+\code{first_order} lehnt sie ab.
 
 \subsection{Bauteile aus der Rechnung nehmen: \code{active}}
 \label{sec:active}
@@ -1149,8 +1150,8 @@ die migriert wird. Raytatouille~0.10 liest Dateien mit Schema 0.1 bis 0.10 und s
         \code{rt.load} meldet die Warnung \code{io.pickup_dropped} mit der Stelle,
   \item ändert sich von 0.4 an nur die Versionsnummer.
 \end{itemize}
-Neuere Schlüssel in einer älteren Datei sind ein Lesefehler, damit die Version zum Inhalt passt:
-\code{tolerances} braucht 0.6, \code{object.medium} 0.7, \code{object.reference},
+Neuere Schlüssel in einer älteren Datei sind ein Lesefehler, damit die Version zum Inhalt passt,
+unter anderem: \code{tolerances} braucht 0.6, \code{object.medium} 0.7, \code{object.reference},
 \code{aperture.stop} und \code{aperture.reading} 0.8, die Flächentypen aus
 Kapitel~\ref{chap:flaechen} 0.9 und \code{active} 0.10. Eine Datei einer \emph{neueren}
 Version (z.\,B. 0.11) liest 0.10 nicht.
@@ -2246,7 +2247,7 @@ $W_{311}=S_V/2$.
 
 Ab Schema~0.9 kennt \code{shape.base} neben Ebene, Konik und gerader Asphäre sieben weitere
 Formen. Alle Längen in mm, Krümmungen in 1/mm; das Vorzeichen folgt der Konvention der Radien
-(Abschnitt~\ref{chap:konzepte}).
+(Kapitel~\ref{chap:konzepte}).
 
 \begin{longtable}{@{}L{2.4cm}L{5.2cm}L{7.1cm}@{}}
 \toprule
@@ -2261,9 +2262,10 @@ Formen. Alle Längen in mm, Krümmungen in 1/mm; das Vorzeichen folgt der Konven
 \code{qbfs} & wie \code{qcon} & Forbes-Asphäre als Abweichung von der best passenden Sphäre;
   braucht $(1+k)c^2\rho^2<1$ \\
 \code{biconic} & \code{radius_x}, \code{radius_y}, \code{conic_x}, \code{conic_y} &
-  verschiedene Konik in x und y \\
+  verschiedene Radien und Konik je Schnitt, keine Asphärenterme \\
 \code{toroid} & Profil \code{radius}, \code{conic}, \code{coefficients} (in y-z) und
-  \code{radius_of_rotation} & Profil um eine Achse parallel zu x gedreht \\
+  \code{radius_of_rotation} & das y-z-Profil um eine Achse parallel zu y durch
+  $(x, z) = (0, \text{radius\_of\_rotation})$ gedreht \\
 \code{cylinder} & Profil \code{radius}, \code{conic}, \code{coefficients} & Profil in y-z,
   flach in x \\
 \bottomrule
@@ -2271,8 +2273,13 @@ Formen. Alle Längen in mm, Krümmungen in 1/mm; das Vorzeichen folgt der Konven
 
 Für Forbes-Asphären sollte $\rho$ die Apertur der Fläche umfassen; sonst werden die Polynome
 extrapoliert, und \code{rt.compile} warnt mit \code{shape.normalization_radius_exceeded}.
-Toleranzen auf diese Formen gehen über \code{curvature_relative} und \code{conic}; \code{radius}
-ist an ihnen ein Fehler (\code{tolerances.target_invalid}).
+Toleranzen: An \code{odd_asphere}, \code{qcon} und \code{qbfs} stören \code{curvature_relative}
+die Krümmung und \code{conic} die Konik; \code{radius} ist dort ein Fehler
+(\code{tolerances.target_invalid}). An \code{biconic}, \code{toroid}, \code{cylinder} und
+\code{axicon} sind \code{radius}, \code{curvature_relative} und \code{conic} alle
+\code{tolerances.target_invalid}, und die Toleranzklassen überspringen sie (Grund
+\code{SHAPE_TYPE}); toleriert wird dort einzeln über \code{param}, etwa
+\code{{"surface": "A.S1", "kind": "param", "param": "/shape/base/angle_deg", "limit": 0.05}}.
 
 \section{Paraxiale Daten und Zielung}
 
@@ -2316,8 +2323,8 @@ formen = {
     # Forbes Q-con: Basis als Krümmung c = 1/R, Normierungsradius = Apertur 12.7 mm, a_m in mm.
     "qcon": {"type": "qcon", "curvature": 1 / 51.68, "conic": 0.0,
              "normalization_radius": 12.7, "coefficients": [-0.0104]},
-    # Axicon: Kegel mit Basiswinkel 3 Grad, erzeugt eine Fokuslinie statt eines Punkts.
-    "axicon": {"type": "axicon", "angle_deg": -3.0},
+    # Axicon: Kegel mit Basiswinkel 3 Grad (Mantel steigt nach +z), Fokuslinie statt Punkt.
+    "axicon": {"type": "axicon", "angle_deg": 3.0},
 }
 for name, basis in formen.items():
     cs = rt.compile(singlet_mit(basis))
@@ -2357,8 +2364,9 @@ first_order: ParaxialError - not rotationally symmetric in second order; no para
 \end{ausgabe}
 
 Die Q-con-Fläche hat dieselbe paraxiale Brennweite wie die Kugel, denn der Forbes-Term beginnt
-mit $u^4$; der Koeffizient $a_1=-0{,}0104$~mm verringert die sphärische Aberration aber um fast
-den Faktor vier. Die Zylinderlinse ist im x-Schnitt afokal und im y-Schnitt eine
+mit $u^4$; der Koeffizient $a_0=-0{,}0104$~mm (der erste der Liste) verringert die sphärische
+Aberration aber um fast den Faktor vier: den RMS-Spot auf der Achse um 3,7, die Seidel-Summe
+$S_I$ um 4,2. Die Zylinderlinse ist im x-Schnitt afokal und im y-Schnitt eine
 \SI{100}{mm}-Linse.
 
 % -----------------------------------------------------------------------------
@@ -2534,7 +2542,7 @@ damit selbst die Eintrittspupille. Liegt die Blende hinter Linsen, weichen beide
 \label{sec:eigene-strahlen}
 
 Wer \code{RayBatch} selbst füllt, ist nicht an die paraxiale Zielung gebunden. Das braucht man
-für gefaltete, gekippte oder dezentrierte Pfade, Interferometer, Zylinderlinsen, Lichtquellen
+für gefaltete, gekippte oder dezentrierte Pfade, Interferometer, Axicons, Lichtquellen
 mit eigener Verteilung und für die Toleranzanalyse (Kapitel~\ref{chap:toleranz}). Regeln:
 \begin{itemize}
   \item Positionen und Richtungen sind global; Richtungen müssen Einheitsvektoren sein.
@@ -3267,7 +3275,8 @@ bekommt ein \code{IterationState} mit \code{k}, \code{phi} (wie im Verlauf), den
 Variablen (\code{values}, NumPy-Kopie) und dem Patch von der Eingabe zum Zwischenstand. Der
 letzte Aufruf eines regulär beendeten Laufs hat Werte und Patch des Ergebnisses. Die Ergebnisse
 sind mit und ohne Callback bitgleich. Wirft die Funktion, endet der Lauf wie ein Abbruch mit
-dem Stand dieses Aufrufs, und die Ausnahme erscheint nach dem Lauf als \code{RuntimeWarning}.
+Status \code{CANCELLED} und dem Stand dieses Aufrufs, und die Ausnahme erscheint nach dem Lauf
+als \code{RuntimeWarning}. Für die Kompensatoren der Toleranzierung gibt es den Callback nicht.
 \begin{pycode}[title={\code{ex23_zwischenstand.py}}]
 """Zwischenstand je angenommener Iteration der Optimierung (on_iteration), etwa für eine Anzeige."""
 import json
@@ -3328,15 +3337,17 @@ ihn aus:
         Statistik, Perzentile und die Ausbeute mit Wilson-Intervall (\code{MonteCarloResult});
         \code{seed} und \code{trials} überschreiben die Vorgaben der Datei.
 \end{description}
-Alle drei nehmen das \code{System} und als Schlüsselwörter \code{materials},
-\code{coatings}, \code{threads}, \code{cancel} und \code{progress}; die vollständigen Signaturen
-stehen in der Referenz (Kapitel~\ref{chap:api}).
+Alle drei nehmen das \code{System} und \code{materials}; \code{sensitivity} und
+\code{monte_carlo} dazu \code{coatings}, \code{threads}, \code{cancel} und \code{progress}. Die
+vollständigen Signaturen stehen in der Referenz (Kapitel~\ref{chap:api}).
 
 \begin{hinweis}[Linear und quadratisch]
 Ein Kriterium, das als Betrag oder RMS nie negativ wird (\code{spot_rms}, \code{opd_rms}), wird
 \emph{quadratisch} ausgewertet: Die RSS ist dann der vorhergesagte Gesamtwert
 $\sqrt{\Phi_0^2+\sum q_i}$ einschließlich des Nennwerts. Alle übrigen Kriterien sind
-\emph{linear}; ihre RSS ist $\sqrt{\sum\delta_i^2}$, die erwartete Abweichung vom Nennwert.
+\emph{linear}; ihre RSS ist $\sqrt{\sum\delta_i^2}$, die nach RSS kombinierte Abweichung bei
+$\pm T$. Die erwartete Standardabweichung hängt zusätzlich von der Verteilung ab
+($\sigma/T$ aus \code{rt.tolerance.sigma_ratio}, 0,44 bei \code{normal}).
 \end{hinweis}
 
 Das Beispiel toleriert den Achromaten aus Kapitel~\ref{chap:material} mit denselben Störungen
@@ -3845,8 +3856,9 @@ EFL je Prozess: ['96.800', '100.053', '102.608']
 Schema: https://json-schema.org/draft/2020-12/schema | Titel: Raytatouille system file (.rtt.json), schema 0.10
 Pflichtschlüssel: ['schema_version', 'units', 'wavelengths', 'aperture', 'fields', 'root', 'paths']
 \end{ausgabe}
-Unter Windows und macOS startet \code{ProcessPoolExecutor} neue Interpreter; der Schutz
-\code{if __name__ == "__main__":} ist dort Pflicht.
+\code{ProcessPoolExecutor} startet neue Interpreter (Windows, macOS und ab Python~3.14 auch
+Linux, Startmethode \code{forkserver}); der Schutz \code{if __name__ == "__main__":} ist deshalb
+Pflicht.
 
 % -----------------------------------------------------------------------------
 \chapter{Muster für eigene Anwendungen}
@@ -4113,8 +4125,9 @@ Wellenfront statt Spot (\code{rt.analysis.opd_points} braucht dieselbe Zielung; 
         (Kapitel~\ref{chap:toleranz}); ebenso Pfade mit Axicon oder ungerader Asphäre mit
         $A_1\ne0$. Die eingebaute Toleranzierung zielt gestörte Prüflinge mit den Daten des
         Nennsystems.
-  \item \textbf{Anamorphe Pfade:} keine paraxialen Operanden und keine Wellenfront (OPD,
-        Wellenfront-Generator), nur Strahlen und Spot.
+  \item \textbf{Anamorphe Pfade:} keine paraxialen Operanden, keine Wellenfront (OPD,
+        Wellenfront-Generator), keine Feldkurven, Farbfehler und Geister-Startstrahlen; es laufen
+        Strahlen, Spot, Strahl-Operanden und der Spot-Generator.
   \item \textbf{Keine globale Optimierung}; Levenberg-Marquardt findet das nächste lokale
         Minimum.
   \item \textbf{Toleranzierung:} keine Korrelationen zwischen Toleranzen, keine
@@ -5422,9 +5435,11 @@ rtt export <system.rtt.json> <aus.zmx|aus.csv> --catalog <katalog.agf>... [--pat
 \end{shell}
 
 \paragraph{ZMX-Import.} \code{rtt import} liest den sequenziellen Teil einer OpticStudio-Datei
-(\code{.zmx}, Textform): Flächen mit Kugel, Konik, gerader und ungerader Asphäre, Toroid,
-Koordinatensprüngen (\code{COORDBRK}) als Posen, Spiegeln und Blende, dazu Wellenlängen, Felder
-und Systemapertur. Gläser werden in den angegebenen AGF-Katalogen gesucht. Was nicht abbildbar
+(\code{.zmx}, Textform): die Flächentypen \code{STANDARD}, \code{EVENASPH}, \code{ODDASPHE},
+\code{TOROIDAL}, \code{BICONICX}, \code{QED_TYPE} (Forbes), \code{TILTSURF} und
+\code{PARAXIAL} (ideale Linse), Koordinatensprünge (\code{COORDBRK}) als Posen, Linsen,
+Kittglieder, Spiegel auch gefaltet und außer Achse, die Blende, die Aperturen \code{CLAP},
+\code{FLAP}, \code{SQAP} und \code{ELAP}, dazu Wellenlängen, Felder und Systemapertur. Gläser werden in den angegebenen AGF-Katalogen gesucht. Was nicht abbildbar
 ist, meldet der Import mit einem Code \code{zmx.*} und der Zeile der Datei, statt es still zu
 übergehen.
 
@@ -5432,7 +5447,9 @@ ist, meldet der Import mit einem Code \code{zmx.*} und der Zeile der Datei, stat
 oder als CSV-Flächentabelle (Endung \code{.zmx} bzw. \code{.csv}). Exportiert werden koaxiale
 Systeme sowie gefaltete und gekippte Pfade mit Spiegeln; was OpticStudio nicht gleich darstellen
 kann, ist ein Fehler \code{export.*}, inaktive Elemente fallen mit der Warnung
-\code{export.inactive_skipped} weg. Die Flächentabelle lässt sich mit \code{rtt import ... --base}
+\code{export.inactive_skipped} weg. Die Flächentabelle bleibt auf koaxiale Systeme beschränkt
+(\code{export.not_coaxial}); der ZMX-Export gefalteter Systeme ist mit OpticStudio selbst noch
+nicht gegengeprüft. Die Flächentabelle lässt sich mit \code{rtt import ... --base}
 in ein Basissystem zurücklesen, das Wellenlängen, Felder und Apertur beisteuert; ihr Format
 beschreibt \code{docs/dateiformat.md} im Repository. Aus Python gibt es Import und Export in
 dieser Version nicht.
