@@ -1,4 +1,8 @@
-"""raytatouille: Python API of the Raytatouille raytracing engine for optical design.
+"""raytatouille: raytracing engine for optical design (agents: raytatouille.llm_reference()).
+
+Agents and language models: start with ``raytatouille.llm_reference()``, a compact reference
+(workflow, conventions, file format, recipes, API index) shipped with the package as
+``raytatouille/llm_reference.md``.
 
 A thin mirror of the C++ library (ADR 0002). Units: lengths in mm, wavelengths in um
 (vacuum), temperature in degC, pressure in atm; right-handed global coordinates with the
@@ -76,6 +80,18 @@ from .errors import (
 
 from .schemas import schema
 
+
+def llm_reference() -> str:
+    """The compact reference for language models and agents (Markdown, English, #408).
+
+    Workflow, conventions, the essentials of the file format, runnable recipes and a generated
+    index of all public functions; the file ``raytatouille/llm_reference.md`` in the package.
+    """
+    from importlib import resources
+
+    return (resources.files(__package__) / "llm_reference.md").read_text(encoding="utf-8")
+
+
 __version__ = "0.10.0"
 
 __all__ = [
@@ -119,6 +135,7 @@ __all__ = [
     "errors",
     "ghost_paths",
     "layout",
+    "llm_reference",
     "load",
     "materials",
     "model",

@@ -65,6 +65,9 @@ system = rt.compile(rt.load("singlet.rtt.json"), lib)
 print(rt.paraxial.first_order(system).efl)
 ```
 
+Für Sprachmodelle und Agenten liegt eine kompakte englische Befehlsreferenz im Paket:
+`python -c "import raytatouille; print(raytatouille.llm_reference())"`.
+
 Kommandozeile `rtt` (nur aus dem Quellbuild, nicht im Wheel):
 
 ```bash
