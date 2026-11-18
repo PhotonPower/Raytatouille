@@ -25,6 +25,8 @@ namespace {
 /// base and term type has its own branch).
 template <class>
 inline constexpr bool kUnhandledShape = false;
+template <class>
+inline constexpr bool kUnhandledAperture = false;
 
 constexpr double kUndefined = std::numeric_limits<double>::quiet_NaN();
 
@@ -160,6 +162,28 @@ class ParamWalker {
             }
           },
           s.shape.terms[t]);
+    }
+    // Aperture dimensions (ADR 0050, point 1): after the shape, before the phases, in the order
+    // of the struct fields.
+    if (s.aperture) {
+      const std::string ap = loc + "/aperture";
+      std::visit(
+          [&](auto& a) {
+            using A = std::remove_cvref_t<decltype(a)>;
+            if constexpr (std::is_same_v<A, CircularAperture>) {
+              visit_(ap + "/radius", a.radius);
+              visit_(ap + "/inner_radius", a.inner_radius);
+            } else if constexpr (std::is_same_v<A, RectangularAperture>) {
+              visit_(ap + "/half_width_x", a.half_width_x);
+              visit_(ap + "/half_width_y", a.half_width_y);
+            } else if constexpr (std::is_same_v<A, EllipticalAperture>) {
+              visit_(ap + "/semi_axis_x", a.semi_axis_x);
+              visit_(ap + "/semi_axis_y", a.semi_axis_y);
+            } else {
+              static_assert(kUnhandledAperture<A>, "for_each_param: unhandled aperture");
+            }
+          },
+          *s.aperture);
     }
     for (std::size_t k = 0; k < s.phases.size(); ++k) {
       const std::string phase = loc + "/phases/" + std::to_string(k);

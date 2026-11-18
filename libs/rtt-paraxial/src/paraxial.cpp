@@ -481,7 +481,7 @@ FirstOrder first_order_impl(const compile::CompiledSystem& system,
       ep.diameter = value;
       break;
     case model::SystemApertureType::StopSize:
-      if (ep_finite) ep.diameter = 2.0 * circle->radius / std::abs(front.a);
+      if (ep_finite) ep.diameter = 2.0 * circle->radius.value / std::abs(front.a);
       break;
     case model::SystemApertureType::ImageSpaceFNumber:
       // F-number at infinite conjugates, EPD = EFL / F#, also for finite objects (#7).

@@ -966,3 +966,65 @@ TEST_CASE("optimize #299: spot_rms and opd_rms rays that come back make the eval
     }));
   }
 }
+
+TEST_CASE("aperture as Param: a bound stop radius traces bitwise like the number (ADR 0050)",
+          "[optim][merit]") {
+  System plain = singlet();
+  plain.aperture = {rtt::model::SystemApertureType::StopSize, Param(0.0)};
+  rtt::model::RayOperand marginal;
+  marginal.common = common(0.0);
+  marginal.path = "main";
+  marginal.surface = rtt::model::SurfaceId{"IMG"};
+  marginal.field = 2;
+  marginal.py = 1.0;
+  rtt::model::SpotRmsOperand spot;
+  spot.common = common(0.0);
+  spot.path = "main";
+  spot.field = 1;
+  spot.rings = 4;
+  plain.optimization.operands = {marginal, spot};
+  System bound = plain;
+  bound.parameters = {row("R_STOP", 10.0)};
+  std::get<rtt::model::CircularAperture>(*element(bound, 0).surfaces[0].aperture).radius =
+      Param::bound("R_STOP");
+  const MaterialLibrary lib;
+  const MeritEvaluation a = MeritFunction(plain, lib, nullptr).evaluate({});
+  const MeritEvaluation b = MeritFunction(bound, lib, nullptr).evaluate({});
+  REQUIRE(a.values.size() == 2);
+  // Content guard: the marginal ray reaches the image off the axis, the spot is not a point.
+  CHECK(std::abs(a.values[0]) > 1e-3);
+  CHECK(a.values[1] > 0.0);
+  CHECK(a.values == b.values);
+}
+
+TEST_CASE("aperture as Param: optimize the stop radius at stop_size (#281 d, ADR 0050)",
+          "[optim][optimize]") {
+  // With stop_size and real aiming the ray at pupil coordinate p meets the stop at p R_s within
+  // kAimTolerance (ADR 0032, addendum #229), and R_s is the radius of the stop aperture. So the
+  // operand ray_y at the stop for py = 1 is the radius r itself: target 6 gives r* = 6, d = 1.
+  System s = singlet();
+  s.aperture = {rtt::model::SystemApertureType::StopSize, Param(0.0)};
+  const std::string pointer = make_variable(s, "/aperture/radius");
+  CHECK(pointer == "/root/children/0/surfaces/0/aperture/radius");
+  rtt::model::RayOperand rim;
+  rim.common = common(6.0);
+  rim.path = "main";
+  rim.surface = rtt::model::SurfaceId{"STO"};
+  rim.py = 1.0;
+  s.optimization.operands = {rim};
+  OptimizeOptions options;
+  options.ftol = 0.0;
+  const MaterialLibrary lib;
+  OptimResult r = optimize(s, lib, nullptr, options);
+  REQUIRE((r.status == LmStatus::ConvergedStep || r.status == LmStatus::ConvergedGradient));
+  REQUIRE(r.variables.size() == 1);
+  const double tol =
+      solution_tolerance(std::vector<double>{1.0}, std::vector<double>{6.0},
+                         r.history.empty() ? 0.0 : r.history.back().mu, options.xtol) +
+      2.0 * rtt::trace::kAimTolerance;
+  INFO("tolerance = " << tol << ", end = " << r.variables[0].end);
+  CHECK(std::abs(r.variables[0].end - 6.0) <= tol);
+  CHECK(std::get<rtt::model::CircularAperture>(*element(r.system, 0).surfaces[0].aperture)
+            .radius.value == r.variables[0].end);
+  CHECK(r.variables[0].changed);
+}

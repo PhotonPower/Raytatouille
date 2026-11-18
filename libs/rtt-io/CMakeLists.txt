@@ -16,7 +16,8 @@ if(RTT_BUILD_TESTS)
             tests/test_format_0_3.cpp tests/test_for_each_param.cpp tests/test_format_0_4.cpp
             tests/test_format_optimization.cpp tests/test_format_0_5.cpp
             tests/test_format_tolerances.cpp tests/test_format_0_7.cpp tests/test_format_0_8.cpp
-            tests/test_format_0_9.cpp tests/test_format_0_10.cpp tests/test_format_rotational.cpp
+            tests/test_format_0_9.cpp tests/test_format_0_10.cpp tests/test_format_0_11.cpp
+            tests/test_format_rotational.cpp
             tests/test_format_forbes.cpp
             tests/test_aperture_stop.cpp tests/test_aperture_reading.cpp
     LIBS rtt::io rtt::json rtt::diagnostics rtt::model_test_support nlohmann_json::nlohmann_json)

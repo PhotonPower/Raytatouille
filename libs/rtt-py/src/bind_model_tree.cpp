@@ -652,17 +652,20 @@ void bind_model_tree(nb::module_& m) {
   read_only_class<model::CircularAperture>(m, "CircularAperture",
                                            "Circular aperture, an annulus if inner_radius > 0 "
                                            "(read-only copy).")
-      .def_ro("radius", &model::CircularAperture::radius, "Outer radius in mm.")
+      .def_ro("radius", &model::CircularAperture::radius, "Outer radius in mm (Param, ADR 0050).")
       .def_ro("inner_radius", &model::CircularAperture::inner_radius,
-              "Inner radius in mm; 0 for a full disc.");
+              "Inner radius in mm (Param); 0 for a full disc.");
   read_only_class<model::RectangularAperture>(m, "RectangularAperture",
                                               "Rectangular aperture (read-only copy).")
-      .def_ro("half_width_x", &model::RectangularAperture::half_width_x, "Half width in x, mm.")
-      .def_ro("half_width_y", &model::RectangularAperture::half_width_y, "Half width in y, mm.");
+      .def_ro("half_width_x", &model::RectangularAperture::half_width_x,
+              "Half width in x, mm (Param).")
+      .def_ro("half_width_y", &model::RectangularAperture::half_width_y,
+              "Half width in y, mm (Param).");
   read_only_class<model::EllipticalAperture>(m, "EllipticalAperture",
                                              "Elliptical aperture (read-only copy).")
-      .def_ro("semi_axis_x", &model::EllipticalAperture::semi_axis_x, "Semi-axis in x, mm.")
-      .def_ro("semi_axis_y", &model::EllipticalAperture::semi_axis_y, "Semi-axis in y, mm.");
+      .def_ro("semi_axis_x", &model::EllipticalAperture::semi_axis_x, "Semi-axis in x, mm (Param).")
+      .def_ro("semi_axis_y", &model::EllipticalAperture::semi_axis_y,
+              "Semi-axis in y, mm (Param).");
 
   // --------------------------------------------------------------- phases -----
   read_only_class<model::LinearGrating>(

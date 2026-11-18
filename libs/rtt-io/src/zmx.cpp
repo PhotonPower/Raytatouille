@@ -1315,7 +1315,7 @@ ZmxImport Importer::run() {
               const bool is_stop = sys.aperture.stop ? s.id == *sys.aperture.stop
                                                      : e->kind == model::ElementKind::Stop;
               if (is_stop && s.aperture) {
-                radius = std::get<model::CircularAperture>(*s.aperture).radius;
+                radius = std::get<model::CircularAperture>(*s.aperture).radius.value;
               }
             }
           } else {

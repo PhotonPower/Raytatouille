@@ -340,8 +340,8 @@ double stop_obscuration(const CompiledSystem& system, PathId path, std::uint16_t
   const compile::CompiledSurface& surface = system.surfaces()[system.path(path).events[*e].surface];
   const auto* circle =
       surface.aperture ? std::get_if<model::CircularAperture>(&*surface.aperture) : nullptr;
-  if (circle == nullptr || !(circle->inner_radius > 0.0)) return 0.0;
-  return circle->inner_radius / trace::stop_radius(system, path, wavelength);
+  if (circle == nullptr || !(circle->inner_radius.value > 0.0)) return 0.0;
+  return circle->inner_radius.value / trace::stop_radius(system, path, wavelength);
 }
 
 math::Vec3 end_pos(const PupilEndStates& e, std::size_t j) {

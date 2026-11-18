@@ -120,7 +120,7 @@ Das Modell ist reine Datenstruktur ohne Tracing-Logik. Header: `libs/rtt-model/i
 | --- | --- | --- | --- |
 | `shape.base` | genau 1 | `Plane`, `Conic`, `EvenAsphere`; `Biconic`, `Toroid`, `Cylinder` (Schema 0.9, ADR 0042); `OddAsphere`, `Axicon`, `QCon`, `QBfs` (Schema 0.9, ADR 0043) | XY-Polynom |
 | `shape.terms` | 0..n, additiv | `ZernikeSag` (Noll) | Grid-Sag, Zernike Fringe |
-| `aperture` | 0..1 | kreisförmig (auch Ring), rechteckig, elliptisch | Polygon, Obskurationen |
+| `aperture` | 0..1 | kreisförmig (auch Ring), rechteckig, elliptisch; Maße als Param (Schema 0.11, ADR 0050) | Polygon, Obskurationen (ADR 0050) |
 | `phases` | 0..n, additiv | `LinearGrating`, `RadialPhase`; dazu `diffraction_efficiency` je Ordnung (ADR 0025) | Zernike-Phase, Metaflächen-Tabellen |
 | `interaction` | genau 1 | Fresnel (Default), ideal: Spiegel, AR, Strahlteiler, Polarisator, Retarder; Absorber; Coating-Referenz | Jones-/Mueller-Tabellen |
 | `scatter` | 0..1 | – | Lambert, Gauß, ABg (M9) |

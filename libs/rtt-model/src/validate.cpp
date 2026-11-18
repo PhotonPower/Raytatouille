@@ -27,6 +27,8 @@ namespace {
 /// base and term type has its own branch).
 template <class>
 inline constexpr bool kUnhandledShape = false;
+template <class>
+inline constexpr bool kUnhandledAperture = false;
 
 /// Name of the base type as in the file format ("plane", "conic", "even_asphere", "biconic",
 /// "toroid", "cylinder", "odd_asphere", "axicon", "qcon", "qbfs").
@@ -618,15 +620,33 @@ class Validator {
     if (const auto* q = std::get_if<QCon>(&s.shape.base)) rho = &q->normalization_radius;
     if (const auto* q = std::get_if<QBfs>(&s.shape.base)) rho = &q->normalization_radius;
     if (rho == nullptr || rho->is_bound() || !finite_positive(rho->value)) return;
+    // A bound aperture dimension has its value only after resolve_parameters (#353).
+    const bool bound = std::visit(
+        [](const auto& a) {
+          using A = std::decay_t<decltype(a)>;
+          if constexpr (std::is_same_v<A, CircularAperture>) {
+            return a.radius.is_bound();
+          } else if constexpr (std::is_same_v<A, RectangularAperture>) {
+            return a.half_width_x.is_bound() || a.half_width_y.is_bound();
+          } else if constexpr (std::is_same_v<A, EllipticalAperture>) {
+            return a.semi_axis_x.is_bound() || a.semi_axis_y.is_bound();
+          } else {
+            static_assert(kUnhandledAperture<A>, "validate: unhandled aperture");
+          }
+        },
+        *s.aperture);
+    if (bound) return;
     const double extent = std::visit(
         [](const auto& a) -> double {
           using A = std::decay_t<decltype(a)>;
           if constexpr (std::is_same_v<A, CircularAperture>) {
-            return a.radius;
+            return a.radius.value;
           } else if constexpr (std::is_same_v<A, RectangularAperture>) {
-            return std::hypot(a.half_width_x, a.half_width_y);
+            return std::hypot(a.half_width_x.value, a.half_width_y.value);
+          } else if constexpr (std::is_same_v<A, EllipticalAperture>) {
+            return std::max(a.semi_axis_x.value, a.semi_axis_y.value);
           } else {
-            return std::max(a.semi_axis_x, a.semi_axis_y);
+            static_assert(kUnhandledAperture<A>, "validate: unhandled aperture");
           }
         },
         *s.aperture);
@@ -718,21 +738,32 @@ class Validator {
     }
   }
 
+  /// Aperture dimensions are Params (ADR 0050, point 1): each is checked like any Param; a bound
+  /// dimension takes its value from the table and is checked after resolve_parameters (#353).
   void check_aperture(const Aperture& a, const std::string& loc) {
+    // True if `p` is unbound and its value is not finite and > 0.
+    const auto invalid = [](const Param& p) { return !p.is_bound() && !finite_positive(p.value); };
     if (const auto* c = std::get_if<CircularAperture>(&a)) {
-      if (!finite_positive(c->radius))
+      check_param(c->radius, loc + "/radius", true);
+      check_param(c->inner_radius, loc + "/inner_radius", true);
+      if (invalid(c->radius))
         report("surface_aperture.radius_invalid", loc + "/radius", "radius must be > 0 mm");
-      if (!std::isfinite(c->inner_radius) || c->inner_radius < 0.0 ||
-          c->inner_radius >= c->radius) {
+      const Param& inner = c->inner_radius;
+      if (!inner.is_bound() && (!std::isfinite(inner.value) || inner.value < 0.0 ||
+                                (!c->radius.is_bound() && inner.value >= c->radius.value))) {
         report("surface_aperture.inner_radius_invalid", loc + "/inner_radius",
                "inner radius must be >= 0 and < radius");
       }
     } else if (const auto* r = std::get_if<RectangularAperture>(&a)) {
-      if (!finite_positive(r->half_width_x) || !finite_positive(r->half_width_y)) {
+      check_param(r->half_width_x, loc + "/half_width_x", true);
+      check_param(r->half_width_y, loc + "/half_width_y", true);
+      if (invalid(r->half_width_x) || invalid(r->half_width_y)) {
         report("surface_aperture.half_width_invalid", loc, "half widths must be > 0 mm");
       }
     } else if (const auto* e = std::get_if<EllipticalAperture>(&a)) {
-      if (!finite_positive(e->semi_axis_x) || !finite_positive(e->semi_axis_y)) {
+      check_param(e->semi_axis_x, loc + "/semi_axis_x", true);
+      check_param(e->semi_axis_y, loc + "/semi_axis_y", true);
+      if (invalid(e->semi_axis_x) || invalid(e->semi_axis_y)) {
         report("surface_aperture.semi_axis_invalid", loc, "semi axes must be > 0 mm");
       }
     }
@@ -1085,6 +1116,7 @@ class Validator {
     if (t.empty()) return;
     const detail::TargetIndex index(system_);
     system_rows_ = system_level_rows();
+    aperture_rows_ = aperture_rows();
     check_tolerance_class(t.tolerance_class, "/tolerances/class");
     check_overrides(index);
     check_items(index);
@@ -1113,6 +1145,27 @@ class Validator {
     for (const Param* p : {&system_.object.distance, &system_.aperture.value}) {
       if (p->param) rows.insert(*p->param);
     }
+    return with_expression_sources(std::move(rows));
+  }
+
+  /// The rows that an aperture dimension depends on, directly or through expression rows. Apertures
+  /// are never toleranced (ADR 0050, point 1), so these rows are no targets or compensators.
+  std::unordered_set<std::string> aperture_rows() const {
+    std::unordered_set<std::string> rows;
+    for_each_param(system_, [&](std::string_view pointer, const Param& p) {
+      if (p.param && is_aperture_pointer(pointer)) rows.insert(*p.param);
+    });
+    return with_expression_sources(std::move(rows));
+  }
+
+  /// True if the edit-form pointer of a Param lies in a surface aperture (ADR 0050, point 1).
+  static bool is_aperture_pointer(std::string_view pointer) {
+    return pointer.find("/aperture/") != std::string_view::npos && pointer.rfind("/root", 0) == 0;
+  }
+
+  /// `rows` plus every row read by an expression row in it, transitively (ADR 0029, point 2).
+  std::unordered_set<std::string> with_expression_sources(
+      std::unordered_set<std::string> rows) const {
     const std::vector<ParameterRow>& table = system_.parameters;
     // A row reads only earlier rows, so one pass from the end collects the closure.
     for (std::size_t r = table.size(); r-- > 0;) {
@@ -1369,6 +1422,9 @@ class Validator {
         if (p == nullptr) {
           report("tolerances.target_invalid", loc + "/param",
                  "'" + *t.param + "' is not a Param of '" + t.name + "'");
+        } else if (is_aperture_pointer(*anchor + *t.param)) {
+          report("tolerances.target_invalid", loc + "/param",
+                 "aperture dimensions are not toleranced (ADR 0050)");
         } else if (p->param) {
           report("tolerances.bound_param", loc + "/param",
                  "bound to row '" + *p->param + "': tolerance the row instead");
@@ -1386,6 +1442,10 @@ class Validator {
         } else if (system_rows_.contains(t.name)) {
           report("tolerances.target_invalid", loc + "/parameter",
                  "the object distance or the system aperture depend on row '" + t.name + "'");
+        } else if (aperture_rows_.contains(t.name)) {
+          report("tolerances.target_invalid", loc + "/parameter",
+                 "an aperture dimension depends on row '" + t.name +
+                     "'; apertures are not toleranced (ADR 0050)");
         }
         return;
       }
@@ -1549,6 +1609,12 @@ class Validator {
               "the object distance or the system aperture depend on row '" + k.target.name + "'");
           continue;
         }
+        if (aperture_rows_.contains(k.target.name)) {
+          report("tolerances.compensator_target", loc + "/parameter",
+                 "an aperture dimension depends on row '" + k.target.name +
+                     "'; apertures are not toleranced (ADR 0050)");
+          continue;
+        }
         key = "row:" + k.target.name;
       } else {
         if (!k.target.param) {
@@ -1563,6 +1629,11 @@ class Validator {
         if (p == nullptr) {
           report("tolerances.compensator_target", loc + "/param",
                  "'" + *k.target.param + "' is not a Param of '" + k.target.name + "'");
+          continue;
+        }
+        if (is_aperture_pointer(key)) {
+          report("tolerances.compensator_target", loc + "/param",
+                 "aperture dimensions are not compensators (ADR 0050)");
           continue;
         }
         if (p->param) {
@@ -1660,9 +1731,10 @@ class Validator {
     bool active = true;
   };
   std::vector<StopInfo> stops_;
-  std::unordered_set<std::string> row_names_;    // names of the parameter rows (ADR 0029)
-  std::unordered_set<std::string> system_rows_;  // rows of object distance and aperture (#255)
-  std::size_t surfaces_seen_ = 0;                // surfaces before the node in tree order
+  std::unordered_set<std::string> row_names_;      // names of the parameter rows (ADR 0029)
+  std::unordered_set<std::string> system_rows_;    // rows of object distance and aperture (#255)
+  std::unordered_set<std::string> aperture_rows_;  // rows of aperture dimensions (ADR 0050)
+  std::size_t surfaces_seen_ = 0;                  // surfaces before the node in tree order
   bool active_ = true;  // effective state of the node being checked (ADR 0049, point 1)
 };
 

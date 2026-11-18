@@ -1885,7 +1885,7 @@ TEST_CASE("#310: the overfilled stop of the microscope gives Vignetted, not NoCo
   REQUIRE(aperture.has_value());
   const auto* circle = std::get_if<rtt::model::CircularAperture>(&*aperture);
   REQUIRE(circle != nullptr);
-  const double stop_radius = circle->radius;
+  const double stop_radius = circle->radius.value;
   REQUIRE(std::abs(r_s) > stop_radius);  // content guard: the stop is overfilled
   const auto rays = rtt::trace::make_rays(cs, PathId{0}, std::vector<std::uint16_t>{0}, 0,
                                           rtt::trace::FanYPupil{41}, Aiming::Real);

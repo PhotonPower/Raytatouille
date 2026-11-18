@@ -624,3 +624,40 @@ def test_active_flag_of_nodes():
     assert VALIDATOR.is_valid(doc)
     assert not VALIDATOR.is_valid(_broken(lambda d: _lens(d).update(active="no")))
     assert not VALIDATOR.is_valid(_broken(lambda d: d.update(schema_version="0.9.0")))
+
+
+# ---- schema 0.11 (#320, ADR 0050, point 1): aperture dimensions are Params ----
+
+def _aperture(aperture):
+    doc = copy.deepcopy(load(ROOT / "tests" / "reference" / "m0" / "singlet.rtt.json"))
+    _lens(doc)["surfaces"][0]["aperture"] = aperture
+    return doc
+
+
+@pytest.mark.parametrize(
+    "aperture",
+    [{"type": "circular", "radius": {"value": 12.7, "variable": True, "min": 5.0},
+      "inner_radius": {"param": "R_IN"}},
+     {"type": "rectangular", "half_width_x": {"value": 5.0}, "half_width_y": 4.0},
+     {"type": "elliptical", "semi_axis_x": 6.0, "semi_axis_y": {"param": "B"}}],
+    ids=["circular", "rectangular", "elliptical"],
+)
+def test_0_11_aperture_params_are_accepted(aperture):
+    assert VALIDATOR.is_valid(_aperture(aperture))
+
+
+@pytest.mark.parametrize(
+    "aperture",
+    [{"type": "circular", "radius": "12.7"},
+     {"type": "circular", "radius": {"variable": True}},
+     {"type": "rectangular", "half_width_x": {"param": "A", "value": 1.0}, "half_width_y": 1.0},
+     {"type": "elliptical", "semi_axis_x": [6.0], "semi_axis_y": 1.0}],
+    ids=["string", "no-value", "param-and-value", "list"],
+)
+def test_0_11_aperture_param_errors_are_rejected(aperture):
+    assert not VALIDATOR.is_valid(_aperture(aperture))
+
+
+def test_0_11_version_pattern():
+    assert VALIDATOR.is_valid(_broken(lambda d: None))
+    assert not VALIDATOR.is_valid(_broken(lambda d: d.update(schema_version="0.10.0")))

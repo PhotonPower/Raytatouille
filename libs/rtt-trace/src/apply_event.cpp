@@ -30,14 +30,15 @@ bool inside(const model::Aperture& aperture, double x, double y, bool ignore_inn
         using A = std::decay_t<decltype(a)>;
         if constexpr (std::is_same_v<A, model::CircularAperture>) {
           const double r2 = x * x + y * y;
-          const double outer = a.radius + tol;
-          const double inner = a.inner_radius - tol;
+          const double outer = a.radius.value + tol;
+          const double inner = a.inner_radius.value - tol;
           return r2 <= outer * outer && (ignore_inner || inner <= 0.0 || r2 >= inner * inner);
         } else if constexpr (std::is_same_v<A, model::RectangularAperture>) {
-          return std::abs(x) <= a.half_width_x + tol && std::abs(y) <= a.half_width_y + tol;
+          return std::abs(x) <= a.half_width_x.value + tol &&
+                 std::abs(y) <= a.half_width_y.value + tol;
         } else if constexpr (std::is_same_v<A, model::EllipticalAperture>) {
-          const double u = x / (a.semi_axis_x + tol);
-          const double v = y / (a.semi_axis_y + tol);
+          const double u = x / (a.semi_axis_x.value + tol);
+          const double v = y / (a.semi_axis_y.value + tol);
           return u * u + v * v <= 1.0;
         } else {
           static_assert(kUnhandledAperture<A>, "aperture type not handled");

@@ -174,7 +174,7 @@ def test_set_on_a_missing_optional_member_adds_it() -> None:
     surface = ed.system.root.children[5]
     assert isinstance(surface, rt.model.Element)
     aperture = surface.surfaces[0].aperture
-    assert isinstance(aperture, rt.model.CircularAperture) and aperture.radius == 5.0
+    assert isinstance(aperture, rt.model.CircularAperture) and aperture.radius.value == 5.0
 
 
 def test_set_does_not_append_to_an_array_or_create_parents() -> None:

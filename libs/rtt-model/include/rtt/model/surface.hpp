@@ -143,21 +143,24 @@ struct ShapeStack {
 
 // ------------------------------------------------------------- aperture -----
 
+// Aperture dimensions are Params (ADR 0050, point 1): variable for the optimizer and bindable to
+// the parameter table, but never toleranced. Local surface coordinates, mm.
+
 struct CircularAperture {
-  double radius = 0.0;        ///< mm
-  double inner_radius = 0.0;  ///< mm, > 0 makes an annulus
+  Param radius;        ///< mm, > 0
+  Param inner_radius;  ///< mm, > 0 makes an annulus (central obscuration, ADR 0032)
   bool operator==(const CircularAperture&) const = default;
 };
 
 struct RectangularAperture {
-  double half_width_x = 0.0;  ///< mm
-  double half_width_y = 0.0;  ///< mm
+  Param half_width_x;  ///< mm, > 0
+  Param half_width_y;  ///< mm, > 0
   bool operator==(const RectangularAperture&) const = default;
 };
 
 struct EllipticalAperture {
-  double semi_axis_x = 0.0;  ///< mm
-  double semi_axis_y = 0.0;  ///< mm
+  Param semi_axis_x;  ///< mm, > 0
+  Param semi_axis_y;  ///< mm, > 0
   bool operator==(const EllipticalAperture&) const = default;
 };
 

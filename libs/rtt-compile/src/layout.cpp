@@ -100,10 +100,10 @@ std::vector<Interval> aperture_pieces(const model::Aperture& aperture, const Lin
       [&](const auto& a) -> std::vector<Interval> {
         using A = std::decay_t<decltype(a)>;
         if constexpr (std::is_same_v<A, model::CircularAperture>) {
-          const std::optional<Interval> outer = disc(line, a.radius);
+          const std::optional<Interval> outer = disc(line, a.radius.value);
           if (!outer) return {};
           const std::optional<Interval> inner =
-              a.inner_radius > 0.0 ? disc(line, a.inner_radius) : std::nullopt;
+              a.inner_radius.value > 0.0 ? disc(line, a.inner_radius.value) : std::nullopt;
           if (!inner) return {*outer};
           return {{outer->lo, inner->lo}, {inner->hi, outer->hi}};
         } else if constexpr (std::is_same_v<A, model::RectangularAperture>) {
@@ -120,14 +120,14 @@ std::vector<Interval> aperture_pieces(const model::Aperture& aperture, const Lin
             range.lo = std::max(range.lo, std::min(s1, s2));
             range.hi = std::min(range.hi, std::max(s1, s2));
           };
-          slab(line.q0x, line.tx, a.half_width_x);
-          slab(line.q0y, line.ty, a.half_width_y);
+          slab(line.q0x, line.tx, a.half_width_x.value);
+          slab(line.q0y, line.ty, a.half_width_y.value);
           if (!(range.hi > range.lo)) return {};
           return {range};
         } else if constexpr (std::is_same_v<A, model::EllipticalAperture>) {
           // (x/a)^2 + (y/b)^2 <= 1 is A s^2 + B s + C <= 0 with A > 0.
-          const double ia = 1.0 / (a.semi_axis_x * a.semi_axis_x);
-          const double ib = 1.0 / (a.semi_axis_y * a.semi_axis_y);
+          const double ia = 1.0 / (a.semi_axis_x.value * a.semi_axis_x.value);
+          const double ib = 1.0 / (a.semi_axis_y.value * a.semi_axis_y.value);
           const double qa = line.tx * line.tx * ia + line.ty * line.ty * ib;
           const double qb = 2.0 * (line.q0x * line.tx * ia + line.q0y * line.ty * ib);
           const double qc = line.q0x * line.q0x * ia + line.q0y * line.q0y * ib - 1.0;

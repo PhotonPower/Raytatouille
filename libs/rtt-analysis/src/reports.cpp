@@ -44,13 +44,13 @@ const compile::CompiledPath& checked_path(const compile::CompiledSystem& system,
 std::pair<double, ApertureKind> semi_diameter(const std::optional<model::Aperture>& aperture) {
   if (!aperture) return {kNaN, ApertureKind::None};
   if (const auto* c = std::get_if<model::CircularAperture>(&*aperture)) {
-    return {c->radius, ApertureKind::Circular};
+    return {c->radius.value, ApertureKind::Circular};
   }
   if (const auto* r = std::get_if<model::RectangularAperture>(&*aperture)) {
-    return {std::hypot(r->half_width_x, r->half_width_y), ApertureKind::Rectangular};
+    return {std::hypot(r->half_width_x.value, r->half_width_y.value), ApertureKind::Rectangular};
   }
   const auto& e = std::get<model::EllipticalAperture>(*aperture);
-  return {std::max(e.semi_axis_x, e.semi_axis_y), ApertureKind::Elliptical};
+  return {std::max(e.semi_axis_x.value, e.semi_axis_y.value), ApertureKind::Elliptical};
 }
 
 double sag(const compile::CompiledSystem& system, std::uint32_t surface, double x, double y) {

@@ -384,8 +384,8 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "compensators, but the compensator merit (or the optimization it falls back on) is missing "
      "or empty"},
     {"tolerances.compensator_target", Severity::Error, "validate",
-     "compensator neither an unbound Param nor a row of the form value, a target twice, or a row "
-     "the object distance or the system aperture depend on"},
+     "compensator neither an unbound Param nor a row of the form value, a target twice, a row "
+     "the object distance or the system aperture depend on, or an aperture dimension or its row"},
     {"tolerances.criterion_bounds", Severity::Error, "validate",
      "criterion without bound, min > max, max_change <= 0, a bound not finite, or target or "
      "weight at its operand"},
@@ -413,8 +413,8 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "explicit tolerance, single value or compensator at an inactive node; it is skipped"},
     {"tolerances.target_invalid", Severity::Error, "validate",
      "tolerance kind, anchor, param pointer or segment do not fit the target, a single value of "
-     "a kind no class generates there, or a row the object distance or the system aperture "
-     "depend on"},
+     "a kind no class generates there, a row the object distance or the system aperture "
+     "depend on, or an aperture dimension or its row"},
     {"tolerances.unknown_target", Severity::Error, "validate",
      "tolerance target (surface, node or parameter row) not found"},
     {"value.not_finite", Severity::Error, "validate", "number of the model not finite"},

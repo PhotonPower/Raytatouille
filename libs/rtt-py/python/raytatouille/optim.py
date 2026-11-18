@@ -28,8 +28,9 @@ Notes for use (ADR 0030, addendum #281):
   external step. A merit function that changes over less than h (a working distance against a
   depth of focus below 1 um) is seen only on average. A smaller eps_f shrinks h but must stay
   above the noise of the real aiming.
-- The system aperture value (``object_na``, ``epd``) can be variable; the radius of a surface
-  aperture cannot (it is not a Param). Vary the aperture through ``aperture.value``.
+- The system aperture value (``object_na``, ``epd``) can be variable, and so can the dimensions
+  of a surface aperture (Params since schema 0.11, ADR 0050), e.g. the stop radius with
+  ``stop_size``. Aperture dimensions are never toleranced.
 - An equality such as a fixed ``magnification`` or EFL as an operand with a large weight makes a
   narrow valley in which Levenberg-Marquardt creeps; put it into the parameter table instead (an
   expression row, "solve", ADR 0029). Exact equality constraints in the solver are issue #196.

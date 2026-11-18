@@ -41,14 +41,14 @@ analyses parallelise internally (`threads=`). `import raytatouille as rt`.
 | Indices of lists | `field`, `wavelength` are 0-based indices; `path` is an index or a name |
 | Determinism | bitwise equal for any thread count; randomness only with a seed |
 
-## Minimal system file (schema 0.10.0)
+## Minimal system file (schema 0.11.0)
 
 ```python
 import json
 import raytatouille as rt
 
 SINGLET = {
-    "schema_version": "0.10.0",
+    "schema_version": "0.11.0",
     "name": "Singlet",
     "units": {"length": "mm", "wavelength": "um"},
     "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": True}, {"um": 0.6563}],
@@ -89,7 +89,8 @@ Format essentials (`rt.schema("system")` returns the full JSON schema as a dict)
   A4, A6, …), `odd_asphere` (`curvature`, `conic`, A1, A2, …), `axicon` (`angle_deg`), `qcon` /
   `qbfs` (`curvature`, `conic`, `normalization_radius`, `coefficients`), `biconic`, `toroid`,
   `cylinder`. `aperture`: `circular` (`radius`, `inner_radius`), `rectangular` (`half_width_x`,
-  `half_width_y`), `elliptical` (`semi_axis_x`, `semi_axis_y`). `phases`: `linear_grating`
+  `half_width_y`), `elliptical` (`semi_axis_x`, `semi_axis_y`); since schema 0.11 these are
+  Params (a stop radius can be variable with `stop_size`; never toleranced). `phases`: `linear_grating`
   (`lines_per_mm`, `orientation_deg`), `radial_phase` (`normalization_radius`, `coefficients`
   in rad), with optional `diffraction_efficiency`. `shape.terms` (`zernike_sag`) is read but
   not compiled (`shape.zernike_unsupported`).

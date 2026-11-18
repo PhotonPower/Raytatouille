@@ -767,8 +767,8 @@ TEST_CASE("SQAP and ELAP clip at their half widths, the corner only by the ellip
       std::get<rtt::model::RectangularAperture>(*element_of(s, "S1")->surfaces[0].aperture);
   const auto& el =
       std::get<rtt::model::EllipticalAperture>(*element_of(s, "S2")->surfaces[0].aperture);
-  const double a = sq.half_width_x;
-  const double b = sq.half_width_y;
+  const double a = sq.half_width_x.value;
+  const double b = sq.half_width_y.value;
   REQUIRE(el.semi_axis_x == a);
   REQUIRE(el.semi_axis_y == b);
   const auto cs = rtt::compile::compile(s, schott());
