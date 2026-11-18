@@ -58,6 +58,7 @@ Präzisierungen und Ergänzungen einer angenommenen Entscheidung kommen als dati
 | [0047](0047.md) | macOS 26 (arm64) als dritte Plattform (Mindestversion 26, Presets und CI, ersetzt „Verworfen: macOS“ in 0011) | angenommen |
 | [0048](0048.md) | Bestrahlungsstärke-Raster aus Strahltreffern (einfallendes Gewicht, RayPaths und RayBatch, projizierte Zellfläche) | angenommen |
 | [0049](0049.md) | Knoten vorübergehend aus der Rechnung nehmen (`active`, Schema 0.10.0; Geometrie bleibt, inaktive Blende = keine Blende) | angenommen |
+| [0050](0050.md) | Aperturformen (`regular_polygon`, `polygon`), Obskurationen und Aperturmaße als Param (Schema 0.11.0) | vorgeschlagen |
 
 ## Vorlage
 
