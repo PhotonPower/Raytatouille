@@ -45,7 +45,7 @@ def show(node: model.Assembly | model.Element, depth: int) -> None:
     print(f"{indent}{node.kind.name.lower()} {node.name!r} at z {z} mm, {material}")
     for s in node.surfaces:
         aperture = s.aperture
-        clear = f", r {aperture.radius:g} mm" if isinstance(aperture, model.CircularAperture) else ""
+        clear = f", r {param(aperture.radius)} mm" if isinstance(aperture, model.CircularAperture) else ""
         print(f"{indent}  {s.id}: {shape(s.shape)}{clear}, {type(s.interaction).__name__}")
 
 

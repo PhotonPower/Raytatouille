@@ -181,7 +181,7 @@ class LossCounter {
       const compile::CompiledSurface& surface = system.surfaces()[*stop_];
       const auto* circle =
           surface.aperture ? std::get_if<model::CircularAperture>(&*surface.aperture) : nullptr;
-      if (circle != nullptr) stop_inner_radius_ = circle->inner_radius;
+      if (circle != nullptr) stop_inner_radius_ = circle->inner_radius.value;
     }
   }
 

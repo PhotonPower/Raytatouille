@@ -146,16 +146,16 @@ void write_aperture(const ExportRow& row, std::array<std::string, kColumns.size(
   if (!a.has_value()) return;
   if (const auto* c = std::get_if<model::CircularAperture>(&a.value())) {
     f[kAperture] = "circular";
-    f[kAperture1] = detail::format_number(c->radius);
-    f[kAperture2] = optional_number(c->inner_radius);
+    f[kAperture1] = detail::format_number(c->radius.value);
+    f[kAperture2] = optional_number(c->inner_radius.value);
   } else if (const auto* r = std::get_if<model::RectangularAperture>(&a.value())) {
     f[kAperture] = "rectangular";
-    f[kAperture1] = detail::format_number(r->half_width_x);
-    f[kAperture2] = detail::format_number(r->half_width_y);
+    f[kAperture1] = detail::format_number(r->half_width_x.value);
+    f[kAperture2] = detail::format_number(r->half_width_y.value);
   } else if (const auto* e = std::get_if<model::EllipticalAperture>(&a.value())) {
     f[kAperture] = "elliptical";
-    f[kAperture1] = detail::format_number(e->semi_axis_x);
-    f[kAperture2] = detail::format_number(e->semi_axis_y);
+    f[kAperture1] = detail::format_number(e->semi_axis_x.value);
+    f[kAperture2] = detail::format_number(e->semi_axis_y.value);
   }
 }
 

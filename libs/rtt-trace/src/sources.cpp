@@ -190,7 +190,7 @@ void set_telecentric(Context& c) {
       if (circle == nullptr) {
         throw std::invalid_argument("sources: the stop needs a circular aperture");
       }
-      c.r_ep = circle->radius / std::abs(c.stop_scale);
+      c.r_ep = circle->radius.value / std::abs(c.stop_scale);
       break;
     }
     case model::SystemApertureType::EntrancePupilDiameter:
@@ -214,7 +214,7 @@ double stop_aperture_radius(const Context& c) {
   if (circle == nullptr) {
     throw std::invalid_argument("sources: the stop needs a circular aperture");
   }
-  return circle->radius;
+  return circle->radius.value;
 }
 
 /// Whether the entrance pupil of `fo` is at infinity (the stop exists, its image does not).
@@ -529,11 +529,11 @@ double aperture_extent(const model::Aperture& aperture) {
       [](const auto& a) {
         using A = std::decay_t<decltype(a)>;
         if constexpr (std::is_same_v<A, model::CircularAperture>) {
-          return a.radius;
+          return a.radius.value;
         } else if constexpr (std::is_same_v<A, model::RectangularAperture>) {
-          return std::hypot(a.half_width_x, a.half_width_y);
+          return std::hypot(a.half_width_x.value, a.half_width_y.value);
         } else {
-          return std::max(a.semi_axis_x, a.semi_axis_y);
+          return std::max(a.semi_axis_x.value, a.semi_axis_y.value);
         }
       },
       aperture);

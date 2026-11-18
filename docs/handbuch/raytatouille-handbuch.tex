@@ -805,7 +805,9 @@ Schlüssel & Inhalt \\ \midrule \endhead
   kompiliert (Meldung »not supported before M8«). \\
 \code{aperture} & \code{circular} (\code{radius}, optional \code{inner_radius} für einen Ring),
   \code{rectangular} (\code{half_width_x}, \code{half_width_y}) oder \code{elliptical}
-  (\code{semi_axis_x}, \code{semi_axis_y}); in mm, zentriert auf der lokalen Achse. \\
+  (\code{semi_axis_x}, \code{semi_axis_y}); in mm, zentriert auf der lokalen Achse. Ab
+  Schema~0.11 sind alle Maße Params (ADR~0050), etwa ein variabler Blendenradius bei
+  \code{stop_size}; Aperturen werden nicht toleriert. \\
 \code{phases} & Phasenschichten: \code{{"type": "linear_grating", "lines_per_mm": G,
   "orientation_deg": ψ}} oder \code{{"type": "radial_phase", "normalization_radius": R,
   "coefficients": [c1, c2, …]}} (Koeffizienten in rad, $c_1$ zu $\rho^2$). \\
@@ -1348,13 +1350,13 @@ print("schema_version:", system.schema_version)
 \end{pycode}
 \begin{ausgabe}
 gleich nach Laden: True
-Datei beginnt mit: ['{', '  "schema_version": "0.10.0",', '  "name": "Mein Singlet",']
+Datei beginnt mit: ['{', '  "schema_version": "0.11.0",', '  "name": "Mein Singlet",']
 kanonisch, Zeichen: 1460 | identisch nach Roundtrip: True
 Schlüssel oben: ['schema_version', 'name', 'units', 'environment', 'object', 'wavelengths'] ...
 Radius L1.S1 in der Bearbeitungsform: {'value': 51.68, 'variable': False}
 Pointer von L1.S1: /root/children/1/surfaces/0
-json_at: {'type': 'circular', 'radius': 12.7, 'inner_radius': 0.0}
-schema_version: 0.10.0
+json_at: {'type': 'circular', 'radius': {'value': 12.7, 'variable': False}, 'inner_radius': {'value': 0.0, 'variable': False}}
+schema_version: 0.11.0
 \end{ausgabe}
 
 \begin{longtable}{@{}L{5.2cm}L{9.5cm}@{}}
@@ -1436,7 +1438,7 @@ def zeige(knoten, tiefe=0):
         form = (f"R = {wert(basis.radius)} mm" if isinstance(basis, model.Conic)
                 else type(basis).__name__)
         ap = s.aperture
-        ap_text = f", r = {ap.radius:g} mm" if isinstance(ap, model.CircularAperture) else ""
+        ap_text = f", r = {ap.radius.value:g} mm" if isinstance(ap, model.CircularAperture) else ""
         print(f"{pre}  {s.id}: {form}{ap_text}, {type(s.interaction).__name__}")
 
 
@@ -1485,7 +1487,8 @@ Klasse & Attribute und Bedeutung \\ \midrule \endhead
   (\code{ZernikeSag}) \\
 Aperturen & \code{CircularAperture} (\code{radius}, \code{inner_radius}),
   \code{RectangularAperture} (\code{half_width_x}, \code{half_width_y}),
-  \code{EllipticalAperture} (\code{semi_axis_x}, \code{semi_axis_y}) oder \code{None} \\
+  \code{EllipticalAperture} (\code{semi_axis_x}, \code{semi_axis_y}) oder \code{None};
+  die Maße sind \code{Param} (Wert über \code{.value}) \\
 Phasen & \code{LinearGrating} (\code{lines_per_mm}, \code{orientation_deg}),
   \code{RadialPhase} (\code{normalization_radius}, \code{coefficients}) \\
 Interaktionen & \code{Fresnel}, \code{IdealMirror}, \code{IdealAntiReflection},
@@ -1582,7 +1585,7 @@ print("inverser Patch:", r.inverse)
 nach 3 Befehlen: {'value': 50.0, 'variable': False} 4 Wellenlängen
 abgelehnt: [surface.id_duplicate] /root/children/2/surfaces/0/id (Operation None)
 undo -> Wellenlängen: 3 | redo möglich: True
-Verlauf: [[{'op': 'replace', 'path': '/root/children/1/surfaces/0/shape/base/radius/value', 'value': 50.0}], [{'op': 'replace', 'path': '/root/children/1/surfaces/0/aperture/radius', 'value': 13.0}], [{'op': 'add', 'path': '/wavelengths/-', 'value': {'um': 0.5461}}]]
+Verlauf: [[{'op': 'replace', 'path': '/root/children/1/surfaces/0/shape/base/radius/value', 'value': 50.0}], [{'op': 'replace', 'path': '/root/children/1/surfaces/0/aperture/radius/value', 'value': 13.0}], [{'op': 'add', 'path': '/wavelengths/-', 'value': {'um': 0.5461}}]]
 EPD jetzt: {'value': 15.0, 'variable': False}
 Defokus -2.0 mm: RMS   91.83 µm
 Defokus +0.0 mm: RMS   65.86 µm
@@ -3854,7 +3857,7 @@ if __name__ == "__main__":
 \begin{ausgabe}
 pickle über die kanonische Dateiform: True
 EFL je Prozess: ['96.800', '100.053', '102.608']
-Schema: https://json-schema.org/draft/2020-12/schema | Titel: Raytatouille system file (.rtt.json), schema 0.10
+Schema: https://json-schema.org/draft/2020-12/schema | Titel: Raytatouille system file (.rtt.json), schema 0.11
 Pflichtschlüssel: ['schema_version', 'units', 'wavelengths', 'aperture', 'fields', 'root', 'paths']
 \end{ausgabe}
 \code{ProcessPoolExecutor} startet neue Interpreter (Windows, macOS und ab Python~3.14 auch

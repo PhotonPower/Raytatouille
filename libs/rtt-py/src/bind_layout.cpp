@@ -183,12 +183,13 @@ std::optional<std::tuple<std::string, std::map<std::string, double>>> aperture_d
       [](const auto& a) -> std::tuple<std::string, std::map<std::string, double>> {
         using A = std::decay_t<decltype(a)>;
         if constexpr (std::is_same_v<A, model::CircularAperture>) {
-          return {"circular", {{"radius", a.radius}, {"inner_radius", a.inner_radius}}};
+          return {"circular", {{"radius", a.radius.value}, {"inner_radius", a.inner_radius.value}}};
         } else if constexpr (std::is_same_v<A, model::RectangularAperture>) {
           return {"rectangular",
-                  {{"half_width_x", a.half_width_x}, {"half_width_y", a.half_width_y}}};
+                  {{"half_width_x", a.half_width_x.value}, {"half_width_y", a.half_width_y.value}}};
         } else {
-          return {"elliptical", {{"semi_axis_x", a.semi_axis_x}, {"semi_axis_y", a.semi_axis_y}}};
+          return {"elliptical",
+                  {{"semi_axis_x", a.semi_axis_x.value}, {"semi_axis_y", a.semi_axis_y.value}}};
         }
       },
       *aperture);

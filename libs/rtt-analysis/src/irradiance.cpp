@@ -32,11 +32,13 @@ IrradianceExtent bounding(const model::Aperture& aperture) {
       [](const auto& a) -> IrradianceExtent {
         using A = std::decay_t<decltype(a)>;
         if constexpr (std::is_same_v<A, model::CircularAperture>) {
-          return {-a.radius, a.radius, -a.radius, a.radius};
+          return {-a.radius.value, a.radius.value, -a.radius.value, a.radius.value};
         } else if constexpr (std::is_same_v<A, model::RectangularAperture>) {
-          return {-a.half_width_x, a.half_width_x, -a.half_width_y, a.half_width_y};
+          return {-a.half_width_x.value, a.half_width_x.value, -a.half_width_y.value,
+                  a.half_width_y.value};
         } else {
-          return {-a.semi_axis_x, a.semi_axis_x, -a.semi_axis_y, a.semi_axis_y};
+          return {-a.semi_axis_x.value, a.semi_axis_x.value, -a.semi_axis_y.value,
+                  a.semi_axis_y.value};
         }
       },
       aperture);

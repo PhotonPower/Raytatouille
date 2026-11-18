@@ -252,18 +252,19 @@ void write_aperture(Writer& w, const ExportRow& row) {
     // the stop: fixed semi-diameter (rule 2), an annulus also as CLAP (rule 1); validate gives
     // every stop an aperture, the walk only lets a circle through
     const auto& c = std::get<model::CircularAperture>(*a);
-    w.sub("DIAM " + num(c.radius) + " 1");
-    if (c.inner_radius > 0.0) w.sub("CLAP " + num(c.inner_radius) + " " + num(c.radius));
+    w.sub("DIAM " + num(c.radius.value) + " 1");
+    if (c.inner_radius.value > 0.0)
+      w.sub("CLAP " + num(c.inner_radius.value) + " " + num(c.radius.value));
     return;
   }
   w.sub("DIAM 0 0");
   if (!a) return;
   if (const auto* c = std::get_if<model::CircularAperture>(&*a)) {
-    w.sub("CLAP " + num(c->inner_radius) + " " + num(c->radius));
+    w.sub("CLAP " + num(c->inner_radius.value) + " " + num(c->radius.value));
   } else if (const auto* r = std::get_if<model::RectangularAperture>(&*a)) {
-    w.sub("SQAP " + num(r->half_width_x) + " " + num(r->half_width_y));
+    w.sub("SQAP " + num(r->half_width_x.value) + " " + num(r->half_width_y.value));
   } else if (const auto* e = std::get_if<model::EllipticalAperture>(&*a)) {
-    w.sub("ELAP " + num(e->semi_axis_x) + " " + num(e->semi_axis_y));
+    w.sub("ELAP " + num(e->semi_axis_x.value) + " " + num(e->semi_axis_y.value));
   }
 }
 

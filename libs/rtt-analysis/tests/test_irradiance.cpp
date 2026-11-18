@@ -308,7 +308,7 @@ TEST_CASE("irradiance: input errors (#379)", "[irradiance][379]") {
     // The stop STO has a circular aperture: [-r, r]^2.
     const auto& a = cs.surfaces()[*cs.find_surface(SurfaceId{"STO"})];
     REQUIRE(a.aperture.has_value());
-    const double r = std::get<rtt::model::CircularAperture>(*a.aperture).radius;
+    const double r = std::get<rtt::model::CircularAperture>(*a.aperture).radius.value;
     const IrradianceMap m = irradiance_map(cs, 0, paths, SurfaceId{"STO"});
     CHECK(m.x_edges.front() == -r);
     CHECK(m.x_edges.back() == r);

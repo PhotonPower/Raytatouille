@@ -2,6 +2,7 @@
 // so compile checks them after the resolution with the same codes and JSON pointers as unbound
 // values. Valid bound values compile as the same literal values would.
 
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <cstddef>
 #include <string>
@@ -197,4 +198,30 @@ TEST_CASE("warnings of resolved values do not stop compile (#353)", "[bound]") {
   REQUIRE(warned);  // content guard: the resolved system does warn
   CHECK_NOTHROW(compiled(s, 0));
   CHECK_NOTHROW(compiled(s, 1));
+}
+
+TEST_CASE("bound aperture dimensions are checked after the resolution (ADR 0050)", "[bound]") {
+  SECTION("inner radius from the table >= the plain radius") {
+    System s = lens(rtt::model::Plane{});
+    auto& front = std::get<Element>(s.root.children[0].value).surfaces[0];
+    front.aperture = rtt::model::CircularAperture{Param(3.0), Param::bound("RI")};
+    table(s, "RI", 1.0, 3.0);
+    CHECK_NOTHROW(compiled(s, 0));
+    const std::vector<rtt::model::Diagnostic> d = errors(s, 1);
+    REQUIRE(only(d, "surface_aperture.inner_radius_invalid", kFront + "/aperture/inner_radius"));
+    CHECK(d[0].message.find("value from the parameter table") != std::string::npos);
+  }
+  SECTION("a radius from the table <= 0") {
+    System s = lens(rtt::model::Plane{});
+    auto& front = std::get<Element>(s.root.children[0].value).surfaces[0];
+    front.aperture = rtt::model::CircularAperture{Param::bound("R"), Param(0.0)};
+    table(s, "R", -3.0, 3.0);
+    // As for a literal -3, the cross check inner radius < radius fires as well.
+    const std::vector<rtt::model::Diagnostic> d = errors(s, 0);
+    CHECK(std::any_of(d.begin(), d.end(), [](const rtt::model::Diagnostic& x) {
+      return x.code == "surface_aperture.radius_invalid" &&
+             x.location == kFront + "/aperture/radius";
+    }));
+    CHECK_NOTHROW(compiled(s, 1));
+  }
 }

@@ -274,6 +274,46 @@ TEST_CASE("tolerances: every code at its pointer", "[model][tolerances][validate
          s.tolerances.compensators[0].target = at(A::Parameter, "EPD");
        },
        "tolerances.compensator_target", comp + "0/parameter"},
+      // aperture dimensions are never toleranced, also not through a table row (ADR 0050, point 1)
+      {"param item on an aperture dimension",
+       [](System& s) {
+         s.tolerances.items[0].target = with_param(at(A::Surface, "STO"), "/aperture/radius");
+       },
+       "tolerances.target_invalid", items + "0/param"},
+      {"parameter item on a row bound to an aperture dimension",
+       [](System& s) {
+         s.parameters.push_back(row("RSTOP", 10.0));
+         std::get<CircularAperture>(*element(s, 0).surfaces[0].aperture).radius =
+             Param::bound("RSTOP");
+         s.tolerances.items[6].target = at(A::Parameter, "RSTOP");
+       },
+       "tolerances.target_invalid", items + "6/parameter"},
+      {"compensator on an aperture dimension",
+       [](System& s) {
+         s.tolerances.compensators[1].target =
+             with_param(at(A::Surface, "STO"), "/aperture/radius");
+       },
+       "tolerances.compensator_target", comp + "1/param"},
+      {"row reached through an expression of an aperture dimension (item)",
+       [](System& s) {
+         s.parameters.push_back(row("X", 9.0));
+         ParameterRow r;
+         r.name = "RSTOP";
+         r.form = ParameterExpression{"X + 1"};
+         s.parameters.push_back(r);
+         std::get<CircularAperture>(*element(s, 0).surfaces[0].aperture).radius =
+             Param::bound("RSTOP");
+         s.tolerances.items[6].target = at(A::Parameter, "X");
+       },
+       "tolerances.target_invalid", items + "6/parameter"},
+      {"compensator on a row bound to an aperture dimension",
+       [](System& s) {
+         s.parameters.push_back(row("RSTOP", 10.0));
+         std::get<CircularAperture>(*element(s, 0).surfaces[0].aperture).radius =
+             Param::bound("RSTOP");
+         s.tolerances.compensators[0].target = at(A::Parameter, "RSTOP");
+       },
+       "tolerances.compensator_target", comp + "0/parameter"},
       {"values row of the object distance",
        [](System& s) {
          s.configurations = {{"a"}, {"b"}};

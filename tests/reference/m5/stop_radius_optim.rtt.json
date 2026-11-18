@@ -1,0 +1,78 @@
+{
+  "schema_version": "0.11.0",
+  "name": "Singlet with the stop radius as variable at stop_size: rim ray at the stop to 4 mm (ADR 0050)",
+  "units": {"length": "mm", "wavelength": "um"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "stop_size"},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {
+              "type": "circular",
+              "radius": {"value": 5.0, "variable": true, "min": 1.0, "max": 6.0}
+            }
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "L1",
+        "pose": {"position": [0.0, 0.0, 5.0]},
+        "material": "CONST:1.5168",
+        "surfaces": [
+          {
+            "id": "L1.S1",
+            "shape": {
+              "base": {"type": "conic", "radius": 103.36}
+            },
+            "aperture": {"type": "circular", "radius": 12.7}
+          },
+          {
+            "id": "L1.S2",
+            "pose": {"position": [0.0, 0.0, 4.0]},
+            "shape": {
+              "base": {"type": "conic", "radius": -103.36}
+            },
+            "aperture": {"type": "circular", "radius": 12.7}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 107.3]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ],
+  "optimization": {
+    "operands": [
+      {
+        "type": "ray_y",
+        "path": "main",
+        "surface": "STO",
+        "py": 1.0,
+        "target": 4.0
+      }
+    ]
+  }
+}

@@ -1,8 +1,8 @@
 # Systemdateien `.rtt.json` erzeugen
 
 Kurzanleitung für das Dateiformat, das die Engine, die CLI (`rtt`) und der Raytatouille Explorer
-laden. Alle Beispiele hier wurden gegen Schema `0.10.x` geprüft (Stand nach Bibliothek 0.10.0, Schema 0.10). Dateien mit
-Schema 0.1 bis 0.9 liest `rtt` weiter und schreibt sie mit `rtt format` als 0.10; ein `pickup` aus
+laden. Alle Beispiele hier wurden gegen Schema `0.11.x` geprüft (Stand nach Bibliothek 0.10.0, Schema 0.11). Dateien mit
+Schema 0.1 bis 0.10 liest `rtt` weiter und schreibt sie mit `rtt format` als 0.11; ein `pickup` aus
 einer Datei vor 0.4 fällt dabei weg, mit der Warnung `io.pickup_dropped` (siehe
 „Parametertabelle“).
 Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/architecture.md`.
@@ -32,7 +32,7 @@ Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/a
 
 | Feld | Pflicht | Inhalt |
 | --- | --- | --- |
-| `schema_version` | ja | `"0.10.0"` (Muster `0.10.x`) |
+| `schema_version` | ja | `"0.11.0"` (Muster `0.11.x`) |
 | `name` | nein | Anzeigename |
 | `units` | ja | genau `{"length": "mm", "wavelength": "um"}` |
 | `environment` | nein | `temperature_c`, `pressure_atm`, `medium` (Standard: Luft nach Ciddor, 20 °C, 1 atm) |
@@ -89,7 +89,7 @@ braucht das Substrat, ohne `material` ist es ein Kompilierfehler.
 | Feld | Inhalt |
 | --- | --- |
 | `shape.base` | `{"type": "plane"}`, `{"type": "conic", "radius": R, "conic": k}` oder `{"type": "even_asphere", "radius": R, "conic": k, "coefficients": [A4, A6, …]}`; ab Schema 0.9 (ADR 0042) die anamorphen Formen `{"type": "biconic", "radius_x": R_x, "radius_y": R_y, "conic_x": k_x, "conic_y": k_y}`, `{"type": "toroid", "radius": R, "conic": k, "coefficients": [A4, A6, …], "radius_of_rotation": R_rot}` und `{"type": "cylinder", "radius": R, "conic": k, "coefficients": [A4, A6, …]}` sowie (ADR 0043) `{"type": "odd_asphere", "curvature": c, "conic": k, "coefficients": [A1, A2, A3, …]}`, `{"type": "axicon", "angle_deg": α}`, `{"type": "qcon", "curvature": c, "conic": k, "normalization_radius": ρ, "coefficients": [a0, a1, …]}` und `{"type": "qbfs", …}` mit denselben Schlüsseln (siehe unten) |
-| `aperture` | `circular` (`radius`, optional `inner_radius`), `rectangular` (`half_width_x`, `half_width_y`) oder `elliptical` (`semi_axis_x`, `semi_axis_y`) |
+| `aperture` | `circular` (`radius`, optional `inner_radius`), `rectangular` (`half_width_x`, `half_width_y`) oder `elliptical` (`semi_axis_x`, `semi_axis_y`). Alle Maße in mm sind ab Schema 0.11 Params (ADR 0050): eine Zahl, `{"value", "variable", "min", "max"}` oder `{"param": "NAME"}`; so lässt sich z. B. der Blendenradius bei `stop_size` optimieren. Aperturmaße und Zeilen der Parametertabelle, an die eines gebunden ist, sind keine Toleranz- und keine Kompensatorziele. Eine Datei vor 0.11 mit einem Objekt an einem Aperturmaß ist ein Lesefehler. |
 | `phases` | Phasenschichten: `{"type": "linear_grating", "lines_per_mm": G, "orientation_deg": ψ}` oder `{"type": "radial_phase", "normalization_radius": R, "coefficients": [c1, c2, …]}` (ADR 0025). Einheiten: G in 1/mm, ψ in Grad von der lokalen x- zur lokalen y-Achse (ψ = 0: Rillen parallel zur lokalen y-Achse), φ = 2πG(x cos ψ + y sin ψ); R in mm, Koeffizienten c_k in **rad** (nicht in Wellen, kein Faktor 2π), c1 gehört zu ρ², φ = Σ c_k ρ^{2k} mit ρ = r/R. Die Werte gelten unverändert für jede Wellenlänge; das Vorzeichen von φ und der Ordnung nach ADR 0025, Punkte 1 bis 3 |
 | `diffraction_efficiency` | nur an Flächen mit `phases`: Leistungsanteil je Beugungsordnung, z. B. `[{"order": 1, "efficiency": 0.8}]`; fehlt das Feld, hat jede Ordnung 1, sonst haben nicht aufgeführte Ordnungen 0 |
 | `interaction` | `fresnel` (Standard), `ideal_mirror`, `ideal_anti_reflection`, `absorber`, `ideal_beam_splitter` (`reflectance_s`, `reflectance_p`), `ideal_polarizer` (`transmission_axis`, `extinction_ratio`), `ideal_retarder` (`fast_axis`, `retardance_waves`), `ideal_lens` (`focal_length`, `object_distance`), `ideal_cylinder_lens` (`focal_length`, `axis_deg`, `object_distance`; ab Schema 0.5, siehe unten) oder `{"type": "coating", "name": "KATALOG:NAME"}`. Die Achsen von Polarisator und Retarder stehen in Elementkoordinaten. |
@@ -479,7 +479,7 @@ dahinter, der Detektor im paraxialen Fokus bei z = 106,442 mm.
 
 ```json
 {
-  "schema_version": "0.10.0",
+  "schema_version": "0.11.0",
   "name": "Plankonvex-Singlet",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": true}, {"um": 0.6563}],
@@ -560,7 +560,7 @@ def singlet(r1, r2, dicke, glas="CONST:1.5168", epd=20.0, bild_abstand=95.0, hal
 
     z_linse = 5.0
     return {
-        "schema_version": "0.10.0", "name": f"Singlet R1={r1} R2={r2}",
+        "schema_version": "0.11.0", "name": f"Singlet R1={r1} R2={r2}",
         "units": {"length": "mm", "wavelength": "um"},
         "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": True}, {"um": 0.6563}],
         "aperture": {"type": "epd", "value": epd},

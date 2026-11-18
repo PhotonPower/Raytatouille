@@ -429,19 +429,19 @@ Aperture read_aperture(const Json& j, const Ctx& c) {
   if (type == "circular") {
     expect_object(j, c, {"type", "radius", "inner_radius"});
     CircularAperture a;
-    a.radius = read_number(require(j, "radius", c), c.at("radius"));
-    read_opt(j, "inner_radius", c, a.inner_radius, read_number);
+    a.radius = read_param(require(j, "radius", c), c.at("radius"));
+    read_opt(j, "inner_radius", c, a.inner_radius, read_param);
     return a;
   }
   if (type == "rectangular") {
     expect_object(j, c, {"type", "half_width_x", "half_width_y"});
-    return RectangularAperture{read_number(require(j, "half_width_x", c), c.at("half_width_x")),
-                               read_number(require(j, "half_width_y", c), c.at("half_width_y"))};
+    return RectangularAperture{read_param(require(j, "half_width_x", c), c.at("half_width_x")),
+                               read_param(require(j, "half_width_y", c), c.at("half_width_y"))};
   }
   if (type == "elliptical") {
     expect_object(j, c, {"type", "semi_axis_x", "semi_axis_y"});
-    return EllipticalAperture{read_number(require(j, "semi_axis_x", c), c.at("semi_axis_x")),
-                              read_number(require(j, "semi_axis_y", c), c.at("semi_axis_y"))};
+    return EllipticalAperture{read_param(require(j, "semi_axis_x", c), c.at("semi_axis_x")),
+                              read_param(require(j, "semi_axis_y", c), c.at("semi_axis_y"))};
   }
   c.at("type").fail("unknown aperture type '" + type +
                     "', expected circular, rectangular or elliptical");
@@ -700,6 +700,7 @@ struct Migration {
   bool before_0_8 = false;   ///< no reference of the object distance (ADR 0038)
   bool before_0_9 = false;   ///< no anamorphic base shapes (ADR 0042), no odd asphere, no axicon
   bool before_0_10 = false;  ///< no flag "active" of assemblies and elements (ADR 0049)
+  bool before_0_11 = false;  ///< aperture dimensions only as numbers (ADR 0050)
 };
 
 /// Checks the schema version of `j` and tells which migrations to the current version it needs.
@@ -722,6 +723,8 @@ struct Migration {
 ///   cylinder, odd_asphere, axicon, qcon and qbfs are new.
 /// - 0.9 -> 0.10 (ADR 0049): content unchanged, only the flag "active" of assemblies and elements
 ///   is new; without it every node is active.
+/// - 0.10 -> 0.11 (ADR 0050, point 1): content unchanged, aperture dimensions may now be Param
+///   objects; a number reads as before.
 Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
   const std::string ours(kSchemaVersion);
   const std::string mm = major_minor(version);
@@ -730,17 +733,18 @@ Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
     if (const Json* root = find(j, "root")) {
       check_material_forms(*root, Ctx().at("root"), mm == "0.2");
     }
-    return {true, true, true, true, true, true, true, true};
+    return {true, true, true, true, true, true, true, true, true};
   }
-  if (mm == "0.3") return {false, true, true, true, true, true, true, true};
-  if (mm == "0.4") return {false, false, true, true, true, true, true, true};
-  if (mm == "0.5") return {false, false, false, true, true, true, true, true};
-  if (mm == "0.6") return {false, false, false, false, true, true, true, true};
-  if (mm == "0.7") return {false, false, false, false, false, true, true, true};
-  if (mm == "0.8") return {false, false, false, false, false, false, true, true};
-  if (mm == "0.9") return {false, false, false, false, false, false, false, true};
+  if (mm == "0.3") return {false, true, true, true, true, true, true, true, true};
+  if (mm == "0.4") return {false, false, true, true, true, true, true, true, true};
+  if (mm == "0.5") return {false, false, false, true, true, true, true, true, true};
+  if (mm == "0.6") return {false, false, false, false, true, true, true, true, true};
+  if (mm == "0.7") return {false, false, false, false, false, true, true, true, true};
+  if (mm == "0.8") return {false, false, false, false, false, false, true, true, true};
+  if (mm == "0.9") return {false, false, false, false, false, false, false, true, true};
+  if (mm == "0.10") return {false, false, false, false, false, false, false, false, true};
   c.fail("incompatible schema_version '" + version + "', this build reads " + ours +
-         " and migrates 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8 and 0.9");
+         " and migrates 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9 and 0.10");
 }
 
 /// Files before 0.9 (ADR 0042, ADR 0043, point 4): a biconic, toroid, cylinder, odd_asphere,
@@ -772,6 +776,36 @@ void check_0_9_forms(const Json& node, const Ctx& c) {
   if (const Json* children = find(node, "children"); children != nullptr && children->is_array()) {
     for (std::size_t i = 0; i < children->size(); ++i) {
       check_0_9_forms((*children)[i], c.at("children").at(i));
+    }
+  }
+}
+
+/// Files before 0.11 (ADR 0050, point 1): an aperture dimension that is not a number (a Param
+/// object) is an error at that dimension, so that a version is never silently upgraded.
+void check_0_11_forms(const Json& node, const Ctx& c) {
+  if (!node.is_object()) return;  // structural errors are reported by the reader
+  if (const Json* surfaces = find(node, "surfaces"); surfaces != nullptr && surfaces->is_array()) {
+    for (std::size_t i = 0; i < surfaces->size(); ++i) {
+      const Json* aperture = find((*surfaces)[i], "aperture");
+      if (aperture == nullptr || !aperture->is_object()) continue;
+      for (const char* key : {"radius", "inner_radius", "half_width_x", "half_width_y",
+                              "semi_axis_x", "semi_axis_y"}) {
+        const Json* value = find(*aperture, key);
+        if (value != nullptr && value->is_object()) {
+          c.at("surfaces")
+              .at(i)
+              .at("aperture")
+              .at(key)
+              .fail(std::string(
+                  "an aperture dimension as a parameter object needs schema_version 0.11 "
+                  "or later (ADR 0050)"));
+        }
+      }
+    }
+  }
+  if (const Json* children = find(node, "children"); children != nullptr && children->is_array()) {
+    for (std::size_t i = 0; i < children->size(); ++i) {
+      check_0_11_forms((*children)[i], c.at("children").at(i));
     }
   }
 }
@@ -1307,6 +1341,9 @@ System read_system_tree(const Json& j, std::vector<Diagnostic>* warnings) {
   if (m.before_0_10) {
     if (const Json* root = find(j, "root")) check_0_10_forms(*root, c.at("root"));
   }
+  if (m.before_0_11) {
+    if (const Json* root = find(j, "root")) check_0_11_forms(*root, c.at("root"));
+  }
   if (!m.before_0_4) return read_migrated(j, m);
   Json current = j;
   migrate_0_4(current, c, warnings, true);
@@ -1712,16 +1749,16 @@ class Writer {
     OJson o;
     if (const auto* c = std::get_if<CircularAperture>(&a)) {
       o["type"] = "circular";
-      o["radius"] = num(c->radius);
-      if (edit_ || c->inner_radius != 0.0) o["inner_radius"] = num(c->inner_radius);
+      o["radius"] = param(c->radius);
+      if (edit_ || c->inner_radius != Param{}) o["inner_radius"] = param(c->inner_radius);
     } else if (const auto* r = std::get_if<RectangularAperture>(&a)) {
       o["type"] = "rectangular";
-      o["half_width_x"] = num(r->half_width_x);
-      o["half_width_y"] = num(r->half_width_y);
+      o["half_width_x"] = param(r->half_width_x);
+      o["half_width_y"] = param(r->half_width_y);
     } else if (const auto* e = std::get_if<EllipticalAperture>(&a)) {
       o["type"] = "elliptical";
-      o["semi_axis_x"] = num(e->semi_axis_x);
-      o["semi_axis_y"] = num(e->semi_axis_y);
+      o["semi_axis_x"] = param(e->semi_axis_x);
+      o["semi_axis_y"] = param(e->semi_axis_y);
     }
     return o;
   }
