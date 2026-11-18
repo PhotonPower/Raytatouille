@@ -51,9 +51,8 @@ skip = ["*t-*", "*-musllinux_*"]
 build-verbosity = 1
 # Smoke test of every wheel: the Python tests from the source tree, outside it (as the CI job
 # "Python", pip install .). The bitwise comparisons with C++ skip without their variables. Not
-# libs/rtt-py/tests/requirements.txt: its exact NumPy pins exist for 3.10 and 3.13 (the CI), not
-# for every version 3.10-3.14 (numpy 2.5.3 has no wheel for 3.11); pip picks a matching NumPy
-# above the runtime bound here.
+# libs/rtt-py/tests/requirements.txt: the CI checks its exact NumPy pins only on 3.10 and 3.13;
+# pip picks a matching NumPy above the runtime bound here.
 test-requires = ["pytest==9.1.1", "numpy>=1.24", "matplotlib>=3.8", "jsonschema>=4.18"]
 test-command = "pytest -q -p no:cacheprovider {project}/libs/rtt-py/tests"
 # No display on the runners and in the container; as ctest does.
