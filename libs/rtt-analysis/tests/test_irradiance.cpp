@@ -4,6 +4,8 @@
 
 #include <tbb/global_control.h>
 
+#include <algorithm>
+#include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <cstddef>
@@ -450,4 +452,40 @@ TEST_CASE("irradiance: an extent too wide for finite cells is refused (#379)",
   const CompiledSystem cs = compiled("m4/ghost_plates.rtt.json");
   CHECK_THROWS_AS(irradiance_map(cs, 0, cell_centred_bundle(), grid(4, {-1e308, 1e308, -1.0, 1.0})),
                   std::invalid_argument);
+}
+
+TEST_CASE("irradiance: the default extent of a polygon aperture bounds its vertices (ADR 0050)",
+          "[irradiance][320]") {
+  // m8/hexagon_mirror: the mirror M has a regular hexagon R = 34 mm at 30 deg (vertices at 30,
+  // 90, ..., 330 deg: x in [-R cos 30, R cos 30], y in [-R, R]), the detector F the square
+  // [-2, 2]^2 as a polygon. The default extent is the axis-parallel rectangle about the vertices.
+  const CompiledSystem cs = compiled("m8/hexagon_mirror.rtt.json");
+  RayBatch rays = cell_centred_bundle();
+  RayPaths paths;
+  const rtt::trace::SequentialTracer tracer;
+  static_cast<void>(tracer.trace(cs, PathId{0}, rays, paths));
+  const auto& m = cs.surfaces()[*cs.find_surface(SurfaceId{"M"})];
+  REQUIRE(m.aperture.has_value());
+  double x_lo = 0.0;
+  double x_hi = 0.0;
+  double y_lo = 0.0;
+  double y_hi = 0.0;
+  for (const std::array<double, 2>& v : rtt::model::aperture_vertices(*m.aperture)) {
+    x_lo = std::min(x_lo, v[0]);
+    x_hi = std::max(x_hi, v[0]);
+    y_lo = std::min(y_lo, v[1]);
+    y_hi = std::max(y_hi, v[1]);
+  }
+  CHECK(std::abs(x_hi - 34.0 * std::cos(std::numbers::pi / 6.0)) <= 1e-13);
+  CHECK(std::abs(y_hi - 34.0) <= 1e-13);
+  const IrradianceMap hex = irradiance_map(cs, 0, paths, SurfaceId{"M"});
+  CHECK(hex.x_edges.front() == x_lo);
+  CHECK(hex.x_edges.back() == x_hi);
+  CHECK(hex.y_edges.front() == y_lo);
+  CHECK(hex.y_edges.back() == y_hi);
+  const IrradianceMap square = irradiance_map(cs, 0, paths, SurfaceId{"F"});
+  CHECK(square.x_edges.front() == -2.0);
+  CHECK(square.x_edges.back() == 2.0);
+  CHECK(square.y_edges.front() == -2.0);
+  CHECK(square.y_edges.back() == 2.0);
 }

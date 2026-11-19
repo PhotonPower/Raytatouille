@@ -1,6 +1,7 @@
 #include "rtt/model/validate.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -620,7 +621,9 @@ class Validator {
     if (const auto* q = std::get_if<QCon>(&s.shape.base)) rho = &q->normalization_radius;
     if (const auto* q = std::get_if<QBfs>(&s.shape.base)) rho = &q->normalization_radius;
     if (rho == nullptr || rho->is_bound() || !finite_positive(rho->value)) return;
-    // A bound aperture dimension has its value only after resolve_parameters (#353).
+    // The extent of the aperture: radius, half diagonal, major semi-axis, circumradius of a
+    // regular polygon or the farthest vertex of a polygon (ADR 0050). A bound aperture dimension
+    // has its value only after resolve_parameters (#353).
     const bool bound = std::visit(
         [](const auto& a) {
           using A = std::decay_t<decltype(a)>;
@@ -630,6 +633,10 @@ class Validator {
             return a.half_width_x.is_bound() || a.half_width_y.is_bound();
           } else if constexpr (std::is_same_v<A, EllipticalAperture>) {
             return a.semi_axis_x.is_bound() || a.semi_axis_y.is_bound();
+          } else if constexpr (std::is_same_v<A, RegularPolygonAperture>) {
+            return a.circumradius.is_bound();
+          } else if constexpr (std::is_same_v<A, PolygonAperture>) {
+            return false;
           } else {
             static_assert(kUnhandledAperture<A>, "validate: unhandled aperture");
           }
@@ -645,6 +652,13 @@ class Validator {
             return std::hypot(a.half_width_x.value, a.half_width_y.value);
           } else if constexpr (std::is_same_v<A, EllipticalAperture>) {
             return std::max(a.semi_axis_x.value, a.semi_axis_y.value);
+          } else if constexpr (std::is_same_v<A, RegularPolygonAperture>) {
+            return a.circumradius.value;
+          } else if constexpr (std::is_same_v<A, PolygonAperture>) {
+            double r = 0.0;
+            for (const std::array<double, 2>& v : a.vertices)
+              r = std::max(r, std::hypot(v[0], v[1]));
+            return r;
           } else {
             static_assert(kUnhandledAperture<A>, "validate: unhandled aperture");
           }
@@ -766,7 +780,91 @@ class Validator {
       if (invalid(e->semi_axis_x) || invalid(e->semi_axis_y)) {
         report("surface_aperture.semi_axis_invalid", loc, "semi axes must be > 0 mm");
       }
+    } else if (const auto* g = std::get_if<RegularPolygonAperture>(&a)) {
+      check_param(g->circumradius, loc + "/circumradius", true);
+      if (g->sides < 3 || g->sides > 1024) {
+        report("surface_aperture.sides_invalid", loc + "/sides", "sides must lie in 3 ... 1024");
+      }
+      if (invalid(g->circumradius)) {
+        report("surface_aperture.circumradius_invalid", loc + "/circumradius",
+               "circumradius must be > 0 mm");
+      }
+      if (!std::isfinite(g->rotation_deg)) {
+        report("surface_aperture.rotation_invalid", loc + "/rotation_deg",
+               "rotation must be finite");
+      }
+    } else if (const auto* poly = std::get_if<PolygonAperture>(&a)) {
+      check_polygon(poly->vertices, loc + "/vertices");
     }
+  }
+
+  /// A simple polygon (ADR 0050, point 2): at least 3 finite vertices, no two consecutive ones
+  /// equal, no U-turn (adjacent edges overlapping), no two non-adjacent edges that intersect or
+  /// touch, and area > 0. The tests are exact in double (orientation signs).
+  void check_polygon(const std::vector<std::array<double, 2>>& v, const std::string& loc) {
+    using V = std::array<double, 2>;
+    const std::size_t n = v.size();
+    if (n < 3) {
+      report("surface_aperture.vertices_invalid", loc, "a polygon needs at least 3 vertices");
+      return;
+    }
+    for (std::size_t i = 0; i < n; ++i) {
+      if (!std::isfinite(v[i][0]) || !std::isfinite(v[i][1])) {
+        report("surface_aperture.vertices_invalid", idx(loc, i), "vertex not finite");
+        return;
+      }
+    }
+    // Cross product of (b - a) and (c - a): > 0 if c lies left of the line a -> b.
+    const auto cross = [](const V& a, const V& b, const V& c) {
+      return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    };
+    double area2 = 0.0;  // twice the signed area (shoelace)
+    for (std::size_t i = 0; i < n; ++i) {
+      const V& a = v[i];
+      const V& b = v[(i + 1) % n];
+      const V& c = v[(i + 2) % n];
+      if (a == b) {
+        report("surface_aperture.vertices_invalid", idx(loc, (i + 1) % n),
+               "two consecutive vertices are equal");
+        return;
+      }
+      const double dot = (b[0] - a[0]) * (c[0] - b[0]) + (b[1] - a[1]) * (c[1] - b[1]);
+      if (cross(a, b, c) == 0.0 && dot < 0.0) {
+        report("surface_aperture.vertices_invalid", idx(loc, (i + 1) % n),
+               "the polygon turns back at this vertex (adjacent edges overlap)");
+        return;
+      }
+      area2 += a[0] * b[1] - b[0] * a[1];
+    }
+    // Segments p1-p2 and q1-q2 intersect or touch (orientation test, collinear overlap included).
+    const auto on_segment = [](const V& a, const V& b, const V& c) {
+      return std::min(a[0], b[0]) <= c[0] && c[0] <= std::max(a[0], b[0]) &&
+             std::min(a[1], b[1]) <= c[1] && c[1] <= std::max(a[1], b[1]);
+    };
+    const auto sign = [](double x) { return (x > 0.0) - (x < 0.0); };
+    const auto meet = [&](const V& p1, const V& p2, const V& q1, const V& q2) {
+      const int d1 = sign(cross(q1, q2, p1));
+      const int d2 = sign(cross(q1, q2, p2));
+      const int d3 = sign(cross(p1, p2, q1));
+      const int d4 = sign(cross(p1, p2, q2));
+      if (d1 * d2 < 0 && d3 * d4 < 0) return true;
+      return (d1 == 0 && on_segment(q1, q2, p1)) || (d2 == 0 && on_segment(q1, q2, p2)) ||
+             (d3 == 0 && on_segment(p1, p2, q1)) || (d4 == 0 && on_segment(p1, p2, q2));
+    };
+    for (std::size_t i = 0; i < n; ++i) {
+      for (std::size_t j = i + 2; j < n; ++j) {
+        if (i == 0 && j == n - 1) continue;  // edges n-1 and 0 are adjacent
+        if (meet(v[i], v[(i + 1) % n], v[j], v[(j + 1) % n])) {
+          report("surface_aperture.polygon_self_intersecting", loc,
+                 "edges " + std::to_string(i) + " and " + std::to_string(j) +
+                     " intersect or touch: the polygon is not simple");
+          return;
+        }
+      }
+    }
+    // After the edge test, which catches a bow tie (area 0 as well): a simple polygon has area
+    // 0 only if it is degenerate.
+    if (area2 == 0.0) report("surface_aperture.vertices_invalid", loc, "the polygon has area 0");
   }
 
   void check_phase(const PhaseLayer& p, const std::string& loc) {

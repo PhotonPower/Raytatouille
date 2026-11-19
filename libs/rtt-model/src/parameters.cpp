@@ -179,6 +179,10 @@ class ParamWalker {
             } else if constexpr (std::is_same_v<A, EllipticalAperture>) {
               visit_(ap + "/semi_axis_x", a.semi_axis_x);
               visit_(ap + "/semi_axis_y", a.semi_axis_y);
+            } else if constexpr (std::is_same_v<A, RegularPolygonAperture>) {
+              visit_(ap + "/circumradius", a.circumradius);
+            } else if constexpr (std::is_same_v<A, PolygonAperture>) {
+              // The vertices are plain numbers (ADR 0050, point 2).
             } else {
               static_assert(kUnhandledAperture<A>, "for_each_param: unhandled aperture");
             }

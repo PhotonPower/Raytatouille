@@ -66,7 +66,11 @@ void bind_reports(nb::module_& m) {
       .value("NONE", ApertureKind::None, "no aperture (semi-diameter NaN)")
       .value("CIRCULAR", ApertureKind::Circular, "radius (outer radius of an annulus)")
       .value("RECTANGULAR", ApertureKind::Rectangular, "half diagonal (circumscribed radius)")
-      .value("ELLIPTICAL", ApertureKind::Elliptical, "major semi-axis (circumscribed radius)");
+      .value("ELLIPTICAL", ApertureKind::Elliptical, "major semi-axis (circumscribed radius)")
+      .value("REGULAR_POLYGON", ApertureKind::RegularPolygon,
+             "circumradius of a regular polygon (ADR 0050)")
+      .value("POLYGON", ApertureKind::Polygon,
+             "largest distance of a vertex from the axis (ADR 0050)");
 
   auto rows = columns<RaytraceRows>(
       m, "RaytraceRows",

@@ -93,7 +93,8 @@ VARIANT_CLASSES: dict[str, type] = {
     "plane": model.Plane, "conic": model.Conic, "even_asphere": model.EvenAsphere,
     "zernike_sag": model.ZernikeSag,
     "circular": model.CircularAperture, "rectangular": model.RectangularAperture,
-    "elliptical": model.EllipticalAperture,
+    "elliptical": model.EllipticalAperture, "regular_polygon": model.RegularPolygonAperture,
+    "polygon": model.PolygonAperture,
     "linear_grating": model.LinearGrating, "radial_phase": model.RadialPhase,
     "fresnel": model.Fresnel, "ideal_mirror": model.IdealMirror,
     "ideal_anti_reflection": model.IdealAntiReflection, "absorber": model.Absorber,
@@ -417,9 +418,12 @@ def test_every_variant_class_appears_in_the_reference_systems() -> None:
     seen = {type(o) for f in reference_files() for o in walk(rt.load(f))}
     assert set(VARIANT_CLASSES.values()) <= seen
     tour = {type(o) for o in walk(rt.load(REFERENCE_DIR / "m0" / "feature_tour.rtt.json"))}
-    # feature_tour without an ideal lens (ADR 0031, #178); the line above covers r2/ideal_lens.
+    # feature_tour without an ideal lens (ADR 0031, #178); the line above covers r2/ideal_lens,
+    # and m8/hexagon_mirror the polygon apertures (ADR 0050).
     assert set(VARIANT_CLASSES.values()) - {model.IdealMirror, model.IdealLens,
-                                             model.IdealCylinderLens} <= tour
+                                             model.IdealCylinderLens,
+                                             model.RegularPolygonAperture,
+                                             model.PolygonAperture} <= tour
 
 
 def test_copies_are_read_only_and_not_constructible() -> None:

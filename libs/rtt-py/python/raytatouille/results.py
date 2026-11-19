@@ -54,7 +54,7 @@ __all__ = [
 ]
 
 FORMAT = "raytatouille-result"
-SCHEMA_VERSION = "0.1.20"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
+SCHEMA_VERSION = "0.1.21"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
 # 0.1.3: status Evanescent, status arrays one entry longer (#127); 0.1.4: PathTransmission,
 # PathOplDifference, GhostRanking (#133); 0.1.5: RayBatch wave_x/y/z, mode_index (#134);
 # 0.1.6: RaytraceReport, SystemReport, DimensionReport (#177);
@@ -73,6 +73,7 @@ SCHEMA_VERSION = "0.1.20"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84)
 # 0.1.18: SurfaceLayout normalization_radius, axicon_angle_deg; shapes odd_asphere, axicon (#314)
 # 0.1.19: IrradianceMap (#379)
 # 0.1.20: SurfaceLayout, CompiledElement, DimensionSegments active (#380)
+# 0.1.21: SurfaceLayout aperture_vertices; apertures regular_polygon, polygon (#320)
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a
@@ -93,7 +94,8 @@ _ADDED: dict[str, tuple[tuple[int, tuple[str, ...]], ...]] = {
                       (14, ("mapping_limit",))),  # 0.1.14 (#286)
     "SurfaceLayout": ((17, ("curvature_x", "conic_constant_x")),  # 0.1.17 (#315)
                       (18, ("normalization_radius", "axicon_angle_deg")),  # 0.1.18 (#314)
-                      (20, ("active",))),  # 0.1.20 (#380)
+                      (20, ("active",)),  # 0.1.20 (#380)
+                      (21, ("aperture_vertices",))),  # 0.1.21 (#320)
     "CompiledElement": ((20, ("active",)),),  # 0.1.20 (#380)
 }
 _FIELDS: dict[str, tuple[str, ...]] = {
@@ -512,13 +514,15 @@ def load_json(text: str) -> Result:
     A file of an older 0.1.x version may lack keys that its type gained later (RayBatch:
     wave_x, wave_y, wave_z and mode_index from 0.1.5, q from 0.1.9; RayPaths: polarization, prt
     and q from 0.1.9; SurfaceLayout: curvature_x and conic_constant_x from 0.1.17,
-    normalization_radius and axicon_angle_deg from 0.1.18, active from 0.1.20; CompiledElement
+    normalization_radius and axicon_angle_deg from 0.1.18, active from 0.1.20,
+    aperture_vertices from 0.1.21; CompiledElement
     and the segments of DimensionReport: active from 0.1.20); the data then contain them as the
     type's reading rule says (RayBatch: wave = dir, mode_index 0, ADR 0026, point 3; no Q and no
     P per slot: q and prt None, polarization False, since Q cannot be recomputed without the
     normals, ADR 0034; SurfaceLayout: the x section equals the y section, ADR 0042, point 5, and
     no normalization radius and no axicon angle, ADR 0043, point 4; active is true, since an
-    older file knows no inactive element, ADR 0049, point 7).
+    older file knows no inactive element, ADR 0049, point 7; no aperture vertices, since an
+    older file has no polygon aperture, ADR 0050).
     """
     envelope = json.loads(text, parse_constant=_no_constant, object_pairs_hook=_unique_keys)
     if not isinstance(envelope, dict):
@@ -581,8 +585,10 @@ def _upgrade(type_name: str, data: dict[str, Any], absent: list[str]) -> dict[st
         # even_asphere): the x section is the y section (ADR 0023, addendum #315).
         # Files before 0.1.18 have no odd asphere, Q type or axicon (ADR 0023, addendum #314).
         # Files before 0.1.20 know no inactive element: active is true (ADR 0049, point 7).
+        # Files before 0.1.21 have no polygon aperture: no vertices (ADR 0050, point 2).
         added = {"curvature_x": data["curvature"], "conic_constant_x": data["conic_constant"],
-                 "normalization_radius": None, "axicon_angle_deg": None, "active": True}
+                 "normalization_radius": None, "axicon_angle_deg": None, "active": True,
+                 "aperture_vertices": None}
     elif type_name == "CompiledElement":
         added = {"active": True}  # before 0.1.20 every element was active (ADR 0049, point 7)
     data = {**data, **{k: v for k, v in added.items() if k in absent and k not in data}}

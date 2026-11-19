@@ -651,6 +651,28 @@
             "semi_axis_x": {"$ref": "#/$defs/param"},
             "semi_axis_y": {"$ref": "#/$defs/param"}
           }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "sides", "circumradius"],
+          "description": "Regular polygon (ADR 0050, point 2, schema 0.11): vertex k at circumradius R and angle rotation_deg + 360 k / sides degree from the local x axis towards the local y axis; rotation 0 puts the first vertex on +x. rtt validate accepts 3 to 1024 sides.",
+          "properties": {
+            "type": {"const": "regular_polygon"},
+            "sides": {"type": "integer", "minimum": 0, "maximum": 65535},
+            "circumradius": {"$ref": "#/$defs/param"},
+            "rotation_deg": {"type": "number"}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "vertices"],
+          "description": "Simple polygon (ADR 0050, point 2, schema 0.11): vertices [x, y] in mm in the local frame, either orientation, convex or concave, the last joins the first; rtt validate rejects fewer than 3 vertices and self-intersections.",
+          "properties": {
+            "type": {"const": "polygon"},
+            "vertices": {
+              "type": "array",
+              "items": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2}
+            }
+          }
         }
       ]
     },

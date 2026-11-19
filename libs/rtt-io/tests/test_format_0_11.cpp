@@ -184,3 +184,69 @@ TEST_CASE("migration: a Param object at an aperture dimension before 0.11 is an 
   // A plain number reads in every version.
   CHECK(error_pointer(with_version(rtt::model::test::make_singlet(), "0.10.0")) == "<no error>");
 }
+
+TEST_CASE("regular_polygon and polygon: canonical form, round trip, edit form (ADR 0050)",
+          "[io][0.11]") {
+  System s = rtt::model::test::make_singlet();
+  auto& lens = rtt::model::test::element(s, 1);
+  Param r(12.7);
+  r.variable = true;
+  lens.surfaces[0].aperture = rtt::model::RegularPolygonAperture{6, r, 0.0};
+  lens.surfaces[1].aperture =
+      rtt::model::PolygonAperture{{{-6.0, -6.0}, {6.0, -6.0}, {6.0, 6.0}, {-6.0, 6.0}}};
+  const json j = json::parse(rtt::io::to_json(s));
+  const json& a0 = j["root"]["children"][1]["surfaces"][0]["aperture"];
+  CHECK(a0 == json::parse(
+                  R"({"type": "regular_polygon", "sides": 6,
+                      "circumradius": {"value": 12.7, "variable": true}})"));
+  const json& a1 = j["root"]["children"][1]["surfaces"][1]["aperture"];
+  CHECK(a1 == json::parse(R"({"type": "polygon",
+                              "vertices": [[-6.0, -6.0], [6.0, -6.0], [6.0, 6.0], [-6.0, 6.0]]})"));
+  CHECK(rtt::io::parse_system(j.dump()) == s);
+  CHECK_FALSE(rtt::model::has_errors(rtt::model::validate(s)));
+  // A rotation is written when it is not 0; the edit form writes it always.
+  lens.surfaces[0].aperture = rtt::model::RegularPolygonAperture{5, Param(12.7), 18.0};
+  CHECK(json::parse(rtt::io::to_json(
+            s))["root"]["children"][1]["surfaces"][0]["aperture"]["rotation_deg"] == 18.0);
+  const json edit = json::parse(rtt::io::to_edit_json(rtt::model::test::make_singlet()));
+  System hex = rtt::model::test::make_singlet();
+  rtt::model::test::element(hex, 1).surfaces[0].aperture =
+      rtt::model::RegularPolygonAperture{6, Param(12.7), 0.0};
+  const json edit_hex = json::parse(rtt::io::to_edit_json(hex));
+  CHECK(edit_hex["root"]["children"][1]["surfaces"][0]["aperture"]["rotation_deg"] == 0.0);
+  CHECK(edit["root"]["children"][1]["surfaces"][0]["aperture"]["type"] == "circular");
+  // for_each_param visits the circumradius, not the vertices.
+  std::vector<std::string> pointers;
+  rtt::model::for_each_param(hex,
+                             [&](std::string_view p, const Param&) { pointers.emplace_back(p); });
+  CHECK(std::find(pointers.begin(), pointers.end(),
+                  "/root/children/1/surfaces/0/aperture/circumradius") != pointers.end());
+}
+
+TEST_CASE("regular_polygon and polygon: read errors (ADR 0050)", "[io][0.11]") {
+  const auto with_aperture = [](const std::string& aperture, const std::string& version) {
+    json j = json::parse(rtt::io::to_json(rtt::model::test::make_singlet()));
+    j["schema_version"] = version;
+    j["root"]["children"][1]["surfaces"][0]["aperture"] = json::parse(aperture);
+    return j.dump();
+  };
+  const std::string lens = "/root/children/1/surfaces/0/aperture";
+  // The new types before 0.11 are an error at the type.
+  CHECK(error_pointer(with_aperture(R"({"type": "regular_polygon", "sides": 6,
+                                        "circumradius": 5.0})",
+                                    "0.10.0")) == lens + "/type");
+  CHECK(error_pointer(with_aperture(R"({"type": "polygon", "vertices": [[0, 0], [1, 0], [0, 1]]})",
+                                    "0.9.0")) == lens + "/type");
+  // Structural errors in 0.11.
+  CHECK(error_pointer(with_aperture(R"({"type": "regular_polygon", "circumradius": 5.0})",
+                                    "0.11.0")) == lens);
+  CHECK(error_pointer(with_aperture(R"({"type": "regular_polygon", "sides": -1,
+                                        "circumradius": 5.0})",
+                                    "0.11.0")) == lens + "/sides");
+  CHECK(error_pointer(with_aperture(R"({"type": "polygon", "vertices": [[0, 0, 1]]})", "0.11.0")) ==
+        lens + "/vertices/0");
+  CHECK(error_pointer(with_aperture(R"({"type": "polygon", "vertices": [[0, "a"]]})", "0.11.0")) ==
+        lens + "/vertices/0/1");
+  CHECK(error_pointer(with_aperture(R"({"type": "hexagonal", "circumradius": 5.0})", "0.11.0")) ==
+        lens + "/type");
+}

@@ -120,7 +120,7 @@ Das Modell ist reine Datenstruktur ohne Tracing-Logik. Header: `libs/rtt-model/i
 | --- | --- | --- | --- |
 | `shape.base` | genau 1 | `Plane`, `Conic`, `EvenAsphere`; `Biconic`, `Toroid`, `Cylinder` (Schema 0.9, ADR 0042); `OddAsphere`, `Axicon`, `QCon`, `QBfs` (Schema 0.9, ADR 0043) | XY-Polynom |
 | `shape.terms` | 0..n, additiv | `ZernikeSag` (Noll) | Grid-Sag, Zernike Fringe |
-| `aperture` | 0..1 | kreisförmig (auch Ring), rechteckig, elliptisch; Maße als Param (Schema 0.11, ADR 0050) | Polygon, Obskurationen (ADR 0050) |
+| `aperture` | 0..1 | kreisförmig (auch Ring), rechteckig, elliptisch, regelmäßiges Polygon, Polygon; Maße als Param (Schema 0.11, ADR 0050) | Obskurationen (ADR 0050) |
 | `phases` | 0..n, additiv | `LinearGrating`, `RadialPhase`; dazu `diffraction_efficiency` je Ordnung (ADR 0025) | Zernike-Phase, Metaflächen-Tabellen |
 | `interaction` | genau 1 | Fresnel (Default), ideal: Spiegel, AR, Strahlteiler, Polarisator, Retarder; Absorber; Coating-Referenz | Jones-/Mueller-Tabellen |
 | `scatter` | 0..1 | – | Lambert, Gauß, ABg (M9) |
@@ -261,7 +261,7 @@ Der Eingangs-Jones-Vektor wird nicht gespeichert: P wirkt auf jeden Eingangszust
 - **sag und Normale:** in lokalen Koordinaten, vektorisiert. Die Normale (−∂z/∂x, −∂z/∂y, 1)/|…| zeigt am Scheitel nach +z wie in `rtt-geom`; sie gibt es lokal oder global. Außerhalb des Formbereichs kommt NaN; die Apertur wird nicht angewendet.
 - **Profile:** nur in Schnittebenen, die zur lokalen z-Achse der Fläche parallel sind (|n·z_lokal| ≤ 1e−12). Das umfasst Meridionalschnitte, Kippungen in der Ebene, Faltspiegel und gegen die Achse versetzte Ebenen.
   - Dann ist der Schnitt exakt die Kurve z = sag entlang der Geraden „Ebene ∩ lokale x-y-Ebene“, ohne Nullstellensuche, in Richtung t = z_lokal × n.
-  - Begrenzung: Die Apertur wird analytisch geschnitten (Kreis, Ring mit zwei Stücken, Rechteck, Ellipse), dazu der Formbereich `max_radius`. Eine Fläche ohne beides ist ein Fehler.
+  - Begrenzung: Die Apertur wird analytisch geschnitten (Kreis, Ring mit zwei Stücken, Rechteck, Ellipse, regelmäßiges Polygon und Polygon über die Kanten, ein konkaves Polygon auch in mehreren Stücken; ADR 0050 mit Nachtrag PR 3), dazu der Formbereich `max_radius`. Eine Fläche ohne beides ist ein Fehler.
   - Am Formbereich endet das Profil um 1e−12·`max_radius` innerhalb, weil die Sag dahinter NaN ist und am Rand eine unendliche Steigung hat. Eine Fläche ohne Apertur wird bis zum Formbereich (z. B. Halbkugel) gezeichnet; für Zeichnungen gibt man Linsenflächen Aperturen.
   - Andere Ebenen ergeben einen Fehler mit Hinweis auf M10; allgemeine Schnitte kommen mit den 3D-Meshes.
 - **Umrisse:** ein geschlossenes Polygon je Glassegment j, zusammengesetzt aus dem Profil von Fläche j, der Randkante, dem Profil von Fläche j + 1 rückwärts und der zweiten Randkante.

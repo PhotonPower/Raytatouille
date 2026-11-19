@@ -84,8 +84,16 @@ struct SystemReport {
 
 // ----------------------------------------------------------------------- dimension report ----
 
-/// Kind of the aperture a semi-diameter comes from.
-enum class ApertureKind : std::uint8_t { None, Circular, Rectangular, Elliptical };
+/// Kind of the aperture a semi-diameter comes from. RegularPolygon and Polygon (ADR 0050) are
+/// appended, so that the uint8 values of the older kinds stay.
+enum class ApertureKind : std::uint8_t {
+  None,
+  Circular,
+  Rectangular,
+  Elliptical,
+  RegularPolygon,
+  Polygon
+};
 
 /// Dimensions of one segment of an element: the glass between surfaces j and j + 1.
 struct SegmentDimensions {

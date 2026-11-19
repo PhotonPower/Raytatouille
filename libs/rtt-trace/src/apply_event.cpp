@@ -1,6 +1,9 @@
 #include "rtt/trace/apply_event.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <numbers>
 #include <type_traits>
@@ -18,6 +21,71 @@ namespace {
 
 template <class>
 inline constexpr bool kUnhandledAperture = false;
+
+/// Regular polygon (ADR 0050, point 2): inside if x cos psi_k + y sin psi_k <= r + tol for every
+/// edge k, with psi_k = theta_0 + (2k + 1) pi / n the direction of the normal of the edge from
+/// vertex k to k + 1 (hergeleitet in #320: its midpoint lies at (phi_k + phi_{k+1}) / 2) and the
+/// inradius r = R cos(pi / n) (MathWorld "Regular Polygon", eq. 4). The tolerance acts as a
+/// distance outwards, as for the circle.
+bool inside_regular_polygon(const model::RegularPolygonAperture& a,
+                            double x,
+                            double y,
+                            double tol) noexcept {
+  if (a.sides < 3) return false;  // rejected by validate
+  const double n = static_cast<double>(a.sides);
+  const double limit = a.circumradius.value * std::cos(std::numbers::pi / n) + tol;
+  const double theta0 = a.rotation_deg * std::numbers::pi / 180.0;
+  for (std::uint16_t k = 0; k < a.sides; ++k) {
+    const double psi = theta0 + (2.0 * static_cast<double>(k) + 1.0) * std::numbers::pi / n;
+    if (x * std::cos(psi) + y * std::sin(psi) > limit) return false;
+  }
+  return true;
+}
+
+/// Simple polygon (ADR 0050, point 2): inside if a half line from (x, y) towards +x crosses the
+/// boundary an odd number of times (even-odd rule; the method and the half-open edge rule
+/// (y_a > y) != (y_b > y) are described in W. R. Franklin, PNPOLY, "The Method"), or if the
+/// distance to an edge is at most tol, so that the rim belongs to the aperture. The crossing test
+/// is our own derivation without a division (hergeleitet in #320); no code is taken from PNPOLY.
+bool inside_polygon(const model::PolygonAperture& a, double x, double y, double tol) noexcept {
+  const auto& v = a.vertices;
+  const std::size_t n = v.size();
+  if (n < 3) return false;  // rejected by validate
+  bool inside = false;
+  for (std::size_t k = 0; k < n; ++k) {
+    // Edge from vertex a = v[k] to b = v[(k + 1) % n]. It spans the height y if exactly one end
+    // lies above y (half-open, so a vertex at height y counts for one of its two edges only).
+    const std::array<double, 2>& pa = v[k];
+    const std::array<double, 2>& pb = v[(k + 1) % n];
+    const bool a_above = pa[1] > y;
+    const bool b_above = pb[1] > y;
+    if (a_above == b_above) continue;
+    // The edge meets the line at height y at x_c = x_a + (y - y_a) (x_b - x_a) / (y_b - y_a).
+    // The crossing lies right of the point iff x < x_c, i.e. after multiplying by
+    // dy = y_b - y_a (non-zero here): (x - x_a) dy < (x_b - x_a) (y - y_a) for dy > 0, and
+    // the reverse inequality for dy < 0.
+    const double dy = pb[1] - pa[1];
+    const double lhs = (x - pa[0]) * dy;
+    const double rhs = (pb[0] - pa[0]) * (y - pa[1]);
+    if (dy > 0.0 ? lhs < rhs : lhs > rhs) inside = !inside;
+  }
+  if (inside) return true;
+  for (std::size_t k = 0; k < n; ++k) {
+    // Distance from (x, y) to the segment from v[k] to v[(k + 1) % n].
+    const std::array<double, 2>& pa = v[k];
+    const std::array<double, 2>& pb = v[(k + 1) % n];
+    const double ex = pb[0] - pa[0];
+    const double ey = pb[1] - pa[1];
+    const double px = x - pa[0];
+    const double py = y - pa[1];
+    const double len2 = ex * ex + ey * ey;
+    const double s = len2 > 0.0 ? std::clamp((px * ex + py * ey) / len2, 0.0, 1.0) : 0.0;
+    const double dx = px - s * ex;
+    const double dy = py - s * ey;
+    if (dx * dx + dy * dy <= tol * tol) return true;
+  }
+  return false;
+}
 
 /// True if the local point (x, y) lies inside the aperture; the boundary belongs to it. With
 /// `ignore_inner` the inner radius of a circular aperture is not tested (virtual reference
@@ -40,6 +108,10 @@ bool inside(const model::Aperture& aperture, double x, double y, bool ignore_inn
           const double u = x / (a.semi_axis_x.value + tol);
           const double v = y / (a.semi_axis_y.value + tol);
           return u * u + v * v <= 1.0;
+        } else if constexpr (std::is_same_v<A, model::RegularPolygonAperture>) {
+          return inside_regular_polygon(a, x, y, tol);
+        } else if constexpr (std::is_same_v<A, model::PolygonAperture>) {
+          return inside_polygon(a, x, y, tol);
         } else {
           static_assert(kUnhandledAperture<A>, "aperture type not handled");
         }

@@ -931,3 +931,35 @@ TEST_CASE("an object in glass and the mirror keep their media", "[zmx][export]")
   REQUIRE(m.find("  GLAS MIRROR 0\r\n") != std::string::npos);
   REQUIRE(m.find("  DISZ -") != std::string::npos);
 }
+
+TEST_CASE("regular_polygon and polygon apertures have no mapping in ZMX or the table (ADR 0050)",
+          "[zmx][export]") {
+  const auto table_error = [](const System& s) {
+    try {
+      (void)rtt::io::write_surface_table(s, schott());
+    } catch (const ExportError& e) {
+      return e.code();
+    }
+    return std::string("<no error>");
+  };
+  const std::array<rtt::model::Aperture, 2> shapes = {
+      rtt::model::RegularPolygonAperture{6, Param(12.0), 0.0},
+      rtt::model::PolygonAperture{{{-5.0, -5.0}, {5.0, -5.0}, {0.0, 6.0}}}};
+  for (const rtt::model::Aperture& shape : shapes) {
+    INFO("aperture index " << shape.index());
+    {  // on a lens surface: refused before the writers, not dropped
+      System s = singlet();
+      element(s, 1).surfaces[0].aperture = shape;
+      require_export_error(s, schott(), "export.aperture_unsupported");
+      CHECK(table_error(s) == "export.aperture_unsupported");
+    }
+    {  // as the stop: the stop rule refuses it first
+      System s = singlet();
+      element(s, 0).surfaces[0].aperture = shape;
+      require_export_error(s, schott(), "export.aperture_unsupported");
+    }
+  }
+  // Content guard: the singlet itself exports.
+  CHECK_NOTHROW(export_zmx(singlet(), schott()));
+  CHECK(table_error(singlet()) == "<no error>");
+}

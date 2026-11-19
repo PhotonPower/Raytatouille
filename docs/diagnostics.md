@@ -82,7 +82,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `environment.medium_empty` | Fehler | leeres Umgebungsmedium | validate | `/environment/medium` |
 | `environment.pressure_invalid` | Fehler | Druck nicht endlich oder < 0 atm | validate | `/environment/pressure_atm` |
 | `environment.temperature_invalid` | Fehler | Temperatur nicht endlich oder nicht über dem absoluten Nullpunkt | validate | `/environment/temperature_c` |
-| `export.aperture_unsupported` | Fehler | Systemapertur oder Blendenapertur ohne Abbildung: `object_na` paraxial gelesen, Rechteck oder Ellipse an der Blende (ADR 0045, Punkte 3 und 4) | export | `surface()`: Flächen-ID, leer für das ganze System |
+| `export.aperture_unsupported` | Fehler | Systemapertur oder Flächenapertur ohne Abbildung: `object_na` paraxial gelesen, eine nicht kreisförmige Blende (ADR 0045, Punkte 3 und 4), `regular_polygon` oder `polygon` auf einer beliebigen Fläche, auch im CSV-Export (ADR 0050) | export | `surface()`: Flächen-ID, leer für das ganze System |
 | `export.coating_dropped` | Warnung | Coating oder `ideal_anti_reflection` nicht exportiert; die Fläche wird wie `fresnel` geschrieben | export | `…/s` |
 | `export.element_in_glass` | Fehler | Blende, dünnes Element oder Detektor mit Glas davor oder dahinter, z. B. eine Blende in einer Linse (Import: `zmx.image_in_glass` bzw. eine Linse mit Flächenblende) | export | `surface()`: Flächen-ID, leer für das ganze System |
 | `export.environment_unsupported` | Fehler | Umgebung nicht `AIR` bei 20 °C und 1 atm; die Indizes der Datei sind relativ zu dieser Luft | export | `surface()`: Flächen-ID, leer für das ganze System |
@@ -208,10 +208,15 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `surface.efficiency_invalid` | Fehler | Beugungseffizienz ungültig: leere Liste, Wert außerhalb [0, 1], Ordnung doppelt oder Fläche ohne Phasenschicht (ADR 0025) | validate | `…/s/diffraction_efficiency`, `…/k/efficiency`, `…/k/order` |
 | `surface.id_duplicate` | Fehler | Flächen-ID doppelt | validate | `…/s/id` |
 | `surface.id_empty` | Fehler | leere Flächen-ID | validate | `…/s/id` |
+| `surface_aperture.circumradius_invalid` | Fehler | Umkreisradius der regelmäßigen Polygonapertur nicht endlich oder ≤ 0 mm (ADR 0050) | validate | `…/s/aperture/circumradius` |
 | `surface_aperture.half_width_invalid` | Fehler | halbe Breite der Rechteckapertur nicht endlich oder ≤ 0 mm | validate | `…/s/aperture` |
 | `surface_aperture.inner_radius_invalid` | Fehler | Innenradius nicht endlich, < 0 oder ≥ Radius | validate | `…/s/aperture/inner_radius` |
+| `surface_aperture.polygon_self_intersecting` | Fehler | zwei nicht benachbarte Kanten der Polygonapertur schneiden oder berühren sich (ADR 0050) | validate | `…/s/aperture/vertices` |
 | `surface_aperture.radius_invalid` | Fehler | Radius der Kreisapertur nicht endlich oder ≤ 0 mm | validate | `…/s/aperture/radius` |
+| `surface_aperture.rotation_invalid` | Fehler | Drehung der regelmäßigen Polygonapertur nicht endlich (ADR 0050) | validate | `…/s/aperture/rotation_deg` |
 | `surface_aperture.semi_axis_invalid` | Fehler | Halbachse der elliptischen Apertur nicht endlich oder ≤ 0 mm | validate | `…/s/aperture` |
+| `surface_aperture.sides_invalid` | Fehler | regelmäßige Polygonapertur mit weniger als 3 oder mehr als 1024 Seiten (ADR 0050) | validate | `…/s/aperture/sides` |
+| `surface_aperture.vertices_invalid` | Fehler | Polygonapertur mit weniger als 3 Eckpunkten, einem nicht endlichen Eckpunkt, zwei gleichen aufeinanderfolgenden Eckpunkten, einer Kehrtwende oder der Fläche 0 (ADR 0050) | validate | `…/s/aperture/vertices` bzw. `…/vertices/i` |
 | `table.base_dropped` | Warnung | Block des Basissystems, der auf dessen Baum verweist, beim Einlesen einer Tabelle verworfen: weitere Pfade, `optimization`, `tolerances`, `parameters`, `configurations` (ADR 0045, Punkt 7) | table | Pointer des Blocks, z. B. `/optimization` |
 | `table.column` | Fehler | fehlende, unbekannte oder doppelte Spalte der Flächentabelle | table | `line()`/`column()`: Kopfzeile und Feld; 0 für eine fehlende Spalte |
 | `table.duplicate` | Fehler | Element (nicht aufeinanderfolgende Zeilen mit demselben Namen) oder Flächen-ID zweimal in der Flächentabelle | table | `line()`/`column()` des Feldes |

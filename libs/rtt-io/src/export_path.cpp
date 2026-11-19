@@ -510,7 +510,17 @@ ExportPath walk_export_path(const model::System& system,
   if (stop_aperture.has_value() &&
       !std::holds_alternative<model::CircularAperture>(stop_aperture.value())) {
     export_fail("export.aperture_unsupported", stop->surface.id.str(),
-                "a rectangular or elliptical stop has no mapping");
+                "a non-circular stop has no mapping");
+  }
+  // regular_polygon and polygon have no mapping in ZMX or the CSV table (ADR 0050, point 2):
+  // refused here, before a writer could drop them silently.
+  for (const ExportRow& row : out.rows) {
+    const std::optional<model::Aperture>& a = row.surface.aperture;
+    if (a.has_value() && (std::holds_alternative<model::RegularPolygonAperture>(*a) ||
+                          std::holds_alternative<model::PolygonAperture>(*a))) {
+      export_fail("export.aperture_unsupported", row.surface.id.str(),
+                  "a regular_polygon or polygon aperture has no mapping (ADR 0050)");
+    }
   }
 
   // Inactive elements are not exported (ADR 0049, point 6): one warning per element, and no

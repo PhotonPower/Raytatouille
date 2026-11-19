@@ -523,6 +523,9 @@ void check_real_na(const Context& c, bool real_target) {
   }
 }
 
+template <class>
+inline constexpr bool kUnhandledExtent = false;
+
 /// Outer radius of an aperture in local x, y, mm.
 double aperture_extent(const model::Aperture& aperture) {
   return std::visit(
@@ -532,8 +535,16 @@ double aperture_extent(const model::Aperture& aperture) {
           return a.radius.value;
         } else if constexpr (std::is_same_v<A, model::RectangularAperture>) {
           return std::hypot(a.half_width_x.value, a.half_width_y.value);
-        } else {
+        } else if constexpr (std::is_same_v<A, model::EllipticalAperture>) {
           return std::max(a.semi_axis_x.value, a.semi_axis_y.value);
+        } else if constexpr (std::is_same_v<A, model::RegularPolygonAperture>) {
+          return a.circumradius.value;  // ADR 0050, point 2
+        } else if constexpr (std::is_same_v<A, model::PolygonAperture>) {
+          double r = 0.0;  // the farthest vertex from the local axis
+          for (const std::array<double, 2>& v : a.vertices) r = std::max(r, std::hypot(v[0], v[1]));
+          return r;
+        } else {
+          static_assert(kUnhandledExtent<A>, "aperture_extent: unhandled aperture");
         }
       },
       aperture);

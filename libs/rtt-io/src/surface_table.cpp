@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -141,22 +142,35 @@ void write_shape(const ExportRow& row, std::array<std::string, kColumns.size()>&
   }
 }
 
+template <class>
+inline constexpr bool kUnhandledTableAperture = false;
+
 void write_aperture(const ExportRow& row, std::array<std::string, kColumns.size()>& f) {
   const std::optional<model::Aperture>& a = row.surface.aperture;
   if (!a.has_value()) return;
-  if (const auto* c = std::get_if<model::CircularAperture>(&a.value())) {
-    f[kAperture] = "circular";
-    f[kAperture1] = detail::format_number(c->radius.value);
-    f[kAperture2] = optional_number(c->inner_radius.value);
-  } else if (const auto* r = std::get_if<model::RectangularAperture>(&a.value())) {
-    f[kAperture] = "rectangular";
-    f[kAperture1] = detail::format_number(r->half_width_x.value);
-    f[kAperture2] = detail::format_number(r->half_width_y.value);
-  } else if (const auto* e = std::get_if<model::EllipticalAperture>(&a.value())) {
-    f[kAperture] = "elliptical";
-    f[kAperture1] = detail::format_number(e->semi_axis_x.value);
-    f[kAperture2] = detail::format_number(e->semi_axis_y.value);
-  }
+  std::visit(
+      [&f](const auto& ap) {
+        using A = std::decay_t<decltype(ap)>;
+        if constexpr (std::is_same_v<A, model::CircularAperture>) {
+          f[kAperture] = "circular";
+          f[kAperture1] = detail::format_number(ap.radius.value);
+          f[kAperture2] = optional_number(ap.inner_radius.value);
+        } else if constexpr (std::is_same_v<A, model::RectangularAperture>) {
+          f[kAperture] = "rectangular";
+          f[kAperture1] = detail::format_number(ap.half_width_x.value);
+          f[kAperture2] = detail::format_number(ap.half_width_y.value);
+        } else if constexpr (std::is_same_v<A, model::EllipticalAperture>) {
+          f[kAperture] = "elliptical";
+          f[kAperture1] = detail::format_number(ap.semi_axis_x.value);
+          f[kAperture2] = detail::format_number(ap.semi_axis_y.value);
+        } else if constexpr (std::is_same_v<A, model::RegularPolygonAperture> ||
+                             std::is_same_v<A, model::PolygonAperture>) {
+          // Unreachable: walk_export_path refuses them (export.aperture_unsupported, ADR 0050).
+        } else {
+          static_assert(kUnhandledTableAperture<A>, "write_aperture: unhandled aperture");
+        }
+      },
+      a.value());
 }
 
 void append_record(std::string& text, const std::array<std::string, kColumns.size()>& f) {

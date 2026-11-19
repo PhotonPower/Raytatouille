@@ -8,6 +8,7 @@
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -245,6 +246,9 @@ void write_shape(Writer& w, const ExportRow& row) {
   }
 }
 
+template <class>
+inline constexpr bool kUnhandledExportAperture = false;
+
 /// DIAM and the aperture lines (ADR 0045, point 4; ADR 0044, point 8).
 void write_aperture(Writer& w, const ExportRow& row) {
   const std::optional<model::Aperture>& a = row.surface.aperture;
@@ -259,13 +263,23 @@ void write_aperture(Writer& w, const ExportRow& row) {
   }
   w.sub("DIAM 0 0");
   if (!a) return;
-  if (const auto* c = std::get_if<model::CircularAperture>(&*a)) {
-    w.sub("CLAP " + num(c->inner_radius.value) + " " + num(c->radius.value));
-  } else if (const auto* r = std::get_if<model::RectangularAperture>(&*a)) {
-    w.sub("SQAP " + num(r->half_width_x.value) + " " + num(r->half_width_y.value));
-  } else if (const auto* e = std::get_if<model::EllipticalAperture>(&*a)) {
-    w.sub("ELAP " + num(e->semi_axis_x.value) + " " + num(e->semi_axis_y.value));
-  }
+  std::visit(
+      [&w](const auto& ap) {
+        using A = std::decay_t<decltype(ap)>;
+        if constexpr (std::is_same_v<A, model::CircularAperture>) {
+          w.sub("CLAP " + num(ap.inner_radius.value) + " " + num(ap.radius.value));
+        } else if constexpr (std::is_same_v<A, model::RectangularAperture>) {
+          w.sub("SQAP " + num(ap.half_width_x.value) + " " + num(ap.half_width_y.value));
+        } else if constexpr (std::is_same_v<A, model::EllipticalAperture>) {
+          w.sub("ELAP " + num(ap.semi_axis_x.value) + " " + num(ap.semi_axis_y.value));
+        } else if constexpr (std::is_same_v<A, model::RegularPolygonAperture> ||
+                             std::is_same_v<A, model::PolygonAperture>) {
+          // Unreachable: walk_export_path refuses them (export.aperture_unsupported, ADR 0050).
+        } else {
+          static_assert(kUnhandledExportAperture<A>, "write_aperture: unhandled aperture");
+        }
+      },
+      *a);
 }
 
 }  // namespace
