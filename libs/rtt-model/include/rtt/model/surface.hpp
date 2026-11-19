@@ -144,7 +144,17 @@ struct ZernikeFringeSag {
   bool operator==(const ZernikeFringeSag&) const = default;
 };
 
-using ShapeTerm = std::variant<ZernikeSag, ZernikeFringeSag>;
+/// Additive XY polynomial term: z = sum_k c_k (x/R)^i_k (y/R)^j_k without a constant term,
+/// coefficients[0] = x, then y, x^2, x y, y^2, x^3, ... (degree ascending, within a degree the
+/// power of x descending; [UG] "Extended Polynomial"), coefficients in mm, at most 230 (degree 20;
+/// ADR 0051, point 4). R = normalization_radius in mm.
+struct XyPolynomial {
+  Param normalization_radius;  ///< mm
+  std::vector<Param> coefficients;
+  bool operator==(const XyPolynomial&) const = default;
+};
+
+using ShapeTerm = std::variant<ZernikeSag, ZernikeFringeSag, XyPolynomial>;
 
 /// Total sag = base + sum of terms (terms evaluated in the local xy plane).
 struct ShapeStack {

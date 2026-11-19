@@ -398,6 +398,7 @@ BaseShape read_base_shape(const Json& j, const Ctx& c) {
 
 ShapeTerm read_shape_term(const Json& j, const Ctx& c) {
   const std::string type = read_type(j, c);
+  // Every term type has the keys type, normalization_radius and coefficients.
   const auto zernike = [&](auto z) -> ShapeTerm {
     expect_object(j, c, {"type", "normalization_radius", "coefficients"});
     z.normalization_radius =
@@ -407,8 +408,9 @@ ShapeTerm read_shape_term(const Json& j, const Ctx& c) {
   };
   if (type == "zernike_sag") return zernike(ZernikeSag{});
   if (type == "zernike_fringe_sag") return zernike(ZernikeFringeSag{});  // ADR 0051, point 3
+  if (type == "xy_polynomial") return zernike(XyPolynomial{});           // ADR 0051, point 4
   c.at("type").fail("unknown shape term type '" + type +
-                    "', expected zernike_sag or zernike_fringe_sag");
+                    "', expected zernike_sag, zernike_fringe_sag or xy_polynomial");
 }
 
 ShapeStack read_shape(const Json& j, const Ctx& c) {
@@ -1837,8 +1839,15 @@ class Writer {
         std::visit(
             [&](const auto& term) {
               using S = std::decay_t<decltype(term)>;
-              if constexpr (std::is_same_v<S, ZernikeSag> || std::is_same_v<S, ZernikeFringeSag>) {
-                to["type"] = std::is_same_v<S, ZernikeSag> ? "zernike_sag" : "zernike_fringe_sag";
+              if constexpr (std::is_same_v<S, ZernikeSag> || std::is_same_v<S, ZernikeFringeSag> ||
+                            std::is_same_v<S, XyPolynomial>) {
+                if constexpr (std::is_same_v<S, ZernikeSag>) {
+                  to["type"] = "zernike_sag";
+                } else if constexpr (std::is_same_v<S, ZernikeFringeSag>) {
+                  to["type"] = "zernike_fringe_sag";
+                } else {
+                  to["type"] = "xy_polynomial";
+                }
                 to["normalization_radius"] = param(term.normalization_radius);
                 if (edit_ || !term.coefficients.empty()) {
                   to["coefficients"] = param_list(term.coefficients);

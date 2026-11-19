@@ -155,7 +155,8 @@ class ParamWalker {
           [&](auto& z) {
             using Term = std::remove_cvref_t<decltype(z)>;
             if constexpr (std::is_same_v<Term, ZernikeSag> ||
-                          std::is_same_v<Term, ZernikeFringeSag>) {
+                          std::is_same_v<Term, ZernikeFringeSag> ||
+                          std::is_same_v<Term, XyPolynomial>) {
               visit_(term + "/normalization_radius", z.normalization_radius);
               list(z.coefficients, term + "/coefficients");
             } else {

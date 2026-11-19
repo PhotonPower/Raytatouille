@@ -760,3 +760,28 @@ def test_0_11_fringe_terms_are_accepted(terms):
 )
 def test_0_11_fringe_term_errors_are_rejected(terms):
     assert not VALIDATOR.is_valid(_terms(terms))
+
+
+# ---- schema 0.11 (#316, ADR 0051, point 4): xy_polynomial ----
+
+@pytest.mark.parametrize(
+    "terms",
+    [[{"type": "xy_polynomial", "normalization_radius": 10.0}],
+     [{"type": "xy_polynomial", "normalization_radius": {"value": 10.0},
+       "coefficients": [0.0, {"value": 1e-4, "variable": True}, 2e-4]},
+      {"type": "zernike_sag", "normalization_radius": 10.0, "coefficients": [0.0, 1e-4]}]],
+    ids=["xy", "xy-and-noll"],
+)
+def test_0_11_xy_terms_are_accepted(terms):
+    assert VALIDATOR.is_valid(_terms(terms))
+
+
+@pytest.mark.parametrize(
+    "terms",
+    [[{"type": "xy_polynomial"}],
+     [{"type": "xy_polynomial", "normalization_radius": 10.0, "degree": 4}],
+     [{"type": "xy_polynomial", "normalization_radius": 10.0, "coefficients": "a"}]],
+    ids=["no-radius", "extra-key", "bad-coefficients"],
+)
+def test_0_11_xy_term_errors_are_rejected(terms):
+    assert not VALIDATOR.is_valid(_terms(terms))

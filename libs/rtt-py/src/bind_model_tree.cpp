@@ -649,13 +649,23 @@ void bind_model_tree(nb::module_& m) {
               "Normalization radius in mm (Param).")
       .def_ro("coefficients", &model::ZernikeFringeSag::coefficients,
               "Zernike coefficients in mm (Param each).");
+  read_only_class<model::XyPolynomial>(
+      m, "XyPolynomial",
+      "Additive XY polynomial term, sum of c_k (x/R)^i (y/R)^j without a constant term; "
+      "coefficients[0] is x, then y, x^2, x y, y^2, x^3, ..., at most 230 (degree 20) "
+      "(ADR 0051; read-only copy).")
+      .def_ro("normalization_radius", &model::XyPolynomial::normalization_radius,
+              "Normalization radius R in mm (Param).")
+      .def_ro("coefficients", &model::XyPolynomial::coefficients,
+              "Polynomial coefficients in mm (Param each).");
   read_only_class<model::ShapeStack>(
       m, "ShapeStack",
       "Total sag = base + sum of the terms, in the local xy plane (read-only copy).")
       .def_ro("base", &model::ShapeStack::base,
               "Base shape: Plane, Conic, EvenAsphere, Biconic, Toroid, Cylinder, OddAsphere, "
               "Axicon, QCon or QBfs.")
-      .def_ro("terms", &model::ShapeStack::terms, "Additive terms (ZernikeSag, ZernikeFringeSag).");
+      .def_ro("terms", &model::ShapeStack::terms,
+              "Additive terms (ZernikeSag, ZernikeFringeSag, XyPolynomial).");
 
   // ------------------------------------------------------------- aperture -----
   read_only_class<model::CircularAperture>(m, "CircularAperture",

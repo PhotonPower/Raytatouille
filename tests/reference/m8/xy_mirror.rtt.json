@@ -1,0 +1,87 @@
+{
+  "schema_version": "0.11.0",
+  "name": "Spherical mirror R = -200 mm with an XY polynomial (rotationally symmetric to fourth order, x^6 correction) behind a stop (ADR 0051, point 4)",
+  "units": {"length": "mm", "wavelength": "um"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 40.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "pose": {"position": [0.0, 0.0, -50.0]},
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 21.0}
+          }
+        ]
+      },
+      {
+        "type": "mirror",
+        "name": "M",
+        "surfaces": [
+          {
+            "id": "M",
+            "shape": {
+              "base": {"type": "conic", "radius": -200.0},
+              "terms": [
+                {
+                  "type": "xy_polynomial",
+                  "normalization_radius": 22.0,
+                  "coefficients": [
+                    0.0,
+                    0.0,
+                    0.001,
+                    0.0,
+                    0.001,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1e-05,
+                    0.0,
+                    2e-05,
+                    0.0,
+                    1e-05,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    {"value": 5e-06, "variable": true}
+                  ]
+                }
+              ]
+            },
+            "aperture": {"type": "circular", "radius": 22.0}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "focus",
+        "pose": {"position": [0.0, 0.0, -100.0]},
+        "surfaces": [
+          {
+            "id": "F",
+            "aperture": {"type": "circular", "radius": 3.0}
+          }
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}

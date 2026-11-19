@@ -261,7 +261,7 @@ class CompiledSystem;
 ///   goes to the environment. A cemented group is one element with one material per segment;
 ///   two separate elements always meet through the environment.
 ///
-/// Not supported yet (CompileError): Zernike sag terms (M8).
+/// Shape terms (Zernike, XY polynomial) compile to a geom::Stacked (ADR 0051, point 1).
 /// Crystals (ADR 0026): every crystal element gets a medium of its own (CompiledMedium with
 /// n_O, n_E and the global optic axis; parts resolved at .../material/ordinary and
 /// .../extraordinary, crystal.absorbing for kappa != 0), and every event inside a crystal its
