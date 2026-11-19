@@ -799,8 +799,9 @@ class Compiler {
     return it->second.is_identity() ? nullptr : &it->second;
   }
 
-  /// Appends the Zernike error of the overlay for surface `s` (ADR 0051, point 7), if any, as one
-  /// Noll term after the surface's own terms; a shape without terms becomes a stack on its base.
+  /// Appends the Zernike error of the overlay for surface `s` (ADR 0051, point 7), if any and not
+  /// all zero, as one Noll term after the surface's own terms; a shape without terms becomes a
+  /// stack on its base.
   /// The normalization radius is the semi-diameter of the aperture (the circumscribed radius,
   /// #177): radius, half diagonal, major semi-axis, circumradius or farthest polygon vertex.
   /// @throws std::invalid_argument for a surface without aperture (validate reports that for the
@@ -809,6 +810,11 @@ class Compiler {
     const auto it = perturbation_.zernike.find(s.id);
     if (it == perturbation_.zernike.end()) return;
     used_zernike_.insert(s.id);
+    // All zero: no term, the shape stays as it is (like an identity motion or a zero material
+    // change), so Phi_0 and the other items keep the nominal intersection.
+    if (std::all_of(it->second.begin(), it->second.end(), [](double v) { return v == 0.0; })) {
+      return;
+    }
     if (!s.aperture) {
       throw std::invalid_argument("compile: the Zernike error of surface '" + s.id.str() +
                                   "' needs an aperture");

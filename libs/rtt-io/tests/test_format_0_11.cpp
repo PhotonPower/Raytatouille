@@ -462,4 +462,11 @@ TEST_CASE("tolerance kind zernike with term: round trip and version (ADR 0051, p
   bad["tolerances"]["overrides"] =
       json::parse(R"([{"surface": "L1.S1", "kind": "conic", "limit": 0.01, "term": 4}])");
   CHECK(error_pointer(bad.dump()).starts_with("/tolerances/overrides/0"));
+  // Before 0.11 also a single value of kind zernike is a read error at its kind.
+  json single = j;
+  single["schema_version"] = "0.10.0";
+  single["tolerances"]["items"] = json::array();
+  single["tolerances"]["overrides"] =
+      json::parse(R"([{"surface": "L1.S1", "kind": "zernike", "limit": 0.01}])");
+  CHECK(error_pointer(single.dump()) == "/tolerances/overrides/0/kind");
 }

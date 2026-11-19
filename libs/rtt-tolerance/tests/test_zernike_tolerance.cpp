@@ -10,6 +10,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -19,6 +21,7 @@
 #include "rtt/analysis/opd.hpp"
 #include "rtt/coating/catalog.hpp"
 #include "rtt/compile/compiled_system.hpp"
+#include "rtt/geom/conic.hpp"
 #include "rtt/material/material.hpp"
 #include "rtt/model/model.hpp"
 #include "rtt/model/tolerance.hpp"
@@ -299,5 +302,32 @@ TEST_CASE("Zernike tolerance errors (ADR 0051, point 7)", "[tolerance][zernike]"
   // The same coefficient twice is one quantity twice.
   s.tolerances.overrides.clear();
   s.tolerances.items = {zernike_item("a", 4, 1e-4), zernike_item("b", 4, 1e-4)};
-  CHECK(rtt::model::has_errors(rtt::model::validate(s)));
+  CHECK(has(s, "tolerances.quantity_duplicate", "/tolerances/items/1"));
+  s.tolerances.items = {zernike_item("a", 4, 1e-4), zernike_item("b", 5, 1e-4)};
+  CHECK_FALSE(has(s, "tolerances.quantity_duplicate", "/tolerances/items/1"));
+}
+
+TEST_CASE("a Zernike item leaves Phi_0 and the other items bit for bit unchanged",
+          "[tolerance][zernike]") {
+  // At delta = 0 the overlay appends nothing (like an identity motion): the nominal keeps the
+  // closed-form intersection of its conic.
+  ToleranceItem conic;
+  conic.id = "k";
+  conic.target.anchor = ToleranceAnchor::Surface;
+  conic.target.name = "L.S2";
+  conic.kind = ToleranceKind::Conic;
+  conic.limit = 0.01;
+  const TrialContext without =
+      rtt::tolerance::prepare(singlet(), library(), nullptr, std::vector<ToleranceItem>{conic});
+  const TrialContext with = rtt::tolerance::prepare(
+      singlet(), library(), nullptr, std::vector<ToleranceItem>{conic, zernike_item("z", 4, 1e-4)});
+  REQUIRE(without.nominal().criteria[0].value.has_value());
+  CHECK(with.nominal().criteria[0].value == without.nominal().criteria[0].value);
+  CHECK(rtt::tolerance::evaluate(with, std::vector<double>{0.01, 0.0}).criteria[0].value ==
+        rtt::tolerance::evaluate(without, std::vector<double>{0.01}).criteria[0].value);
+  const rtt::tolerance::Applied zero = rtt::tolerance::apply(with, std::vector<double>{0.0, 0.0});
+  const CompiledSystem cs = compiled(zero.system, zero.perturbation);
+  const std::optional<std::uint32_t> s1 = cs.find_surface(SurfaceId("L.S1"));
+  REQUIRE(s1.has_value());
+  CHECK(std::holds_alternative<rtt::geom::Conic<double>>(cs.surfaces()[s1.value_or(0)].shape));
 }

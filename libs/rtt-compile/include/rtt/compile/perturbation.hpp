@@ -94,8 +94,9 @@ struct Perturbation {
   /// Zernike surface errors by SurfaceId (ADR 0051, point 7): Noll coefficients a_1, a_2, ... in
   /// mm (index k is j = k + 1, at most 231), orthonormal as rtt::math::zernike(), normalized to
   /// the semi-diameter of the surface's aperture (the circumscribed radius, as the dimension
-  /// report, #177). compile() appends them to the compiled shape as one ZernikeTerm after the
-  /// surface's own terms; the model stays unchanged. The surface needs an aperture.
+  /// report, #177) in the configuration being compiled. compile() appends them to the compiled
+  /// shape as one ZernikeTerm after the surface's own terms; all zero is no change; the model
+  /// stays unchanged. The surface needs an aperture.
   std::map<model::SurfaceId, std::vector<double>> zernike;
   /// The nominal z (mm, global) of the vertex of the surface that object.reference names, one
   /// entry per configuration (index of System::configurations, one entry without

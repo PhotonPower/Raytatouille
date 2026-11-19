@@ -886,19 +886,14 @@ void check_0_9_forms(const Json& node, const Ctx& c) {
   }
 }
 
-/// Files before 0.11 (ADR 0050, points 1 to 3; ADR 0051): the aperture types regular_polygon and
-/// polygon and a shape term other than zernike_sag are an error at the type, an aperture
-/// dimension that is not a number (a Param object) at that dimension and the key "obscurations"
-/// at that key, so that a version is never silently upgraded.
-/// Before schema 0.11 the tolerance kind zernike and its key term do not exist (ADR 0051,
-/// point 7).
+/// Before schema 0.11 the tolerance kind zernike (items and overrides) and the key term of the
+/// items do not exist (ADR 0051, point 7).
 void check_0_11_tolerances(const Json& j, const Ctx& c) {
   const Json* tolerances = find(j, "tolerances");
   if (tolerances == nullptr || !tolerances->is_object()) return;
   const Json* items = find(*tolerances, "items");
-  if (items == nullptr || !items->is_array()) return;
   const Ctx at = c.at("tolerances").at("items");
-  for (std::size_t i = 0; i < items->size(); ++i) {
+  for (std::size_t i = 0; items != nullptr && items->is_array() && i < items->size(); ++i) {
     const Json& item = (*items)[i];
     if (!item.is_object()) continue;
     if (const Json* kind = find(item, "kind"); kind != nullptr && *kind == "zernike") {
@@ -908,8 +903,23 @@ void check_0_11_tolerances(const Json& j, const Ctx& c) {
       at.at(i).at("term").fail("term needs schema_version 0.11 or later (ADR 0051)");
     }
   }
+  if (const Json* overrides = find(*tolerances, "overrides");
+      overrides != nullptr && overrides->is_array()) {
+    const Ctx oat = c.at("tolerances").at("overrides");
+    for (std::size_t i = 0; i < overrides->size(); ++i) {
+      const Json& o = (*overrides)[i];
+      if (!o.is_object()) continue;
+      if (const Json* kind = find(o, "kind"); kind != nullptr && *kind == "zernike") {
+        oat.at(i).at("kind").fail("the tolerance kind zernike needs schema_version 0.11 or later");
+      }
+    }
+  }
 }
 
+/// Files before 0.11 (ADR 0050, points 1 to 3; ADR 0051): the aperture types regular_polygon and
+/// polygon and a shape term other than zernike_sag are an error at the type, an aperture
+/// dimension that is not a number (a Param object) at that dimension and the key "obscurations"
+/// at that key, so that a version is never silently upgraded.
 void check_0_11_forms(const Json& node, const Ctx& c) {
   if (!node.is_object()) return;  // structural errors are reported by the reader
   if (const Json* surfaces = find(node, "surfaces"); surfaces != nullptr && surfaces->is_array()) {
