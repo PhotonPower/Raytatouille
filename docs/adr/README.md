@@ -59,6 +59,7 @@ Präzisierungen und Ergänzungen einer angenommenen Entscheidung kommen als dati
 | [0048](0048.md) | Bestrahlungsstärke-Raster aus Strahltreffern (einfallendes Gewicht, RayPaths und RayBatch, projizierte Zellfläche) | angenommen |
 | [0049](0049.md) | Knoten vorübergehend aus der Rechnung nehmen (`active`, Schema 0.10.0; Geometrie bleibt, inaktive Blende = keine Blende) | angenommen |
 | [0050](0050.md) | Aperturformen (`regular_polygon`, `polygon`), Obskurationen und Aperturmaße als Param (Schema 0.11.0) | angenommen |
+| [0051](0051.md) | Freiformterme (Zernike Noll und Fringe, XY-Polynom, Grid-Sag) und Zernike-Flächenfehler als Toleranzart | angenommen |
 
 ## Vorlage
 
