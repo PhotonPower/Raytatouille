@@ -974,8 +974,9 @@ AimedRay aim(const Context& c, const FieldStart& f, double px, double py, Aiming
   }
   // ADR 0007, addendum #310: a target outside the outer rim of the stop aperture cannot be passed
   // by any ray, so the ray ends Vignetted at the stop (the tracer's aperture test there), not
-  // NoConvergence. Inner rims are not tested: a target in an obscuration can be reached, and the
-  // chief ray aims at the centre (reference rays ignore obscurations, ADR 0032, addendum #229).
+  // NoConvergence. Inner rims and obscurations are not tested: a target in an obscuration can be
+  // reached, and the chief ray aims at the centre (reference rays ignore obscurations, ADR 0032,
+  // addendum #229; ADR 0050, point 3).
   // The ray keeps the last iterate of the first run.
   const std::uint32_t stop_surface = c.system->path(c.path).events[c.stop_event].surface;
   const SurfaceHit target{geom::HitStatus::Hit, 0.0, Vec3(tx, ty, 0.0), Vec3::UnitZ(),

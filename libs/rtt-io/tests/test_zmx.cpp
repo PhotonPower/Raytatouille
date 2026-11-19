@@ -406,6 +406,7 @@ std::vector<ErrorCase> error_cases() {
   const std::string fold = read_file(kZmxDir + "fold.zmx");
   const std::string par = read_file(kZmxDir + "paraxial.zmx");
   const std::string plate = read_file(kZmxDir + "tilt_plate.zmx");
+  const std::string xcyl = read_file(kZmxDir + "xcylinder.zmx");
   return {
       {"zmx.parse", in_surface(2, "DISZ", "  DISZ six"), "DISZ six"},
       {"zmx.encoding_unsupported", "\xFE\xFF" + s, ""},
@@ -417,7 +418,8 @@ std::vector<ErrorCase> error_cases() {
       {"zmx.aperture_unsupported", with(s, "FTYP", "FTYP 0 1 3 3 0 0 0"), "FTYP 0 1"},
       {"zmx.aperture_unsupported", in_surface(2, "FLAP", "  FLAP 1.0E+000 8.0E+000 0"),
        "FLAP 1.0E+000"},
-      {"zmx.aperture_unsupported", in_surface(2, "FLAP", "  SQOB 4.0E+000 4.0E+000 0"), "SQOB"},
+      // Obscurations are imported since #320 (ADR 0050, point 3); what stays unmapped:
+      {"zmx.aperture_invalid", in_surface(2, "FLAP", "  SQOB 0 4.0E+000 0"), "SQOB"},
       {"zmx.field_unsupported", with(s, "FTYP", "FTYP 3 0 3 3 0 0 0"), "FTYP 3"},
       {"zmx.vignetting_unsupported", with(s, "VDYN", "VDYN 0 1.0E-001 0 0 0 0 0 0 0 0 0 0"),
        "VDYN 0 1.0E-001"},
@@ -461,8 +463,20 @@ std::vector<ErrorCase> error_cases() {
       {"zmx.surface_unsupported", in_surface(0, "CURV", "  CURV 1.0E-002 0 0 0 0"),
        "CURV 1.0E-002"},
       {"zmx.aperture_invalid", in_surface(2, "FLAP", "  CLAP -1.0E+000 4.0E+000 0"), "CLAP -1.0"},
-      {"zmx.aperture_unsupported", in_surface(2, "FLAP", "  ELOB 4.0E+000 3.0E+000 0"), "ELOB"},
-      {"zmx.aperture_unsupported", in_surface(2, "FLAP", "  OBSC 0 1.0E+000 0"), "OBSC"},
+      {"zmx.aperture_conflict",
+       in_surface(2, "FLAP", "  CLAP 0 7.0E+000 0\r\n  ELOB 4.0E+000 3.0E+000 0"), "ELOB"},
+      {"zmx.aperture_unsupported", in_surface(2, "FLAP", "  OBSC 5.0E-001 1.0E+000 0"), "OBSC"},
+      {"zmx.aperture_invalid", in_surface(2, "FLAP", "  OBSC 0 0 0"), "OBSC"},
+      {"zmx.aperture_invalid", in_surface(2, "FLAP", "  ELOB 4.0E+000 0 0"), "ELOB"},
+      {"zmx.aperture_decenter", in_surface(2, "FLAP", "  CLAP 0 7.0E+000 0\r\n  OBDC 0 1.0E+000"),
+       "OBDC"},
+      {"zmx.aperture_unsupported", in_surface(2, "FLAP", "  SPID 1.0E+000 4.0E+000 0"), "SPID"},
+      {"zmx.aperture_unsupported", in_surface(plate, 2, "HIDE", "  OBSC 0 1.0E+000 0"),
+       "OBSC 0 1.0E+000"},
+      {"zmx.aperture_unsupported", in_surface(xcyl, 2, "ELAP", "  SQOB 1.0E+000 2.0E+000 0"),
+       "SQOB 1.0E+000"},
+      {"zmx.coordbrk_surface", in_surface(fold, 2, "HIDE", "  OBSC 0 1.0E+000 0"),
+       "OBSC 0 1.0E+000"},
       {"zmx.config_mismatch", with(s, "THIC", "CRVT 2 1 2.1E-002 0 0 0 1 1 0"), "CRVT 2 1"},
       // PR C: coordinate breaks, tilted planes, the paraxial lens, apertures, surface keywords.
       {"zmx.coordbrk_surface",
@@ -996,4 +1010,50 @@ TEST_CASE("the stop on a mirror tilted by a coordinate break", "[zmx]") {
   CHECK(b.status()[0] == RayStatus::Alive);
   CHECK(b.status()[1] == RayStatus::Vignetted);
   CHECK(b.last_surface()[1] == 1);
+}
+
+TEST_CASE("OBSC, SQOB and ELOB with OBDC import as decentred obscurations (ADR 0050)", "[zmx]") {
+  // [UG] "Aperture Type Codes and Parameters": circular obscuration = minimum and maximum radius,
+  // rectangular and elliptical obscuration = x and y half widths; OBDC = decenter x, y in lens
+  // units (SURP codes 23, 24). The singlet is in mm. Surface 2 loses its FLAP for the obscuration,
+  // so it has no aperture.
+  const auto surface2 = [](const std::string& lines) {
+    const System s = import_zmx(in_surface(2, "FLAP", lines), schott()).system;
+    for (const rtt::model::Surface& f : element_of(s, "S2")->surfaces) {
+      if (f.id.str() == "S2") return f;
+    }
+    throw std::logic_error("no S2");
+  };
+  using rtt::model::CircularObscuration;
+  using rtt::model::EllipticalObscuration;
+  using rtt::model::Obscuration;
+  using rtt::model::Param;
+  using rtt::model::RectangularObscuration;
+  const rtt::model::Surface c = surface2("  OBSC 0 2.0E+000 0\r\n  OBDC 5.0E-001 -2.5E-001");
+  CHECK_FALSE(c.aperture.has_value());
+  CHECK(c.obscurations ==
+        std::vector<Obscuration>{CircularObscuration{Param(2.0), Param(0.5), Param(-0.25)}});
+  CHECK(surface2("  SQOB 1.0E+000 2.0E+000 0").obscurations ==
+        std::vector<Obscuration>{
+            RectangularObscuration{Param(1.0), Param(2.0), Param(0.0), Param(0.0), 0.0}});
+  CHECK(surface2("  OBDC 0 1.0E+000\r\n  ELOB 3.0E+000 1.5E+000 0").obscurations ==
+        std::vector<Obscuration>{
+            EllipticalObscuration{Param(3.0), Param(1.5), Param(0.0), Param(1.0), 0.0}});
+
+  // The sign of the decenter in the trace: the centre lies at (0.5, -0.25).
+  const System s = import_zmx(in_surface(2, "FLAP",
+                                         "  OBSC 0 2.0E+000 0\r\n  OBDC 5.0E-001 "
+                                         "-2.5E-001"),
+                              schott())
+                       .system;
+  const auto cs = rtt::compile::compile(s, schott());
+  const Vec3 z(0.0, 0.0, 1.0);
+  const RayBatch out = trace_rays(cs, {{Vec3(2.3, -0.25, -1.0), z},   // 1.8 from the centre
+                                       {Vec3(-2.3, -0.25, -1.0), z},  // 2.8
+                                       {Vec3(0.5, -2.0, -1.0), z},    // 1.75
+                                       {Vec3(0.5, 2.0, -1.0), z}});   // 2.25
+  CHECK(out.status()[0] == RayStatus::Vignetted);
+  CHECK(out.status()[1] == RayStatus::Alive);
+  CHECK(out.status()[2] == RayStatus::Vignetted);
+  CHECK(out.status()[3] == RayStatus::Alive);
 }

@@ -681,6 +681,45 @@ void bind_model_tree(nb::module_& m) {
       "orientation, convex or concave; the last joins the first (read-only copy).")
       .def_ro("vertices", &model::PolygonAperture::vertices, "Vertices [(x, y), ...] in mm.");
 
+  // ---------------------------------------------------------- obscurations -----
+  read_only_class<model::CircularObscuration>(
+      m, "CircularObscuration",
+      "Circular obscuration (ADR 0050): blocks light strictly inside the disc of `radius` around "
+      "(decenter_x, decenter_y) in the local frame (read-only copy).")
+      .def_ro("radius", &model::CircularObscuration::radius, "Radius in mm (Param).")
+      .def_ro("decenter_x", &model::CircularObscuration::decenter_x,
+              "x of the centre in mm (Param).")
+      .def_ro("decenter_y", &model::CircularObscuration::decenter_y,
+              "y of the centre in mm (Param).");
+  read_only_class<model::RectangularObscuration>(
+      m, "RectangularObscuration",
+      "Rectangular obscuration (ADR 0050), e.g. a spider arm: centre (decenter_x, decenter_y), "
+      "axes turned by rotation_deg from the local +x axis towards +y (read-only copy).")
+      .def_ro("half_width_x", &model::RectangularObscuration::half_width_x,
+              "Half width along the turned x axis, mm (Param).")
+      .def_ro("half_width_y", &model::RectangularObscuration::half_width_y,
+              "Half width along the turned y axis, mm (Param).")
+      .def_ro("decenter_x", &model::RectangularObscuration::decenter_x,
+              "x of the centre in mm (Param).")
+      .def_ro("decenter_y", &model::RectangularObscuration::decenter_y,
+              "y of the centre in mm (Param).")
+      .def_ro("rotation_deg", &model::RectangularObscuration::rotation_deg,
+              "Rotation from the local +x axis towards +y, degree.");
+  read_only_class<model::EllipticalObscuration>(
+      m, "EllipticalObscuration",
+      "Elliptical obscuration (ADR 0050): centre (decenter_x, decenter_y), axes turned by "
+      "rotation_deg from the local +x axis towards +y (read-only copy).")
+      .def_ro("semi_axis_x", &model::EllipticalObscuration::semi_axis_x,
+              "Semi-axis along the turned x axis, mm (Param).")
+      .def_ro("semi_axis_y", &model::EllipticalObscuration::semi_axis_y,
+              "Semi-axis along the turned y axis, mm (Param).")
+      .def_ro("decenter_x", &model::EllipticalObscuration::decenter_x,
+              "x of the centre in mm (Param).")
+      .def_ro("decenter_y", &model::EllipticalObscuration::decenter_y,
+              "y of the centre in mm (Param).")
+      .def_ro("rotation_deg", &model::EllipticalObscuration::rotation_deg,
+              "Rotation from the local +x axis towards +y, degree.");
+
   // --------------------------------------------------------------- phases -----
   read_only_class<model::LinearGrating>(
       m, "LinearGrating",
@@ -775,8 +814,11 @@ void bind_model_tree(nb::module_& m) {
       .def_ro("pose", &model::Surface::pose, "Placement in the element.")
       .def_ro("shape", &model::Surface::shape, "Sag of the surface.")
       .def_ro("aperture", &model::Surface::aperture,
-              "Clear aperture (CircularAperture, RectangularAperture, EllipticalAperture); None "
-              "for an unlimited surface.")
+              "Clear aperture (CircularAperture, RectangularAperture, EllipticalAperture, "
+              "RegularPolygonAperture, PolygonAperture); None for an unlimited surface.")
+      .def_ro("obscurations", &model::Surface::obscurations,
+              "Obscurations (CircularObscuration, RectangularObscuration, "
+              "EllipticalObscuration, ADR 0050): a ray strictly inside one ends Vignetted.")
       .def_ro("phases", &model::Surface::phases, "Phase layers (LinearGrating, RadialPhase).")
       .def_ro("diffraction_efficiency", &model::Surface::diffraction_efficiency,
               "Efficiency per diffraction order (DiffractionEfficiency); None: every order has "

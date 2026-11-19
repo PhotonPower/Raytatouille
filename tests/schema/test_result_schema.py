@@ -312,3 +312,31 @@ def test_surface_layouts_from_0_1_21_need_aperture_vertices():
         VALIDATOR.validate(_surface_layout_0_1_21("0.1.21"))
     with pytest.raises(jsonschema.ValidationError):
         VALIDATOR.validate(_surface_layout_0_1_21("0.1.21", [[1.0, 0.0]]))
+
+
+# SurfaceLayout gained obscurations in 0.1.22 (#320, ADR 0050, point 3; ADR 0023 addendum):
+# older files stay valid without it (no obscurations), from 0.1.22 on it is required and a
+# list of [type, parameters].
+def _surface_layout_0_1_22(version: str, obscurations="absent") -> dict:
+    doc = _surface_layout_0_1_21(version, None)
+    if obscurations != "absent":
+        doc["data"]["obscurations"] = obscurations
+    return doc
+
+
+def test_older_surface_layouts_without_obscurations_are_valid():
+    for version in ("0.1.21",):
+        VALIDATOR.validate(_surface_layout_0_1_22(version))
+
+
+def test_surface_layouts_from_0_1_22_need_obscurations():
+    VALIDATOR.validate(_surface_layout_0_1_22("0.1.22", []))
+    spider = [["circular", {"radius": 10.0, "decenter_x": 0.0, "decenter_y": 0.0}],
+              ["rectangular", {"half_width_x": 31.0, "half_width_y": 0.5, "decenter_x": 0.0,
+                               "decenter_y": 0.0, "rotation_deg": 90.0}]]
+    VALIDATOR.validate(_surface_layout_0_1_22("0.1.22", spider))
+    with pytest.raises(jsonschema.ValidationError):
+        VALIDATOR.validate(_surface_layout_0_1_22("0.1.22"))
+    for broken in (None, [["spider", {}]], [["circular"]], [["circular", {"radius": "1"}]]):
+        with pytest.raises(jsonschema.ValidationError):
+            VALIDATOR.validate(_surface_layout_0_1_22("0.1.22", broken))

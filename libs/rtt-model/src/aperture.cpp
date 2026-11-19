@@ -1,4 +1,5 @@
-// Vertices of the polygon apertures (ADR 0050, point 2).
+// Vertices of the polygon apertures (ADR 0050, point 2) and the centred-circle test of the
+// obscurations (ADR 0050, point 3).
 
 #include <array>
 #include <cmath>
@@ -27,6 +28,11 @@ std::vector<std::array<double, 2>> aperture_vertices(const Aperture& aperture) {
     out.push_back({radius * std::cos(phi), radius * std::sin(phi)});
   }
   return out;
+}
+
+bool is_centred_circle(const Obscuration& obscuration) noexcept {
+  const auto* c = std::get_if<CircularObscuration>(&obscuration);
+  return c != nullptr && c->decenter_x.value == 0.0 && c->decenter_y.value == 0.0;
 }
 
 }  // namespace rtt::model

@@ -112,7 +112,9 @@ struct CompiledSurface {
   math::Isometry3 to_local;
   CompiledShape shape = geom::Plane<double>{};
   std::optional<model::Aperture> aperture;  ///< in local coordinates, mm; none = unbounded
-  std::vector<model::PhaseLayer> phases;    ///< as in the model (export, display)
+  /// Obscurations as in the model with resolved Params (ADR 0050, point 3), local coordinates, mm.
+  std::vector<model::Obscuration> obscurations;
+  std::vector<model::PhaseLayer> phases;  ///< as in the model (export, display)
   /// The phase layers resolved for the tracer (ADR 0025, point 1, #127), in the order of
   /// `phases`: parameter values, orientation_deg in rad, coefficients in rad unchanged; phase in
   /// rad over the local (x, y) in mm.

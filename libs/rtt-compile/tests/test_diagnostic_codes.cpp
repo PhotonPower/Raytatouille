@@ -363,6 +363,31 @@ std::vector<Case> cases() {
        [](System& s) {
          element(s, 1).surfaces[0].aperture = PolygonAperture{{{0.0, 0.0}, {1.0, 0.0}}};
        }},
+      // Obscurations (ADR 0050, point 3).
+      {"surface_obscuration.radius_invalid", "/root/children/1/surfaces/0/obscurations/0/radius",
+       [](System& s) {
+         element(s, 1).surfaces[0].obscurations = {CircularObscuration{Param(0.0), {}, {}}};
+       }},
+      {"surface_obscuration.half_width_invalid", "/root/children/1/surfaces/0/obscurations/0",
+       [](System& s) {
+         element(s, 1).surfaces[0].obscurations = {
+             RectangularObscuration{Param(1.0), Param(-1.0), {}, {}, 0.0}};
+       }},
+      {"surface_obscuration.semi_axis_invalid", "/root/children/1/surfaces/0/obscurations/0",
+       [](System& s) {
+         element(s, 1).surfaces[0].obscurations = {
+             EllipticalObscuration{Param(0.0), Param(1.0), {}, {}, 0.0}};
+       }},
+      {"surface_obscuration.rotation_invalid",
+       "/root/children/1/surfaces/0/obscurations/0/rotation_deg",
+       [](System& s) {
+         element(s, 1).surfaces[0].obscurations = {RectangularObscuration{
+             Param(1.0), Param(1.0), {}, {}, std::numeric_limits<double>::quiet_NaN()}};
+       }},
+      {"surface_obscuration.covers_aperture", "/root/children/1/surfaces/0/obscurations/0/radius",
+       [](System& s) {
+         element(s, 1).surfaces[0].obscurations = {CircularObscuration{Param(1.0e4), {}, {}}};
+       }},
       {"surface_aperture.polygon_self_intersecting",
        "/root/children/1/surfaces/0/aperture/vertices",
        [](System& s) {  // a bow tie

@@ -69,6 +69,11 @@ struct ExportRow {
   double thickness = 0.0;
   /// Coordinate breaks after this row, before the next; only in a folded path.
   std::vector<CoordinateBreak> breaks;
+  /// Local x, y of the model surface -> x, y of its ZMX frame, row-major 2 x 2, diagonal with
+  /// entries +-1: the surface rotation r in a coaxial path (its off-diagonal entries are 0 there)
+  /// and the turn S = F^T r in {E, Rz, Rx, Ry} of a folded one (ADR 0045, addendum #366). For
+  /// the decenter of an obscuration (ADR 0050, point 3).
+  std::array<double, 4> local_xy{1.0, 0.0, 0.0, 1.0};
 };
 
 /// The exported path of one configuration.

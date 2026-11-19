@@ -3,6 +3,7 @@
 /// @file common.hpp
 /// Internal helpers shared by the analyses of rtt-analysis (not installed, not public API).
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -21,6 +22,8 @@
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/diagnostics/codes.hpp"
 #include "rtt/math/types.hpp"
+#include "rtt/model/surface.hpp"
+#include "rtt/trace/apply_event.hpp"
 #include "rtt/trace/ray_batch.hpp"
 #include "rtt/trace/sequential.hpp"
 #include "rtt/trace/sources.hpp"
@@ -123,18 +126,22 @@ inline trace::RayBatch trace_rays(const CompiledSystem& system,
 }
 
 /// Traces reference rays (chief, parabasal and zone rays) of one field and wavelength as
-/// virtual rays (ADR 0032, addendum #229): the inner radii of circular apertures (central
-/// obscurations) are not tested, every outer rim is. Bitwise trace_rays() for every ray that
-/// meets no inner rim; in an obscured pupil the ray of the same system without the obscuration.
-inline trace::RayBatch trace_reference_rays(const CompiledSystem& system,
-                                            PathId path,
-                                            std::uint16_t field,
-                                            std::uint16_t wavelength,
-                                            const trace::PupilSampling& sampling,
-                                            trace::Aiming aiming,
-                                            const NominalReference* nominal) {
+/// virtual rays (ADR 0032, addendum #229; ADR 0050, point 3): at the default level IgnoreAll no
+/// obscuration and no inner radius of a circular aperture is tested, every outer rim is. Bitwise
+/// trace_rays() for every ray that meets no obscuration; in an obscured pupil the ray of the
+/// same system without the obscurations. The inner-rim cells of the pupil function pass
+/// IgnoreCentredCircles, so that a spider still blocks them.
+inline trace::RayBatch trace_reference_rays(
+    const CompiledSystem& system,
+    PathId path,
+    std::uint16_t field,
+    std::uint16_t wavelength,
+    const trace::PupilSampling& sampling,
+    trace::Aiming aiming,
+    const NominalReference* nominal,
+    trace::ObscurationTest test = trace::ObscurationTest::IgnoreAll) {
   trace::RayBatch rays = aim_rays(system, path, field, wavelength, sampling, aiming, nominal);
-  rays.set_ignore_obscurations(true);
+  rays.set_obscuration_test(test);
   [[maybe_unused]] const auto stats = trace::SequentialTracer().trace(system, path, rays);
   return rays;
 }
@@ -161,6 +168,23 @@ inline trace::RayBatch trace_aimed(const CompiledSystem& system,
   return rays;
 }
 
+/// Effective inner radius of a stop surface, mm (ADR 0050, point 3): the largest of the inner
+/// radius of a circular aperture and the radii of the centred circular obscurations, whatever
+/// the shape of the aperture; 0 if there is none.
+inline double effective_inner_radius(const compile::CompiledSurface& surface) {
+  double r = 0.0;
+  if (const auto* circle =
+          surface.aperture ? std::get_if<model::CircularAperture>(&*surface.aperture) : nullptr) {
+    r = std::max(r, circle->inner_radius.value);
+  }
+  for (const model::Obscuration& o : surface.obscurations) {
+    if (model::is_centred_circle(o)) {
+      r = std::max(r, std::get<model::CircularObscuration>(o).radius.value);
+    }
+  }
+  return r;
+}
+
 /// True if ray i ended Alive on the image surface.
 inline bool arrived(const trace::RayBatch& rays, std::size_t i, std::uint32_t image) {
   return rays.status()[i] == trace::RayStatus::Alive && rays.last_surface()[i] == image;
@@ -178,10 +202,7 @@ class LossCounter {
     // The stop of the path (ADR 0039, point 3), counted by surface index on every pass.
     if (const std::optional<std::size_t> e = compile::stop_event(system, path)) {
       stop_ = system.path(path).events[*e].surface;
-      const compile::CompiledSurface& surface = system.surfaces()[*stop_];
-      const auto* circle =
-          surface.aperture ? std::get_if<model::CircularAperture>(&*surface.aperture) : nullptr;
-      if (circle != nullptr) stop_inner_radius_ = circle->inner_radius.value;
+      stop_inner_radius_ = effective_inner_radius(system.surfaces()[*stop_]);
     }
   }
 
@@ -203,9 +224,9 @@ class LossCounter {
   void add_ray(trace::RayStatus s, std::uint32_t last_surface) { count(s, last_surface, false); }
 
   /// add_ray() with the ray's final global position, mm (a vignetted ray stands at its hit point
-  /// on the vignetting surface): a ray in the central obscuration of the stop (inside its inner
-  /// radius) does not count for stop.clips_beam, which reports clipping by the outer rim only
-  /// (ADR 0032, addendum #229).
+  /// on the vignetting surface): a ray in an obscuration of the stop (inside the effective inner
+  /// radius or inside any obscuration of the stop surface) does not count for stop.clips_beam,
+  /// which reports clipping by the outer rim only (ADR 0032, addendum #229; ADR 0050, point 3).
   void add_ray(trace::RayStatus s, std::uint32_t last_surface, const math::Vec3& position) {
     const bool obscured = s == trace::RayStatus::Vignetted && stop_ && last_surface == *stop_ &&
                           in_stop_obscuration(*stop_, position);
@@ -269,11 +290,20 @@ class LossCounter {
     }
   }
 
-  /// True if the global point lies inside the inner radius of the stop's circular aperture.
+  /// True if the global point lies within the outer rim of the stop aperture and inside the
+  /// effective inner radius of the stop or inside an obscuration of the stop surface
+  /// (obscuration is not clipping, ADR 0050, point 3).
   [[nodiscard]] bool in_stop_obscuration(std::uint32_t stop, const math::Vec3& position) const {
-    if (!(stop_inner_radius_ > 0.0)) return false;
-    const math::Vec3 local = system_->surfaces()[stop].to_local.apply_point(position);
-    return local.x() * local.x() + local.y() * local.y() < stop_inner_radius_ * stop_inner_radius_;
+    const compile::CompiledSurface& surface = system_->surfaces()[stop];
+    if (!(stop_inner_radius_ > 0.0) && surface.obscurations.empty()) return false;
+    const math::Vec3 local = surface.to_local.apply_point(position);
+    // Outside the outer rim it is clipping, also on a spider arm reaching beyond the stop.
+    const trace::SurfaceHit hit{geom::HitStatus::Hit, 0.0, math::Vec3(local.x(), local.y(), 0.0),
+                                math::Vec3::UnitZ(), math::Vec3::UnitZ()};
+    if (!trace::inside_aperture(surface, hit, /*ignore_inner=*/true)) return false;
+    return local.x() * local.x() + local.y() * local.y() <
+               stop_inner_radius_ * stop_inner_radius_ ||
+           trace::in_obscuration(surface, local.x(), local.y());
   }
 
   static void add(std::vector<model::Diagnostic>& out,
@@ -293,7 +323,7 @@ class LossCounter {
   const CompiledSystem* system_;
   double threshold_;
   std::optional<std::uint32_t> stop_;
-  double stop_inner_radius_ = 0.0;  ///< inner radius of the stop aperture, mm (0: none)
+  double stop_inner_radius_ = 0.0;  ///< effective inner radius of the stop, mm (0: none)
   std::size_t vignetted_at_stop_ = 0;
   std::size_t launched_ = 0;
   std::array<std::size_t, trace::kRayStatusCount> by_status_{};

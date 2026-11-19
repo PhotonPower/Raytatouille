@@ -286,6 +286,16 @@ struct ZSurface {
   std::size_t sqap_line = 0;
   std::optional<std::pair<double, double>> elap;  ///< half widths x, y (lens units)
   std::size_t elap_line = 0;
+  // Obscurations (ADR 0050, point 3; UG "Aperture Type Codes and Parameters"): OBSC rmin rmax,
+  // SQOB and ELOB half widths x, y; OBDC the decenter x, y of the aperture or obscuration.
+  std::optional<std::pair<double, double>> obsc;
+  std::size_t obsc_line = 0;
+  std::optional<std::pair<double, double>> sqob;
+  std::size_t sqob_line = 0;
+  std::optional<std::pair<double, double>> elob;
+  std::size_t elob_line = 0;
+  std::pair<double, double> obdc{0.0, 0.0};
+  std::size_t obdc_line = 0;
   bool stop = false;
   std::size_t stop_line = 0;
 };
@@ -341,6 +351,7 @@ class Importer {
   std::string resolve_glass(const ZSurface& s);
   model::ShapeStack shape(const ZSurface& s, bool& powered) const;
   std::optional<model::Aperture> aperture(const ZSurface& s);
+  std::optional<model::Obscuration> obscuration(const ZSurface& s);
   model::System build();
 
   const std::vector<Line>& lines_;
@@ -461,16 +472,24 @@ void Importer::read_surface_line(ZSurface& s, const Line& l) {
     s.stop = true;
     s.stop_line = l.number;
   } else if (k == "OBDC") {
-    if (number(l, 1) != 0.0 || number(l, 2) != 0.0) {
-      fail("zmx.aperture_decenter", l.number, "decentred apertures are not supported");
-    }
+    s.obdc = std::make_pair(number(l, 1), number(l, 2));
+    s.obdc_line = l.number;
+  } else if (k == "OBSC") {
+    s.obsc = std::make_pair(number(l, 1), number(l, 2));
+    s.obsc_line = l.number;
+  } else if (k == "SQOB") {
+    s.sqob = std::make_pair(number(l, 1), number(l, 2));
+    s.sqob_line = l.number;
+  } else if (k == "ELOB") {
+    s.elob = std::make_pair(number(l, 1), number(l, 2));
+    s.elob_line = l.number;
   } else if (k == "SQAP") {
     s.sqap = std::make_pair(number(l, 1), number(l, 2));
     s.sqap_line = l.number;
   } else if (k == "ELAP") {
     s.elap = std::make_pair(number(l, 1), number(l, 2));
     s.elap_line = l.number;
-  } else if (k == "OBSC" || k == "SQOB" || k == "ELOB" || k == "SPID" || k == "USAP") {
+  } else if (k == "SPID" || k == "USAP") {
     fail("zmx.aperture_unsupported", l.number, "aperture " + k + " is not supported");
   } else if (k == "VDSZ" || k == "FIMP") {
     // VDSZ (every surface of the OISC files, always zeros) and FIMP (newer files, no value) are
@@ -788,10 +807,21 @@ model::ShapeStack Importer::shape(const ZSurface& s, bool& powered) const {
 
 std::optional<model::Aperture> Importer::aperture(const ZSurface& s) {
   const int count = static_cast<int>(s.clap.has_value()) + static_cast<int>(s.flap.has_value()) +
-                    static_cast<int>(s.sqap.has_value()) + static_cast<int>(s.elap.has_value());
+                    static_cast<int>(s.sqap.has_value()) + static_cast<int>(s.elap.has_value()) +
+                    static_cast<int>(s.obsc.has_value()) + static_cast<int>(s.sqob.has_value()) +
+                    static_cast<int>(s.elob.has_value());
   if (count > 1) {
-    fail("zmx.aperture_conflict", std::max({s.clap_line, s.flap_line, s.sqap_line, s.elap_line}),
-         "a surface with more than one aperture (CLAP, FLAP, SQAP, ELAP)");
+    fail("zmx.aperture_conflict",
+         std::max({s.clap_line, s.flap_line, s.sqap_line, s.elap_line, s.obsc_line, s.sqob_line,
+                   s.elob_line}),
+         "a surface with more than one aperture or obscuration (CLAP, FLAP, SQAP, ELAP, OBSC, "
+         "SQOB, ELOB)");
+  }
+  // OBDC decenters the aperture (UG "Aperture surface properties"); only the obscurations take
+  // it (ADR 0050, point 3).
+  const bool obscured = s.obsc || s.sqob || s.elob;
+  if (!obscured && (s.obdc.first != 0.0 || s.obdc.second != 0.0)) {
+    fail("zmx.aperture_decenter", s.obdc_line, "decentred apertures are not supported");
   }
   // SQAP and ELAP: half widths in x and y, local to the surface (UG "Aperture surface
   // properties")
@@ -825,6 +855,37 @@ std::optional<model::Aperture> Importer::aperture(const ZSurface& s) {
     warnings_.push_back(Ignored::warning(
         "zmx.aperture_dropped", s.flap_line,
         "FLAP next to an automatic semi-diameter dropped (it would clip real marginal rays)"));
+  }
+  return std::nullopt;
+}
+
+std::optional<model::Obscuration> Importer::obscuration(const ZSurface& s) {
+  // UG "Aperture Type Codes and Parameters": circular obscuration = minimum and maximum radius,
+  // rectangular and elliptical obscuration = x and y half widths; UG "Aperture surface
+  // properties": an obscuration is the complement of the aperture, so OBSC blocks rmin <= r <=
+  // rmax; the decenter (OBDC x, y, lens units) moves the centre (ADR 0050, point 3; ADR 0044).
+  const model::Param dx = length(s.obdc.first);
+  const model::Param dy = length(s.obdc.second);
+  if (s.obsc) {
+    const auto [rmin, rmax] = *s.obsc;
+    if (rmin != 0.0) {
+      fail("zmx.aperture_unsupported", s.obsc_line,
+           "an annular obscuration (OBSC with rmin != 0) is not supported");
+    }
+    if (!(rmax > 0.0)) fail("zmx.aperture_invalid", s.obsc_line, "OBSC needs rmax > 0");
+    return model::CircularObscuration{length(rmax), dx, dy};
+  }
+  if (s.sqob) {
+    const auto [x, y] = *s.sqob;
+    if (!(x > 0.0) || !(y > 0.0))
+      fail("zmx.aperture_invalid", s.sqob_line, "SQOB needs widths > 0");
+    return model::RectangularObscuration{length(x), length(y), dx, dy, 0.0};
+  }
+  if (s.elob) {
+    const auto [x, y] = *s.elob;
+    if (!(x > 0.0) || !(y > 0.0))
+      fail("zmx.aperture_invalid", s.elob_line, "ELOB needs widths > 0");
+    return model::EllipticalObscuration{length(x), length(y), dx, dy, 0.0};
   }
   return std::nullopt;
 }
@@ -999,7 +1060,8 @@ model::System Importer::build() {
     return it == z.parm.end() ? 0.0 : it->second.value;
   };
   const auto aperture_line = [](const ZSurface& z) {
-    for (const std::size_t line : {z.clap_line, z.flap_line, z.sqap_line, z.elap_line}) {
+    for (const std::size_t line : {z.clap_line, z.flap_line, z.sqap_line, z.elap_line, z.obsc_line,
+                                   z.sqob_line, z.elob_line}) {
       if (line != 0) return line;
     }
     return std::size_t{0};
@@ -1023,6 +1085,14 @@ model::System Importer::build() {
     out.id = model::SurfaceId("S" + std::to_string(s.number));
     out.shape = shape(s, powered);
     out.aperture = aperture(s);
+    if (const std::optional<model::Obscuration> o = obscuration(s)) {
+      if (x_cylinder(s)) {
+        // its frame is turned by 90 deg about z; not mapped (ADR 0050, point 3)
+        fail("zmx.aperture_unsupported", aperture_line(s),
+             "an obscuration on a cylinder with power in x is not supported");
+      }
+      out.obscurations.push_back(*o);
+    }
     if (x_cylinder(s) && out.aperture) {
       // OpticStudio tests the half widths in the unturned frame: local x is global y
       if (auto* r = std::get_if<model::RectangularAperture>(&*out.aperture)) {

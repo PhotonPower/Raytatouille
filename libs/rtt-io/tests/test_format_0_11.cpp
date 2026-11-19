@@ -250,3 +250,82 @@ TEST_CASE("regular_polygon and polygon: read errors (ADR 0050)", "[io][0.11]") {
   CHECK(error_pointer(with_aperture(R"({"type": "hexagonal", "circumradius": 5.0})", "0.11.0")) ==
         lens + "/type");
 }
+
+TEST_CASE("obscurations: canonical form, round trip, edit form, for_each_param (ADR 0050)",
+          "[io][0.11]") {
+  System s = rtt::model::test::make_singlet();
+  auto& lens = rtt::model::test::element(s, 1);
+  Param dx(1.5);
+  dx.variable = true;
+  lens.surfaces[0].obscurations = {
+      rtt::model::CircularObscuration{Param(2.0), Param(0.0), Param(0.0)},
+      rtt::model::RectangularObscuration{Param(12.0), Param(0.5), dx, Param(-0.25), 45.0},
+      rtt::model::EllipticalObscuration{Param(1.0), Param(0.5), Param(0.0), Param(0.0), 0.0}};
+  const json j = json::parse(rtt::io::to_json(s));
+  const json& o = j["root"]["children"][1]["surfaces"][0]["obscurations"];
+  // Defaults (decenter 0, rotation 0) are omitted in the canonical form.
+  CHECK(o == json::parse(R"([
+      {"type": "circular", "radius": 2.0},
+      {"type": "rectangular", "half_width_x": 12.0, "half_width_y": 0.5,
+       "decenter_x": {"value": 1.5, "variable": true}, "decenter_y": -0.25,
+       "rotation_deg": 45.0},
+      {"type": "elliptical", "semi_axis_x": 1.0, "semi_axis_y": 0.5}])"));
+  CHECK(rtt::io::parse_system(j.dump()) == s);
+  CHECK_FALSE(rtt::model::has_errors(rtt::model::validate(s)));
+  // Without obscurations the key is missing in the canonical form, present in the edit form.
+  CHECK_FALSE(j["root"]["children"][1]["surfaces"][1].contains("obscurations"));
+  const json edit = json::parse(rtt::io::to_edit_json(s));
+  CHECK(edit["root"]["children"][1]["surfaces"][1]["obscurations"] == json::array());
+  const json& e0 = edit["root"]["children"][1]["surfaces"][0]["obscurations"][0];
+  CHECK(e0["decenter_x"] == json::parse(R"({"value": 0.0, "variable": false})"));
+  // A patch adds the first obscuration to a surface.
+  const json patch = json::parse(R"([{"op": "add",
+      "path": "/root/children/1/surfaces/1/obscurations/0",
+      "value": {"type": "circular", "radius": 1.0}}])");
+  const rtt::io::PatchResult r =
+      rtt::io::apply_patch(s, patch.dump(), rtt::io::EditCheck::NoNewErrors);
+  System added = r.system;
+  REQUIRE(rtt::model::test::element(added, 1).surfaces[1].obscurations.size() == 1);
+  // for_each_param: after the aperture, in list order and field order, before the next surface.
+  std::vector<std::string> pointers;
+  rtt::model::for_each_param(s,
+                             [&](std::string_view p, const Param&) { pointers.emplace_back(p); });
+  const auto pos = [&](const std::string& p) {
+    return std::find(pointers.begin(), pointers.end(), p) - pointers.begin();
+  };
+  const std::string ob = "/root/children/1/surfaces/0/obscurations/";
+  const auto end = static_cast<std::ptrdiff_t>(pointers.size());
+  REQUIRE(pos(ob + "2/decenter_y") < end);
+  CHECK(pos("/root/children/1/surfaces/0/aperture/inner_radius") < pos(ob + "0/radius"));
+  CHECK(pos(ob + "0/radius") + 1 == pos(ob + "0/decenter_x"));
+  CHECK(pos(ob + "0/decenter_y") + 1 == pos(ob + "1/half_width_x"));
+  CHECK(pos(ob + "1/half_width_y") + 1 == pos(ob + "1/decenter_x"));
+  CHECK(pos(ob + "2/decenter_y") < pos("/root/children/1/surfaces/1/pose/position/0"));
+}
+
+TEST_CASE("obscurations: read errors and the version before 0.11 (ADR 0050)", "[io][0.11]") {
+  const auto with_obscurations = [](const std::string& list, const std::string& version) {
+    json j = json::parse(rtt::io::to_json(rtt::model::test::make_singlet()));
+    j["schema_version"] = version;
+    j["root"]["children"][1]["surfaces"][0]["obscurations"] = json::parse(list);
+    return j.dump();
+  };
+  const std::string at = "/root/children/1/surfaces/0/obscurations";
+  // The key before 0.11 is an error at the key.
+  CHECK(error_pointer(with_obscurations(R"([{"type": "circular", "radius": 1.0}])", "0.10.0")) ==
+        at);
+  CHECK(error_pointer(with_obscurations(R"([])", "0.9.0")) == at);
+  // Structural errors in 0.11.
+  CHECK(error_pointer(with_obscurations(R"({"type": "circular"})", "0.11.0")) == at);
+  CHECK(error_pointer(with_obscurations(R"([{"type": "circular"}])", "0.11.0")) == at + "/0");
+  CHECK(error_pointer(with_obscurations(R"([{"type": "circular", "radius": 1.0,
+                                             "rotation_deg": 5.0}])",
+                                        "0.11.0")) == at + "/0/rotation_deg");
+  CHECK(error_pointer(with_obscurations(R"([{"type": "spider", "radius": 1.0}])", "0.11.0")) ==
+        at + "/0/type");
+  CHECK(error_pointer(with_obscurations(R"([{"type": "rectangular", "half_width_x": 1.0,
+                                             "half_width_y": 1.0, "rotation_deg": "a"}])",
+                                        "0.11.0")) == at + "/0/rotation_deg");
+  CHECK(error_pointer(with_obscurations(R"([{"type": "circular", "radius": 1.0}])", "0.11.0")) ==
+        "<no error>");
+}

@@ -42,11 +42,14 @@ struct RayState {
   /// Request to form Q (ADR 0034, addendum #207): set by the tracer for a batch with
   /// RayBatch::has_q(); false for every other ray, e.g. while aiming.
   bool track_q = false;
-  /// Virtual reference ray (ADR 0032, addendum #229): sequential_step() does not test the inner
-  /// radius of circular apertures (central obscurations) and tests every outer rim as before.
-  /// Set by the tracer for a batch with RayBatch::ignores_obscurations(); false for every other
-  /// ray.
+  /// Virtual reference ray (ADR 0032, addendum #229): true tests no obscuration at all, as
+  /// ObscurationTest::IgnoreAll, whatever `obscuration_test` says; kept for compatibility
+  /// (ADR 0050, point 3). Outer rims are tested as before. The tracer sets it for a batch at
+  /// IgnoreAll; false for every other ray.
   bool ignore_obscurations = false;
+  /// Level of the obscuration test (ADR 0050, point 3), set by the tracer from
+  /// RayBatch::obscuration_test(); see effective_obscuration_test().
+  ObscurationTest obscuration_test = ObscurationTest::All;
   /// Power for an unpolarized source (source normalised to 1): weight = s ||P_T||^2 / 2 with
   /// P_T = P - k k_0^T and s the polarization-independent factors (ADR 0021).
   double weight = 1.0;
@@ -209,6 +212,24 @@ inline constexpr double kApertureTolerance = 1e-9;
                                    const SurfaceHit& hit,
                                    bool ignore_inner) noexcept;
 
+/// The level a ray is tested at: IgnoreAll if `ignore_obscurations`, else `obscuration_test`.
+[[nodiscard]] constexpr ObscurationTest effective_obscuration_test(const RayState& ray) noexcept {
+  return ray.ignore_obscurations ? ObscurationTest::IgnoreAll : ray.obscuration_test;
+}
+
+/// True if the local point (x, y) in mm lies strictly inside an obscuration of the surface that
+/// `test` does not ignore (ADR 0050, point 3): inside the shape shrunk by kApertureTolerance, in
+/// the obscuration's own axes u = cos(theta) (x - x0) + sin(theta) (y - y0),
+/// v = -sin(theta) (x - x0) + cos(theta) (y - y0). Circle: u^2 + v^2 < (r - tol)^2; rectangle:
+/// |u| < h_x - tol and |v| < h_y - tol; ellipse: (u / (a - tol))^2 + (v / (b - tol))^2 < 1. A
+/// shape with a dimension - tol <= 0 blocks nothing. IgnoreCentredCircles skips circles with
+/// decenter (0, 0), IgnoreAll every obscuration. Independent of the aperture: the surface is
+/// present there, the ray is absorbed (Vignetted in sequential_step()).
+[[nodiscard]] bool in_obscuration(const compile::CompiledSurface& surface,
+                                  double x,
+                                  double y,
+                                  ObscurationTest test = ObscurationTest::All) noexcept;
+
 /// Moves the ray to the hit point: position (global), OPL += Re(n_before) t (inside a crystal,
 /// mode_index > 0: OPL += mode_index t (wave . dir), Lam, Eq. (2.17), ADR 0026), last_surface, and
 /// volume absorption weight *= exp(-4 pi kappa t / lambda_vac) with kappa = Im(n_before), t the
@@ -320,8 +341,9 @@ inline constexpr double kApertureTolerance = 1e-9;
                                    double n_after) noexcept;
 
 /// One sequential step: intersect_surface(), then Vignetted (ray at the hit point) if the hit
-/// lies outside the aperture (for a ray with ignore_obscurations without the inner rims of
-/// circular apertures), otherwise apply_event(). Parameters as for apply_event().
+/// lies outside the aperture (below ObscurationTest::All without the inner rims of circular
+/// apertures) or inside an obscuration (in_obscuration() at effective_obscuration_test()),
+/// otherwise apply_event(). Parameters as for apply_event().
 [[nodiscard]] RayState sequential_step(const RayState& ray,
                                        const compile::CompiledSurface& surface,
                                        std::uint32_t surface_index,

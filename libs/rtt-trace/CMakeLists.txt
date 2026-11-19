@@ -14,7 +14,7 @@ if(RTT_BUILD_TESTS)
   # determinism test.
   rtt_add_test(rtt_trace_tests
     SOURCES tests/test_ray_batch.cpp tests/test_apply_event.cpp tests/test_sequential.cpp
-            tests/test_polygon_aperture.cpp
+            tests/test_polygon_aperture.cpp tests/test_obscuration_shapes.cpp
             tests/test_sources.cpp tests/test_interactions.cpp tests/test_ray_paths.cpp
             tests/test_start_plane.cpp
             tests/test_accumulated_q.cpp
