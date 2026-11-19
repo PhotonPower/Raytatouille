@@ -68,7 +68,7 @@ TEST_CASE("radial derivative and R/rho agree with the polynomial (ADR 0051)", "[
         long double scale_d = 0.0L;
         for (std::size_t s = 0; s < c.size(); ++s) {
           const int p = n - 2 * static_cast<int>(s);
-          const long double cs = c[s];
+          const auto cs = static_cast<long double>(c[s]);
           r += cs * std::pow(static_cast<long double>(rho), p);
           scale_r += std::abs(cs) * std::pow(static_cast<long double>(rho), p);
           if (p >= 1) {
@@ -77,13 +77,13 @@ TEST_CASE("radial derivative and R/rho agree with the polynomial (ADR 0051)", "[
           }
         }
         const auto [over, deriv] = rtt::math::zernike_radial_over_rho_and_derivative(n, m, rho);
-        const double eps = 0x1.0p-52;
-        CHECK(std::abs(static_cast<long double>(deriv) - d) <= 64.0 * eps * (scale_d + 1e-300L));
+        const long double eps = 0x1.0p-52L;
+        CHECK(std::abs(static_cast<long double>(deriv) - d) <= 64.0L * eps * (scale_d + 1e-300L));
         CHECK(std::abs(static_cast<long double>(rtt::math::zernike_radial(n, m, rho)) - r) <=
-              64.0 * eps * (scale_r + 1e-300L));
+              64.0L * eps * (scale_r + 1e-300L));
         if (m >= 1 && rho > 0.0) {
-          CHECK(std::abs(static_cast<long double>(over) * rho - r) <=
-                64.0 * eps * (scale_r + 1e-300L));
+          CHECK(std::abs(static_cast<long double>(over) * static_cast<long double>(rho) - r) <=
+                64.0L * eps * (scale_r + 1e-300L));
         }
       }
     }

@@ -68,8 +68,10 @@ template <math::Real T>
   using C = std::complex<T>;
   const math::Vec3T<T> e1 = transverse_axis(axis, k);
   const math::Vec3T<T> e2 = k.cross(e1);
+  // Element by element (detail::outer): Eigen's lazy outer product trips a false
+  // -Wnull-dereference in GCC 13 at -O3 (#35, #316).
   const auto outer = [](const math::Vec3T<T>& a, const math::Vec3T<T>& b) {
-    return CMat3T<T>((a * b.transpose()).template cast<C>());
+    return CMat3T<T>(detail::outer(a, b).template cast<C>());
   };
   return j(0, 0) * outer(e1, e1) + j(0, 1) * outer(e1, e2) + j(1, 0) * outer(e2, e1) +
          j(1, 1) * outer(e2, e2) + outer(k, k);

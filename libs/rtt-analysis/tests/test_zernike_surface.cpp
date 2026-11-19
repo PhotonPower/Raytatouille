@@ -215,8 +215,9 @@ TEST_CASE("the OPD fit of a mirror returns its Zernike coefficients (ADR 0051, p
       z[j] = rtt::analysis::zernike(static_cast<int>(j) + 1, rho, std::atan2(p.py, p.px));
     }
     for (std::size_t i = 0; i < kJ; ++i) {
-      atw[i] += static_cast<long double>(z[i]) * p.w;
-      for (std::size_t j = 0; j < kJ; ++j) ata[i * kJ + j] += static_cast<long double>(z[i]) * z[j];
+      atw[i] += static_cast<long double>(z[i]) * static_cast<long double>(p.w);
+      for (std::size_t j = 0; j < kJ; ++j)
+        ata[i * kJ + j] += static_cast<long double>(z[i]) * static_cast<long double>(z[j]);
     }
   }
   REQUIRE(used > 300);
