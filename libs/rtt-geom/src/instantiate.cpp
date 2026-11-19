@@ -41,10 +41,12 @@ static_assert(DomainShape<Stacked<double>, double>);  // ADR 0051, point 1
 static_assert(ParaxialShape<Stacked<double>, double>);
 static_assert(ParaxialShape<ZernikeTerm<double>, double>);
 static_assert(ParaxialShape<XyPolynomialTerm<double>, double>);
+static_assert(ParaxialShape<GridSagTerm<double>, double>);
 
 template class Plane<double>;
 template class ZernikeTerm<double>;
 template class XyPolynomialTerm<double>;
+template class GridSagTerm<double>;
 template class Stacked<double>;
 template class Conic<double>;
 template class EvenAsphere<double>;

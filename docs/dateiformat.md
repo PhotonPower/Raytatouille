@@ -110,6 +110,17 @@ R, "coefficients": [c_1, …]}`: z = Σ c_k (x/R)^i (y/R)^j ohne konstanten Term
 x, y, x², xy, y², x³, … (Grad aufsteigend, je Grad die Potenz von x absteigend, wie das „Extended
 Polynomial“ von OpticStudio), höchstens 230 Koeffizienten (Grad 20), in mm.
 
+Ab Schema 0.11 außerdem die tabellierte Pfeilhöhe `{"type": "grid_sag", "nx": 41, "ny": 41,
+"spacing_x": 0.5, "spacing_y": 0.5, "decenter_x": 0.0, "decenter_y": 0.0, "sag": […], "dz_dx": […],
+"dz_dy": […], "d2z_dxdy": […]}`: nx × ny Punkte (je 3 bis 4096) bei x_i = decenter_x + (i − (nx −
+1)/2)·spacing_x, y_j ebenso, der Wert von (i, j) an Stelle k = j·nx + i (i läuft mit x, j mit y,
+beide aufsteigend; anders als die `.DAT`-Datei von OpticStudio, die links oben beginnt). `sag` in mm;
+die drei Ableitungslisten (∂z/∂x, ∂z/∂y dimensionslos, ∂²z/∂x∂y in 1/mm) sind zusammen optional,
+ohne sie schätzt Raytatouille die Ableitungen mit finiten Differenzen zweiter Ordnung. Alle Werte
+sind Zahlen, keine Parameter. Zwischen den Punkten wird bikubisch nach Hermite interpoliert;
+außerhalb des Rechtecks verfehlen Strahlen die Fläche, und das Gitter muss den Scheitel (0, 0)
+enthalten. Ein Grid-Sag hat kein paraxiales Modell (ADR 0051, Punkt 5).
+
 Alle Terme werden auch jenseits von R ausgewertet (Warnung `shape.normalization_radius_exceeded`).
 Nicht rotationssymmetrische Terme machen die Fläche paraxial unzugänglich (ADR 0041, Punkt 2); dann
 zielen Analysen mit dem Bezug eines Nennsystems.

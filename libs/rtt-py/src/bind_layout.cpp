@@ -187,7 +187,8 @@ ShapeData shape_data(const compile::CompiledShape& shape) {
 }
 
 /// The terms of a stack as (type, scalars) (ADR 0051, point 6): Zernike terms and the XY
-/// polynomial with normalization_radius and terms (the number of coefficients). Empty for a shape
+/// polynomial with normalization_radius and terms (the number of coefficients), the grid sag
+/// with nx, ny, spacing_x, spacing_y, decenter_x and decenter_y. Empty for a shape
 /// without terms.
 nb::list terms_data(const compile::CompiledShape& shape) {
   nb::list out;
@@ -206,6 +207,12 @@ nb::list terms_data(const compile::CompiledShape& shape) {
                 {"normalization_radius", t.normalization_radius()},
                 {"terms", static_cast<double>(t.coefficients().size())}};
             out.append(nb::make_tuple("xy_polynomial", p));
+          } else if constexpr (std::is_same_v<T, geom::GridSagTerm<double>>) {
+            std::map<std::string, double> p{
+                {"nx", static_cast<double>(t.nx())}, {"ny", static_cast<double>(t.ny())},
+                {"spacing_x", t.spacing_x()},        {"spacing_y", t.spacing_y()},
+                {"decenter_x", t.decenter_x()},      {"decenter_y", t.decenter_y()}};
+            out.append(nb::make_tuple("grid_sag", p));
           } else {
             static_assert(kUnhandledShape<T>, "terms_data: unhandled term");
           }

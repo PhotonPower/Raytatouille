@@ -55,7 +55,7 @@ if(RTT_BUILD_TESTS)
       tests/test_mtf_ee.cpp
       tests/test_no_stop.cpp
       tests/test_nominal_reference.cpp
-      tests/test_obscured.cpp tests/test_obscuration_stop.cpp tests/test_zernike_surface.cpp
+      tests/test_obscured.cpp tests/test_obscuration_stop.cpp tests/test_zernike_surface.cpp tests/test_grid_sag_surface.cpp
       tests/test_opd.cpp
       tests/test_opd_points.cpp
       tests/test_paths.cpp

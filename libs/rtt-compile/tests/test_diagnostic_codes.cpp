@@ -338,6 +338,43 @@ std::vector<Case> cases() {
        [](System& s) {
          element(s, 1).surfaces[0].shape.terms.push_back(ZernikeSag{Param(10.0), {}});
        }},
+      {"shape.grid_size_invalid", "/root/children/1/surfaces/0/shape/terms/0/nx",
+       [](System& s) {
+         element(s, 1).surfaces[0].shape.terms.push_back(rtt::model::GridSag{
+             2, 3, 1.0, 1.0, 0.0, 0.0, std::vector<double>(6, 0.0), {}, {}, {}});
+       }},
+      {"shape.grid_spacing_invalid", "/root/children/1/surfaces/0/shape/terms/0/spacing_y",
+       [](System& s) {
+         element(s, 1).surfaces[0].shape.terms.push_back(rtt::model::GridSag{
+             3, 3, 1.0, 0.0, 0.0, 0.0, std::vector<double>(9, 0.0), {}, {}, {}});
+       }},
+      {"shape.grid_values_invalid", "/root/children/1/surfaces/0/shape/terms/0/dz_dy",
+       [](System& s) {
+         // Only part of the derivative lists.
+         element(s, 1).surfaces[0].shape.terms.push_back(
+             rtt::model::GridSag{3,
+                                 3,
+                                 1.0,
+                                 1.0,
+                                 0.0,
+                                 0.0,
+                                 std::vector<double>(9, 0.0),
+                                 std::vector<double>(9, 0.0),
+                                 {},
+                                 std::vector<double>(9, 0.0)});
+       }},
+      {"shape.grid_aperture_outside", "/root/children/1/surfaces/0/shape/terms/0",
+       [](System& s) {
+         // A 3 x 3 grid with spacing 1 covers [-1, 1]^2, the aperture of L1.S1 reaches further.
+         element(s, 1).surfaces[0].shape.terms.push_back(rtt::model::GridSag{
+             3, 3, 1.0, 1.0, 0.0, 0.0, std::vector<double>(9, 0.0), {}, {}, {}});
+       }},
+      {"shape.grid_vertex_outside", "/root/children/1/surfaces/0/shape/terms/0",
+       [](System& s) {
+         // Centred on x = 50 mm, covering [40, 60] in x: the vertex lies outside (compile).
+         element(s, 1).surfaces[0].shape.terms.push_back(rtt::model::GridSag{
+             3, 3, 10.0, 10.0, 50.0, 0.0, std::vector<double>(9, 0.0), {}, {}, {}});
+       }},
       {"shape.xy_radius_invalid", "/root/children/1/surfaces/0/shape/terms/0/normalization_radius",
        [](System& s) {
          element(s, 1).surfaces[0].shape.terms.push_back(

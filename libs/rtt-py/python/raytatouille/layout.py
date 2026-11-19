@@ -82,8 +82,9 @@ class SurfaceLayout(NamedTuple):
     rotation_deg turns the shape's axes from +x towards +y. They block light but do not cut the
     profile of the surface (unlike inner_radius). ``terms`` lists the additive terms of the shape
     stack (ADR 0051) as (type, scalars): "zernike_sag", "zernike_fringe_sag" and "xy_polynomial"
-    with normalization_radius (mm) and terms (the number of coefficients); ``shape`` and its fields
-    then describe the base. The coefficients themselves are in the system file.
+    with normalization_radius (mm) and terms (the number of coefficients), "grid_sag" with nx, ny,
+    spacing_x, spacing_y, decenter_x and decenter_y (mm); ``shape`` and its fields then describe
+    the base. Coefficients and grid values are in the system file.
 
     ``medium_front`` and ``medium_back`` index CompiledSystem.media: the media before and after
     the surface in the surface order of its element, as a refraction through the element's

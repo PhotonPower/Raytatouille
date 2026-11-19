@@ -649,6 +649,27 @@
             "normalization_radius": {"$ref": "#/$defs/param"},
             "coefficients": {"$ref": "#/$defs/param_list"}
           }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "nx", "ny", "spacing_x", "spacing_y", "sag"],
+          "description": "Grid sag (ADR 0051, point 5, schema 0.11): nx by ny points, x_i = decenter_x + (i - (nx - 1)/2) spacing_x, y_j likewise, value k = j nx + i; bicubic Hermite interpolation; the three derivative lists together or none (then finite differences). Plain numbers, not parameters. Lengths and the derivative rule are checked by rtt validate.",
+          "properties": {
+            "type": {"const": "grid_sag"},
+            "nx": {"type": "integer", "minimum": 3, "maximum": 4096},
+            "ny": {"type": "integer", "minimum": 3, "maximum": 4096},
+            "spacing_x": {"type": "number", "exclusiveMinimum": 0},
+            "spacing_y": {"type": "number", "exclusiveMinimum": 0},
+            "decenter_x": {"type": "number"},
+            "decenter_y": {"type": "number"},
+            "sag": {"type": "array", "items": {"type": "number"}, "minItems": 9},
+            "dz_dx": {"type": "array", "items": {"type": "number"}},
+            "dz_dy": {"type": "array", "items": {"type": "number"}},
+            "d2z_dxdy": {"type": "array", "items": {"type": "number"}}
+          },
+          "dependentRequired": {
+            "dz_dx": ["dz_dy", "d2z_dxdy"], "dz_dy": ["dz_dx", "d2z_dxdy"], "d2z_dxdy": ["dz_dx", "dz_dy"]
+          }
         }
       ]
     },

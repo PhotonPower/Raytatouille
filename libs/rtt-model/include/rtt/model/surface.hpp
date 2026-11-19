@@ -154,7 +154,28 @@ struct XyPolynomial {
   bool operator==(const XyPolynomial&) const = default;
 };
 
-using ShapeTerm = std::variant<ZernikeSag, ZernikeFringeSag, XyPolynomial>;
+/// Additive grid sag with bicubic Hermite interpolation (ADR 0051, point 5): nx by ny points
+/// (3 ... 4096 each) with spacing (spacing_x, spacing_y) in mm, centred on (decenter_x,
+/// decenter_y) in mm: x_i = decenter_x + (i - (nx - 1)/2) spacing_x, y_j likewise; the value of
+/// (i, j) is at k = j nx + i (i along x, j along y, both ascending). sag in mm; dz_dx, dz_dy
+/// (dimensionless) and d2z_dxdy (1/mm) together or none (empty): without them the derivatives are
+/// estimated by finite differences. Plain numbers, not Params (like the polygon vertices, ADR
+/// 0050). Outside the rectangle the surface is missed.
+struct GridSag {
+  int nx = 0;
+  int ny = 0;
+  double spacing_x = 0.0;   ///< mm, finite and > 0
+  double spacing_y = 0.0;   ///< mm, finite and > 0
+  double decenter_x = 0.0;  ///< mm
+  double decenter_y = 0.0;  ///< mm
+  std::vector<double> sag;  ///< nx ny values, mm
+  std::vector<double> dz_dx;
+  std::vector<double> dz_dy;
+  std::vector<double> d2z_dxdy;
+  bool operator==(const GridSag&) const = default;
+};
+
+using ShapeTerm = std::variant<ZernikeSag, ZernikeFringeSag, XyPolynomial, GridSag>;
 
 /// Total sag = base + sum of terms (terms evaluated in the local xy plane).
 struct ShapeStack {

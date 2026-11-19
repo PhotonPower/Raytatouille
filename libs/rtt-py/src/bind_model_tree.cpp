@@ -658,6 +658,24 @@ void bind_model_tree(nb::module_& m) {
               "Normalization radius R in mm (Param).")
       .def_ro("coefficients", &model::XyPolynomial::coefficients,
               "Polynomial coefficients in mm (Param each).");
+  read_only_class<model::GridSag>(
+      m, "GridSag",
+      "Additive grid sag with bicubic Hermite interpolation (ADR 0051; read-only copy): nx by ny "
+      "points, x_i = decenter_x + (i - (nx - 1)/2) spacing_x, y_j likewise, value k = j nx + i. "
+      "Outside the grid the surface is missed; no paraxial model.")
+      .def_ro("nx", &model::GridSag::nx, "Points along x, 3 ... 4096.")
+      .def_ro("ny", &model::GridSag::ny, "Points along y, 3 ... 4096.")
+      .def_ro("spacing_x", &model::GridSag::spacing_x, "Spacing along x in mm.")
+      .def_ro("spacing_y", &model::GridSag::spacing_y, "Spacing along y in mm.")
+      .def_ro("decenter_x", &model::GridSag::decenter_x, "Centre of the grid, x in mm.")
+      .def_ro("decenter_y", &model::GridSag::decenter_y, "Centre of the grid, y in mm.")
+      .def_ro("sag", &model::GridSag::sag, "nx ny sag values in mm, index j nx + i.")
+      .def_ro("dz_dx", &model::GridSag::dz_dx,
+              "dz/dx per point (dimensionless), empty if estimated by finite differences.")
+      .def_ro("dz_dy", &model::GridSag::dz_dy,
+              "dz/dy per point (dimensionless), empty if estimated by finite differences.")
+      .def_ro("d2z_dxdy", &model::GridSag::d2z_dxdy,
+              "d2z/dxdy per point in 1/mm, empty if estimated by finite differences.");
   read_only_class<model::ShapeStack>(
       m, "ShapeStack",
       "Total sag = base + sum of the terms, in the local xy plane (read-only copy).")
@@ -665,7 +683,7 @@ void bind_model_tree(nb::module_& m) {
               "Base shape: Plane, Conic, EvenAsphere, Biconic, Toroid, Cylinder, OddAsphere, "
               "Axicon, QCon or QBfs.")
       .def_ro("terms", &model::ShapeStack::terms,
-              "Additive terms (ZernikeSag, ZernikeFringeSag, XyPolynomial).");
+              "Additive terms (ZernikeSag, ZernikeFringeSag, XyPolynomial, GridSag).");
 
   // ------------------------------------------------------------- aperture -----
   read_only_class<model::CircularAperture>(m, "CircularAperture",

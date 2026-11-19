@@ -785,3 +785,36 @@ def test_0_11_xy_terms_are_accepted(terms):
 )
 def test_0_11_xy_term_errors_are_rejected(terms):
     assert not VALIDATOR.is_valid(_terms(terms))
+
+
+# ---- schema 0.11 (#316, ADR 0051, point 5): grid_sag ----
+
+_GRID = {"type": "grid_sag", "nx": 3, "ny": 3, "spacing_x": 1.0, "spacing_y": 1.0,
+         "sag": [0.0] * 9}
+
+
+@pytest.mark.parametrize(
+    "terms",
+    [[_GRID],
+     [dict(_GRID, decenter_x=0.5, decenter_y=-0.5, dz_dx=[0.0] * 9, dz_dy=[0.0] * 9,
+           d2z_dxdy=[0.0] * 9)]],
+    ids=["grid", "grid-with-derivatives"],
+)
+def test_0_11_grid_terms_are_accepted(terms):
+    assert VALIDATOR.is_valid(_terms(terms))
+
+
+@pytest.mark.parametrize(
+    "terms",
+    [[{k: v for k, v in _GRID.items() if k != "sag"}],
+     [dict(_GRID, nx=2)],
+     [dict(_GRID, nx=3.5)],
+     [dict(_GRID, spacing_x=0.0)],
+     [dict(_GRID, dz_dx=[0.0] * 9)],
+     [dict(_GRID, sag=[{"value": 0.0}] * 9)],
+     [dict(_GRID, normalization_radius=1.0)]],
+    ids=["no-sag", "nx-too-small", "nx-not-integer", "zero-spacing", "partial-derivatives",
+         "param-values", "extra-key"],
+)
+def test_0_11_grid_term_errors_are_rejected(terms):
+    assert not VALIDATOR.is_valid(_terms(terms))

@@ -38,7 +38,7 @@ using BaseShapeVariant = std::variant<Plane<T>,
 
 /// Every term type.
 template <rtt::math::Real T>
-using TermVariant = std::variant<ZernikeTerm<T>, XyPolynomialTerm<T>>;
+using TermVariant = std::variant<ZernikeTerm<T>, XyPolynomialTerm<T>, GridSagTerm<T>>;
 
 /// z = base(x, y) + sum of the terms, in mm, local coordinates (ADR 0051, point 1).
 /// - sag, grad: sums;

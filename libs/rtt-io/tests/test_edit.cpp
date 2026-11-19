@@ -156,7 +156,10 @@ void surface_keys(const json& s, const std::string& at) {
     variant(t,
             {{"zernike_sag", {"type", "normalization_radius", "coefficients"}},
              {"zernike_fringe_sag", {"type", "normalization_radius", "coefficients"}},
-             {"xy_polynomial", {"type", "normalization_radius", "coefficients"}}},
+             {"xy_polynomial", {"type", "normalization_radius", "coefficients"}},
+             {"grid_sag",
+              {"type", "nx", "ny", "spacing_x", "spacing_y", "decenter_x", "decenter_y", "sag",
+               "dz_dx", "dz_dy", "d2z_dxdy"}}},
             at + "/shape/terms");
   }
   if (s.contains("aperture")) {

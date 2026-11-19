@@ -1272,7 +1272,7 @@
             ],
             "properties": {
               "terms": {
-                "description": "Additive terms of the shape stack (ADR 0051, point 6, schema 0.1.23): a list of [type, scalars] with type zernike_sag, zernike_fringe_sag or xy_polynomial (ADR 0051, point 4; unreleased 0.1.23 extended in PR 3) and the scalars normalization_radius (mm) and terms (number of coefficients); shape and its fields describe the base.",
+                "description": "Additive terms of the shape stack (ADR 0051, point 6, schema 0.1.23): a list of [type, scalars] with type zernike_sag, zernike_fringe_sag or xy_polynomial (ADR 0051, point 4; unreleased 0.1.23 extended in PR 3) and the scalars normalization_radius (mm) and terms (number of coefficients), or grid_sag (PR 4) with nx, ny, spacing_x, spacing_y, decenter_x and decenter_y (mm); shape and its fields describe the base.",
                 "type": "array",
                 "items": {
                   "type": "array",
@@ -1281,7 +1281,8 @@
                       "enum": [
                         "zernike_sag",
                         "zernike_fringe_sag",
-                        "xy_polynomial"
+                        "xy_polynomial",
+                        "grid_sag"
                       ]
                     },
                     {
