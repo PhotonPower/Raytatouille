@@ -432,3 +432,34 @@ TEST_CASE("grid_sag: canonical form, round trip, no parameters, version (ADR 005
   bad["root"]["children"][1]["surfaces"][0]["shape"]["terms"][0]["sag"][2] = "a";
   CHECK(error_pointer(bad.dump()) == term + "/sag/2");
 }
+
+TEST_CASE("tolerance kind zernike with term: round trip and version (ADR 0051, point 7)",
+          "[io][0.11]") {
+  System s = rtt::model::test::make_singlet();
+  rtt::model::ToleranceItem item;
+  item.id = "z4";
+  item.target.anchor = rtt::model::ToleranceAnchor::Surface;
+  item.target.name = "L1.S1";
+  item.target.term = 4;
+  item.kind = rtt::model::ToleranceKind::Zernike;
+  item.limit = 2e-4;
+  s.tolerances.items = {item};
+  const json j = json::parse(rtt::io::to_json(s));
+  CHECK(j["tolerances"]["items"][0] == json::parse(R"({"id": "z4", "surface": "L1.S1",
+      "term": 4, "kind": "zernike", "limit": 0.0002})"));
+  CHECK(rtt::io::parse_system(j.dump()) == s);
+  // Before 0.11 kind and term are read errors.
+  json old = j;
+  old["schema_version"] = "0.10.0";
+  CHECK(error_pointer(old.dump()) == "/tolerances/items/0/kind");
+  old["tolerances"]["items"][0]["kind"] = "conic";
+  CHECK(error_pointer(old.dump()) == "/tolerances/items/0/term");
+  // term is a key of the items only, a non-negative integer.
+  json bad = j;
+  bad["tolerances"]["items"][0]["term"] = -1;
+  CHECK(error_pointer(bad.dump()) == "/tolerances/items/0/term");
+  bad = j;
+  bad["tolerances"]["overrides"] =
+      json::parse(R"([{"surface": "L1.S1", "kind": "conic", "limit": 0.01, "term": 4}])");
+  CHECK(error_pointer(bad.dump()).starts_with("/tolerances/overrides/0"));
+}

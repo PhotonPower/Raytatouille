@@ -258,7 +258,10 @@ void bind_tolerances(nb::module_& m) {
       .value("TILT_Z_DEG", model::ToleranceKind::TiltZDeg,
              "rigid rotation about z through the pivot, degree (file: \"tilt_z_deg\")")
       .value("INDEX", model::ToleranceKind::Index, "dn_d, dimensionless (file: \"index\")")
-      .value("ABBE", model::ToleranceKind::Abbe, "dnu_d, dimensionless (file: \"abbe\")");
+      .value("ABBE", model::ToleranceKind::Abbe, "dnu_d, dimensionless (file: \"abbe\")")
+      .value("ZERNIKE", model::ToleranceKind::Zernike,
+             "Zernike surface error a_j in mm of the Noll term `term` on a surface, normalized to "
+             "the semi-diameter of its aperture (file: \"zernike\")");
   nb::enum_<model::ToleranceDistribution>(m, "ToleranceDistribution",
                                           "Distribution of a tolerance within [-T, T].")
       .value("NORMAL", model::ToleranceDistribution::Normal,
@@ -282,6 +285,9 @@ void bind_tolerances(nb::module_& m) {
   row_attribute(item);
   param_attribute(item);
   segment_attribute(item);
+  item.def_prop_ro(
+      "term", [](const model::ToleranceItem& o) { return o.target.term; },
+      "Noll index j of the kind zernike (2 ... 231, ADR 0051); None for the other kinds.");
   item.def_ro("kind", &model::ToleranceItem::kind, "What the tolerance changes.")
       .def_ro("limit", &model::ToleranceItem::limit,
               "Limit T > 0 in the unit of the kind; the perturbation lies in [-T, T].")

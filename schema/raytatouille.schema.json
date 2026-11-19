@@ -165,10 +165,10 @@
       "enum": ["none", "coarse", "normal", "precise"]
     },
     "tolerance_kind": {
-      "description": "What a tolerance changes (ADR 0035, point 2): radius (mm), curvature_relative (dC/C), conic, thickness (offset on pose.position[2], mm), param (offset on the attached Param), parameter (offset on a row), decenter_x, decenter_y, shift_z (rigid, mm), tilt_x_deg, tilt_y_deg, tilt_z_deg (rigid, degree, about the pivot), index (dn_d), abbe (dnu_d).",
+      "description": "What a tolerance changes (ADR 0035, point 2): radius (mm), curvature_relative (dC/C), conic, thickness (offset on pose.position[2], mm), param (offset on the attached Param), parameter (offset on a row), decenter_x, decenter_y, shift_z (rigid, mm), tilt_x_deg, tilt_y_deg, tilt_z_deg (rigid, degree, about the pivot), index (dn_d), abbe (dnu_d), zernike (coefficient a_j in mm of the Noll term `term` on a surface, normalized to the semi-diameter of its aperture; schema 0.11, ADR 0051, point 7).",
       "enum": ["radius", "curvature_relative", "conic", "thickness", "param", "parameter",
                "decenter_x", "decenter_y", "shift_z", "tilt_x_deg", "tilt_y_deg", "tilt_z_deg",
-               "index", "abbe"]
+               "index", "abbe", "zernike"]
     },
     "tolerance_distribution": {
       "description": "normal (default; sigma = limit/2, truncated at +-limit), uniform on [-limit, limit], or endpoint (+-limit).",
@@ -179,7 +179,7 @@
       "type": "integer", "minimum": 0, "maximum": 2147483647
     },
     "tolerance_item": {
-      "description": "An explicit tolerance: id, exactly one anchor (surface, node or parameter), param (a pointer relative to the anchor's object in the edit form, kind param), segment (index and abbe), kind, limit T (perturbation in [-T, T]) and distribution.",
+      "description": "An explicit tolerance: id, exactly one anchor (surface, node or parameter), param (a pointer relative to the anchor's object in the edit form, kind param), segment (index and abbe), term (the Noll index of the kind zernike, schema 0.11), kind, limit T (perturbation in [-T, T]) and distribution.",
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "kind", "limit"],
@@ -191,6 +191,7 @@
         "parameter": {"type": "string"},
         "param": {"type": "string"},
         "segment": {"$ref": "#/$defs/segment"},
+        "term": {"type": "integer", "minimum": 0, "maximum": 65535},
         "kind": {"$ref": "#/$defs/tolerance_kind"},
         "limit": {"type": "number"},
         "distribution": {"$ref": "#/$defs/tolerance_distribution"}

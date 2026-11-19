@@ -1636,6 +1636,10 @@ class Validator {
       report("tolerances.target_invalid", loc + "/segment", "segment only with index and abbe");
       return;
     }
+    if (t.term && kind != ToleranceKind::Zernike) {
+      report("tolerances.target_invalid", loc + "/term", "term only with the kind zernike");
+      return;
+    }
     const bool row = t.anchor == ToleranceAnchor::Parameter;
     switch (kind) {
       case ToleranceKind::Radius:
@@ -1750,6 +1754,25 @@ class Validator {
       case ToleranceKind::Abbe:
         check_material(index, t, kind, loc);
         return;
+      case ToleranceKind::Zernike: {
+        // ADR 0051, point 7: a surface with an aperture (its semi-diameter normalizes the term),
+        // the Noll index 2 ... 231 (the piston only shifts).
+        if (t.anchor != ToleranceAnchor::Surface) {
+          report("tolerances.target_invalid", loc + "/kind", "zernike needs a surface");
+          return;
+        }
+        if (!t.term || *t.term < 2 || *t.term > 231) {
+          report("tolerances.target_invalid", loc + (t.term ? "/term" : ""),
+                 "zernike needs a Noll index term in [2, 231]");
+          return;
+        }
+        if (!index.surface(t.name)->surface->aperture) {
+          report("tolerances.target_invalid", loc + "/surface",
+                 "surface '" + t.name +
+                     "' has no aperture: the semi-diameter normalizes the Zernike term");
+        }
+        return;
+      }
       default:  // rigid
         if (row) {
           report("tolerances.target_invalid", loc + "/kind",
@@ -1790,6 +1813,9 @@ class Validator {
         } else if (v->target.segment) {
           report("tolerances.target_invalid", loc + "/segment", "segment only with index and abbe");
         }
+        if (v->target.term) {
+          report("tolerances.target_invalid", loc + "/term", "term only with the kind zernike");
+        }
         const std::optional<std::string> anchor = index.anchor_pointer(v->target);
         if (!anchor) continue;  // unreachable: a surface or node, checked above
         const std::string key =
@@ -1805,7 +1831,8 @@ class Validator {
           report("tolerances.limit_invalid", loc + "/pivot", "pivot must be finite");
         }
         if (!check_anchor(index, p.target, loc)) continue;
-        if (p.target.anchor == ToleranceAnchor::Parameter || p.target.param || p.target.segment) {
+        if (p.target.anchor == ToleranceAnchor::Parameter || p.target.param || p.target.segment ||
+            p.target.term) {
           report("tolerances.target_invalid", loc, "a pivot belongs to a surface or node");
         } else if (const std::optional<std::string> anchor = index.anchor_pointer(p.target);
                    anchor && !pivots.insert(*anchor).second) {
@@ -1880,8 +1907,8 @@ class Validator {
       }
       if (!check_anchor(index, k.target, loc)) continue;
       std::string key;
-      if (k.target.segment) {
-        report("tolerances.compensator_target", loc, "a compensator has no segment");
+      if (k.target.segment || k.target.term) {
+        report("tolerances.compensator_target", loc, "a compensator has no segment or term");
         continue;
       }
       if (k.target.anchor == ToleranceAnchor::Parameter) {

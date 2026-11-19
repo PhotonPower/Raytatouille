@@ -818,3 +818,25 @@ def test_0_11_grid_terms_are_accepted(terms):
 )
 def test_0_11_grid_term_errors_are_rejected(terms):
     assert not VALIDATOR.is_valid(_terms(terms))
+
+
+# ---- schema 0.11 (#316, ADR 0051, point 7): tolerance kind zernike ----
+
+def _with_items(items):
+    doc = copy.deepcopy(load(ROOT / "tests" / "reference" / "m0" / "singlet.rtt.json"))
+    doc["tolerances"] = {"items": items}
+    return doc
+
+
+def test_0_11_zernike_tolerance_is_accepted():
+    assert VALIDATOR.is_valid(_with_items(
+        [{"id": "z", "surface": "L1.S1", "term": 4, "kind": "zernike", "limit": 2e-4}]))
+    # The range of term and the kind it belongs to are validate's.
+    assert VALIDATOR.is_valid(_with_items(
+        [{"id": "z", "surface": "L1.S1", "term": 1, "kind": "conic", "limit": 2e-4}]))
+
+
+@pytest.mark.parametrize("term", [-1, 2.5, "4"], ids=["negative", "fraction", "string"])
+def test_0_11_zernike_term_errors_are_rejected(term):
+    assert not VALIDATOR.is_valid(_with_items(
+        [{"id": "z", "surface": "L1.S1", "term": term, "kind": "zernike", "limit": 2e-4}]))

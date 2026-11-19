@@ -75,7 +75,7 @@ SCHEMA_VERSION = "0.1.23"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84)
 # 0.1.20: SurfaceLayout, CompiledElement, DimensionSegments active (#380)
 # 0.1.21: SurfaceLayout aperture_vertices; apertures regular_polygon, polygon (#320)
 # 0.1.22: SurfaceLayout obscurations (#320)
-# 0.1.23: SurfaceLayout terms (#316)
+# 0.1.23: SurfaceLayout terms; ToleranceItem term (#316)
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a
@@ -240,8 +240,8 @@ _FIELDS: dict[str, tuple[str, ...]] = {
     # material (#71)
     "LoadWarning": ("code", "file", "line", "message"),
     # tolerancing (#261): one anchor of surface, node, parameter is set, the others are None
-    "ToleranceItem": ("id", "surface", "node", "parameter", "param", "segment", "kind", "limit",
-                      "distribution"),
+    "ToleranceItem": ("id", "surface", "node", "parameter", "param", "segment", "term", "kind",
+                      "limit", "distribution"),
     "ItemOrigin": ("source", "index"),
     "ClassTolerance": ("id", "surface", "node", "segment", "kind", "level", "tolerance_class",
                        "value_override", "replaced_by", "skip"),

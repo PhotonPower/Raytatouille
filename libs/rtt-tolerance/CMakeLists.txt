@@ -22,7 +22,8 @@ if(RTT_BUILD_TESTS)
       tests/test_rotational_tolerance.cpp tests/test_forbes_tolerance.cpp
       tests/test_radius_sign.cpp tests/test_random.cpp
       tests/test_sensitivity.cpp tests/test_trial.cpp tests/test_inactive_tolerance.cpp
-    LIBS rtt::tolerance rtt::io TBB::tbb)
+      tests/test_zernike_tolerance.cpp
+    LIBS rtt::tolerance rtt::io rtt::analysis rtt::paraxial TBB::tbb)
   # src/: the kernels of the normal distribution (random_detail.hpp), the RSS reduction
   # (sensitivity_detail.hpp) and the statistics (monte_carlo_detail.hpp) are tested directly.
   target_include_directories(rtt_tolerance_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)

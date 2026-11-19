@@ -26,6 +26,7 @@
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/diagnostics/codes.hpp"
 #include "rtt/math/types.hpp"
+#include "rtt/math/zernike.hpp"
 #include "rtt/model/parameters.hpp"
 #include "rtt/optim/merit.hpp"
 #include "rtt/optim/overlay.hpp"
@@ -46,6 +47,8 @@ struct ItemAction {
     RowAdd,    ///< (a) parameter: the row in every configuration (K6)
     Rigid,     ///< (b) one component of the rigid motion of a node or surface
     Material,  ///< (c) Delta n_d or Delta nu_d of an element segment
+    /// Zernike surface error a_j in mm on a surface (ADR 0051, point 7), through the overlay
+    Zernike,
   };
   Kind kind = Kind::ParamAdd;
   std::size_t index = 0;  ///< Param (for_each_param order) or row
@@ -55,6 +58,7 @@ struct ItemAction {
   int component = 0;  ///< Rigid: 0..2 translation x, y, z; 3..5 rotation x, y, z
   compile::MaterialTarget material;
   bool abbe = false;  ///< Material: Delta nu_d, else Delta n_d
+  int term = 0;       ///< Zernike: the Noll index j
   /// ParamAdd, ParamScale: the Param is the base radius of a surface (radius,
   /// curvature_relative, param at /shape/base/radius); its nominal value in mm. Not set for a
   /// curvature (CurvatureScale and param at /shape/base/curvature): c may reach 0 or change its
@@ -287,6 +291,21 @@ ItemAction action_of(const model::ToleranceItem& item,
       a.abbe = item.kind == K::Abbe;
       return a;
     }
+    case K::Zernike: {
+      // ADR 0051, point 7: a Noll term on a surface, through compile::Perturbation (decision of
+      // the maintainer in #316), so the model of a trial keeps the tree of the nominal.
+      if (item.target.anchor != model::ToleranceAnchor::Surface || !item.target.term ||
+          *item.target.term < 2 || *item.target.term > rtt::math::kMaxZernikeTerms) {
+        throw std::invalid_argument("tolerance: " + what +
+                                    " needs a surface and a Noll index term in [2, 231]");
+      }
+      static_cast<void>(anchors.of(item.target));  // exists
+      a.kind = ItemAction::Kind::Zernike;
+      a.surface = true;
+      a.surface_id = model::SurfaceId(item.target.name);
+      a.term = *item.target.term;
+      return a;
+    }
   }
   throw std::invalid_argument("tolerance: " + what + " has an unknown kind");
 }
@@ -421,6 +440,14 @@ Applied applied(const ContextData& d, std::span<const double> values) {
       case ItemAction::Kind::Material: {
         compile::MaterialChange& c = out.perturbation.materials[a.material];
         (a.abbe ? c.delta_vd : c.delta_nd) += v;
+        break;
+      }
+      case ItemAction::Kind::Zernike: {
+        // All Zernike items of a surface go into one term (ADR 0051, point 7): a_j += delta.
+        std::vector<double>& coefficients = out.perturbation.zernike[a.surface_id];
+        const auto j = static_cast<std::size_t>(a.term);
+        if (coefficients.size() < j) coefficients.resize(j, 0.0);
+        coefficients[j - 1] += v;
         break;
       }
     }

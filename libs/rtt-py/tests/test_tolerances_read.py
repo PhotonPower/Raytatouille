@@ -89,7 +89,8 @@ def test_without_tolerances_the_set_is_empty() -> None:
 def test_enum_members() -> None:
     assert [k.name for k in model.ToleranceKind] == [
         "RADIUS", "CURVATURE_RELATIVE", "CONIC", "THICKNESS", "PARAM", "PARAMETER", "DECENTER_X",
-        "DECENTER_Y", "SHIFT_Z", "TILT_X_DEG", "TILT_Y_DEG", "TILT_Z_DEG", "INDEX", "ABBE"]
+        "DECENTER_Y", "SHIFT_Z", "TILT_X_DEG", "TILT_Y_DEG", "TILT_Z_DEG", "INDEX", "ABBE",
+        "ZERNIKE"]
     assert [d.name for d in model.ToleranceDistribution] == ["NORMAL", "UNIFORM", "ENDPOINT"]
     assert [c.name for c in model.ToleranceClass] == ["NONE", "COARSE", "NORMAL", "PRECISE"]
 

@@ -28,6 +28,7 @@
 #include "rtt/material/uniaxial.hpp"
 #include "rtt/math/isometry.hpp"
 #include "rtt/math/units.hpp"
+#include "rtt/math/zernike.hpp"
 #include "rtt/model/parameters.hpp"
 
 namespace rtt::compile {
@@ -751,6 +752,13 @@ class Compiler {
                                     "' has a non-finite value");
       }
     }
+    for (const auto& [id, a] : perturbation_.zernike) {
+      if (a.size() > static_cast<std::size_t>(math::kMaxZernikeTerms) ||
+          !std::all_of(a.begin(), a.end(), [](double v) { return std::isfinite(v); })) {
+        throw std::invalid_argument("compile: the Zernike error of surface '" + id.str() +
+                                    "' has more than 231 or non-finite coefficients");
+      }
+    }
     if (perturbation_.nodes.contains(system_.root.name)) {
       throw std::invalid_argument("compile: the root assembly '" + system_.root.name +
                                   "' cannot be perturbed (ADR 0035)");
@@ -770,6 +778,11 @@ class Compiler {
         throw std::invalid_argument("compile: no surface '" + id.str() + "' for the perturbation");
       }
     }
+    for (const auto& [id, a] : perturbation_.zernike) {
+      if (!used_zernike_.contains(id)) {
+        throw std::invalid_argument("compile: no surface '" + id.str() + "' for the Zernike error");
+      }
+    }
     for (const auto& [target, change] : perturbation_.materials) {
       if (!used_material_elements_.contains(target.element)) {
         throw std::invalid_argument("compile: no element '" + target.element +
@@ -784,6 +797,61 @@ class Compiler {
     if (it == perturbation_.nodes.end()) return nullptr;
     used_nodes_.insert(name);
     return it->second.is_identity() ? nullptr : &it->second;
+  }
+
+  /// Appends the Zernike error of the overlay for surface `s` (ADR 0051, point 7), if any, as one
+  /// Noll term after the surface's own terms; a shape without terms becomes a stack on its base.
+  /// The normalization radius is the semi-diameter of the aperture (the circumscribed radius,
+  /// #177): radius, half diagonal, major semi-axis, circumradius or farthest polygon vertex.
+  /// @throws std::invalid_argument for a surface without aperture (validate reports that for the
+  ///         tolerance items; an API caller gets the exception)
+  void add_zernike_error(CompiledShape& shape, const model::Surface& s) {
+    const auto it = perturbation_.zernike.find(s.id);
+    if (it == perturbation_.zernike.end()) return;
+    used_zernike_.insert(s.id);
+    if (!s.aperture) {
+      throw std::invalid_argument("compile: the Zernike error of surface '" + s.id.str() +
+                                  "' needs an aperture");
+    }
+    const double radius = std::visit(
+        [](const auto& a) -> double {
+          using A = std::decay_t<decltype(a)>;
+          if constexpr (std::is_same_v<A, model::CircularAperture>) {
+            return a.radius.value;
+          } else if constexpr (std::is_same_v<A, model::RectangularAperture>) {
+            return std::hypot(a.half_width_x.value, a.half_width_y.value);
+          } else if constexpr (std::is_same_v<A, model::EllipticalAperture>) {
+            return std::max(a.semi_axis_x.value, a.semi_axis_y.value);
+          } else if constexpr (std::is_same_v<A, model::RegularPolygonAperture>) {
+            return a.circumradius.value;
+          } else {
+            double r = 0.0;
+            for (const std::array<double, 2>& v : a.vertices)
+              r = std::max(r, std::hypot(v[0], v[1]));
+            return r;
+          }
+        },
+        *s.aperture);
+    geom::TermVariant<double> term = geom::ZernikeTerm<double>::noll(radius, it->second);
+    if (auto* stacked = std::get_if<geom::Stacked<double>>(&shape)) {
+      std::vector<geom::TermVariant<double>> terms(stacked->terms().begin(),
+                                                   stacked->terms().end());
+      terms.push_back(std::move(term));
+      shape = geom::Stacked<double>(stacked->base(), std::move(terms));
+      return;
+    }
+    shape = std::visit(
+        [&](auto&& base) -> CompiledShape {
+          using B = std::decay_t<decltype(base)>;
+          if constexpr (std::is_same_v<B, geom::Stacked<double>>) {
+            throw std::logic_error("compile: a stack is handled above");
+          } else {
+            return geom::Stacked<double>(
+                geom::BaseShapeVariant<double>(std::forward<decltype(base)>(base)),
+                std::vector<geom::TermVariant<double>>{std::move(term)});
+          }
+        },
+        std::move(shape));
   }
 
   /// The motion of the surface `id`, or nullptr if it has none or the identity.
@@ -981,6 +1049,7 @@ class Compiler {
       c.to_global = placed.global;
       c.to_local = c.to_global.inverse();
       c.shape = compile_shape(s.shape, surface_location + "/shape");
+      add_zernike_error(c.shape, s);
       c.aperture = s.aperture;
       c.obscurations = s.obscurations;
       c.phases = s.phases;
@@ -1509,6 +1578,7 @@ class Compiler {
   std::set<std::string, std::less<>> used_nodes_;
   std::set<model::SurfaceId> used_surfaces_;
   std::set<std::string, std::less<>> used_material_elements_;
+  std::set<model::SurfaceId> used_zernike_;
   std::vector<std::string> surface_locations_;  // JSON pointer per surface
   /// Compiled coating per reference; none once it failed (reported once).
   std::map<std::string, std::optional<std::uint32_t>, std::less<>> coating_index_;
