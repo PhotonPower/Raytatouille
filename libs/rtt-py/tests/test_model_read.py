@@ -92,7 +92,7 @@ VARIANT_CLASSES: dict[str, type] = {
     "assembly": model.Assembly,
     "plane": model.Plane, "conic": model.Conic, "even_asphere": model.EvenAsphere,
     "zernike_sag": model.ZernikeSag, "zernike_fringe_sag": model.ZernikeFringeSag,
-    "xy_polynomial": model.XyPolynomial,
+    "xy_polynomial": model.XyPolynomial, "grid_sag": model.GridSag,
     "circular": model.CircularAperture, "rectangular": model.RectangularAperture,
     "elliptical": model.EllipticalAperture, "regular_polygon": model.RegularPolygonAperture,
     "polygon": model.PolygonAperture,
@@ -207,6 +207,15 @@ _with_obscurations["root"]["children"][0]["surfaces"][3]["obscurations"] = [
     {"type": "rectangular", "half_width_x": 0.1, "half_width_y": 0.1},
     {"type": "elliptical", "semi_axis_x": 0.1, "semi_axis_y": 0.1}]
 for _cls, _obj in first_instances(rt.System.from_json(json.dumps(_with_obscurations))).items():
+    DEFAULTS.setdefault(_cls, _obj)
+
+#: A grid sag with only its required keys (ADR 0051, point 5: decenter and derivatives are
+#: optional), added to DEFAULTS in the same way.
+_with_grid = json.loads(DEFAULTS_TEXT)
+_with_grid["root"]["children"][0]["surfaces"][3].setdefault("shape", {})["terms"] = [
+    {"type": "grid_sag", "nx": 3, "ny": 3, "spacing_x": 1.0, "spacing_y": 1.0,
+     "sag": [0.0] * 9}]
+for _cls, _obj in first_instances(rt.System.from_json(json.dumps(_with_grid))).items():
     DEFAULTS.setdefault(_cls, _obj)
 
 #: One entry of every class of the tolerance set with only its required keys (#253), added to
@@ -440,14 +449,15 @@ def test_every_variant_class_appears_in_the_reference_systems() -> None:
     tour = {type(o) for o in walk(rt.load(REFERENCE_DIR / "m0" / "feature_tour.rtt.json"))}
     # feature_tour without an ideal lens (ADR 0031, #178); the line above covers r2/ideal_lens,
     # m8/hexagon_mirror the polygon apertures and m8/spider_telescope the obscurations
-    # (ADR 0050), m8/zernike_mirror the Fringe term and m8/xy_mirror the XY polynomial
-    # (ADR 0051).
+    # (ADR 0050), m8/zernike_mirror the Fringe term, m8/xy_mirror the XY polynomial and
+    # m8/grid_sag_mirror the grid sag (ADR 0051).
     assert set(VARIANT_CLASSES.values()) - {model.IdealMirror, model.IdealLens,
                                              model.IdealCylinderLens,
                                              model.RegularPolygonAperture,
                                              model.PolygonAperture,
                                              model.ZernikeFringeSag,
-                                             model.XyPolynomial} <= tour
+                                             model.XyPolynomial,
+                                             model.GridSag} <= tour
 
 
 def test_copies_are_read_only_and_not_constructible() -> None:

@@ -521,6 +521,7 @@ class Validator {
     }
     check_shape(s.shape, loc + "/shape");
     check_normalization_extent(s, loc);
+    check_grid_extent(s, loc);
     if (s.aperture) check_aperture(*s.aperture, loc + "/aperture");
     for (std::size_t i = 0; i < s.obscurations.size(); ++i) {
       check_obscuration(s, s.obscurations[i], idx(loc + "/obscurations", i));
@@ -633,8 +634,10 @@ class Validator {
     for (std::size_t i = 0; i < s.shape.terms.size(); ++i) {
       std::visit(
           [&](const auto& t) {
-            radii.emplace_back(&t.normalization_radius,
-                               idx(loc + "/shape/terms", i) + "/normalization_radius");
+            if constexpr (requires { t.normalization_radius; }) {
+              radii.emplace_back(&t.normalization_radius,
+                                 idx(loc + "/shape/terms", i) + "/normalization_radius");
+            }
           },
           s.shape.terms[i]);
     }
@@ -688,6 +691,57 @@ class Validator {
         report("shape.normalization_radius_exceeded", at,
                "the aperture reaches beyond the normalization radius: the polynomials are "
                "extrapolated there");
+      }
+    }
+  }
+
+  /// ADR 0051, point 5: a warning if the aperture reaches beyond the rectangle of a grid sag
+  /// (rays there miss the surface). The aperture's bounding box: radius, half widths, semi-axes,
+  /// the vertices of a polygon. No aperture, a bound dimension or an invalid grid: no warning.
+  void check_grid_extent(const Surface& s, const std::string& loc) {
+    if (!s.aperture) return;
+    const Aperture& ap = *s.aperture;
+    double ex = 0.0;
+    double ey = 0.0;
+    if (const auto* c = std::get_if<CircularAperture>(&ap)) {
+      if (c->radius.is_bound()) return;
+      ex = ey = c->radius.value;
+    } else if (const auto* r = std::get_if<RectangularAperture>(&ap)) {
+      if (r->half_width_x.is_bound() || r->half_width_y.is_bound()) return;
+      ex = r->half_width_x.value;
+      ey = r->half_width_y.value;
+    } else if (const auto* e = std::get_if<EllipticalAperture>(&ap)) {
+      if (e->semi_axis_x.is_bound() || e->semi_axis_y.is_bound()) return;
+      ex = e->semi_axis_x.value;
+      ey = e->semi_axis_y.value;
+    } else if (const auto* g = std::get_if<RegularPolygonAperture>(&ap)) {
+      if (g->circumradius.is_bound()) return;
+    }
+    // Bounding box (x_lo, x_hi, y_lo, y_hi) of the aperture.
+    std::array<double, 4> box{-ex, ex, -ey, ey};
+    if (std::holds_alternative<RegularPolygonAperture>(ap) ||
+        std::holds_alternative<PolygonAperture>(ap)) {
+      const std::vector<std::array<double, 2>> v = aperture_vertices(ap);
+      if (v.empty()) return;
+      box = {v[0][0], v[0][0], v[0][1], v[0][1]};
+      for (const std::array<double, 2>& p : v) {
+        box = {std::min(box[0], p[0]), std::max(box[1], p[0]), std::min(box[2], p[1]),
+               std::max(box[3], p[1])};
+      }
+    }
+    for (std::size_t i = 0; i < s.shape.terms.size(); ++i) {
+      const auto* grid = std::get_if<GridSag>(&s.shape.terms[i]);
+      if (grid == nullptr || grid->nx < 3 || grid->ny < 3 || !finite_positive(grid->spacing_x) ||
+          !finite_positive(grid->spacing_y)) {
+        continue;
+      }
+      const double hx = (grid->nx - 1) / 2.0 * grid->spacing_x;
+      const double hy = (grid->ny - 1) / 2.0 * grid->spacing_y;
+      const double tol = 1e-9 * std::max(hx, hy);
+      if (box[0] < grid->decenter_x - hx - tol || box[1] > grid->decenter_x + hx + tol ||
+          box[2] < grid->decenter_y - hy - tol || box[3] > grid->decenter_y + hy + tol) {
+        report("shape.grid_aperture_outside", idx(loc + "/shape/terms", i),
+               "the aperture reaches beyond the grid: rays there miss the surface");
       }
     }
   }
@@ -788,6 +842,54 @@ class Validator {
               if (term.coefficients.empty())
                 report("shape.xy_without_coefficients", t + "/coefficients",
                        "XY polynomial without coefficients");
+            } else if constexpr (std::is_same_v<S, GridSag>) {
+              // ADR 0051, point 5.
+              const auto in_range = [](int n) { return n >= 3 && n <= 4096; };
+              if (!in_range(term.nx)) {
+                report("shape.grid_size_invalid", t + "/nx", "nx must lie in [3, 4096]");
+              }
+              if (!in_range(term.ny)) {
+                report("shape.grid_size_invalid", t + "/ny", "ny must lie in [3, 4096]");
+              }
+              if (!finite_positive(term.spacing_x)) {
+                report("shape.grid_spacing_invalid", t + "/spacing_x",
+                       "spacing must be finite and > 0 mm");
+              }
+              if (!finite_positive(term.spacing_y)) {
+                report("shape.grid_spacing_invalid", t + "/spacing_y",
+                       "spacing must be finite and > 0 mm");
+              }
+              if (!std::isfinite(term.decenter_x) || !std::isfinite(term.decenter_y)) {
+                report("shape.grid_values_invalid",
+                       t + (std::isfinite(term.decenter_x) ? "/decenter_y" : "/decenter_x"),
+                       "decenter must be finite");
+              }
+              const std::size_t n =
+                  in_range(term.nx) && in_range(term.ny)
+                      ? static_cast<std::size_t>(term.nx) * static_cast<std::size_t>(term.ny)
+                      : 0;
+              const auto check_list = [&](const std::vector<double>& v, const char* key) {
+                if (n != 0 && v.size() != n) {
+                  report("shape.grid_values_invalid", t + "/" + key,
+                         std::string(key) + " needs nx ny = " + std::to_string(n) +
+                             " values, got " + std::to_string(v.size()));
+                  return;
+                }
+                for (std::size_t k = 0; k < v.size(); ++k) {
+                  if (!std::isfinite(v[k])) {
+                    report("shape.grid_values_invalid", idx(t + "/" + key, k),
+                           "grid value not finite");
+                    return;
+                  }
+                }
+              };
+              check_list(term.sag, "sag");
+              const bool any = !term.dz_dx.empty() || !term.dz_dy.empty() || !term.d2z_dxdy.empty();
+              if (any) {
+                check_list(term.dz_dx, "dz_dx");
+                check_list(term.dz_dy, "dz_dy");
+                check_list(term.d2z_dxdy, "d2z_dxdy");
+              }
             } else {
               static_assert(kUnhandledShape<S>, "check_shape: unhandled shape term");
             }

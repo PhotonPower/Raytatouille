@@ -322,6 +322,16 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
     {"shape.conic_without_curvature", Severity::Warning, "validate",
      "conic constant != 0 at curvature 0: without effect (plane base)"},
     {"shape.curvature_invalid", Severity::Error, "validate", "curvature not finite"},
+    {"shape.grid_aperture_outside", Severity::Warning, "validate",
+     "the aperture reaches beyond the rectangle of a grid sag: rays there miss the surface"},
+    {"shape.grid_size_invalid", Severity::Error, "validate", "grid sag nx or ny outside [3, 4096]"},
+    {"shape.grid_spacing_invalid", Severity::Error, "validate",
+     "grid sag spacing not finite or <= 0 mm"},
+    {"shape.grid_values_invalid", Severity::Error, "validate",
+     "grid sag list of the wrong length, only part of the derivative lists, or a value or the "
+     "decenter not finite"},
+    {"shape.grid_vertex_outside", Severity::Error, "compile",
+     "the grid of a grid sag does not contain the vertex (0, 0): vertex and start plane undefined"},
     {"shape.normalization_radius_exceeded", Severity::Warning, "validate",
      "aperture beyond the normalization radius of Q-con, Q-bfs, a Zernike term or an XY "
      "polynomial: extrapolated there"},

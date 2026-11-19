@@ -398,7 +398,7 @@ BaseShape read_base_shape(const Json& j, const Ctx& c) {
 
 ShapeTerm read_shape_term(const Json& j, const Ctx& c) {
   const std::string type = read_type(j, c);
-  // Every term type has the keys type, normalization_radius and coefficients.
+  // The polynomial terms have the keys type, normalization_radius and coefficients.
   const auto zernike = [&](auto z) -> ShapeTerm {
     expect_object(j, c, {"type", "normalization_radius", "coefficients"});
     z.normalization_radius =
@@ -409,8 +409,36 @@ ShapeTerm read_shape_term(const Json& j, const Ctx& c) {
   if (type == "zernike_sag") return zernike(ZernikeSag{});
   if (type == "zernike_fringe_sag") return zernike(ZernikeFringeSag{});  // ADR 0051, point 3
   if (type == "xy_polynomial") return zernike(XyPolynomial{});           // ADR 0051, point 4
+  if (type == "grid_sag") {                                              // ADR 0051, point 5
+    expect_object(j, c,
+                  {"type", "nx", "ny", "spacing_x", "spacing_y", "decenter_x", "decenter_y", "sag",
+                   "dz_dx", "dz_dy", "d2z_dxdy"});
+    // Plain numbers, not Params; lengths and the derivative lists are checked by validate().
+    const auto numbers = [&](const char* key, std::vector<double>& out) {
+      const Json* list = find(j, key);
+      if (list == nullptr) return;
+      const Ctx at = c.at(key);
+      expect_array(*list, at);
+      out.reserve(list->size());
+      for (std::size_t i = 0; i < list->size(); ++i)
+        out.push_back(read_number((*list)[i], at.at(i)));
+    };
+    GridSag g;
+    g.nx = read_int(require(j, "nx", c), c.at("nx"));
+    g.ny = read_int(require(j, "ny", c), c.at("ny"));
+    g.spacing_x = read_number(require(j, "spacing_x", c), c.at("spacing_x"));
+    g.spacing_y = read_number(require(j, "spacing_y", c), c.at("spacing_y"));
+    read_opt(j, "decenter_x", c, g.decenter_x, read_number);
+    read_opt(j, "decenter_y", c, g.decenter_y, read_number);
+    (void)require(j, "sag", c);
+    numbers("sag", g.sag);
+    numbers("dz_dx", g.dz_dx);
+    numbers("dz_dy", g.dz_dy);
+    numbers("d2z_dxdy", g.d2z_dxdy);
+    return g;
+  }
   c.at("type").fail("unknown shape term type '" + type +
-                    "', expected zernike_sag, zernike_fringe_sag or xy_polynomial");
+                    "', expected zernike_sag, zernike_fringe_sag, xy_polynomial or grid_sag");
 }
 
 ShapeStack read_shape(const Json& j, const Ctx& c) {
@@ -1852,6 +1880,25 @@ class Writer {
                 if (edit_ || !term.coefficients.empty()) {
                   to["coefficients"] = param_list(term.coefficients);
                 }
+              } else if constexpr (std::is_same_v<S, GridSag>) {
+                // ADR 0051, point 5: the decenter if not 0, the derivatives if given (the edit
+                // form writes every key).
+                const auto numbers = [](const std::vector<double>& v) {
+                  OJson list = OJson::array();
+                  for (const double x : v) list.push_back(num(x));
+                  return list;
+                };
+                to["type"] = "grid_sag";
+                to["nx"] = term.nx;
+                to["ny"] = term.ny;
+                to["spacing_x"] = num(term.spacing_x);
+                to["spacing_y"] = num(term.spacing_y);
+                if (edit_ || term.decenter_x != 0.0) to["decenter_x"] = num(term.decenter_x);
+                if (edit_ || term.decenter_y != 0.0) to["decenter_y"] = num(term.decenter_y);
+                to["sag"] = numbers(term.sag);
+                if (edit_ || !term.dz_dx.empty()) to["dz_dx"] = numbers(term.dz_dx);
+                if (edit_ || !term.dz_dy.empty()) to["dz_dy"] = numbers(term.dz_dy);
+                if (edit_ || !term.d2z_dxdy.empty()) to["d2z_dxdy"] = numbers(term.d2z_dxdy);
               } else {
                 static_assert(kUnhandledShape<S>, "shape: unhandled shape term");
               }

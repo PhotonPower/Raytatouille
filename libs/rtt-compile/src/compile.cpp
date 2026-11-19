@@ -1065,8 +1065,7 @@ class Compiler {
     return lens;
   }
 
-  CompiledShape compile_shape(const model::ShapeStack& shape,
-                              [[maybe_unused]] const std::string& location) {
+  CompiledShape compile_shape(const model::ShapeStack& shape, const std::string& location) {
     geom::BaseShapeVariant<double> base = compile_base(shape.base);
     if (shape.terms.empty()) {
       // Without terms the surface is its base shape, as before (ADR 0051, point 1).
@@ -1075,9 +1074,10 @@ class Compiler {
     }
     std::vector<geom::TermVariant<double>> terms;
     terms.reserve(shape.terms.size());
-    for (const model::ShapeTerm& term : shape.terms) {
+    for (std::size_t i = 0; i < shape.terms.size(); ++i) {
+      const model::ShapeTerm& term = shape.terms[i];
       terms.push_back(std::visit(
-          [](const auto& t) -> geom::TermVariant<double> {
+          [&](const auto& t) -> geom::TermVariant<double> {
             using S = std::decay_t<decltype(t)>;
             // validate() guarantees a finite radius > 0 and at most 231 / 37 coefficients.
             if constexpr (std::is_same_v<S, model::ZernikeSag>) {
@@ -1090,6 +1090,16 @@ class Compiler {
               // validate() guarantees a finite radius > 0 and at most 230 coefficients.
               return geom::XyPolynomialTerm<double>(t.normalization_radius.value,
                                                     values(t.coefficients));
+            } else if constexpr (std::is_same_v<S, model::GridSag>) {
+              // validate() guarantees sizes, spacings and list lengths (ADR 0051, point 5).
+              geom::GridSagTerm<double> grid(t.nx, t.ny, t.spacing_x, t.spacing_y, t.decenter_x,
+                                             t.decenter_y, t.sag, t.dz_dx, t.dz_dy, t.d2z_dxdy);
+              // ADR 0051, point 6: vertex and start plane need sag(0, 0).
+              if (!grid.in_domain(0.0, 0.0)) {
+                report("shape.grid_vertex_outside", idx(location + "/terms", i),
+                       "the grid does not contain the vertex (0, 0)");
+              }
+              return grid;
             } else {
               static_assert(kUnhandledShape<S>, "compile_shape: unhandled shape term");
             }

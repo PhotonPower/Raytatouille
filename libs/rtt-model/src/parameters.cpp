@@ -159,6 +159,8 @@ class ParamWalker {
                           std::is_same_v<Term, XyPolynomial>) {
               visit_(term + "/normalization_radius", z.normalization_radius);
               list(z.coefficients, term + "/coefficients");
+            } else if constexpr (std::is_same_v<Term, GridSag>) {
+              // Grid values are plain numbers, not Params (ADR 0051, point 5).
             } else {
               static_assert(kUnhandledShape<Term>, "for_each_param: unhandled shape term");
             }

@@ -360,7 +360,9 @@ def test_surface_layouts_from_0_1_23_need_terms():
     VALIDATOR.validate(_surface_layout_0_1_23(
         "0.1.23", [["zernike_sag", {"normalization_radius": 10.0, "terms": 11.0}],
                    ["zernike_fringe_sag", {"normalization_radius": 10.0, "terms": 4.0}],
-                   ["xy_polynomial", {"normalization_radius": 10.0, "terms": 5.0}]]))
+                   ["xy_polynomial", {"normalization_radius": 10.0, "terms": 5.0}],
+                   ["grid_sag", {"nx": 41.0, "ny": 41.0, "spacing_x": 0.5, "spacing_y": 0.5,
+                                 "decenter_x": 0.0, "decenter_y": 0.0}]]))
     with pytest.raises(jsonschema.ValidationError):
         VALIDATOR.validate(_surface_layout_0_1_23("0.1.23"))
     for broken in (None, [["grid", {}]], [["zernike_sag"]]):

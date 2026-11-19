@@ -2,14 +2,15 @@
 
 /// @file terms.hpp
 /// Additive sag terms of a shape stack (ADR 0041, point 1; ADR 0051): Zernike terms after Noll
-/// (orthonormal) and in the Fringe set (without normalisation), and the XY polynomial. A term is
-/// evaluated in the local x, y of its surface, in mm, also beyond its normalisation radius
-/// (ADR 0051, point 1).
+/// (orthonormal) and in the Fringe set (without normalisation), the XY polynomial and the grid
+/// sag. A term is evaluated in the local x, y of its surface, in mm; the polynomial terms also
+/// beyond their normalisation radius (ADR 0051, point 1), the grid sag only on its rectangle.
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <optional>
 #include <span>
 #include <stdexcept>
@@ -328,6 +329,252 @@ class XyPolynomialTerm final {
   std::vector<T> c_;
   std::vector<std::pair<int, int>> powers_;
   int degree_ = 0;
+};
+
+/// Largest number of grid points per axis (ADR 0051, point 5).
+inline constexpr int kMaxGridPoints = 4096;
+
+/// Grid sag with bicubic Hermite interpolation (ADR 0051, point 5): nx by ny points with spacing
+/// (dx, dy) in mm, centred on (x0, y0) in mm, x_i = x0 + (i - (nx - 1)/2) dx, y_j likewise, value k
+/// = j nx + i (i along x, j along y, both ascending). In the cell [x_i, x_{i+1}] x [y_j, y_{j+1}]
+/// with t = (x - x_i)/dx, u = (y - y_j)/dy:
+///   p = sum_{a, b in {0, 1}} [H_a(t) H_b(u) z + dx G_a(t) H_b(u) z_x + dy H_a(t) G_b(u) z_y
+///                             + dx dy G_a(t) G_b(u) z_xy] at (i + a, j + b),
+/// H_0 = 2t^3 - 3t^2 + 1, H_1 = 3t^2 - 2t^3, G_0 = t^3 - 2t^2 + t, G_1 = t^3 - t^2 (the cubic
+/// Hermite polynomial, Burden/Faires section 3.4 as in docs/quellen.md, as a tensor product). p is
+/// C^1 and meets values and derivatives at the points. A point on an inner grid line belongs to
+/// the cell to the right (above), the last line to the last cell. Outside the rectangle sag and
+/// grad are NaN and in_domain is false (ADR 0042, point 1).
+template <rtt::math::Real T>
+class GridSagTerm final {
+ public:
+  /// @param nx, ny       points per axis, 3 ... 4096
+  /// @param dx, dy       spacing in mm, finite and > 0
+  /// @param x0, y0       centre of the grid in mm, finite
+  /// @param sag          nx ny values in mm
+  /// @param dz_dx, dz_dy nx ny slopes, dimensionless; d2z_dxdy nx ny values in 1/mm. The three
+  ///                     lists together or none: without them the derivatives are estimated by
+  ///                     finite differences of second order (estimate_derivatives()).
+  /// @throws std::invalid_argument for sizes, spacings or list lengths out of range
+  GridSagTerm(int nx,
+              int ny,
+              T dx,
+              T dy,
+              T x0,
+              T y0,
+              std::vector<T> sag,
+              std::vector<T> dz_dx,
+              std::vector<T> dz_dy,
+              std::vector<T> d2z_dxdy)
+      : nx_(nx),
+        ny_(ny),
+        dx_(dx),
+        dy_(dy),
+        x0_(x0),
+        y0_(y0),
+        z_(std::move(sag)),
+        zx_(std::move(dz_dx)),
+        zy_(std::move(dz_dy)),
+        zxy_(std::move(d2z_dxdy)) {
+    if (nx_ < 3 || ny_ < 3 || nx_ > kMaxGridPoints || ny_ > kMaxGridPoints) {
+      throw std::invalid_argument("grid sag: nx and ny must lie in [3, 4096]");
+    }
+    if (!(dx_ > T(0)) || !(dy_ > T(0)) || !std::isfinite(static_cast<double>(dx_)) ||
+        !std::isfinite(static_cast<double>(dy_))) {
+      throw std::invalid_argument("grid sag: spacing must be finite and > 0 mm");
+    }
+    const std::size_t n = static_cast<std::size_t>(nx_) * static_cast<std::size_t>(ny_);
+    if (z_.size() != n) throw std::invalid_argument("grid sag: sag needs nx ny values");
+    derivatives_given_ = !zx_.empty() || !zy_.empty() || !zxy_.empty();
+    if (derivatives_given_) {
+      if (zx_.size() != n || zy_.size() != n || zxy_.size() != n) {
+        throw std::invalid_argument("grid sag: the three derivative lists need nx ny values each");
+      }
+    } else {
+      estimate_derivatives();
+    }
+    x_min_ = node(x0_, dx_, nx_, 0);
+    x_max_ = node(x0_, dx_, nx_, nx_ - 1);
+    y_min_ = node(y0_, dy_, ny_, 0);
+    y_max_ = node(y0_, dy_, ny_, ny_ - 1);
+  }
+
+  /// z in mm at the local point (x, y) in mm; NaN outside the grid.
+  [[nodiscard]] T sag(T x, T y) const noexcept {
+    if (!in_domain(x, y)) return std::numeric_limits<T>::quiet_NaN();
+    const Cell c = cell(x, y);
+    const std::array<T, 2> ht = h(c.t);
+    const std::array<T, 2> gt = g(c.t);
+    const std::array<T, 2> hu = h(c.u);
+    const std::array<T, 2> gu = g(c.u);
+    T z = T(0);
+    for (std::size_t a = 0; a < 2; ++a) {
+      for (std::size_t b = 0; b < 2; ++b) {
+        const std::size_t k = c.k + b * static_cast<std::size_t>(nx_) + a;
+        z += ht[a] * hu[b] * z_[k] + dx_ * gt[a] * hu[b] * zx_[k] + dy_ * ht[a] * gu[b] * zy_[k] +
+             dx_ * dy_ * gt[a] * gu[b] * zxy_[k];
+      }
+    }
+    return z;
+  }
+
+  /// (dz/dx, dz/dy), dimensionless, the derivative of the interpolant; NaN outside the grid.
+  [[nodiscard]] std::pair<T, T> grad(T x, T y) const noexcept {
+    if (!in_domain(x, y)) {
+      const T nan = std::numeric_limits<T>::quiet_NaN();
+      return {nan, nan};
+    }
+    const Cell c = cell(x, y);
+    const std::array<T, 2> ht = h(c.t);
+    const std::array<T, 2> gt = g(c.t);
+    const std::array<T, 2> hu = h(c.u);
+    const std::array<T, 2> gu = g(c.u);
+    const std::array<T, 2> dht = dh(c.t);
+    const std::array<T, 2> dgt = dg(c.t);
+    const std::array<T, 2> dhu = dh(c.u);
+    const std::array<T, 2> dgu = dg(c.u);
+    T px = T(0);  // dp/dt
+    T py = T(0);  // dp/du
+    for (std::size_t a = 0; a < 2; ++a) {
+      for (std::size_t b = 0; b < 2; ++b) {
+        const std::size_t k = c.k + b * static_cast<std::size_t>(nx_) + a;
+        px += dht[a] * hu[b] * z_[k] + dx_ * dgt[a] * hu[b] * zx_[k] +
+              dy_ * dht[a] * gu[b] * zy_[k] + dx_ * dy_ * dgt[a] * gu[b] * zxy_[k];
+        py += ht[a] * dhu[b] * z_[k] + dx_ * gt[a] * dhu[b] * zx_[k] +
+              dy_ * ht[a] * dgu[b] * zy_[k] + dx_ * dy_ * gt[a] * dgu[b] * zxy_[k];
+      }
+    }
+    return {px / dx_, py / dy_};
+  }
+
+  /// The largest distance of a grid corner from the origin, mm (ADR 0051, point 5).
+  [[nodiscard]] std::optional<T> max_radius() const noexcept {
+    using std::hypot;
+    using std::max;
+    return max(max(hypot(x_min_, y_min_), hypot(x_min_, y_max_)),
+               max(hypot(x_max_, y_min_), hypot(x_max_, y_max_)));
+  }
+
+  /// True on the closed rectangle [x_0, x_{nx-1}] x [y_0, y_{ny-1}] (false for NaN).
+  [[nodiscard]] bool in_domain(T x, T y) const noexcept {
+    return x >= x_min_ && x <= x_max_ && y >= y_min_ && y <= y_max_;
+  }
+
+  /// Order 1 (the interpolant is only C^1, ADR 0051, point 5): value and slope at the vertex,
+  /// no Hessian; paraxially "no model at the vertex" (ADR 0041, point 2). NaN if the origin lies
+  /// outside the grid (compile reports shape.grid_vertex_outside before).
+  [[nodiscard]] VertexExpansion<T> vertex_expansion() const noexcept {
+    VertexExpansion<T> e;
+    e.order = 1;
+    e.value = sag(T(0), T(0));
+    e.slope = grad(T(0), T(0));
+    return e;
+  }
+
+  [[nodiscard]] int nx() const noexcept { return nx_; }
+  [[nodiscard]] int ny() const noexcept { return ny_; }
+  [[nodiscard]] T spacing_x() const noexcept { return dx_; }
+  [[nodiscard]] T spacing_y() const noexcept { return dy_; }
+  [[nodiscard]] T decenter_x() const noexcept { return x0_; }
+  [[nodiscard]] T decenter_y() const noexcept { return y0_; }
+  /// True if the file gave the derivatives, false if they were estimated.
+  [[nodiscard]] bool derivatives_given() const noexcept { return derivatives_given_; }
+  [[nodiscard]] std::span<const T> values() const noexcept { return z_; }
+  [[nodiscard]] std::span<const T> dz_dx() const noexcept { return zx_; }
+  [[nodiscard]] std::span<const T> dz_dy() const noexcept { return zy_; }
+  [[nodiscard]] std::span<const T> d2z_dxdy() const noexcept { return zxy_; }
+
+ private:
+  struct Cell {
+    std::size_t k = 0;  ///< index of the lower left point (i, j)
+    T t = T(0);         ///< (x - x_i) / dx in [0, 1]
+    T u = T(0);         ///< (y - y_j) / dy in [0, 1]
+  };
+
+  /// x_i = x0 + (i - (n - 1)/2) d.
+  [[nodiscard]] static T node(T centre, T d, int n, int i) noexcept {
+    return centre + (T(i) - T(n - 1) / T(2)) * d;
+  }
+
+  /// The cell of the point (inside the rectangle) and t, u.
+  [[nodiscard]] Cell cell(T x, T y) const noexcept {
+    using std::floor;
+    const auto locate = [](T v, T lo, T d, int n, std::size_t& index, T& frac) {
+      const T s = (v - lo) / d;
+      int i = static_cast<int>(floor(s));
+      i = std::clamp(i, 0, n - 2);  // the last grid line belongs to the last cell
+      index = static_cast<std::size_t>(i);
+      frac = s - T(i);
+    };
+    Cell c;
+    std::size_t i = 0;
+    std::size_t j = 0;
+    locate(x, x_min_, dx_, nx_, i, c.t);
+    locate(y, y_min_, dy_, ny_, j, c.u);
+    c.k = j * static_cast<std::size_t>(nx_) + i;
+    return c;
+  }
+
+  /// (H_0, H_1) and (G_0, G_1) at t, and their derivatives in t.
+  [[nodiscard]] static std::array<T, 2> h(T t) noexcept {
+    const T h1 = t * t * (T(3) - T(2) * t);
+    return {T(1) - h1, h1};
+  }
+  [[nodiscard]] static std::array<T, 2> g(T t) noexcept {
+    const T s = T(1) - t;
+    return {t * s * s, -t * t * s};
+  }
+  [[nodiscard]] static std::array<T, 2> dh(T t) noexcept {
+    const T d = T(6) * t * (T(1) - t);  // H_1' = 6t - 6t^2, H_0' = -H_1'
+    return {-d, d};
+  }
+  [[nodiscard]] static std::array<T, 2> dg(T t) noexcept {
+    return {(T(1) - t) * (T(1) - T(3) * t), t * (T(3) * t - T(2))};
+  }
+
+  /// Finite differences of second order (ADR 0051, point 5): central inside,
+  /// (-3 z_0 + 4 z_1 - z_2) / (2 d) and (3 z_{n-1} - 4 z_{n-2} + z_{n-3}) / (2 d) at the edges;
+  /// z_x along x, z_y along y, z_xy as the y difference of z_x.
+  void estimate_derivatives() {
+    const auto nx = static_cast<std::size_t>(nx_);
+    const auto ny = static_cast<std::size_t>(ny_);
+    // The difference along a line of n values with stride `stride` from `first`.
+    const auto diff = [](const std::vector<T>& v, std::size_t first, std::size_t stride,
+                         std::size_t n, std::size_t i, T d) {
+      const auto at = [&](std::size_t m) { return v[first + m * stride]; };
+      if (i == 0) return (T(-3) * at(0) + T(4) * at(1) - at(2)) / (T(2) * d);
+      if (i == n - 1) return (T(3) * at(n - 1) - T(4) * at(n - 2) + at(n - 3)) / (T(2) * d);
+      return (at(i + 1) - at(i - 1)) / (T(2) * d);
+    };
+    zx_.assign(nx * ny, T(0));
+    zy_.assign(nx * ny, T(0));
+    zxy_.assign(nx * ny, T(0));
+    for (std::size_t j = 0; j < ny; ++j) {
+      for (std::size_t i = 0; i < nx; ++i) zx_[j * nx + i] = diff(z_, j * nx, 1, nx, i, dx_);
+    }
+    for (std::size_t i = 0; i < nx; ++i) {
+      for (std::size_t j = 0; j < ny; ++j) {
+        zy_[j * nx + i] = diff(z_, i, nx, ny, j, dy_);
+        zxy_[j * nx + i] = diff(zx_, i, nx, ny, j, dy_);
+      }
+    }
+  }
+
+  int nx_;
+  int ny_;
+  T dx_;
+  T dy_;
+  T x0_;
+  T y0_;
+  std::vector<T> z_;
+  std::vector<T> zx_;
+  std::vector<T> zy_;
+  std::vector<T> zxy_;
+  bool derivatives_given_ = false;
+  T x_min_ = T(0);
+  T x_max_ = T(0);
+  T y_min_ = T(0);
+  T y_max_ = T(0);
 };
 
 }  // namespace rtt::geom

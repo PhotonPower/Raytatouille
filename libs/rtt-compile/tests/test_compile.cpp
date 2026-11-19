@@ -416,7 +416,10 @@ TEST_CASE("a Zernike sag term compiles to a stack on its base (ADR 0051)", "[com
   // geom::Stacked with the conic as base, and a surface without terms stays its base shape.
   System s = load("m1/singlet_const.rtt.json");
   auto& lens = std::get<Element>(s.root.children[1].value);
-  lens.surfaces[0].shape.terms.push_back(rtt::model::ZernikeSag{Param(10.0), {Param(1e-3)}});
+  // In place: a temporary of the term variant trips a false -Wmaybe-uninitialized in GCC 13 at
+  // -O3 (the destructor of the GridSag alternative, #316).
+  lens.surfaces[0].shape.terms.emplace_back(std::in_place_type<rtt::model::ZernikeSag>, Param(10.0),
+                                            std::vector<Param>{Param(1e-3)});
   const MaterialLibrary lib;
   const CompiledSystem cs = compile(s, lib);
   const auto* stacked =

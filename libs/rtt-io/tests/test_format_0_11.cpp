@@ -395,3 +395,40 @@ TEST_CASE("xy_polynomial: canonical form, round trip, parameters, version (ADR 0
       rtt::model::XyPolynomial{Param(12.0), std::vector<Param>(231, Param(0.0))}};
   CHECK(rtt::model::has_errors(rtt::model::validate(s)));
 }
+
+TEST_CASE("grid_sag: canonical form, round trip, no parameters, version (ADR 0051, point 5)",
+          "[io][0.11]") {
+  System s = rtt::model::test::make_singlet();
+  auto& lens = rtt::model::test::element(s, 1);
+  std::vector<double> z(9, 0.0);
+  z[4] = -1e-3;
+  lens.surfaces[0].shape.terms = {rtt::model::GridSag{3, 3, 20.0, 20.0, 0.0, 0.5, z, {}, {}, {}}};
+  const json j = json::parse(rtt::io::to_json(s));
+  const json& t = j["root"]["children"][1]["surfaces"][0]["shape"]["terms"];
+  // decenter_x = 0 and the missing derivatives are not written.
+  CHECK(t[0] == json::parse(R"({"type": "grid_sag", "nx": 3, "ny": 3, "spacing_x": 20.0,
+      "spacing_y": 20.0, "decenter_y": 0.5,
+      "sag": [0.0, 0.0, 0.0, 0.0, -0.001, 0.0, 0.0, 0.0, 0.0]})"));
+  CHECK(rtt::io::parse_system(j.dump()) == s);
+  CHECK_FALSE(rtt::model::has_errors(rtt::model::validate(s)));
+  // With derivatives the three lists are written and read back.
+  lens.surfaces[0].shape.terms = {rtt::model::GridSag{3, 3, 20.0, 20.0, 0.0, 0.5, z, z, z, z}};
+  CHECK(rtt::io::parse_system(rtt::io::to_json(s)) == s);
+  // Grid values are not Params: for_each_param visits nothing below the term.
+  std::vector<std::string> pointers;
+  rtt::model::for_each_param(s,
+                             [&](std::string_view p, const Param&) { pointers.emplace_back(p); });
+  const std::string term = "/root/children/1/surfaces/0/shape/terms/0";
+  CHECK(std::none_of(pointers.begin(), pointers.end(),
+                     [&](const std::string& p) { return p.starts_with(term); }));
+  // Before 0.11 the new term type is a read error at its type; nx must be an integer.
+  json old = j;
+  old["schema_version"] = "0.10.0";
+  CHECK(error_pointer(old.dump()) == term + "/type");
+  json bad = j;
+  bad["root"]["children"][1]["surfaces"][0]["shape"]["terms"][0]["nx"] = 3.5;
+  CHECK(error_pointer(bad.dump()) == term + "/nx");
+  bad = j;
+  bad["root"]["children"][1]["surfaces"][0]["shape"]["terms"][0]["sag"][2] = "a";
+  CHECK(error_pointer(bad.dump()) == term + "/sag/2");
+}
