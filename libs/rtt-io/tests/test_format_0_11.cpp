@@ -363,3 +363,35 @@ TEST_CASE("zernike_fringe_sag: canonical form, round trip, edit form, version (A
       rtt::model::ZernikeFringeSag{Param(12.0), std::vector<Param>(38, Param(0.0))}};
   CHECK(rtt::model::has_errors(rtt::model::validate(s)));
 }
+
+TEST_CASE("xy_polynomial: canonical form, round trip, parameters, version (ADR 0051, point 4)",
+          "[io][0.11]") {
+  System s = rtt::model::test::make_singlet();
+  auto& lens = rtt::model::test::element(s, 1);
+  Param c(1e-4);
+  c.variable = true;
+  lens.surfaces[0].shape.terms = {
+      rtt::model::XyPolynomial{Param(12.0), {Param(0.0), Param(2e-4), Param(0.0), c}}};
+  const json j = json::parse(rtt::io::to_json(s));
+  const json& t = j["root"]["children"][1]["surfaces"][0]["shape"]["terms"];
+  CHECK(t[0] == json::parse(R"({"type": "xy_polynomial", "normalization_radius": 12.0,
+      "coefficients": [0.0, 0.0002, 0.0, {"value": 0.0001, "variable": true}]})"));
+  CHECK(rtt::io::parse_system(j.dump()) == s);
+  CHECK_FALSE(rtt::model::has_errors(rtt::model::validate(s)));
+  // for_each_param visits the radius and every coefficient.
+  std::vector<std::string> pointers;
+  rtt::model::for_each_param(s,
+                             [&](std::string_view p, const Param&) { pointers.emplace_back(p); });
+  const std::string term = "/root/children/1/surfaces/0/shape/terms/0";
+  for (const char* key : {"/normalization_radius", "/coefficients/0", "/coefficients/3"}) {
+    CHECK(std::find(pointers.begin(), pointers.end(), term + key) != pointers.end());
+  }
+  // Before 0.11 the new term type is a read error at its type.
+  json old = j;
+  old["schema_version"] = "0.10.0";
+  CHECK(error_pointer(old.dump()) == term + "/type");
+  // Too many coefficients are a validation error, not a read error.
+  lens.surfaces[0].shape.terms = {
+      rtt::model::XyPolynomial{Param(12.0), std::vector<Param>(231, Param(0.0))}};
+  CHECK(rtt::model::has_errors(rtt::model::validate(s)));
+}

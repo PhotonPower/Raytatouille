@@ -96,6 +96,7 @@ from ._core import (
     ToleranceValueOverride,
     Toroid,
     WavefrontGenerator,
+    XyPolynomial,
     ZernikeFringeSag,
     ZernikeSag,
 )
@@ -176,6 +177,7 @@ __all__ = [
     "ToleranceValueOverride",
     "Toroid",
     "WavefrontGenerator",
+    "XyPolynomial",
     "ZernikeFringeSag",
     "ZernikeSag",
 ]

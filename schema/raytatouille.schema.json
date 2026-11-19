@@ -640,6 +640,15 @@
             "normalization_radius": {"$ref": "#/$defs/param"},
             "coefficients": {"$ref": "#/$defs/param_list"}
           }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "normalization_radius"],
+          "description": "XY polynomial (ADR 0051, point 4, schema 0.11): sum of c_k (x / R)^i (y / R)^j without a constant term, coefficients[0] = x, then y, x^2, x y, y^2, x^3, ... (degree ascending, power of x descending), in mm, at most 230 (degree 20).",
+          "properties": {
+            "type": {"const": "xy_polynomial"},
+            "normalization_radius": {"$ref": "#/$defs/param"},
+            "coefficients": {"$ref": "#/$defs/param_list"}
+          }
         }
       ]
     },

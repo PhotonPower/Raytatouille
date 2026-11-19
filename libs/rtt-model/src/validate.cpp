@@ -618,9 +618,9 @@ class Validator {
   }
 
   /// ADR 0043, point 2 (F3): Q-con and Q-bfs extrapolate beyond the normalization radius, and so
-  /// do the Zernike terms (ADR 0051, point 1); a warning if the largest distance of the aperture
-  /// from the axis (radius, half the diagonal, the major semi-axis) exceeds it by more than 1e-9
-  /// relative. No aperture, no warning.
+  /// do the Zernike terms and the XY polynomial (ADR 0051, point 1); a warning if the largest
+  /// distance of the aperture from the axis (radius, half the diagonal, the major semi-axis)
+  /// exceeds it by more than 1e-9 relative. No aperture, no warning.
   void check_normalization_extent(const Surface& s, const std::string& loc) {
     if (!s.aperture) return;
     std::vector<std::pair<const Param*, std::string>> radii;
@@ -771,6 +771,23 @@ class Validator {
               if (term.coefficients.empty())
                 report("shape.zernike_without_coefficients", t + "/coefficients",
                        "Zernike term without coefficients");
+            } else if constexpr (std::is_same_v<S, XyPolynomial>) {
+              // At most 230 terms (degree 20), R finite and > 0 (ADR 0051, point 4).
+              if (term.coefficients.size() > 230) {
+                report("shape.xy_terms_invalid", t + "/coefficients", "at most 230 coefficients");
+              }
+              check_param(term.normalization_radius, t + "/normalization_radius", true);
+              for (std::size_t k = 0; k < term.coefficients.size(); ++k) {
+                check_param(term.coefficients[k], idx(t + "/coefficients", k), false);
+              }
+              if (!term.normalization_radius.is_bound() &&
+                  !finite_positive(term.normalization_radius.value)) {
+                report("shape.xy_radius_invalid", t + "/normalization_radius",
+                       "normalization radius must be > 0 mm");
+              }
+              if (term.coefficients.empty())
+                report("shape.xy_without_coefficients", t + "/coefficients",
+                       "XY polynomial without coefficients");
             } else {
               static_assert(kUnhandledShape<S>, "check_shape: unhandled shape term");
             }

@@ -338,6 +338,20 @@ std::vector<Case> cases() {
        [](System& s) {
          element(s, 1).surfaces[0].shape.terms.push_back(ZernikeSag{Param(10.0), {}});
        }},
+      {"shape.xy_radius_invalid", "/root/children/1/surfaces/0/shape/terms/0/normalization_radius",
+       [](System& s) {
+         element(s, 1).surfaces[0].shape.terms.push_back(
+             rtt::model::XyPolynomial{Param(-1.0), {Param(1e-3)}});
+       }},
+      {"shape.xy_terms_invalid", "/root/children/1/surfaces/0/shape/terms/0/coefficients",
+       [](System& s) {
+         element(s, 1).surfaces[0].shape.terms.push_back(
+             rtt::model::XyPolynomial{Param(10.0), std::vector<Param>(231, Param(0.0))});
+       }},
+      {"shape.xy_without_coefficients", "/root/children/1/surfaces/0/shape/terms/0/coefficients",
+       [](System& s) {
+         element(s, 1).surfaces[0].shape.terms.push_back(rtt::model::XyPolynomial{Param(10.0), {}});
+       }},
       {"surface_aperture.radius_invalid", "/root/children/1/surfaces/0/aperture/radius",
        [](System& s) { element(s, 1).surfaces[0].aperture = CircularAperture{0.0, 0.0}; }},
       {"surface_aperture.inner_radius_invalid", "/root/children/1/surfaces/0/aperture/inner_radius",

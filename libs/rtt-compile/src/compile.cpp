@@ -1086,6 +1086,10 @@ class Compiler {
             } else if constexpr (std::is_same_v<S, model::ZernikeFringeSag>) {
               const std::vector<double> a = values(t.coefficients);
               return geom::ZernikeTerm<double>::fringe(t.normalization_radius.value, a);
+            } else if constexpr (std::is_same_v<S, model::XyPolynomial>) {
+              // validate() guarantees a finite radius > 0 and at most 230 coefficients.
+              return geom::XyPolynomialTerm<double>(t.normalization_radius.value,
+                                                    values(t.coefficients));
             } else {
               static_assert(kUnhandledShape<S>, "compile_shape: unhandled shape term");
             }

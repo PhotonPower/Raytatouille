@@ -803,8 +803,9 @@ Schlüssel & Inhalt \\ \midrule \endhead
   \code{toroid} und \code{cylinder} (Kapitel~\ref{chap:flaechen}). \\
 \code{shape.terms} & additive Terme auf der Basis (ADR~0051): \code{zernike_sag} (Noll,
   orthonormal wie die Fit-Analyse, \code{coefficients[0]} ist $j = 1$) und ab Schema~0.11
-  \code{zernike_fringe_sag} (Fringe-Satz, am Rand 1, höchstens 37 Terme), beide mit
-  \code{normalization_radius} und Koeffizienten in mm. Nicht rotationssymmetrische Terme
+  \code{zernike_fringe_sag} (Fringe-Satz, am Rand 1, höchstens 37 Terme) und
+  \code{xy_polynomial} ($\sum c_k (x/R)^i (y/R)^j$ in der Reihenfolge $x, y, x^2, xy, y^2, x^3,
+  \ldots$, höchstens 230 Terme), alle mit \code{normalization_radius} und Koeffizienten in mm. Nicht rotationssymmetrische Terme
   brauchen für die Zielung den Bezug eines Nennsystems. \\
 \code{aperture} & \code{circular} (\code{radius}, optional \code{inner_radius} für einen Ring),
   \code{rectangular} (\code{half_width_x}, \code{half_width_y}) oder \code{elliptical}
@@ -1497,7 +1498,7 @@ Klasse & Attribute und Bedeutung \\ \midrule \endhead
   \code{phases}, \code{diffraction_efficiency}, \code{interaction} \\
 \code{ShapeStack} & \code{base} (\code{Plane}, \code{Conic} mit \code{radius},
   \code{conic}; \code{EvenAsphere} zusätzlich mit \code{coefficients}), \code{terms}
-  (\code{ZernikeSag}, \code{ZernikeFringeSag}) \\
+  (\code{ZernikeSag}, \code{ZernikeFringeSag}, \code{XyPolynomial}) \\
 Aperturen & \code{CircularAperture} (\code{radius}, \code{inner_radius}),
   \code{RectangularAperture} (\code{half_width_x}, \code{half_width_y}),
   \code{EllipticalAperture} (\code{semi_axis_x}, \code{semi_axis_y}),
@@ -4142,7 +4143,7 @@ Wellenfront statt Spot (\code{rt.analysis.opd_points} braucht dieselbe Zielung; 
 
 \begin{itemize}
   \item \textbf{Freiformflächen} sind erst zum Teil da: Zernike-Terme nach Noll und im
-        Fringe-Satz (ADR~0051); XY-Polynome und Grid-Sag folgen in M8.
+        Fringe-Satz und XY-Polynome (ADR~0051); Grid-Sag folgt in M8.
   \item \textbf{Zielung nur für rotationssymmetrische und anamorphe Pfade.} Gekippte,
         dezentrierte und gefaltete Pfade brauchen eigene Startstrahlen
         (Kapitel~\ref{chap:toleranz}); ebenso Pfade mit Axicon oder ungerader Asphäre mit
@@ -5122,6 +5123,7 @@ Klasse & Attribute und Methoden \\ \midrule \endhead
 \code{VariableValue} & \code{pointer}, \code{row}, \code{configuration}, \code{start}, \code{end}, \code{changed}, \code{at_bound} \\
 \code{WavefrontGenerator} & \code{path}, \code{configuration}, \code{fields}, \code{wavelengths}, \code{rings}, \code{arms}, \code{weight} \\
 \code{Wavelength} & \code{um}, \code{weight}, \code{reference} \\
+\code{XyPolynomial} & \code{normalization_radius}, \code{coefficients} \\
 \code{Yield} & \code{good}, \code{total}, \code{fraction}, \code{lower}, \code{upper} \\
 \code{ZernikeFit} & \code{path}, \code{field}, \code{wavelength}, \code{wavelength_um}, \code{reference_wavelength_um}, \code{coefficients}, \code{residual_rms}, \code{sigma}, \code{sigma_bf}, \code{strehl}, \code{cells}, \code{arrived_fraction}, \code{warnings} \\
 \code{ZernikeSag} & \code{normalization_radius}, \code{coefficients} \\
@@ -5346,9 +5348,12 @@ Code & S & Quelle & Kurztext \\ \midrule \endhead
 \texttt{shape.axicon\_angle\_invalid} & F & validate & axicon angle not finite or |angle| >= 90 deg \\
 \texttt{shape.conic\_without\_curvature} & W & validate & conic constant != 0 at curvature 0: without effect (plane base) \\
 \texttt{shape.curvature\_invalid} & F & validate & curvature not finite \\
-\texttt{shape.normalization\_radius\_exceeded} & W & validate & aperture beyond the normalization radius of Q-con, Q-bfs or a Zernike term: extrapolated there \\
+\texttt{shape.normalization\_radius\_exceeded} & W & validate & aperture beyond the normalization radius of Q-con, Q-bfs, a Zernike term or an XY polynomial: extrapolated there \\
 \texttt{shape.normalization\_radius\_invalid} & F & validate & normalization radius not finite or <= 0 mm; at Q-bfs (1 + k) c\textasciicircum{}2 rho\textasciicircum{}2 >= 1 \\
 \texttt{shape.radius\_invalid} & F & validate & radius zero or not finite \\
+\texttt{shape.xy\_radius\_invalid} & F & validate & XY polynomial normalization radius not finite or <= 0 mm \\
+\texttt{shape.xy\_terms\_invalid} & F & validate & more than 230 XY polynomial coefficients (degree 20) \\
+\texttt{shape.xy\_without\_coefficients} & W & validate & XY polynomial without coefficients \\
 \texttt{shape.zernike\_radius\_invalid} & F & validate & Zernike normalization radius not finite or <= 0 mm \\
 \texttt{shape.zernike\_terms\_invalid} & F & validate & more than 231 Noll or 37 Fringe Zernike coefficients \\
 \texttt{shape.zernike\_unsupported} & F & compile & Zernike sag terms were not supported before M8; no longer produced (ADR 0051) \\

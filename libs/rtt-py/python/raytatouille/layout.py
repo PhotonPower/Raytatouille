@@ -81,8 +81,8 @@ class SurfaceLayout(NamedTuple):
     decenter_y, rotation_deg); the centre lies at (decenter_x, decenter_y) in the local frame and
     rotation_deg turns the shape's axes from +x towards +y. They block light but do not cut the
     profile of the surface (unlike inner_radius). ``terms`` lists the additive terms of the shape
-    stack (ADR 0051) as (type, scalars): "zernike_sag" and "zernike_fringe_sag" with
-    normalization_radius (mm) and terms (the number of coefficients); ``shape`` and its fields
+    stack (ADR 0051) as (type, scalars): "zernike_sag", "zernike_fringe_sag" and "xy_polynomial"
+    with normalization_radius (mm) and terms (the number of coefficients); ``shape`` and its fields
     then describe the base. The coefficients themselves are in the system file.
 
     ``medium_front`` and ``medium_back`` index CompiledSystem.media: the media before and after

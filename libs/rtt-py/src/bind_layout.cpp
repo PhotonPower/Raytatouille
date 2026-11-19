@@ -186,8 +186,9 @@ ShapeData shape_data(const compile::CompiledShape& shape) {
       shape);
 }
 
-/// The terms of a stack as (type, scalars) (ADR 0051, point 6): Zernike terms with
-/// normalization_radius and terms (the number of coefficients). Empty for a shape without terms.
+/// The terms of a stack as (type, scalars) (ADR 0051, point 6): Zernike terms and the XY
+/// polynomial with normalization_radius and terms (the number of coefficients). Empty for a shape
+/// without terms.
 nb::list terms_data(const compile::CompiledShape& shape) {
   nb::list out;
   const auto* stacked = std::get_if<geom::Stacked<double>>(&shape);
@@ -196,10 +197,18 @@ nb::list terms_data(const compile::CompiledShape& shape) {
     std::visit(
         [&out](const auto& t) {
           using T = std::decay_t<decltype(t)>;
-          static_assert(std::is_same_v<T, geom::ZernikeTerm<double>>, "terms_data: unhandled term");
-          std::map<std::string, double> p{{"normalization_radius", t.normalization_radius()},
-                                          {"terms", static_cast<double>(t.entries().size())}};
-          out.append(nb::make_tuple(t.fringe() ? "zernike_fringe_sag" : "zernike_sag", p));
+          if constexpr (std::is_same_v<T, geom::ZernikeTerm<double>>) {
+            std::map<std::string, double> p{{"normalization_radius", t.normalization_radius()},
+                                            {"terms", static_cast<double>(t.entries().size())}};
+            out.append(nb::make_tuple(t.fringe() ? "zernike_fringe_sag" : "zernike_sag", p));
+          } else if constexpr (std::is_same_v<T, geom::XyPolynomialTerm<double>>) {
+            std::map<std::string, double> p{
+                {"normalization_radius", t.normalization_radius()},
+                {"terms", static_cast<double>(t.coefficients().size())}};
+            out.append(nb::make_tuple("xy_polynomial", p));
+          } else {
+            static_assert(kUnhandledShape<T>, "terms_data: unhandled term");
+          }
         },
         term);
   }

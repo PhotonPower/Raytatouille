@@ -2,9 +2,11 @@
 
 /// @file terms.hpp
 /// Additive sag terms of a shape stack (ADR 0041, point 1; ADR 0051): Zernike terms after Noll
-/// (orthonormal) and in the Fringe set (without normalisation). A term is evaluated in the local
-/// x, y of its surface, in mm, also beyond its normalisation radius (ADR 0051, point 1).
+/// (orthonormal) and in the Fringe set (without normalisation), and the XY polynomial. A term is
+/// evaluated in the local x, y of its surface, in mm, also beyond its normalisation radius
+/// (ADR 0051, point 1).
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -199,6 +201,132 @@ class ZernikeTerm final {
   std::vector<Entry> entries_;
   bool fringe_ = false;
   int max_m_ = 0;
+};
+
+/// Largest degree of the XY polynomial (ADR 0051, point 4).
+inline constexpr int kMaxXyDegree = 20;
+/// Number of XY polynomial terms up to degree 20: sum_{d=1}^{20} (d + 1) = 230 (ADR 0051, point 4).
+inline constexpr int kMaxXyTerms = 230;
+
+/// Exponents (i, j) of x^i y^j of XY polynomial term k = 1 ... 230 (ADR 0051, point 4; [UG]
+/// "Extended Polynomial"): degree d = 1, 2, ... ascending, within a degree x^d, x^(d-1) y, ...,
+/// y^d. So k = 1 is x, 2 is y, 3 is x^2, 4 is xy, 5 is y^2, 12 is x^2 y^2, 13 is x y^3.
+/// @throws std::invalid_argument for k outside [1, kMaxXyTerms]
+[[nodiscard]] inline std::pair<int, int> xy_polynomial_powers(int k) {
+  if (k < 1 || k > kMaxXyTerms) {
+    throw std::invalid_argument("XY polynomial: term must lie in [1, 230]");
+  }
+  // Terms before degree d: sum_{e=1}^{d-1} (e + 1) = (d - 1)(d + 2)/2.
+  int d = 1;
+  while (d * (d + 3) / 2 < k) ++d;              // d (d + 3)/2 terms up to degree d
+  const int p = k - 1 - (d - 1) * (d + 2) / 2;  // position within degree d, 0 ... d
+  return {d - p, p};
+}
+
+/// XY polynomial z = sum_k c_k (x/R)^i_k (y/R)^j_k without a constant term, coefficients in mm,
+/// R the normalisation radius in mm; the order of xy_polynomial_powers() (ADR 0051, point 4; [UG]
+/// "Extended Polynomial", the polynomial part without the base conic).
+template <rtt::math::Real T>
+class XyPolynomialTerm final {
+ public:
+  /// `coefficients[k]` belongs to term k + 1, in mm.
+  /// @throws std::invalid_argument unless R > 0 is finite and there are at most 230 coefficients
+  XyPolynomialTerm(T normalization_radius, std::vector<T> coefficients)
+      : radius_(normalization_radius), c_(std::move(coefficients)) {
+    if (!(radius_ > T(0)) || !std::isfinite(static_cast<double>(radius_))) {
+      throw std::invalid_argument("XY polynomial: normalization radius must be finite and > 0 mm");
+    }
+    if (c_.size() > static_cast<std::size_t>(kMaxXyTerms)) {
+      throw std::invalid_argument("XY polynomial: at most 230 coefficients");
+    }
+    for (std::size_t k = 0; k < c_.size(); ++k) {
+      const auto [i, j] = xy_polynomial_powers(static_cast<int>(k) + 1);
+      powers_.push_back({i, j});
+      degree_ = std::max(degree_, i + j);
+    }
+  }
+
+  /// z in mm at the local point (x, y) in mm.
+  [[nodiscard]] T sag(T x, T y) const noexcept {
+    const Powers p = powers(x, y);
+    T z = T(0);
+    for (std::size_t k = 0; k < c_.size(); ++k) {
+      const auto [i, j] = powers_[k];
+      z += c_[k] * p.u[static_cast<std::size_t>(i)] * p.v[static_cast<std::size_t>(j)];
+    }
+    return z;
+  }
+
+  /// (dz/dx, dz/dy), dimensionless: dz/dx = (1/R) sum_k c_k i u^(i-1) v^j and dz/dy = (1/R)
+  /// sum_k c_k j u^i v^(j-1), u = x/R, v = y/R.
+  [[nodiscard]] std::pair<T, T> grad(T x, T y) const noexcept {
+    const Powers p = powers(x, y);
+    T gx = T(0);
+    T gy = T(0);
+    for (std::size_t k = 0; k < c_.size(); ++k) {
+      const auto [i, j] = powers_[k];
+      const auto ui = static_cast<std::size_t>(i);
+      const auto vj = static_cast<std::size_t>(j);
+      if (i >= 1) gx += c_[k] * T(i) * p.u[ui - 1] * p.v[vj];
+      if (j >= 1) gy += c_[k] * T(j) * p.u[ui] * p.v[vj - 1];
+    }
+    return {gx / radius_, gy / radius_};
+  }
+
+  /// Unbounded: a polynomial is defined everywhere.
+  [[nodiscard]] std::optional<T> max_radius() const noexcept { return std::nullopt; }
+
+  /// Taylor expansion at the vertex, exact (ADR 0051, point 4): value 0, slope (c_x, c_y)/R,
+  /// Hessian (2 c_x2, c_xy, 2 c_y2)/R^2; b4 = c_x4 / R^4. Rotational to fourth order exactly when
+  /// c_x = c_y = c_xy = 0, c_x2 = c_y2, every third-degree term 0, c_x4 = c_y4 = c_x2y2 / 2 and
+  /// c_x3y = c_xy3 = 0, since (x^2 + y^2)^2 = x^4 + 2 x^2 y^2 + y^4. Order 4; as a term K = 0 and
+  /// A4 = b4 - c^3 / 8 (ADR 0041, point 1).
+  [[nodiscard]] VertexExpansion<T> vertex_expansion() const {
+    // c(k): coefficient of term k (1-based), 0 beyond the list.
+    const auto c = [this](std::size_t k) { return k <= c_.size() ? c_[k - 1] : T(0); };
+    VertexExpansion<T> e;
+    e.order = 4;
+    const T r2 = radius_ * radius_;
+    e.slope = {c(1) / radius_, c(2) / radius_};
+    e.hessian[0] = T(2) * c(3) / r2;
+    e.hessian[1] = c(4) / r2;
+    e.hessian[2] = T(2) * c(5) / r2;
+    e.rotational4 = c(1) == T(0) && c(2) == T(0) && c(4) == T(0) && c(3) == c(5) && c(6) == T(0) &&
+                    c(7) == T(0) && c(8) == T(0) && c(9) == T(0) && c(10) == c(14) &&
+                    c(12) == T(2) * c(10) && c(11) == T(0) && c(13) == T(0);
+    const T b4 = c(10) / (r2 * r2);
+    const T cc = e.hessian[0];
+    e.a4 = b4 - cc * cc * cc / T(8);
+    return e;
+  }
+
+  [[nodiscard]] T normalization_radius() const noexcept { return radius_; }
+  /// c_1, c_2, ... in mm.
+  [[nodiscard]] std::span<const T> coefficients() const noexcept { return c_; }
+
+ private:
+  struct Powers {
+    std::array<T, kMaxXyDegree + 1> u{};  ///< (x/R)^i
+    std::array<T, kMaxXyDegree + 1> v{};  ///< (y/R)^j
+  };
+
+  [[nodiscard]] Powers powers(T x, T y) const noexcept {
+    Powers p;
+    const T u = x / radius_;
+    const T v = y / radius_;
+    p.u[0] = T(1);
+    p.v[0] = T(1);
+    for (std::size_t i = 1; i <= static_cast<std::size_t>(degree_); ++i) {
+      p.u[i] = p.u[i - 1] * u;
+      p.v[i] = p.v[i - 1] * v;
+    }
+    return p;
+  }
+
+  T radius_;
+  std::vector<T> c_;
+  std::vector<std::pair<int, int>> powers_;
+  int degree_ = 0;
 };
 
 }  // namespace rtt::geom
