@@ -109,7 +109,7 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
     {"element.material_not_allowed", Severity::Error, "validate",
      "thin element, stop or detector with a material"},
     {"element.plate_surface_not_plane", Severity::Error, "validate",
-     "plate surface is not a plane"},
+     "plate surface is not a plane or has terms"},
     {"element.segment_count", Severity::Error, "validate",
      "number of segment materials does not match the surfaces"},
     {"element.surface_count", Severity::Error, "validate",
@@ -323,14 +323,17 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "conic constant != 0 at curvature 0: without effect (plane base)"},
     {"shape.curvature_invalid", Severity::Error, "validate", "curvature not finite"},
     {"shape.normalization_radius_exceeded", Severity::Warning, "validate",
-     "aperture beyond the normalization radius of Q-con or Q-bfs: extrapolated there"},
+     "aperture beyond the normalization radius of Q-con, Q-bfs or a Zernike term: extrapolated "
+     "there"},
     {"shape.normalization_radius_invalid", Severity::Error, "validate",
      "normalization radius not finite or <= 0 mm; at Q-bfs (1 + k) c^2 rho^2 >= 1"},
     {"shape.radius_invalid", Severity::Error, "validate", "radius zero or not finite"},
     {"shape.zernike_radius_invalid", Severity::Error, "validate",
      "Zernike normalization radius not finite or <= 0 mm"},
+    {"shape.zernike_terms_invalid", Severity::Error, "validate",
+     "more than 231 Noll or 37 Fringe Zernike coefficients"},
     {"shape.zernike_unsupported", Severity::Error, "compile",
-     "Zernike sag terms are not supported yet"},
+     "Zernike sag terms were not supported before M8; no longer produced (ADR 0051)"},
     {"shape.zernike_without_coefficients", Severity::Warning, "validate",
      "Zernike term without coefficients"},
     {"stop.aperture_missing", Severity::Error, "validate",
@@ -506,6 +509,20 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
     {"zmx.unit_unsupported", Severity::Error, "zmx", "ZMX lens unit other than MM, CM, IN, METER"},
     {"zmx.vignetting_unsupported", Severity::Error, "zmx", "ZMX vignetting factors != 0"},
 });
+
+/// Codes that stay registered but are no longer produced (ADR 0022: a code is never removed or
+/// reused; docs/diagnostics.md marks them). Sorted.
+inline constexpr std::array<std::string_view, 1> kRetiredCodes = {
+    "shape.zernike_unsupported",  // ADR 0051: Zernike terms are compiled since M8
+};
+
+/// True if `code` is registered but no longer produced (kRetiredCodes).
+[[nodiscard]] constexpr bool is_retired(std::string_view code) noexcept {
+  for (const std::string_view c : kRetiredCodes) {
+    if (c == code) return true;
+  }
+  return false;
+}
 
 /// Registry entry of `code`, or nullptr if it is not registered.
 [[nodiscard]] constexpr const CodeInfo* find_code(std::string_view code) noexcept {

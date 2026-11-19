@@ -98,8 +98,11 @@ Format essentials (`rt.schema("system")` returns the full JSON schema as a dict)
   `decenter_x`, `decenter_y` and (not the circle) `rotation_deg`; a ray inside ends VIGNETTED,
   e.g. a spider or a secondary mirror shadow. `phases`: `linear_grating`
   (`lines_per_mm`, `orientation_deg`), `radial_phase` (`normalization_radius`, `coefficients`
-  in rad), with optional `diffraction_efficiency`. `shape.terms` (`zernike_sag`) is read but
-  not compiled (`shape.zernike_unsupported`).
+  in rad), with optional `diffraction_efficiency`. `shape.terms` adds to the base: `zernike_sag`
+  (Noll, orthonormal as `analysis.zernike`, `coefficients[0]` is j = 1, up to 231) and
+  `zernike_fringe_sag` (Fringe set, 1 at the rim, `coefficients[k]` is term k + 1, up to 37), both
+  with `normalization_radius`, coefficients in mm. Terms that are not rotationally symmetric need
+  a nominal reference for aiming (`reference=` of spot and OPD options).
   `interaction`: `fresnel` (default), `ideal_mirror`, `absorber`, `ideal_beam_splitter`,
   `ideal_polarizer`, `ideal_retarder`, `ideal_lens`, `coating` (`"name": "CAT:NAME"`), … .
 - Materials: `CONST:n` or `CONST:n,k`, `AIR`, `VACUUM`, `CATALOG:NAME` from a loaded AGF file
@@ -479,5 +482,5 @@ glass(reference: str) -> GlassInfo
 glass_map(catalogs: Sequence[str] | None = None) -> GlassMap
 ```
 
-Model classes (`rt.model`, read-only views of `System`): `Absorber`, `ApertureReading`, `Assembly`, `Axicon`, `Biconic`, `CircularAperture`, `CircularObscuration`, `Compensator`, `Configuration`, `CoatingRef`, `Conic`, `Criterion`, `CrystalMaterial`, `Cylinder`, `DiffractionEfficiency`, `Element`, `ElementKind`, `EllipticalAperture`, `EllipticalObscuration`, `EvenAsphere`, `Event`, `EventKind`, `FieldSet`, `FieldType`, `FirstOrderOperand`, `FirstOrderQuantity`, `Fresnel`, `IdealAntiReflection`, `IdealBeamSplitter`, `IdealCylinderLens`, `IdealLens`, `IdealMirror`, `IdealPolarizer`, `IdealRetarder`, `LinearGrating`, `MonteCarloDefaults`, `ObjectSpace`, `OddAsphere`, `OpdRmsOperand`, `Optimization`, `Param`, `ParamValueOperand`, `ParameterRow`, `Path`, `Plane`, `PolygonAperture`, `Pose`, `PoseOrder`, `PoseReference`, `QBfs`, `QCon`, `RadialPhase`, `RayCoordinate`, `RayOperand`, `RectangularAperture`, `RectangularObscuration`, `RegularPolygonAperture`, `ShapeStack`, `SpotGenerator`, `SpotReference`, `SpotRmsOperand`, `Surface`, `SurfaceReference`, `SystemAperture`, `SystemApertureType`, `ToleranceClass`, `ToleranceClassOverride`, `ToleranceDistribution`, `ToleranceItem`, `ToleranceKind`, `TolerancePivotOverride`, `ToleranceSet`, `ToleranceValueOverride`, `Toroid`, `WavefrontGenerator`, `ZernikeSag`.
+Model classes (`rt.model`, read-only views of `System`): `Absorber`, `ApertureReading`, `Assembly`, `Axicon`, `Biconic`, `CircularAperture`, `CircularObscuration`, `Compensator`, `Configuration`, `CoatingRef`, `Conic`, `Criterion`, `CrystalMaterial`, `Cylinder`, `DiffractionEfficiency`, `Element`, `ElementKind`, `EllipticalAperture`, `EllipticalObscuration`, `EvenAsphere`, `Event`, `EventKind`, `FieldSet`, `FieldType`, `FirstOrderOperand`, `FirstOrderQuantity`, `Fresnel`, `IdealAntiReflection`, `IdealBeamSplitter`, `IdealCylinderLens`, `IdealLens`, `IdealMirror`, `IdealPolarizer`, `IdealRetarder`, `LinearGrating`, `MonteCarloDefaults`, `ObjectSpace`, `OddAsphere`, `OpdRmsOperand`, `Optimization`, `Param`, `ParamValueOperand`, `ParameterRow`, `Path`, `Plane`, `PolygonAperture`, `Pose`, `PoseOrder`, `PoseReference`, `QBfs`, `QCon`, `RadialPhase`, `RayCoordinate`, `RayOperand`, `RectangularAperture`, `RectangularObscuration`, `RegularPolygonAperture`, `ShapeStack`, `SpotGenerator`, `SpotReference`, `SpotRmsOperand`, `Surface`, `SurfaceReference`, `SystemAperture`, `SystemApertureType`, `ToleranceClass`, `ToleranceClassOverride`, `ToleranceDistribution`, `ToleranceItem`, `ToleranceKind`, `TolerancePivotOverride`, `ToleranceSet`, `ToleranceValueOverride`, `Toroid`, `WavefrontGenerator`, `ZernikeFringeSag`, `ZernikeSag`.
 <!-- END GENERATED -->

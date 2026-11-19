@@ -52,7 +52,7 @@ def test_result_format_carries_the_vertices() -> None:
     surfaces = layout.surfaces(rt.compile(rt.load(MIRROR)))
     text = surfaces[1].to_json()
     doc = json.loads(text)
-    assert doc["schema_version"] == results.SCHEMA_VERSION == "0.1.22"
+    assert doc["schema_version"] == results.SCHEMA_VERSION == "0.1.23"
     loaded = results.load_json(text).data
     vertices = surfaces[1].aperture_vertices
     assert vertices is not None

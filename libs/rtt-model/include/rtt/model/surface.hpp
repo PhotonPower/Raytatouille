@@ -126,14 +126,25 @@ struct QBfs {
 using BaseShape = std::
     variant<Plane, Conic, EvenAsphere, Biconic, Toroid, Cylinder, OddAsphere, Axicon, QCon, QBfs>;
 
-/// Additive Zernike sag term, Noll ordering (coefficients[0] = j = 1), coefficients in mm.
+/// Additive Zernike sag term, Noll ordering (coefficients[0] = j = 1), orthonormal polynomials
+/// (Niu/Tian Eq. (3), as rtt::math::zernike()), coefficients in mm; at most 231 (ADR 0051,
+/// point 2). rho = r / normalization_radius, theta from +x counter-clockwise.
 struct ZernikeSag {
   Param normalization_radius;  ///< mm
   std::vector<Param> coefficients;
   bool operator==(const ZernikeSag&) const = default;
 };
 
-using ShapeTerm = std::variant<ZernikeSag>;
+/// Additive Zernike sag term in the Fringe set: coefficients[k] belongs to Fringe term k + 1
+/// (Niu/Tian Table 4, j = k), polynomials without normalisation (Eq. (22), 1 at the rim),
+/// coefficients in mm; at most 37 (ADR 0051, point 3).
+struct ZernikeFringeSag {
+  Param normalization_radius;  ///< mm
+  std::vector<Param> coefficients;
+  bool operator==(const ZernikeFringeSag&) const = default;
+};
+
+using ShapeTerm = std::variant<ZernikeSag, ZernikeFringeSag>;
 
 /// Total sag = base + sum of terms (terms evaluated in the local xy plane).
 struct ShapeStack {

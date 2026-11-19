@@ -411,15 +411,24 @@ TEST_CASE("unknown materials throw CompileError pointing at the material", "[com
   }
 }
 
-TEST_CASE("model features beyond M1 throw CompileError", "[compile]") {
+TEST_CASE("a Zernike sag term compiles to a stack on its base (ADR 0051)", "[compile]") {
+  // Rejected with shape.zernike_unsupported before M8; since ADR 0051 the surface becomes
+  // geom::Stacked with the conic as base, and a surface without terms stays its base shape.
   System s = load("m1/singlet_const.rtt.json");
   auto& lens = std::get<Element>(s.root.children[1].value);
-
-  SECTION("Zernike sag term (M8)") {
-    lens.surfaces[0].shape.terms.push_back(rtt::model::ZernikeSag{Param(10.0), {Param(1e-3)}});
-    const CompileError e = compile_error(s);
-    REQUIRE(has_error_at(e, "/root/children/1/surfaces/0/shape/terms/0"));
-  }
+  lens.surfaces[0].shape.terms.push_back(rtt::model::ZernikeSag{Param(10.0), {Param(1e-3)}});
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+  const auto* stacked =
+      std::get_if<rtt::geom::Stacked<double>>(&cs.surfaces()[surface_index(cs, "L1.S1")].shape);
+  REQUIRE(stacked != nullptr);
+  CHECK(std::holds_alternative<rtt::geom::Conic<double>>(stacked->base()));
+  REQUIRE(stacked->terms().size() == 1);
+  // Piston only: z = a sqrt(1) R_0^0 = a everywhere on top of the conic.
+  const auto& conic = std::get<rtt::geom::Conic<double>>(stacked->base());
+  CHECK(stacked->sag(1.0, 2.0) == conic.sag(1.0, 2.0) + 1e-3);
+  CHECK_FALSE(std::holds_alternative<rtt::geom::Stacked<double>>(
+      cs.surfaces()[surface_index(cs, "L1.S2")].shape));
 }
 
 TEST_CASE("even asphere compiles to geom::EvenAsphere with c = 1/R", "[compile]") {

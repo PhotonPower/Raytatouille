@@ -729,3 +729,34 @@ def test_0_11_obscurations_are_accepted(obscurations):
 )
 def test_0_11_obscuration_errors_are_rejected(obscurations):
     assert not VALIDATOR.is_valid(_obscurations(obscurations))
+
+
+# ---- schema 0.11 (#316, ADR 0051, point 3): zernike_fringe_sag ----
+
+def _terms(terms):
+    doc = copy.deepcopy(load(ROOT / "tests" / "reference" / "m0" / "singlet.rtt.json"))
+    _lens(doc)["surfaces"][0]["shape"] = {"base": {"type": "plane"}, "terms": terms}
+    return doc
+
+
+@pytest.mark.parametrize(
+    "terms",
+    [[{"type": "zernike_fringe_sag", "normalization_radius": 10.0}],
+     [{"type": "zernike_fringe_sag", "normalization_radius": {"value": 10.0},
+       "coefficients": [0.0, {"value": 1e-4, "variable": True}]},
+      {"type": "zernike_sag", "normalization_radius": 10.0, "coefficients": [0.0, 1e-4]}]],
+    ids=["fringe", "fringe-and-noll"],
+)
+def test_0_11_fringe_terms_are_accepted(terms):
+    assert VALIDATOR.is_valid(_terms(terms))
+
+
+@pytest.mark.parametrize(
+    "terms",
+    [[{"type": "zernike_fringe_sag"}],
+     [{"type": "zernike_fringe_sag", "normalization_radius": 10.0, "order": "fringe"}],
+     [{"type": "zernike_standard_sag", "normalization_radius": 10.0}]],
+    ids=["no-radius", "extra-key", "unknown-type"],
+)
+def test_0_11_fringe_term_errors_are_rejected(terms):
+    assert not VALIDATOR.is_valid(_terms(terms))

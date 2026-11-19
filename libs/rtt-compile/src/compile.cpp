@@ -1065,23 +1065,40 @@ class Compiler {
     return lens;
   }
 
-  CompiledShape compile_shape(const model::ShapeStack& shape, const std::string& location) {
-    for (std::size_t k = 0; k < shape.terms.size(); ++k) {
-      std::visit(
-          [&](const auto& term) {
-            using S = std::decay_t<decltype(term)>;
+  CompiledShape compile_shape(const model::ShapeStack& shape,
+                              [[maybe_unused]] const std::string& location) {
+    geom::BaseShapeVariant<double> base = compile_base(shape.base);
+    if (shape.terms.empty()) {
+      // Without terms the surface is its base shape, as before (ADR 0051, point 1).
+      return std::visit([](auto&& b) -> CompiledShape { return std::forward<decltype(b)>(b); },
+                        std::move(base));
+    }
+    std::vector<geom::TermVariant<double>> terms;
+    terms.reserve(shape.terms.size());
+    for (const model::ShapeTerm& term : shape.terms) {
+      terms.push_back(std::visit(
+          [](const auto& t) -> geom::TermVariant<double> {
+            using S = std::decay_t<decltype(t)>;
+            // validate() guarantees a finite radius > 0 and at most 231 / 37 coefficients.
             if constexpr (std::is_same_v<S, model::ZernikeSag>) {
-              report("shape.zernike_unsupported", idx(location + "/terms", k),
-                     "Zernike sag terms are not supported before M8");
+              const std::vector<double> a = values(t.coefficients);
+              return geom::ZernikeTerm<double>::noll(t.normalization_radius.value, a);
+            } else if constexpr (std::is_same_v<S, model::ZernikeFringeSag>) {
+              const std::vector<double> a = values(t.coefficients);
+              return geom::ZernikeTerm<double>::fringe(t.normalization_radius.value, a);
             } else {
               static_assert(kUnhandledShape<S>, "compile_shape: unhandled shape term");
             }
           },
-          shape.terms[k]);
+          term));
     }
+    return geom::Stacked<double>(std::move(base), std::move(terms));
+  }
+
+  static geom::BaseShapeVariant<double> compile_base(const model::BaseShape& shape_base) {
     // Every base type has its own branch; a new one must not become a plane (ADR 0041, point 6).
     return std::visit(
-        [](const auto& base) -> CompiledShape {
+        [](const auto& base) -> geom::BaseShapeVariant<double> {
           using B = std::decay_t<decltype(base)>;
           if constexpr (std::is_same_v<B, model::Plane>) {
             return geom::Plane<double>{};
@@ -1128,7 +1145,7 @@ class Compiler {
             static_assert(kUnhandledShape<B>, "compile_shape: unhandled base shape");
           }
         },
-        shape.base);
+        shape_base);
   }
 
   /// `location` is the JSON pointer of the path in the system file. Inactive elements are

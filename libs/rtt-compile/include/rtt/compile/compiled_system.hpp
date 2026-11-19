@@ -28,6 +28,7 @@
 #include "rtt/geom/odd_asphere.hpp"
 #include "rtt/geom/phase.hpp"
 #include "rtt/geom/plane.hpp"
+#include "rtt/geom/stacked.hpp"
 #include "rtt/material/material.hpp"
 #include "rtt/math/isometry.hpp"
 #include "rtt/math/types.hpp"
@@ -39,12 +40,12 @@ class CoatingLibrary;  // rtt/coating/catalog.hpp
 
 namespace rtt::compile {
 
-/// Resolved base shape of a surface in its local coordinates: plane, conic, even asphere, the
+/// Resolved shape of a surface in its local coordinates: plane, conic, even asphere, the
 /// anamorphic biconic, toroid and cylinder (ADR 0042), the odd asphere, the axicon, Q-con and
-/// Q-bfs (ADR 0043);
-/// further shapes are added to this variant as rtt-geom provides them. The tracer visits it
-/// statically, so the intersection of each shape is called without virtual calls (ADR 0041,
-/// point 4).
+/// Q-bfs (ADR 0043), and a stack of a base with additive terms (geom::Stacked, ADR 0051,
+/// point 1) for a surface with terms; a surface without terms is its base shape. The tracer
+/// visits it statically, so the intersection of each shape is called without virtual calls
+/// (ADR 0041, point 4).
 using CompiledShape = std::variant<geom::Plane<double>,
                                    geom::Conic<double>,
                                    geom::EvenAsphere<double>,
@@ -54,7 +55,8 @@ using CompiledShape = std::variant<geom::Plane<double>,
                                    geom::OddAsphere<double>,
                                    geom::Axicon<double>,
                                    geom::QCon<double>,
-                                   geom::QBfs<double>>;
+                                   geom::QBfs<double>,
+                                   geom::Stacked<double>>;
 
 /// Resolved data of an ideal lens or ideal cylinder lens (ADR 0031): Params from the parameter
 /// table already resolved for the compiled configuration.

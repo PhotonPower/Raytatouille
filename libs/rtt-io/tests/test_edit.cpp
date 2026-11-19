@@ -153,7 +153,9 @@ void surface_keys(const json& s, const std::string& at) {
            {"qbfs", {"type", "curvature", "conic", "normalization_radius", "coefficients"}}},
           at + "/shape/base");
   for (const json& t : s["shape"]["terms"]) {
-    variant(t, {{"zernike_sag", {"type", "normalization_radius", "coefficients"}}},
+    variant(t,
+            {{"zernike_sag", {"type", "normalization_radius", "coefficients"}},
+             {"zernike_fringe_sag", {"type", "normalization_radius", "coefficients"}}},
             at + "/shape/terms");
   }
   if (s.contains("aperture")) {

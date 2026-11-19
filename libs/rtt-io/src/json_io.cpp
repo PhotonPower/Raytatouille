@@ -398,15 +398,17 @@ BaseShape read_base_shape(const Json& j, const Ctx& c) {
 
 ShapeTerm read_shape_term(const Json& j, const Ctx& c) {
   const std::string type = read_type(j, c);
-  if (type == "zernike_sag") {
+  const auto zernike = [&](auto z) -> ShapeTerm {
     expect_object(j, c, {"type", "normalization_radius", "coefficients"});
-    ZernikeSag z;
     z.normalization_radius =
         read_param(require(j, "normalization_radius", c), c.at("normalization_radius"));
     read_opt(j, "coefficients", c, z.coefficients, read_param_list);
     return z;
-  }
-  c.at("type").fail("unknown shape term type '" + type + "', expected zernike_sag");
+  };
+  if (type == "zernike_sag") return zernike(ZernikeSag{});
+  if (type == "zernike_fringe_sag") return zernike(ZernikeFringeSag{});  // ADR 0051, point 3
+  c.at("type").fail("unknown shape term type '" + type +
+                    "', expected zernike_sag or zernike_fringe_sag");
 }
 
 ShapeStack read_shape(const Json& j, const Ctx& c) {
@@ -795,9 +797,9 @@ struct Migration {
 ///   cylinder, odd_asphere, axicon, qcon and qbfs are new.
 /// - 0.9 -> 0.10 (ADR 0049): content unchanged, only the flag "active" of assemblies and elements
 ///   is new; without it every node is active.
-/// - 0.10 -> 0.11 (ADR 0050): content unchanged, aperture dimensions may now be Param objects (a
-///   number reads as before); the aperture types regular_polygon and polygon and the surface
-///   obscurations are new.
+/// - 0.10 -> 0.11 (ADR 0050, ADR 0051): content unchanged, aperture dimensions may now be Param
+///   objects (a number reads as before); the aperture types regular_polygon and polygon, the
+///   surface obscurations and the shape terms besides zernike_sag are new.
 Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
   const std::string ours(kSchemaVersion);
   const std::string mm = major_minor(version);
@@ -853,14 +855,32 @@ void check_0_9_forms(const Json& node, const Ctx& c) {
   }
 }
 
-/// Files before 0.11 (ADR 0050, points 1 to 3): the aperture types regular_polygon and polygon
-/// are an error at the type, an aperture dimension that is not a number (a Param object) at that
-/// dimension and the key "obscurations" at that key, so that a version is never silently
-/// upgraded.
+/// Files before 0.11 (ADR 0050, points 1 to 3; ADR 0051): the aperture types regular_polygon and
+/// polygon and a shape term other than zernike_sag are an error at the type, an aperture
+/// dimension that is not a number (a Param object) at that dimension and the key "obscurations"
+/// at that key, so that a version is never silently upgraded.
 void check_0_11_forms(const Json& node, const Ctx& c) {
   if (!node.is_object()) return;  // structural errors are reported by the reader
   if (const Json* surfaces = find(node, "surfaces"); surfaces != nullptr && surfaces->is_array()) {
     for (std::size_t i = 0; i < surfaces->size(); ++i) {
+      if (const Json* shape = find((*surfaces)[i], "shape");
+          shape != nullptr && shape->is_object()) {
+        if (const Json* terms = find(*shape, "terms"); terms != nullptr && terms->is_array()) {
+          for (std::size_t k = 0; k < terms->size(); ++k) {
+            const Json* type = find((*terms)[k], "type");
+            if (type != nullptr && type->is_string() && *type != "zernike_sag") {
+              c.at("surfaces")
+                  .at(i)
+                  .at("shape")
+                  .at("terms")
+                  .at(k)
+                  .at("type")
+                  .fail("the shape term '" + type->get<std::string>() +
+                        "' needs schema_version 0.11 or later (ADR 0051)");
+            }
+          }
+        }
+      }
       if (find((*surfaces)[i], "obscurations") != nullptr) {
         c.at("surfaces")
             .at(i)
@@ -1817,8 +1837,8 @@ class Writer {
         std::visit(
             [&](const auto& term) {
               using S = std::decay_t<decltype(term)>;
-              if constexpr (std::is_same_v<S, ZernikeSag>) {
-                to["type"] = "zernike_sag";
+              if constexpr (std::is_same_v<S, ZernikeSag> || std::is_same_v<S, ZernikeFringeSag>) {
+                to["type"] = std::is_same_v<S, ZernikeSag> ? "zernike_sag" : "zernike_fringe_sag";
                 to["normalization_radius"] = param(term.normalization_radius);
                 if (edit_ || !term.coefficients.empty()) {
                   to["coefficients"] = param_list(term.coefficients);

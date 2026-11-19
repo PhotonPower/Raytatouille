@@ -635,10 +635,19 @@ void bind_model_tree(nb::module_& m) {
               "(Param).");
   read_only_class<model::ZernikeSag>(
       m, "ZernikeSag",
-      "Additive Zernike sag term in Noll ordering, coefficients[0] is j = 1 (read-only copy).")
+      "Additive Zernike sag term in Noll ordering, orthonormal polynomials as "
+      "analysis.zernike(); coefficients[0] is j = 1 (ADR 0051; read-only copy).")
       .def_ro("normalization_radius", &model::ZernikeSag::normalization_radius,
               "Normalization radius in mm (Param).")
       .def_ro("coefficients", &model::ZernikeSag::coefficients,
+              "Zernike coefficients in mm (Param each).");
+  read_only_class<model::ZernikeFringeSag>(
+      m, "ZernikeFringeSag",
+      "Additive Zernike sag term in the Fringe set, polynomials without normalisation (1 at the "
+      "rim); coefficients[k] is Fringe term k + 1, at most 37 (ADR 0051; read-only copy).")
+      .def_ro("normalization_radius", &model::ZernikeFringeSag::normalization_radius,
+              "Normalization radius in mm (Param).")
+      .def_ro("coefficients", &model::ZernikeFringeSag::coefficients,
               "Zernike coefficients in mm (Param each).");
   read_only_class<model::ShapeStack>(
       m, "ShapeStack",
@@ -646,7 +655,7 @@ void bind_model_tree(nb::module_& m) {
       .def_ro("base", &model::ShapeStack::base,
               "Base shape: Plane, Conic, EvenAsphere, Biconic, Toroid, Cylinder, OddAsphere, "
               "Axicon, QCon or QBfs.")
-      .def_ro("terms", &model::ShapeStack::terms, "Additive terms (ZernikeSag).");
+      .def_ro("terms", &model::ShapeStack::terms, "Additive terms (ZernikeSag, ZernikeFringeSag).");
 
   // ------------------------------------------------------------- aperture -----
   read_only_class<model::CircularAperture>(m, "CircularAperture",

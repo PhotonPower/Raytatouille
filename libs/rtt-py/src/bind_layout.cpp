@@ -114,68 +114,96 @@ using ShapeData = std::tuple<std::string,
                              std::optional<double>,
                              std::optional<double>>;
 
+/// shape_data() of one base shape (not a stack).
+template <class Shape>
+ShapeData base_shape_data(const Shape& shape_in) {
+  return [](const auto& s) -> ShapeData {
+    using S = std::decay_t<decltype(s)>;
+    if constexpr (std::is_same_v<S, geom::Plane<double>>) {
+      return {"plane", 0.0, 0.0, {}, 0.0, 0.0, std::nullopt, std::nullopt};
+    } else if constexpr (std::is_same_v<S, geom::Conic<double>>) {
+      const double c = s.curvature();
+      const double k = s.conic_constant();
+      return {"conic", c, k, {}, c, k, std::nullopt, std::nullopt};
+    } else if constexpr (std::is_same_v<S, geom::EvenAsphere<double>>) {
+      const auto [c, k] = s.base_conic();
+      return {"even_asphere", c, k, s.coefficients(), c, k, std::nullopt, std::nullopt};
+    } else if constexpr (std::is_same_v<S, geom::Biconic<double>>) {
+      return {"biconic",       s.curvature_y(), s.conic_y(),  {},
+              s.curvature_x(), s.conic_x(),     std::nullopt, std::nullopt};
+    } else if constexpr (std::is_same_v<S, geom::Toroid<double>>) {
+      // The x section through the vertex is the circle of rotation: c_R, conic 0.
+      const auto [c, k] = s.profile().base_conic();
+      return {
+          "toroid",     c,           k, s.profile().coefficients(), s.curvature_of_rotation(), 0.0,
+          std::nullopt, std::nullopt};
+    } else if constexpr (std::is_same_v<S, geom::Cylinder<double>>) {
+      // Flat in x: the x section through the vertex is a straight line, curvature and
+      // conic constant 0.
+      const auto [c, k] = s.profile().base_conic();
+      return {"cylinder", c, k, s.profile().coefficients(), 0.0, 0.0, std::nullopt, std::nullopt};
+    } else if constexpr (std::is_same_v<S, geom::OddAsphere<double>>) {
+      // The curvature and conic of the base, not the vertex curvature c + 2 A2 (ADR 0043,
+      // point 4); coefficients A1, A2, ...
+      const auto [c, k] = s.base_conic();
+      return {"odd_asphere", c, k, s.coefficients(), c, k, std::nullopt, std::nullopt};
+    } else if constexpr (std::is_same_v<S, geom::Axicon<double>>) {
+      // A cone without a base conic; the angle back in degree from the compiled rad (exact
+      // up to the rounding of the two conversions).
+      return {"axicon", 0.0, 0.0, {}, 0.0, 0.0, std::nullopt, math::rad_to_deg(s.angle())};
+    } else if constexpr (std::is_same_v<S, geom::QCon<double>> ||
+                         std::is_same_v<S, geom::QBfs<double>>) {
+      // The curvature and conic of the base (for Q-bfs not the vertex curvature, ADR 0043,
+      // point 4), the coefficients a_m (not the auxiliary b_m of Q-bfs), rho.
+      const auto [c, k] = s.base_conic();
+      return {std::is_same_v<S, geom::QCon<double>> ? "qcon" : "qbfs",
+              c,
+              k,
+              s.coefficients(),
+              c,
+              k,
+              s.normalization_radius(),
+              std::nullopt};
+    } else {
+      // Every shape has its own branch; a new one must not be labelled even_asphere
+      // (ADR 0041, point 6).
+      static_assert(kUnhandledShape<S>, "shape_data: unhandled shape");
+    }
+  }(shape_in);
+}
+
 ShapeData shape_data(const compile::CompiledShape& shape) {
   return std::visit(
       [](const auto& s) -> ShapeData {
         using S = std::decay_t<decltype(s)>;
-        if constexpr (std::is_same_v<S, geom::Plane<double>>) {
-          return {"plane", 0.0, 0.0, {}, 0.0, 0.0, std::nullopt, std::nullopt};
-        } else if constexpr (std::is_same_v<S, geom::Conic<double>>) {
-          const double c = s.curvature();
-          const double k = s.conic_constant();
-          return {"conic", c, k, {}, c, k, std::nullopt, std::nullopt};
-        } else if constexpr (std::is_same_v<S, geom::EvenAsphere<double>>) {
-          const auto [c, k] = s.base_conic();
-          return {"even_asphere", c, k, s.coefficients(), c, k, std::nullopt, std::nullopt};
-        } else if constexpr (std::is_same_v<S, geom::Biconic<double>>) {
-          return {"biconic",       s.curvature_y(), s.conic_y(),  {},
-                  s.curvature_x(), s.conic_x(),     std::nullopt, std::nullopt};
-        } else if constexpr (std::is_same_v<S, geom::Toroid<double>>) {
-          // The x section through the vertex is the circle of rotation: c_R, conic 0.
-          const auto [c, k] = s.profile().base_conic();
-          return {"toroid",
-                  c,
-                  k,
-                  s.profile().coefficients(),
-                  s.curvature_of_rotation(),
-                  0.0,
-                  std::nullopt,
-                  std::nullopt};
-        } else if constexpr (std::is_same_v<S, geom::Cylinder<double>>) {
-          // Flat in x: the x section through the vertex is a straight line, curvature and
-          // conic constant 0.
-          const auto [c, k] = s.profile().base_conic();
-          return {"cylinder",   c,           k, s.profile().coefficients(), 0.0, 0.0,
-                  std::nullopt, std::nullopt};
-        } else if constexpr (std::is_same_v<S, geom::OddAsphere<double>>) {
-          // The curvature and conic of the base, not the vertex curvature c + 2 A2 (ADR 0043,
-          // point 4); coefficients A1, A2, ...
-          const auto [c, k] = s.base_conic();
-          return {"odd_asphere", c, k, s.coefficients(), c, k, std::nullopt, std::nullopt};
-        } else if constexpr (std::is_same_v<S, geom::Axicon<double>>) {
-          // A cone without a base conic; the angle back in degree from the compiled rad (exact
-          // up to the rounding of the two conversions).
-          return {"axicon", 0.0, 0.0, {}, 0.0, 0.0, std::nullopt, math::rad_to_deg(s.angle())};
-        } else if constexpr (std::is_same_v<S, geom::QCon<double>> ||
-                             std::is_same_v<S, geom::QBfs<double>>) {
-          // The curvature and conic of the base (for Q-bfs not the vertex curvature, ADR 0043,
-          // point 4), the coefficients a_m (not the auxiliary b_m of Q-bfs), rho.
-          const auto [c, k] = s.base_conic();
-          return {std::is_same_v<S, geom::QCon<double>> ? "qcon" : "qbfs",
-                  c,
-                  k,
-                  s.coefficients(),
-                  c,
-                  k,
-                  s.normalization_radius(),
-                  std::nullopt};
+        if constexpr (std::is_same_v<S, geom::Stacked<double>>) {
+          // A stack reports its base; the terms are in SurfaceLayout.terms (ADR 0051, point 6).
+          return std::visit([](const auto& b) { return base_shape_data(b); }, s.base());
         } else {
-          // Every shape has its own branch; a new one must not be labelled even_asphere
-          // (ADR 0041, point 6).
-          static_assert(kUnhandledShape<S>, "shape_data: unhandled shape");
+          return base_shape_data(s);
         }
       },
       shape);
+}
+
+/// The terms of a stack as (type, scalars) (ADR 0051, point 6): Zernike terms with
+/// normalization_radius and terms (the number of coefficients). Empty for a shape without terms.
+nb::list terms_data(const compile::CompiledShape& shape) {
+  nb::list out;
+  const auto* stacked = std::get_if<geom::Stacked<double>>(&shape);
+  if (stacked == nullptr) return out;
+  for (const geom::TermVariant<double>& term : stacked->terms()) {
+    std::visit(
+        [&out](const auto& t) {
+          using T = std::decay_t<decltype(t)>;
+          static_assert(std::is_same_v<T, geom::ZernikeTerm<double>>, "terms_data: unhandled term");
+          std::map<std::string, double> p{{"normalization_radius", t.normalization_radius()},
+                                          {"terms", static_cast<double>(t.entries().size())}};
+          out.append(nb::make_tuple(t.fringe() ? "zernike_fringe_sag" : "zernike_sag", p));
+        },
+        term);
+  }
+  return out;
 }
 
 /// (aperture type, parameters in mm) or none.
@@ -332,7 +360,7 @@ void bind_layout(nb::module_& m) {
               c.id.str(), c.element, kind_name(c.element_kind), owned(std::move(rotation), {3, 3}),
               owned(std::vector<double>{t.x(), t.y(), t.z()}, {3}), shape_data(c.shape), max_radius,
               aperture_data(c.aperture), c.medium_front, c.medium_back, c.active,
-              vertex_data(c.aperture), obscuration_data(c.obscurations)));
+              vertex_data(c.aperture), obscuration_data(c.obscurations), terms_data(c.shape)));
         }
         return out;
       },

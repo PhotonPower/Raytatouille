@@ -527,9 +527,10 @@ std::vector<Case> cases() {
        [](System& s) { element(s, 1).material = "NOPE:X"; }},
       {"material.wavelength_out_of_range", "/root/children/1/material",
        [](System& s) { element(s, 1).material = "TEST:NARROW"; }},
-      {"shape.zernike_unsupported", "/root/children/1/surfaces/0/shape/terms/0",
+      {"shape.zernike_terms_invalid", "/root/children/1/surfaces/0/shape/terms/0/coefficients",
        [](System& s) {
-         element(s, 1).surfaces[0].shape.terms.push_back(ZernikeSag{Param(10.0), {Param(1e-3)}});
+         element(s, 1).surfaces[0].shape.terms.push_back(
+             rtt::model::ZernikeFringeSag{Param(10.0), std::vector<Param>(38, Param(0.0))});
        }},
       {"coating.unknown", "/root/children/1/surfaces/0/interaction/name",
        [](System& s) { element(s, 1).surfaces[0].interaction = CoatingRef{"T:NOPE"}; }},
@@ -910,6 +911,7 @@ TEST_CASE("every registered code has a case that produces it at its location", "
   }
   for (const rtt::diagnostics::CodeInfo& info : rtt::diagnostics::kCodes) {
     if (info.producer != "validate" && info.producer != "compile") continue;  // see rtt-analysis
+    if (rtt::diagnostics::is_retired(info.code)) continue;  // no longer produced (ADR 0022)
     INFO("no case for " << info.code);
     REQUIRE(covered.contains(std::string(info.code)));
   }

@@ -340,3 +340,28 @@ def test_surface_layouts_from_0_1_22_need_obscurations():
     for broken in (None, [["spider", {}]], [["circular"]], [["circular", {"radius": "1"}]]):
         with pytest.raises(jsonschema.ValidationError):
             VALIDATOR.validate(_surface_layout_0_1_22("0.1.22", broken))
+
+
+# SurfaceLayout gained terms in 0.1.23 (#316, ADR 0051, point 6; ADR 0023 addendum): older files
+# stay valid without it, from 0.1.23 on it is required and a list of [type, scalars].
+def _surface_layout_0_1_23(version: str, terms="absent") -> dict:
+    doc = _surface_layout_0_1_22(version, [])
+    if terms != "absent":
+        doc["data"]["terms"] = terms
+    return doc
+
+
+def test_older_surface_layouts_without_terms_are_valid():
+    VALIDATOR.validate(_surface_layout_0_1_23("0.1.22"))
+
+
+def test_surface_layouts_from_0_1_23_need_terms():
+    VALIDATOR.validate(_surface_layout_0_1_23("0.1.23", []))
+    VALIDATOR.validate(_surface_layout_0_1_23(
+        "0.1.23", [["zernike_sag", {"normalization_radius": 10.0, "terms": 11.0}],
+                   ["zernike_fringe_sag", {"normalization_radius": 10.0, "terms": 4.0}]]))
+    with pytest.raises(jsonschema.ValidationError):
+        VALIDATOR.validate(_surface_layout_0_1_23("0.1.23"))
+    for broken in (None, [["grid", {}]], [["zernike_sag"]]):
+        with pytest.raises(jsonschema.ValidationError):
+            VALIDATOR.validate(_surface_layout_0_1_23("0.1.23", broken))
