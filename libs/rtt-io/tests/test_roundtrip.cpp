@@ -4,6 +4,8 @@
 #include <fstream>
 #include <limits>
 #include <sstream>
+#include <variant>
+#include <vector>
 
 #include "rtt/io/json_io.hpp"
 #include "rtt/model/validate.hpp"
@@ -66,8 +68,11 @@ TEST_CASE("model -> file -> model preserves the model", "[io][roundtrip]") {
   thickness.form = 4.0;
   s.parameters = {thickness};
   lens.surfaces[1].pose.position[2] = rtt::model::Param::bound("T");
-  lens.surfaces[0].shape.terms.push_back(
-      rtt::model::ZernikeSag{rtt::model::Param(12.7), {0.0, 1e-4, rtt::model::Param(-2e-5)}});
+  // In place: a temporary of the term variant trips a false -Wmaybe-uninitialized in GCC 13 at
+  // -O3 (the destructor of the GridSag alternative, #316).
+  lens.surfaces[0].shape.terms.emplace_back(
+      std::in_place_type<rtt::model::ZernikeSag>, rtt::model::Param(12.7),
+      std::vector<rtt::model::Param>{0.0, 1e-4, rtt::model::Param(-2e-5)});
   s.object = {false, rtt::model::Param(250.0)};
   s.environment.temperature_c = 22.5;
 
