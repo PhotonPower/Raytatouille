@@ -282,19 +282,20 @@ class XyPolynomialTerm final {
   /// c_x3y = c_xy3 = 0, since (x^2 + y^2)^2 = x^4 + 2 x^2 y^2 + y^4. Order 4; as a term K = 0 and
   /// A4 = b4 - c^3 / 8 (ADR 0041, point 1).
   [[nodiscard]] VertexExpansion<T> vertex_expansion() const {
-    // c(k): coefficient of term k (1-based), 0 beyond the list.
-    const auto c = [this](std::size_t k) { return k <= c_.size() ? c_[k - 1] : T(0); };
+    // c[k]: coefficient of term k = 1 ... 14 (degree <= 4), 0 beyond the list.
+    std::array<T, 15> c{};
+    for (std::size_t k = 0; k < c_.size() && k < 14; ++k) c[k + 1] = c_[k];
     VertexExpansion<T> e;
     e.order = 4;
     const T r2 = radius_ * radius_;
-    e.slope = {c(1) / radius_, c(2) / radius_};
-    e.hessian[0] = T(2) * c(3) / r2;
-    e.hessian[1] = c(4) / r2;
-    e.hessian[2] = T(2) * c(5) / r2;
-    e.rotational4 = c(1) == T(0) && c(2) == T(0) && c(4) == T(0) && c(3) == c(5) && c(6) == T(0) &&
-                    c(7) == T(0) && c(8) == T(0) && c(9) == T(0) && c(10) == c(14) &&
-                    c(12) == T(2) * c(10) && c(11) == T(0) && c(13) == T(0);
-    const T b4 = c(10) / (r2 * r2);
+    e.slope = {c[1] / radius_, c[2] / radius_};
+    e.hessian[0] = T(2) * c[3] / r2;
+    e.hessian[1] = c[4] / r2;
+    e.hessian[2] = T(2) * c[5] / r2;
+    e.rotational4 = c[1] == T(0) && c[2] == T(0) && c[4] == T(0) && c[3] == c[5] && c[6] == T(0) &&
+                    c[7] == T(0) && c[8] == T(0) && c[9] == T(0) && c[10] == c[14] &&
+                    c[12] == T(2) * c[10] && c[11] == T(0) && c[13] == T(0);
+    const T b4 = c[10] / (r2 * r2);
     const T cc = e.hessian[0];
     e.a4 = b4 - cc * cc * cc / T(8);
     return e;

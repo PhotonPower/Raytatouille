@@ -70,19 +70,32 @@ TEST_CASE("XY polynomial order after [UG] Extended Polynomial (ADR 0051, point 4
 
 TEST_CASE("XY polynomial sag is the sum of the monomials", "[xy]") {
   constexpr double kR = 8.0;
+  // Tolerance: each side forms the four monomials with at most 7 roundings (u, v, the powers,
+  // the coefficient) and sums 4 of them, so each is within gamma_11 sum |c u^i v^j| (Higham);
+  // the difference within twice that.
   const XyPolynomialTerm<double> t(kR, only(13, {{1, 1e-3}, {4, -2e-3}, {12, 5e-4}, {13, 3e-4}}));
+  constexpr double kU = 0x1.0p-53;
+  const double gamma11 = 11.0 * kU / (1.0 - 11.0 * kU);
   for (const auto& [x, y] : std::array<std::pair<double, double>, 4>{
            {{0.0, 0.0}, {2.0, -3.0}, {-7.5, 1.25}, {12.0, 9.0}}}) {
     INFO("(" << x << ", " << y << ")");
     const double u = x / kR;
     const double v = y / kR;
-    const double expected = 1e-3 * u - 2e-3 * u * v + 5e-4 * u * u * v * v + 3e-4 * u * v * v * v;
-    CHECK(std::abs(t.sag(x, y) - expected) <= 1e-15 * (1.0 + std::abs(expected)));
+    const std::array<double, 4> m{1e-3 * u, -2e-3 * u * v, 5e-4 * u * u * v * v,
+                                  3e-4 * u * v * v * v};
+    const double expected = m[0] + m[1] + m[2] + m[3];
+    const double scale = std::abs(m[0]) + std::abs(m[1]) + std::abs(m[2]) + std::abs(m[3]);
+    CHECK(std::abs(t.sag(x, y) - expected) <= 2.0 * gamma11 * scale);
   }
   CHECK(t.sag(0.0, 0.0) == 0.0);  // no constant term
 }
 
 TEST_CASE("XY polynomial gradient against central differences", "[xy]") {
+  // Tolerance: the central difference errs by h^2 / 6 max |f'''| + u max |f| / h. Up to degree 10
+  // with |c| <= 1e-3 and |x|, |y| <= 6.0 (u = x / R <= 1.2) a crude bound is max |f'''| <=
+  // 65 * 1e-3 * 10 * 9 * 8 * 1.2^7 / R^3 < 1.4 and max |f| <= 65 * 1e-3 * 1.2^10 < 0.5, so the
+  // error is below 2.4e-11 + 5.6e-12 = 3e-11; the test uses 1e-10 (a wrong index or sign gives an
+  // error of the order of the gradient, 1e-4 and more).
   constexpr double kR = 5.0;
   std::mt19937_64 g(316U);
   std::vector<double> a(65);  // up to degree 10
@@ -95,8 +108,8 @@ TEST_CASE("XY polynomial gradient against central differences", "[xy]") {
     const double dx = (t.sag(x + h, y) - t.sag(x - h, y)) / (2.0 * h);
     const double dy = (t.sag(x, y + h) - t.sag(x, y - h)) / (2.0 * h);
     const auto [gx, gy] = t.grad(x, y);
-    CHECK(std::abs(gx - dx) <= 1e-7);
-    CHECK(std::abs(gy - dy) <= 1e-7);
+    CHECK(std::abs(gx - dx) <= 1e-10);
+    CHECK(std::abs(gy - dy) <= 1e-10);
   }
 }
 

@@ -1,8 +1,18 @@
 // Real rays through an XY polynomial (#316, ADR 0051, point 4; AGENTS.md, checklist point 6):
-// c_x2 = c_y2 = R^2 / (2 R_p) on a plane is exactly the paraboloid z = (x^2 + y^2) / (2 R_p),
-// the conic with radius R_p and k = -1. The stack is intersected by the Newton iteration, the
-// conic by its closed form (an independent computation); intersection points and directions
-// after the refraction agree to 1e-12.
+// c_x2 = c_y2 = R^2 / (2 R_p) on a plane is mathematically the paraboloid z = (x^2 + y^2) / (2
+// R_p), the conic with radius R_p and k = -1 (numerically (x/R)^2 c and the conic formula round
+// differently, so no bitwise agreement is expected). The stack is intersected by the Newton
+// iteration, the conic by its closed form (an independent computation).
+//
+// Bounds (derived): Newton stops at |F| <= kNewtonTolerance = 1e-12 mm (rtt/geom/intersect.hpp),
+// F(t) = z(t) - sag(x(t), y(t)), so the hit is off by at most 1e-12 / min |F'| along the ray, with
+// F' = d_z - grad sag . d_xy >= 0.9955 - 0.19 * 0.095 > 0.97 here (|grad sag| <= r / R_p = 0.19,
+// the oblique d_z above 0.9955 and |d_xy| below 0.095): eps_s = 1.1e-12 mm at L1.S1. The normal
+// there tilts by at most eps_s / R_p (the curvature 1 / R_p bounds the change of the gradient), the
+// refracted direction by at most 2 eps_s / R_p, and the plane L1.S2 enlarges a direction error by
+// at most n = 1.5: eps_d = 3 eps_s / R_p = 7e-14. Over the at most 105 mm to the image the position
+// error grows by eps_d L = 7e-12. Rounding (a few ulp of 100 mm, 1e-13) is below that. The test
+// uses positions 1e-11 mm and directions 1e-13.
 
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
@@ -100,8 +110,8 @@ TEST_CASE("an XY polynomial paraboloid traces like the conic k = -1", "[trace][x
     for (std::size_t s = 0; s < a.slots; ++s) {
       INFO("ray " << r << ", slot " << s);
       CHECK(b.status[r * b.slots + s] == RayStatus::Alive);
-      CHECK((a.position_at(r, s) - b.position_at(r, s)).cwiseAbs().maxCoeff() <= 1e-12);
-      CHECK((a.direction_at(r, s) - b.direction_at(r, s)).cwiseAbs().maxCoeff() <= 1e-12);
+      CHECK((a.position_at(r, s) - b.position_at(r, s)).cwiseAbs().maxCoeff() <= 1e-11);
+      CHECK((a.direction_at(r, s) - b.direction_at(r, s)).cwiseAbs().maxCoeff() <= 1e-13);
     }
     spread = std::max(spread, std::abs(a.position_at(r, 2).z() - 5.0));
   }
