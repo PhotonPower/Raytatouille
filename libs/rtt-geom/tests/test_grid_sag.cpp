@@ -75,7 +75,9 @@ TEST_CASE("grid sag of a sphere within the derived Hermite bound (ADR 0051, poin
   // remainder f''''(xi) / 4! (x - a)^2 (x - b)^2 <= h^4 / 384 max |f''''| (Burden/Faires section
   // 3.4, docs/quellen.md) and |H_x g| <= max |g| + dx / 4 max |g_x| (|H_0| + |H_1| = 1,
   // |G_0| + |G_1| = t (1 - t) <= 1/4); with exact derivatives d/dx commutes with H_y. So
-  //   eps = dx^4 / 384 M_x4 + dy^4 / 384 (M_y4 + dx / 4 M_xy4) + 16 u max |z|.
+  //   eps = dx^4 / 384 M_x4 + dy^4 / 384 (M_y4 + dx / 4 M_xy4) + 16 u max |z| + 4 u R,
+  // the last two terms for the rounding of the interpolant and of the reference R - sqrt(...),
+  // which cancels to about u R (both far below the first terms, about 1e-9 mm).
   // The Taylor series of the sphere at the vertex has only non-negative coefficients
   // (R - sqrt(R^2 - rho^2) = R sum c_k (rho^2 / R^2)^k, c_k > 0), so every derivative takes its
   // largest magnitude over the grid at the corner (X, Y) = (max |x|, max |y|). Closed forms
@@ -97,7 +99,8 @@ TEST_CASE("grid sag of a sphere within the derived Hermite bound (ADR 0051, poin
                         24.0 * x2 * x2 + 8.0 * x2 * x2) /
                        std::pow(s, 9.0);
   const double h4 = kD * kD * kD * kD / 384.0;
-  const double eps = h4 * m_x4 + h4 * (m_y4 + kD / 4.0 * m_xy4) + 16.0 * kU * f.z(big_x, big_x);
+  const double eps =
+      h4 * m_x4 + h4 * (m_y4 + kD / 4.0 * m_xy4) + 16.0 * kU * f.z(big_x, big_x) + 4.0 * kU * f.r;
   const GridSagTerm<double> grid = sampled(f, kN, kD, true);
   std::mt19937_64 g(316U);
   double worst = 0.0;
@@ -126,6 +129,7 @@ TEST_CASE("grid sag without derivatives converges with the third order (ADR 0051
   const Sphere f{30.0};
   std::mt19937_64 g(2026U);
   std::vector<std::pair<double, double>> points;
+  points.reserve(4000);
   for (int k = 0; k < 4000; ++k)
     points.emplace_back((2.0 * unit(g) - 1.0) * 10.0, (2.0 * unit(g) - 1.0) * 10.0);
   std::array<double, 3> err{};
@@ -159,7 +163,7 @@ TEST_CASE("finite differences are exact for a quadratic, edges included", "[grid
     for (int i = 0; i < kN; ++i) {
       const double x = (i - 2) * kD + 1.0;
       const double y = (j - 2) * kD - 0.5;
-      const auto k = static_cast<std::size_t>(j * kN + i);
+      const std::size_t k = static_cast<std::size_t>(j) * kN + static_cast<std::size_t>(i);
       INFO("i " << i << ", j " << j);
       CHECK(std::abs(grid.dz_dx()[k] - (0.02 * x - 0.02 * y + 0.1)) <= 1e-15);
       CHECK(std::abs(grid.dz_dy()[k] - (-0.02 * x + 0.01 * y)) <= 1e-15);

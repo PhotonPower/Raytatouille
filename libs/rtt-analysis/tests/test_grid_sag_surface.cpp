@@ -8,7 +8,9 @@
 // astigmatic sag a (x^2 - y^2) / R^2 is therefore the same surface as the xy_polynomial with
 // c_x2 = a, c_y2 = -a; the OPD of both mirrors must agree up to rounding and the Newton stopping
 // criterion: |F| <= 1e-12 mm per intersection on each side moves the OPL by at most 2e-12 mm per
-// surface, so |dW| <= 2 * 2e-12 * 1e3 / lambda = 7e-9 waves; the test uses 1e-8.
+// surface, so |dW| <= 2 * 2e-12 * 1e3 / lambda = 7e-9 waves; the test uses 1e-8. The other
+// stopping rule of intersect_newton (a step below 8 eps (1 + |t| + |origin|), about 5e-14 mm here)
+// leaves the hit closer than that, since Newton converges quadratically near the root.
 
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>

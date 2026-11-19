@@ -398,7 +398,7 @@ BaseShape read_base_shape(const Json& j, const Ctx& c) {
 
 ShapeTerm read_shape_term(const Json& j, const Ctx& c) {
   const std::string type = read_type(j, c);
-  // Every term type has the keys type, normalization_radius and coefficients.
+  // The polynomial terms have the keys type, normalization_radius and coefficients.
   const auto zernike = [&](auto z) -> ShapeTerm {
     expect_object(j, c, {"type", "normalization_radius", "coefficients"});
     z.normalization_radius =
