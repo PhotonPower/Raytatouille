@@ -262,6 +262,34 @@ void write_aperture(Writer& w, const ExportRow& row) {
     return;
   }
   w.sub("DIAM 0 0");
+  // An obscuration (ADR 0050, point 3): on a surface without aperture, unrotated (checked in
+  // export_zmx); OBSC rmin rmax with rmin = 0, SQOB and ELOB with the half widths, OBDC with the
+  // decenter of the centre (UG "Aperture Type Codes and Parameters"), all in the x, y of the ZMX
+  // frame. ExportRow::local_xy is diagonal (+-1): it flips the signs of the decenter, never swaps
+  // x and y, so the half widths stay.
+  if (!row.surface.obscurations.empty()) {
+    const std::array<double, 4>& m = row.local_xy;
+    std::visit(
+        [&](const auto& o) {
+          using O = std::decay_t<decltype(o)>;
+          if constexpr (std::is_same_v<O, model::CircularObscuration>) {
+            w.sub("OBSC 0 " + num(o.radius.value));
+          } else if constexpr (std::is_same_v<O, model::RectangularObscuration>) {
+            w.sub("SQOB " + num(o.half_width_x.value) + " " + num(o.half_width_y.value));
+          } else {
+            static_assert(std::is_same_v<O, model::EllipticalObscuration>,
+                          "write_aperture: unhandled obscuration");
+            w.sub("ELOB " + num(o.semi_axis_x.value) + " " + num(o.semi_axis_y.value));
+          }
+          const double dx = o.decenter_x.value;
+          const double dy = o.decenter_y.value;
+          if (dx != 0.0 || dy != 0.0) {
+            // + 0.0 turns a -0 from a sign flip of 0 into 0
+            w.sub("OBDC " + num(m[0] * dx + 0.0) + " " + num(m[3] * dy + 0.0));
+          }
+        },
+        row.surface.obscurations.front());
+  }
   if (!a) return;
   std::visit(
       [&w](const auto& ap) {
@@ -288,6 +316,36 @@ ZmxExport export_zmx(const model::System& system,
                      const material::MaterialLibrary& materials,
                      const ExportOptions& options) {
   detail::ExportPath path = detail::walk_export_path(system, materials, options, true);
+  // OpticStudio has one aperture type per surface and no rotation of an aperture (UG "Aperture
+  // Type Codes and Parameters", SURP codes 20 to 24): one obscuration on a surface without
+  // aperture, not rotated, or export.aperture_unsupported before anything is written
+  // (ADR 0050, point 3).
+  for (const detail::ExportRow& row : path.rows) {
+    const model::Surface& surface = row.surface;
+    if (surface.obscurations.empty()) continue;
+    const std::string id = surface.id.str();
+    if (surface.aperture) {
+      export_fail("export.aperture_unsupported", id,
+                  "a surface with an aperture and an obscuration has no mapping (one aperture "
+                  "type per ZMX surface)");
+    }
+    if (surface.obscurations.size() > 1) {
+      export_fail("export.aperture_unsupported", id,
+                  "more than one obscuration on a surface has no mapping");
+    }
+    const bool rotated = std::visit(
+        [](const auto& o) {
+          if constexpr (std::is_same_v<std::decay_t<decltype(o)>, model::CircularObscuration>) {
+            return false;
+          } else {
+            return o.rotation_deg != 0.0;
+          }
+        },
+        surface.obscurations.front());
+    if (rotated) {
+      export_fail("export.aperture_unsupported", id, "a rotated obscuration has no mapping");
+    }
+  }
   const model::System& s = path.system;
   ZmxExport out;
   out.warnings = std::move(path.warnings);

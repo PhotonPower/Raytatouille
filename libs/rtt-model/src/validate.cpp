@@ -520,6 +520,9 @@ class Validator {
     check_shape(s.shape, loc + "/shape");
     check_normalization_extent(s, loc);
     if (s.aperture) check_aperture(*s.aperture, loc + "/aperture");
+    for (std::size_t i = 0; i < s.obscurations.size(); ++i) {
+      check_obscuration(s, s.obscurations[i], idx(loc + "/obscurations", i));
+    }
     for (std::size_t i = 0; i < s.phases.size(); ++i) {
       check_phase(s.phases[i], idx(loc + "/phases", i));
     }
@@ -795,6 +798,56 @@ class Validator {
       }
     } else if (const auto* poly = std::get_if<PolygonAperture>(&a)) {
       check_polygon(poly->vertices, loc + "/vertices");
+    }
+  }
+
+  /// Obscurations (ADR 0050, point 3): dimensions as Params (> 0), decenters finite (check_param),
+  /// rotation finite. A centred circle that covers a circular aperture of the same surface is
+  /// surface_obscuration.covers_aperture (the counterpart of inner_radius_invalid); bound values
+  /// are skipped here and checked after resolve_parameters (#353).
+  void check_obscuration(const Surface& s, const Obscuration& o, const std::string& loc) {
+    const auto invalid = [](const Param& p) { return !p.is_bound() && !finite_positive(p.value); };
+    std::visit(
+        [&](const auto& ob) {
+          using O = std::remove_cvref_t<decltype(ob)>;
+          if constexpr (std::is_same_v<O, CircularObscuration>) {
+            check_param(ob.radius, loc + "/radius", true);
+            if (invalid(ob.radius)) {
+              report("surface_obscuration.radius_invalid", loc + "/radius",
+                     "radius must be > 0 mm");
+            }
+          } else if constexpr (std::is_same_v<O, RectangularObscuration>) {
+            check_param(ob.half_width_x, loc + "/half_width_x", true);
+            check_param(ob.half_width_y, loc + "/half_width_y", true);
+            if (invalid(ob.half_width_x) || invalid(ob.half_width_y)) {
+              report("surface_obscuration.half_width_invalid", loc, "half widths must be > 0 mm");
+            }
+          } else if constexpr (std::is_same_v<O, EllipticalObscuration>) {
+            check_param(ob.semi_axis_x, loc + "/semi_axis_x", true);
+            check_param(ob.semi_axis_y, loc + "/semi_axis_y", true);
+            if (invalid(ob.semi_axis_x) || invalid(ob.semi_axis_y)) {
+              report("surface_obscuration.semi_axis_invalid", loc, "semi axes must be > 0 mm");
+            }
+          } else {
+            static_assert(kUnhandledAperture<O>, "validate: unhandled obscuration");
+          }
+          check_param(ob.decenter_x, loc + "/decenter_x", true);
+          check_param(ob.decenter_y, loc + "/decenter_y", true);
+          if constexpr (!std::is_same_v<O, CircularObscuration>) {
+            if (!std::isfinite(ob.rotation_deg)) {
+              report("surface_obscuration.rotation_invalid", loc + "/rotation_deg",
+                     "rotation must be finite");
+            }
+          }
+        },
+        o);
+    const auto* c = std::get_if<CircularObscuration>(&o);
+    const auto* ap = s.aperture ? std::get_if<CircularAperture>(&*s.aperture) : nullptr;
+    if (c != nullptr && ap != nullptr && !c->decenter_x.is_bound() && !c->decenter_y.is_bound() &&
+        is_centred_circle(o) && !c->radius.is_bound() && !ap->radius.is_bound() &&
+        c->radius.value >= ap->radius.value) {
+      report("surface_obscuration.covers_aperture", loc + "/radius",
+             "a centred circular obscuration must be smaller than the circular aperture");
     }
   }
 
@@ -1256,9 +1309,12 @@ class Validator {
     return with_expression_sources(std::move(rows));
   }
 
-  /// True if the edit-form pointer of a Param lies in a surface aperture (ADR 0050, point 1).
+  /// True if the edit-form pointer of a Param lies in a surface aperture or obscuration
+  /// (ADR 0050, point 1).
   static bool is_aperture_pointer(std::string_view pointer) {
-    return pointer.find("/aperture/") != std::string_view::npos && pointer.rfind("/root", 0) == 0;
+    return (pointer.find("/aperture/") != std::string_view::npos ||
+            pointer.find("/obscurations/") != std::string_view::npos) &&
+           pointer.rfind("/root", 0) == 0;
   }
 
   /// `rows` plus every row read by an expression row in it, transitively (ADR 0029, point 2).
@@ -1522,7 +1578,7 @@ class Validator {
                  "'" + *t.param + "' is not a Param of '" + t.name + "'");
         } else if (is_aperture_pointer(*anchor + *t.param)) {
           report("tolerances.target_invalid", loc + "/param",
-                 "aperture dimensions are not toleranced (ADR 0050)");
+                 "aperture and obscuration dimensions are not toleranced (ADR 0050)");
         } else if (p->param) {
           report("tolerances.bound_param", loc + "/param",
                  "bound to row '" + *p->param + "': tolerance the row instead");
@@ -1731,7 +1787,7 @@ class Validator {
         }
         if (is_aperture_pointer(key)) {
           report("tolerances.compensator_target", loc + "/param",
-                 "aperture dimensions are not compensators (ADR 0050)");
+                 "aperture and obscuration dimensions are not compensators (ADR 0050)");
           continue;
         }
         if (p->param) {

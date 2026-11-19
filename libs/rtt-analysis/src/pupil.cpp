@@ -330,18 +330,18 @@ void reject_crystal_modes(const CompiledSystem& system, PathId path) {
   }
 }
 
-/// Radius of the stop's central obscuration in pupil units (ADR 0032, addendum #229): the inner
-/// radius r_i of the stop's circular aperture over |R_s| = trace::stop_radius() at `wavelength`.
-/// With real aiming the ray of pupil point p meets the stop at |p| |R_s|, so the obscuration is
-/// the pupil circle |p| = r_i / |R_s|. 0 if the stop has no inner radius.
+/// Radius of the stop's central obscuration in pupil units (ADR 0032, addendum #229): the
+/// effective inner radius r_i of the stop (ADR 0050, point 3: the inner radius of a circular
+/// aperture or the largest centred circular obscuration) over |R_s| = trace::stop_radius() at
+/// `wavelength`. With real aiming the ray of pupil point p meets the stop at |p| |R_s|, so the
+/// obscuration is the pupil circle |p| = r_i / |R_s|. 0 if the stop has no such circle.
 double stop_obscuration(const CompiledSystem& system, PathId path, std::uint16_t wavelength) {
   const std::optional<std::size_t> e = compile::stop_event(system, path);  // ADR 0039, point 3
   if (!e) return 0.0;
   const compile::CompiledSurface& surface = system.surfaces()[system.path(path).events[*e].surface];
-  const auto* circle =
-      surface.aperture ? std::get_if<model::CircularAperture>(&*surface.aperture) : nullptr;
-  if (circle == nullptr || !(circle->inner_radius.value > 0.0)) return 0.0;
-  return circle->inner_radius.value / trace::stop_radius(system, path, wavelength);
+  const double inner = detail::effective_inner_radius(surface);
+  if (!(inner > 0.0)) return 0.0;
+  return inner / trace::stop_radius(system, path, wavelength);
 }
 
 math::Vec3 end_pos(const PupilEndStates& e, std::size_t j) {
@@ -552,7 +552,8 @@ PupilFunction pupil_function(const compile::CompiledSystem& system,
   e.chief_opl = chief.opl()[0];
   // Cells with f > 0 as a point list; the cells on the inner rim of an obscuration as virtual
   // rays (ADR 0032, addendum #229): their area decides, the ray only samples W and A, and the
-  // sample point of their non-convex part may lie inside the inner circle.
+  // sample point of their non-convex part may lie inside the inner circle. They ignore only the
+  // centred circles, so that a spider still blocks them (ADR 0050, point 3).
   trace::PointListPupil list;
   trace::PointListPupil rim;
   for (std::size_t j = 0; j < size; ++j) {
@@ -562,9 +563,10 @@ PupilFunction pupil_function(const compile::CompiledSystem& system,
   const trace::RayBatch rays =
       detail::trace_rays(system, path, field, wavelength, list, options.aiming, control, nullptr);
   const trace::RayBatch rim_rays =
-      rim.points.empty() ? trace::RayBatch()
-                         : detail::trace_reference_rays(system, path, field, wavelength, rim,
-                                                        options.aiming, nullptr);
+      rim.points.empty()
+          ? trace::RayBatch()
+          : detail::trace_reference_rays(system, path, field, wavelength, rim, options.aiming,
+                                         nullptr, trace::ObscurationTest::IgnoreCentredCircles);
   const double nan = std::numeric_limits<double>::quiet_NaN();
   for (auto* column :
        {&e.pos_x, &e.pos_y, &e.pos_z, &e.dir_x, &e.dir_y, &e.dir_z, &e.opl, &e.weight}) {

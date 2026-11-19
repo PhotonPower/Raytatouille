@@ -110,6 +110,13 @@ VARIANT_CLASSES: dict[str, type] = {
     "rms_spot": model.SpotGenerator, "rms_wavefront": model.WavefrontGenerator,
 }
 
+#: Obscurations share the type strings circular, rectangular and elliptical with the apertures
+#: (ADR 0050, point 3); below ".../obscurations/i" these classes apply.
+OBSCURATION_CLASSES: dict[str, type] = {
+    "circular": model.CircularObscuration, "rectangular": model.RectangularObscuration,
+    "elliptical": model.EllipticalObscuration,
+}
+
 #: Operand types that also set an enum attribute: (attribute, value).
 OPERAND_ENUMS: dict[str, tuple[str, Any]] = {
     "efl": ("quantity", model.FirstOrderQuantity.EFL),
@@ -129,6 +136,7 @@ READ_ONLY_CLASSES: list[type] = [
     model.ToleranceValueOverride, model.TolerancePivotOverride, model.Compensator,
     model.Criterion, model.MonteCarloDefaults,
     *(c for c in VARIANT_CLASSES.values() if c is not model.Assembly),
+    *OBSCURATION_CLASSES.values(),
 ]
 
 #: File keys whose attribute has another name (the JSON key "object" would shadow the builtin
@@ -188,6 +196,16 @@ MERIT_DEFAULTS: dict[str, Any] = {
 }
 for _cls, _obj in first_instances(rt.System.from_json(json.dumps(
         {**json.loads(DEFAULTS_TEXT), "optimization": MERIT_DEFAULTS}))).items():
+    DEFAULTS.setdefault(_cls, _obj)
+
+#: One obscuration of every class with only its required keys (ADR 0050, point 3), added to
+#: DEFAULTS in the same way; the defaults system stays readable in older schema versions.
+_with_obscurations = json.loads(DEFAULTS_TEXT)
+_with_obscurations["root"]["children"][0]["surfaces"][3]["obscurations"] = [
+    {"type": "circular", "radius": 0.1},
+    {"type": "rectangular", "half_width_x": 0.1, "half_width_y": 0.1},
+    {"type": "elliptical", "semi_axis_x": 0.1, "semi_axis_y": 0.1}]
+for _cls, _obj in first_instances(rt.System.from_json(json.dumps(_with_obscurations))).items():
     DEFAULTS.setdefault(_cls, _obj)
 
 #: One entry of every class of the tolerance set with only its required keys (#253), added to
@@ -251,7 +269,8 @@ def check(expected: Any, actual: Any, where: str) -> None:
                 check(value, actual.type, at)
                 covered.add("type")
             else:  # a variant or an assembly
-                assert type(actual) is VARIANT_CLASSES[value], at
+                classes = OBSCURATION_CLASSES if "/obscurations/" in at else VARIANT_CLASSES
+                assert type(actual) is classes[value], at
                 if value in OPERAND_ENUMS:  # the type also names the quantity or coordinate
                     attr, member = OPERAND_ENUMS[value]
                     assert getattr(actual, attr) == member, at
@@ -416,10 +435,11 @@ def test_merit_defaults_have_no_optional_values() -> None:
 
 def test_every_variant_class_appears_in_the_reference_systems() -> None:
     seen = {type(o) for f in reference_files() for o in walk(rt.load(f))}
-    assert set(VARIANT_CLASSES.values()) <= seen
+    assert set(VARIANT_CLASSES.values()) | set(OBSCURATION_CLASSES.values()) <= seen
     tour = {type(o) for o in walk(rt.load(REFERENCE_DIR / "m0" / "feature_tour.rtt.json"))}
     # feature_tour without an ideal lens (ADR 0031, #178); the line above covers r2/ideal_lens,
-    # and m8/hexagon_mirror the polygon apertures (ADR 0050).
+    # m8/hexagon_mirror the polygon apertures and m8/spider_telescope the obscurations
+    # (ADR 0050).
     assert set(VARIANT_CLASSES.values()) - {model.IdealMirror, model.IdealLens,
                                              model.IdealCylinderLens,
                                              model.RegularPolygonAperture,

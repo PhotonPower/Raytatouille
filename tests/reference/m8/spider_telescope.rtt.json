@@ -1,0 +1,78 @@
+{
+  "schema_version": "0.11.0",
+  "name": "Paraboloid mirror R = -200 mm behind a stop with a central obscuration and a four-armed spider, and a mounting clip on the mirror (ADR 0050)",
+  "units": {"length": "mm", "wavelength": "um"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 60.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "pose": {"position": [0.0, 0.0, -50.0]},
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 31.0},
+            "obscurations": [
+              {"type": "circular", "radius": 10.0},
+              {"type": "rectangular", "half_width_x": 31.0, "half_width_y": 0.5},
+              {
+                "type": "rectangular",
+                "half_width_x": 31.0,
+                "half_width_y": 0.5,
+                "rotation_deg": 90.0
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "mirror",
+        "name": "M",
+        "surfaces": [
+          {
+            "id": "M",
+            "shape": {
+              "base": {"type": "conic", "radius": -200.0, "conic": -1.0}
+            },
+            "aperture": {"type": "circular", "radius": 34.0},
+            "obscurations": [
+              {
+                "type": "elliptical",
+                "semi_axis_x": 3.0,
+                "semi_axis_y": 1.5,
+                "decenter_x": 20.0,
+                "decenter_y": {"value": 5.0, "variable": true},
+                "rotation_deg": 30.0
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "focus",
+        "pose": {"position": [0.0, 0.0, -100.0]},
+        "surfaces": [
+          {
+            "id": "F",
+            "aperture": {"type": "rectangular", "half_width_x": 2.0, "half_width_y": 2.0}
+          }
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}

@@ -98,7 +98,7 @@ def test_layout_reports_and_result_format_carry_active() -> None:
     assert list(on.active) == [True]
 
     text = surfaces[1].to_json()
-    assert json.loads(text)["schema_version"] == "0.1.21"
+    assert json.loads(text)["schema_version"] == "0.1.22"
     assert json.loads(text)["data"]["active"] is False
     assert json.loads(results.to_json(elements[1]))["data"]["active"] is False
     # An older file has no key active: it reads as true.

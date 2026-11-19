@@ -316,6 +316,10 @@ void fold_path(ExportPath& out,
     const bool take_second =
         turn_angle(tmul(before.r, second)) < turn_angle(tmul(before.r, first)) - 1e-9;
     frames[k] = {take_second ? second : first, pos[k]};
+    // local x, y in the ZMX frame: F^T r = S, one of E, Rz, Rx, Ry (ADR 0050, point 3)
+    const math::Mat3 s =
+        keep ? (take_second ? rz : math::Mat3(math::Mat3::Identity())) : (take_second ? ry : rx);
+    row.local_xy = {s(0, 0), s(0, 1), s(1, 0), s(1, 1)};
     if (!keep) mirror_shape(row.surface.shape);
     if (k == 0) {
       // surface 0: its thickness along the global z, then one break with decenter and turn
@@ -486,6 +490,11 @@ ExportPath walk_export_path(const model::System& system,
     rot.push_back(r);
     pos.push_back(p);
     axis_down.push_back(r(2, 2) < 0.0);
+    // a coaxial path keeps the global frame in ZMX: local x, y map by r (diagonal, +-1, since
+    // its off-diagonal entries are within kCoaxial of 0); a folded path replaces it in
+    // fold_path()
+    row.local_xy = {std::round(r(0, 0)), std::round(r(0, 1)), std::round(r(1, 0)),
+                    std::round(r(1, 1))};
     check_interaction(row, element, out.warnings);
     if (element.kind == ElementKind::Mirror &&
         (element.material || !element.segment_materials.empty())) {

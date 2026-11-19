@@ -508,6 +508,11 @@
         "pose": {"$ref": "#/$defs/pose"},
         "shape": {"$ref": "#/$defs/shape"},
         "aperture": {"$ref": "#/$defs/aperture"},
+        "obscurations": {
+          "description": "Obscurations at the surface (ADR 0050, point 3, schema 0.11): a ray strictly inside one of them is blocked (vignetted); the edge passes. Checked after the aperture; also allowed without one.",
+          "type": "array",
+          "items": {"$ref": "#/$defs/obscuration"}
+        },
         "phases": {"type": "array", "items": {"$ref": "#/$defs/phase"}},
         "diffraction_efficiency": {
           "description": "Power fraction per diffraction order (ADR 0025); orders not listed have efficiency 0. A non-empty list at a surface with phases, efficiencies in [0, 1], each order once: checked by rtt validate.",
@@ -672,6 +677,44 @@
               "type": "array",
               "items": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2}
             }
+          }
+        }
+      ]
+    },
+    "obscuration": {
+      "description": "Obscuration (ADR 0050, point 3): centre at (decenter_x, decenter_y) in mm in the local frame; rotation_deg turns the shape's axes from the local x axis towards the local y axis. A circle is not rotated.",
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "radius"],
+          "properties": {
+            "type": {"const": "circular"},
+            "radius": {"$ref": "#/$defs/param"},
+            "decenter_x": {"$ref": "#/$defs/param"},
+            "decenter_y": {"$ref": "#/$defs/param"}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "half_width_x", "half_width_y"],
+          "properties": {
+            "type": {"const": "rectangular"},
+            "half_width_x": {"$ref": "#/$defs/param"},
+            "half_width_y": {"$ref": "#/$defs/param"},
+            "decenter_x": {"$ref": "#/$defs/param"},
+            "decenter_y": {"$ref": "#/$defs/param"},
+            "rotation_deg": {"type": "number"}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "semi_axis_x", "semi_axis_y"],
+          "properties": {
+            "type": {"const": "elliptical"},
+            "semi_axis_x": {"$ref": "#/$defs/param"},
+            "semi_axis_y": {"$ref": "#/$defs/param"},
+            "decenter_x": {"$ref": "#/$defs/param"},
+            "decenter_y": {"$ref": "#/$defs/param"},
+            "rotation_deg": {"type": "number"}
           }
         }
       ]

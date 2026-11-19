@@ -38,6 +38,15 @@ enum class RayStatus : std::uint8_t {
   Evanescent,
 };
 
+/// Which obscurations a ray is tested against (ADR 0050, point 3). Centred circles are the
+/// inner radius of circular apertures and circular obscurations with decenter (0, 0) exactly, at
+/// every surface. Outer rims of apertures count at every level.
+enum class ObscurationTest : std::uint8_t {
+  All,                   ///< real rays: every obscuration blocks
+  IgnoreCentredCircles,  ///< inner-rim cells of the pupil function: the others still block
+  IgnoreAll,             ///< virtual reference rays (chief, parabasal and zone rays)
+};
+
 /// Value of `last_surface` before a ray has hit any surface.
 inline constexpr std::uint32_t kNoSurface = std::numeric_limits<std::uint32_t>::max();
 
@@ -148,16 +157,26 @@ class RayBatch {
   /// @pre has_q() and i < size() (not checked)
   void set_q_matrix(std::size_t i, const math::Mat3& q);
 
-  /// Marks the rays as virtual reference rays (ADR 0032, addendum #229): the sequential tracer
-  /// then does not test the inner radius of circular apertures (central obscurations), so the
-  /// chief ray of an obscured pupil reaches the image as the ray of the same system without the
-  /// obscuration; outer rims vignette as before. A ray that never meets an inner rim is traced
-  /// bitwise as without the request. Analyses request it for their reference rays (chief,
-  /// parabasal, zone rays), never for sampled rays. Off for a new batch; kept by resize().
-  void set_ignore_obscurations(bool ignore) noexcept { ignore_obscurations_ = ignore; }
+  /// Which obscurations the sequential tracer tests for the rays of this batch (ADR 0050,
+  /// point 3; replaces the flag of ADR 0032, addendum #229). Outer rims of apertures vignette at
+  /// every level. A ray that never meets an ignored obscuration is traced bitwise as with All.
+  /// Off (All) for a new batch; kept by resize().
+  void set_obscuration_test(ObscurationTest test) noexcept { obscuration_test_ = test; }
 
-  /// True after set_ignore_obscurations(true).
-  [[nodiscard]] bool ignores_obscurations() const noexcept { return ignore_obscurations_; }
+  /// The level set by set_obscuration_test() or set_ignore_obscurations().
+  [[nodiscard]] ObscurationTest obscuration_test() const noexcept { return obscuration_test_; }
+
+  /// Compatible form of set_obscuration_test() (ADR 0050, point 3): true sets IgnoreAll (virtual
+  /// reference rays: chief, parabasal and zone rays, so that the chief ray of an obscured pupil
+  /// reaches the image as the ray of the same system without obscurations), false sets All.
+  void set_ignore_obscurations(bool ignore) noexcept {
+    obscuration_test_ = ignore ? ObscurationTest::IgnoreAll : ObscurationTest::All;
+  }
+
+  /// True if the level is not All.
+  [[nodiscard]] bool ignores_obscurations() const noexcept {
+    return obscuration_test_ != ObscurationTest::All;
+  }
 
   /// Power for an unpolarized source, dimensionless (source normalised to 1): weight =
   /// s ||P_T||_F^2 / 2 with P_T = P - k k_0^T and s the polarization-independent factors (volume
@@ -194,7 +213,7 @@ class RayBatch {
   std::array<std::vector<math::Complex>, 9> prt_;  // row-major: prt_[3 * row + col]
   std::array<std::vector<double>, 9> q_;           // row-major like prt_; empty without enable_q()
   bool q_enabled_ = false;
-  bool ignore_obscurations_ = false;
+  ObscurationTest obscuration_test_ = ObscurationTest::All;
   std::vector<double> weight_;
   std::vector<RayStatus> status_;
   std::vector<std::uint16_t> field_;

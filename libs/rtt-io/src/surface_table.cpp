@@ -408,6 +408,13 @@ TableExport write_surface_table(const model::System& system,
                                 const material::MaterialLibrary& materials,
                                 const ExportOptions& options) {
   detail::ExportPath path = detail::walk_export_path(system, materials, options);
+  // The table has no column for obscurations (ADR 0050, point 3): refused before writing.
+  for (const detail::ExportRow& row : path.rows) {
+    if (!row.surface.obscurations.empty()) {
+      export_fail("export.aperture_unsupported", row.surface.id.str(),
+                  "obscurations have no column in the surface table (ADR 0050)");
+    }
+  }
   TableExport out;
   out.warnings = std::move(path.warnings);
 

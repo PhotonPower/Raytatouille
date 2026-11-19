@@ -692,3 +692,40 @@ def test_0_11_polygon_apertures_are_accepted(aperture):
 )
 def test_0_11_polygon_aperture_errors_are_rejected(aperture):
     assert not VALIDATOR.is_valid(_aperture(aperture))
+
+
+# ---- schema 0.11 (#320, ADR 0050, point 3): obscurations ----
+
+def _obscurations(obscurations):
+    doc = copy.deepcopy(load(ROOT / "tests" / "reference" / "m0" / "singlet.rtt.json"))
+    _lens(doc)["surfaces"][0]["obscurations"] = obscurations
+    return doc
+
+
+@pytest.mark.parametrize(
+    "obscurations",
+    [[],
+     [{"type": "circular", "radius": 2.0}],
+     [{"type": "circular", "radius": {"value": 2.0, "variable": True},
+       "decenter_x": {"param": "DX"}, "decenter_y": -1.0}],
+     [{"type": "rectangular", "half_width_x": 12.0, "half_width_y": 0.5, "rotation_deg": 45.0},
+      {"type": "elliptical", "semi_axis_x": 3.0, "semi_axis_y": 1.5, "decenter_x": 5.0}]],
+    ids=["empty", "disc", "disc-params", "spider-and-clip"],
+)
+def test_0_11_obscurations_are_accepted(obscurations):
+    assert VALIDATOR.is_valid(_obscurations(obscurations))
+
+
+@pytest.mark.parametrize(
+    "obscurations",
+    [{"type": "circular", "radius": 2.0},
+     [{"type": "circular"}],
+     [{"type": "circular", "radius": 2.0, "rotation_deg": 10.0}],
+     [{"type": "rectangular", "half_width_x": 1.0}],
+     [{"type": "elliptical", "semi_axis_x": 1.0, "semi_axis_y": 1.0, "rotation_deg": "10"}],
+     [{"type": "spider", "width": 1.0, "arms": 4}]],
+    ids=["not-a-list", "no-radius", "rotated-circle", "one-half-width", "string-rotation",
+         "spider"],
+)
+def test_0_11_obscuration_errors_are_rejected(obscurations):
+    assert not VALIDATOR.is_valid(_obscurations(obscurations))

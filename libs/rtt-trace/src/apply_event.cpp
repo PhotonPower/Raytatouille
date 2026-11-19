@@ -479,6 +479,54 @@ SurfaceHit intersect_surface(const RayState& ray,
   return {hit.status, hit.t, hit.point, hit.normal, direction};
 }
 
+bool in_obscuration(const compile::CompiledSurface& surface,
+                    double x,
+                    double y,
+                    ObscurationTest test) noexcept {
+  if (test == ObscurationTest::IgnoreAll) return false;
+  // Strictly inside the shape shrunk by tol: the edge belongs to the aperture, as at the inner
+  // radius (ADR 0050, point 3). For a centred circle the same arithmetic as the inner radius in
+  // inside() (x - 0 and y - 0 are exact), hence bitwise the same decision.
+  constexpr double tol = kApertureTolerance;
+  for (const model::Obscuration& o : surface.obscurations) {
+    if (test == ObscurationTest::IgnoreCentredCircles && model::is_centred_circle(o)) continue;
+    const bool blocked = std::visit(
+        [x, y](const auto& ob) {
+          using O = std::remove_cvref_t<decltype(ob)>;
+          const double dx = x - ob.decenter_x.value;
+          const double dy = y - ob.decenter_y.value;
+          if constexpr (std::is_same_v<O, model::CircularObscuration>) {
+            const double r = ob.radius.value - tol;
+            return r > 0.0 && dx * dx + dy * dy < r * r;
+          } else {
+            // Own axes of the shape (ADR 0050, point 3): positive angles turn +x towards +y.
+            const double theta = ob.rotation_deg * std::numbers::pi / 180.0;
+            const double c = std::cos(theta);
+            const double s = std::sin(theta);
+            const double u = c * dx + s * dy;
+            const double v = -s * dx + c * dy;
+            if constexpr (std::is_same_v<O, model::RectangularObscuration>) {
+              const double hx = ob.half_width_x.value - tol;
+              const double hy = ob.half_width_y.value - tol;
+              return hx > 0.0 && hy > 0.0 && std::abs(u) < hx && std::abs(v) < hy;
+            } else {
+              static_assert(std::is_same_v<O, model::EllipticalObscuration>,
+                            "in_obscuration: unhandled obscuration");
+              const double a = ob.semi_axis_x.value - tol;
+              const double b = ob.semi_axis_y.value - tol;
+              if (!(a > 0.0) || !(b > 0.0)) return false;
+              const double p = u / a;
+              const double q = v / b;
+              return p * p + q * q < 1.0;
+            }
+          }
+        },
+        o);
+    if (blocked) return true;
+  }
+  return false;
+}
+
 bool inside_aperture(const compile::CompiledSurface& surface, const SurfaceHit& hit) noexcept {
   return inside_aperture(surface, hit, false);
 }
@@ -769,8 +817,11 @@ RayState sequential_step(const RayState& ray,
     return ray;
   }
   const SurfaceHit hit = intersect_surface(ray, surface);
+  // First the aperture, then the obscurations; both give Vignetted (ADR 0050, point 3).
+  const ObscurationTest test = effective_obscuration_test(ray);
   if (hit.status == geom::HitStatus::Hit &&
-      !inside_aperture(surface, hit, ray.ignore_obscurations)) {
+      (!inside_aperture(surface, hit, test != ObscurationTest::All) ||
+       in_obscuration(surface, hit.point.x(), hit.point.y(), test))) {
     RayState out = move_to_hit(ray, surface, hit, surface_index, media);
     out.status = RayStatus::Vignetted;
     return out;

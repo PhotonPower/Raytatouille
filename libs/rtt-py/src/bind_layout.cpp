@@ -207,6 +207,43 @@ std::optional<std::tuple<std::string, std::map<std::string, double>>> aperture_d
       *aperture);
 }
 
+/// The obscurations as a list of (type, parameters in mm and degree) in list order (ADR 0050,
+/// point 3): "circular" (radius, decenter_x, decenter_y), "rectangular" (half_width_x,
+/// half_width_y, decenter_x, decenter_y, rotation_deg), "elliptical" (semi_axis_x, semi_axis_y,
+/// decenter_x, decenter_y, rotation_deg).
+nb::list obscuration_data(const std::vector<model::Obscuration>& obscurations) {
+  nb::list out;
+  for (const model::Obscuration& o : obscurations) {
+    std::visit(
+        [&out](const auto& ob) {
+          using O = std::decay_t<decltype(ob)>;
+          std::map<std::string, double> p{{"decenter_x", ob.decenter_x.value},
+                                          {"decenter_y", ob.decenter_y.value}};
+          std::string type;
+          if constexpr (std::is_same_v<O, model::CircularObscuration>) {
+            type = "circular";
+            p["radius"] = ob.radius.value;
+          } else {
+            p["rotation_deg"] = ob.rotation_deg;
+            if constexpr (std::is_same_v<O, model::RectangularObscuration>) {
+              type = "rectangular";
+              p["half_width_x"] = ob.half_width_x.value;
+              p["half_width_y"] = ob.half_width_y.value;
+            } else {
+              static_assert(std::is_same_v<O, model::EllipticalObscuration>,
+                            "obscuration_data: unhandled obscuration");
+              type = "elliptical";
+              p["semi_axis_x"] = ob.semi_axis_x.value;
+              p["semi_axis_y"] = ob.semi_axis_y.value;
+            }
+          }
+          out.append(nb::make_tuple(type, p));
+        },
+        o);
+  }
+  return out;
+}
+
 /// The vertices of a polygon aperture as an (n, 2) array in mm, none for the other apertures
 /// (ADR 0050, point 2).
 std::optional<Out<double>> vertex_data(const std::optional<model::Aperture>& aperture) {
@@ -295,7 +332,7 @@ void bind_layout(nb::module_& m) {
               c.id.str(), c.element, kind_name(c.element_kind), owned(std::move(rotation), {3, 3}),
               owned(std::vector<double>{t.x(), t.y(), t.z()}, {3}), shape_data(c.shape), max_radius,
               aperture_data(c.aperture), c.medium_front, c.medium_back, c.active,
-              vertex_data(c.aperture)));
+              vertex_data(c.aperture), obscuration_data(c.obscurations)));
         }
         return out;
       },

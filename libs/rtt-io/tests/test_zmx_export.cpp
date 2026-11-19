@@ -963,3 +963,122 @@ TEST_CASE("regular_polygon and polygon apertures have no mapping in ZMX or the t
   CHECK_NOTHROW(export_zmx(singlet(), schott()));
   CHECK(table_error(singlet()) == "<no error>");
 }
+
+TEST_CASE("obscurations export as OBSC, SQOB and ELOB with OBDC and read back (ADR 0050)",
+          "[zmx][export]") {
+  using rtt::model::CircularObscuration;
+  using rtt::model::EllipticalObscuration;
+  using rtt::model::Obscuration;
+  using rtt::model::RectangularObscuration;
+  const std::array<Obscuration, 3> obscurations = {
+      CircularObscuration{Param(2.0), Param(0.5), Param(-0.25)},
+      RectangularObscuration{Param(1.0), Param(2.0), Param(0.0), Param(0.0), 0.0},
+      EllipticalObscuration{Param(3.0), Param(1.5), Param(0.0), Param(1.0), 0.0}};
+  const std::array<std::string, 3> lines = {"  OBSC 0 2\r\n", "  SQOB 1 2\r\n", "  ELOB 3 1.5\r\n"};
+  for (std::size_t k = 0; k < obscurations.size(); ++k) {
+    INFO("obscuration " << k);
+    System s = singlet();
+    rtt::model::Surface& front = element(s, 1).surfaces[0];
+    front.aperture.reset();
+    front.obscurations = {obscurations[k]};
+    const ZmxExport out = export_zmx(s, schott());
+    INFO(out.text);
+    CHECK(out.text.find(lines[k]) != std::string::npos);
+    CHECK((out.text.find("  OBDC ") != std::string::npos) == (k != 1));
+    // Read back: the same obscuration on the same surface, bitwise.
+    const System back = import_zmx(out.text, schott()).system;
+    bool found = false;
+    for (const rtt::model::Node& n : back.root.children) {
+      for (const rtt::model::Surface& f : std::get<rtt::model::Element>(n.value).surfaces) {
+        if (f.obscurations.empty()) continue;
+        CHECK(f.obscurations == std::vector<Obscuration>{obscurations[k]});
+        CHECK_FALSE(f.aperture.has_value());
+        found = true;
+      }
+    }
+    CHECK(found);
+  }
+}
+
+TEST_CASE("obscurations without a ZMX or table mapping are refused (ADR 0050)", "[zmx][export]") {
+  using rtt::model::CircularObscuration;
+  using rtt::model::RectangularObscuration;
+  const auto table_error = [](const System& s) {
+    try {
+      (void)rtt::io::write_surface_table(s, schott());
+    } catch (const ExportError& e) {
+      return e.code();
+    }
+    return std::string("<no error>");
+  };
+  const CircularObscuration disc{Param(1.0), Param(0.0), Param(0.0)};
+  {  // aperture and obscuration on one surface (one aperture type per ZMX surface)
+    System s = singlet();
+    element(s, 1).surfaces[0].obscurations = {disc};
+    REQUIRE(element(s, 1).surfaces[0].aperture.has_value());
+    require_export_error(s, schott(), "export.aperture_unsupported");
+    CHECK(table_error(s) == "export.aperture_unsupported");
+  }
+  {  // two obscurations
+    System s = singlet();
+    element(s, 1).surfaces[0].aperture.reset();
+    element(s, 1).surfaces[0].obscurations = {disc, disc};
+    require_export_error(s, schott(), "export.aperture_unsupported");
+  }
+  {  // a rotation has no SURP code
+    System s = singlet();
+    element(s, 1).surfaces[0].aperture.reset();
+    element(s, 1).surfaces[0].obscurations = {
+        RectangularObscuration{Param(1.0), Param(2.0), Param(0.0), Param(0.0), 10.0}};
+    require_export_error(s, schott(), "export.aperture_unsupported");
+    // the table refuses any obscuration
+    CHECK(table_error(s) == "export.aperture_unsupported");
+  }
+  {  // on the stop, whose aperture is always written
+    System s = singlet();
+    element(s, 0).surfaces[0].obscurations = {disc};
+    require_export_error(s, schott(), "export.aperture_unsupported");
+  }
+}
+
+TEST_CASE("the decenter of an obscuration follows the ZMX frame of its surface (ADR 0050)",
+          "[zmx][export]") {
+  using rtt::model::RectangularObscuration;
+  const auto exported = [](int axis, double angle) {
+    System s = singlet();
+    rtt::model::Surface& front = element(s, 1).surfaces[0];
+    front.aperture.reset();
+    front.pose.rotation_deg[static_cast<std::size_t>(axis)] = Param(angle);
+    front.obscurations = {
+        RectangularObscuration{Param(1.0), Param(2.0), Param(1.0), Param(0.5), 0.0}};
+    return export_zmx(s, schott()).text;
+  };
+  // Turned by 90 deg about z: the path is folded, a coordinate break turns the ZMX frame with the
+  // surface (ADR 0045, addendum #366), so the obscuration keeps its own numbers.
+  const std::string turned = exported(2, 90.0);
+  INFO(turned);
+  CHECK(turned.find("  TYPE COORDBRK\r\n") != std::string::npos);
+  CHECK(turned.find("  SQOB 1 2\r\n") != std::string::npos);
+  CHECK(turned.find("  OBDC 1 0.5\r\n") != std::string::npos);
+  // Turned by 180 deg about z: still coaxial (sin 180 deg ~ 1e-16), so the ZMX frame stays the
+  // global one, in which the local axes are -x and -y: the decenter (1, 0.5) is (-1, -0.5) there.
+  const std::string flipped = exported(2, 180.0);
+  INFO(flipped);
+  CHECK(flipped.find("COORDBRK") == std::string::npos);
+  CHECK(flipped.find("  SQOB 1 2\r\n") != std::string::npos);
+  CHECK(flipped.find("  OBDC -1 -0.5\r\n") != std::string::npos);
+  // Read back, the obscuration lies at the same global place: its decenter in the unturned
+  // surface of the import is (-1, -0.5).
+  const System back = import_zmx(flipped, schott()).system;
+  bool found = false;
+  for (const rtt::model::Node& n : back.root.children) {
+    for (const rtt::model::Surface& f : std::get<rtt::model::Element>(n.value).surfaces) {
+      if (f.obscurations.empty()) continue;
+      const auto& r = std::get<RectangularObscuration>(f.obscurations.front());
+      CHECK(r.decenter_x.value == -1.0);
+      CHECK(r.decenter_y.value == -0.5);
+      found = true;
+    }
+  }
+  CHECK(found);
+}

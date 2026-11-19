@@ -195,6 +195,49 @@ using Aperture = std::variant<CircularAperture,
 /// than 3 sides. Uses the current value of the circumradius (resolve bound Params first).
 [[nodiscard]] std::vector<std::array<double, 2>> aperture_vertices(const Aperture& aperture);
 
+// ---------------------------------------------------------- obscurations -----
+
+// Obscurations (ADR 0050, point 3) block light inside a shape at a surface; the surface is still
+// present there. Local surface coordinates, mm. The centre lies at (decenter_x, decenter_y); the
+// shape's own axes u, v follow from rotating x, y by rotation_deg (positive turns +x towards +y):
+//   u = cos(theta) (x - x0) + sin(theta) (y - y0),  v = -sin(theta) (x - x0) + cos(theta) (y - y0).
+// A ray is blocked strictly inside the shape shrunk by kApertureTolerance; the edge passes.
+
+/// Disc of radius `radius` around (decenter_x, decenter_y).
+struct CircularObscuration {
+  Param radius;      ///< mm, > 0
+  Param decenter_x;  ///< x of the centre, mm
+  Param decenter_y;  ///< y of the centre, mm
+  bool operator==(const CircularObscuration&) const = default;
+};
+
+/// Rectangle |u| <= half_width_x, |v| <= half_width_y (a spider arm, for instance).
+struct RectangularObscuration {
+  Param half_width_x;         ///< mm, > 0, along u
+  Param half_width_y;         ///< mm, > 0, along v
+  Param decenter_x;           ///< x of the centre, mm
+  Param decenter_y;           ///< y of the centre, mm
+  double rotation_deg = 0.0;  ///< theta in degree, finite
+  bool operator==(const RectangularObscuration&) const = default;
+};
+
+/// Ellipse (u / semi_axis_x)^2 + (v / semi_axis_y)^2 <= 1.
+struct EllipticalObscuration {
+  Param semi_axis_x;          ///< mm, > 0, along u
+  Param semi_axis_y;          ///< mm, > 0, along v
+  Param decenter_x;           ///< x of the centre, mm
+  Param decenter_y;           ///< y of the centre, mm
+  double rotation_deg = 0.0;  ///< theta in degree, finite
+  bool operator==(const EllipticalObscuration&) const = default;
+};
+
+using Obscuration =
+    std::variant<CircularObscuration, RectangularObscuration, EllipticalObscuration>;
+
+/// True for a CircularObscuration with decenter (0, 0) exactly: a centred circle, treated like
+/// CircularAperture::inner_radius by the virtual rays and the ring cells (ADR 0050, point 3).
+[[nodiscard]] bool is_centred_circle(const Obscuration& obscuration) noexcept;
+
 // --------------------------------------------------------------- phases -----
 
 /// Straight-line grating. orientation_deg = 0 means grooves parallel to the local y axis.
@@ -310,10 +353,13 @@ struct Surface {
   Interaction interaction = Fresnel{};
   /// Efficiency per diffraction order (ADR 0025, point 5). Absent: every order has efficiency 1
   /// (geometry only). Present: orders not listed have efficiency 0. Only at a surface with a
-  /// phase layer, never empty. Last member with an explicit initializer, so that aggregate
-  /// initialisations stay free of -Wmissing-field-initializers.
+  /// phase layer, never empty.
   std::optional<std::vector<DiffractionEfficiency>>
       diffraction_efficiency{};  // NOLINT(readability-redundant-member-init)
+  /// Obscurations at this surface (ADR 0050, point 3), checked after the aperture; also allowed
+  /// without an aperture. The last members carry explicit initializers, so that aggregate
+  /// initialisations stay free of -Wmissing-field-initializers.
+  std::vector<Obscuration> obscurations{};  // NOLINT(readability-redundant-member-init)
   bool operator==(const Surface&) const = default;
 };
 

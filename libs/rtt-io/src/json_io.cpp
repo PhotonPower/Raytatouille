@@ -473,6 +473,44 @@ Aperture read_aperture(const Json& j, const Ctx& c) {
                     "', expected circular, rectangular, elliptical, regular_polygon or polygon");
 }
 
+/// Obscuration (ADR 0050, point 3): dimensions and decenters as Param, rotation as a number.
+Obscuration read_obscuration(const Json& j, const Ctx& c) {
+  const std::string type = read_type(j, c);
+  const auto centre = [&](auto& o) {
+    read_opt(j, "decenter_x", c, o.decenter_x, read_param);
+    read_opt(j, "decenter_y", c, o.decenter_y, read_param);
+  };
+  if (type == "circular") {
+    expect_object(j, c, {"type", "radius", "decenter_x", "decenter_y"});
+    CircularObscuration o;
+    o.radius = read_param(require(j, "radius", c), c.at("radius"));
+    centre(o);
+    return o;
+  }
+  if (type == "rectangular") {
+    expect_object(
+        j, c, {"type", "half_width_x", "half_width_y", "decenter_x", "decenter_y", "rotation_deg"});
+    RectangularObscuration o;
+    o.half_width_x = read_param(require(j, "half_width_x", c), c.at("half_width_x"));
+    o.half_width_y = read_param(require(j, "half_width_y", c), c.at("half_width_y"));
+    centre(o);
+    read_opt(j, "rotation_deg", c, o.rotation_deg, read_number);
+    return o;
+  }
+  if (type == "elliptical") {
+    expect_object(
+        j, c, {"type", "semi_axis_x", "semi_axis_y", "decenter_x", "decenter_y", "rotation_deg"});
+    EllipticalObscuration o;
+    o.semi_axis_x = read_param(require(j, "semi_axis_x", c), c.at("semi_axis_x"));
+    o.semi_axis_y = read_param(require(j, "semi_axis_y", c), c.at("semi_axis_y"));
+    centre(o);
+    read_opt(j, "rotation_deg", c, o.rotation_deg, read_number);
+    return o;
+  }
+  c.at("type").fail("unknown obscuration type '" + type +
+                    "', expected circular, rectangular or elliptical");
+}
+
 PhaseLayer read_phase(const Json& j, const Ctx& c) {
   const std::string type = read_type(j, c);
   if (type == "linear_grating") {
@@ -575,13 +613,21 @@ std::vector<DiffractionEfficiency> read_efficiency(const Json& j, const Ctx& c) 
 }
 
 Surface read_surface(const Json& j, const Ctx& c) {
-  expect_object(
-      j, c, {"id", "pose", "shape", "aperture", "phases", "diffraction_efficiency", "interaction"});
+  expect_object(j, c,
+                {"id", "pose", "shape", "aperture", "obscurations", "phases",
+                 "diffraction_efficiency", "interaction"});
   Surface s;
   s.id = SurfaceId(read_string(require(j, "id", c), c.at("id")));
   read_opt(j, "pose", c, s.pose, read_pose);
   read_opt(j, "shape", c, s.shape, read_shape);
   if (const Json* a = find(j, "aperture")) s.aperture = read_aperture(*a, c.at("aperture"));
+  if (const Json* o = find(j, "obscurations")) {
+    const Ctx oc = c.at("obscurations");
+    expect_array(*o, oc);
+    for (std::size_t i = 0; i < o->size(); ++i) {
+      s.obscurations.push_back(read_obscuration((*o)[i], oc.at(i)));
+    }
+  }
   if (const Json* p = find(j, "phases")) {
     const Ctx pc = c.at("phases");
     expect_array(*p, pc);
@@ -749,8 +795,9 @@ struct Migration {
 ///   cylinder, odd_asphere, axicon, qcon and qbfs are new.
 /// - 0.9 -> 0.10 (ADR 0049): content unchanged, only the flag "active" of assemblies and elements
 ///   is new; without it every node is active.
-/// - 0.10 -> 0.11 (ADR 0050, point 1): content unchanged, aperture dimensions may now be Param
-///   objects; a number reads as before.
+/// - 0.10 -> 0.11 (ADR 0050): content unchanged, aperture dimensions may now be Param objects (a
+///   number reads as before); the aperture types regular_polygon and polygon and the surface
+///   obscurations are new.
 Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
   const std::string ours(kSchemaVersion);
   const std::string mm = major_minor(version);
@@ -806,13 +853,20 @@ void check_0_9_forms(const Json& node, const Ctx& c) {
   }
 }
 
-/// Files before 0.11 (ADR 0050, points 1 and 2): the aperture types regular_polygon and polygon
+/// Files before 0.11 (ADR 0050, points 1 to 3): the aperture types regular_polygon and polygon
 /// are an error at the type, an aperture dimension that is not a number (a Param object) at that
-/// dimension, so that a version is never silently upgraded.
+/// dimension and the key "obscurations" at that key, so that a version is never silently
+/// upgraded.
 void check_0_11_forms(const Json& node, const Ctx& c) {
   if (!node.is_object()) return;  // structural errors are reported by the reader
   if (const Json* surfaces = find(node, "surfaces"); surfaces != nullptr && surfaces->is_array()) {
     for (std::size_t i = 0; i < surfaces->size(); ++i) {
+      if (find((*surfaces)[i], "obscurations") != nullptr) {
+        c.at("surfaces")
+            .at(i)
+            .at("obscurations")
+            .fail("obscurations need schema_version 0.11 or later (ADR 0050)");
+      }
       const Json* aperture = find((*surfaces)[i], "aperture");
       if (aperture == nullptr || !aperture->is_object()) continue;
       if (const Json* type = find(*aperture, "type");
@@ -1811,6 +1865,34 @@ class Writer {
     return o;
   }
 
+  OJson obscuration(const Obscuration& ob) const {
+    OJson o;
+    std::visit(
+        [&](const auto& x) {
+          using O = std::remove_cvref_t<decltype(x)>;
+          if constexpr (std::is_same_v<O, CircularObscuration>) {
+            o["type"] = "circular";
+            o["radius"] = param(x.radius);
+          } else if constexpr (std::is_same_v<O, RectangularObscuration>) {
+            o["type"] = "rectangular";
+            o["half_width_x"] = param(x.half_width_x);
+            o["half_width_y"] = param(x.half_width_y);
+          } else {
+            static_assert(std::is_same_v<O, EllipticalObscuration>, "unhandled obscuration");
+            o["type"] = "elliptical";
+            o["semi_axis_x"] = param(x.semi_axis_x);
+            o["semi_axis_y"] = param(x.semi_axis_y);
+          }
+          if (edit_ || x.decenter_x != Param{}) o["decenter_x"] = param(x.decenter_x);
+          if (edit_ || x.decenter_y != Param{}) o["decenter_y"] = param(x.decenter_y);
+          if constexpr (!std::is_same_v<O, CircularObscuration>) {
+            if (edit_ || x.rotation_deg != 0.0) o["rotation_deg"] = num(x.rotation_deg);
+          }
+        },
+        ob);
+    return o;
+  }
+
   OJson phase(const PhaseLayer& p) const {
     OJson o;
     if (const auto* g = std::get_if<LinearGrating>(&p)) {
@@ -1880,6 +1962,12 @@ class Writer {
     const bool default_shape = std::holds_alternative<Plane>(s.shape.base) && s.shape.terms.empty();
     if (edit_ || !default_shape) o["shape"] = shape(s.shape);
     if (s.aperture) o["aperture"] = aperture(*s.aperture);
+    // The edit form writes the list always, so that a patch can add the first obscuration.
+    if (edit_ || !s.obscurations.empty()) {
+      OJson a = OJson::array();
+      for (const Obscuration& ob : s.obscurations) a.push_back(obscuration(ob));
+      o["obscurations"] = std::move(a);
+    }
     if (edit_ || !s.phases.empty()) {
       OJson a = OJson::array();
       for (const PhaseLayer& p : s.phases) a.push_back(phase(p));

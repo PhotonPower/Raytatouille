@@ -137,7 +137,7 @@ void variant(const json& o,
 }
 
 void surface_keys(const json& s, const std::string& at) {
-  has_keys(s, {"id", "pose", "shape", "phases", "interaction"}, {"aperture"}, at);
+  has_keys(s, {"id", "pose", "shape", "obscurations", "phases", "interaction"}, {"aperture"}, at);
   pose(s["pose"], at + "/pose");
   has_keys(s["shape"], {"base", "terms"}, {}, at + "/shape");
   variant(s["shape"]["base"],
@@ -164,6 +164,15 @@ void surface_keys(const json& s, const std::string& at) {
              {"regular_polygon", {"type", "sides", "circumradius", "rotation_deg"}},
              {"polygon", {"type", "vertices"}}},
             at + "/aperture", false);
+  }
+  for (const json& ob : s["obscurations"]) {  // ADR 0050, point 3
+    variant(ob,
+            {{"circular", {"type", "radius", "decenter_x", "decenter_y"}},
+             {"rectangular",
+              {"type", "half_width_x", "half_width_y", "decenter_x", "decenter_y", "rotation_deg"}},
+             {"elliptical",
+              {"type", "semi_axis_x", "semi_axis_y", "decenter_x", "decenter_y", "rotation_deg"}}},
+            at + "/obscurations");
   }
   for (const json& ph : s["phases"]) {
     variant(ph,

@@ -982,6 +982,7 @@ class Compiler {
       c.to_local = c.to_global.inverse();
       c.shape = compile_shape(s.shape, surface_location + "/shape");
       c.aperture = s.aperture;
+      c.obscurations = s.obscurations;
       c.phases = s.phases;
       c.phase_functions = compile_phases(s.phases);
       c.interaction = s.interaction;

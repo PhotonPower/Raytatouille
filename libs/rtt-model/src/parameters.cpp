@@ -189,6 +189,29 @@ class ParamWalker {
           },
           *s.aperture);
     }
+    // Obscurations (ADR 0050, point 1): after the aperture, in list order, each in the order of
+    // its struct fields.
+    for (std::size_t k = 0; k < s.obscurations.size(); ++k) {
+      const std::string ob = loc + "/obscurations/" + std::to_string(k);
+      std::visit(
+          [&](auto& o) {
+            using O = std::remove_cvref_t<decltype(o)>;
+            if constexpr (std::is_same_v<O, CircularObscuration>) {
+              visit_(ob + "/radius", o.radius);
+            } else if constexpr (std::is_same_v<O, RectangularObscuration>) {
+              visit_(ob + "/half_width_x", o.half_width_x);
+              visit_(ob + "/half_width_y", o.half_width_y);
+            } else if constexpr (std::is_same_v<O, EllipticalObscuration>) {
+              visit_(ob + "/semi_axis_x", o.semi_axis_x);
+              visit_(ob + "/semi_axis_y", o.semi_axis_y);
+            } else {
+              static_assert(kUnhandledAperture<O>, "for_each_param: unhandled obscuration");
+            }
+            visit_(ob + "/decenter_x", o.decenter_x);
+            visit_(ob + "/decenter_y", o.decenter_y);
+          },
+          s.obscurations[k]);
+    }
     for (std::size_t k = 0; k < s.phases.size(); ++k) {
       const std::string phase = loc + "/phases/" + std::to_string(k);
       if (auto* g = std::get_if<LinearGrating>(&s.phases[k])) {
