@@ -1884,9 +1884,9 @@ class Writer {
                 // ADR 0051, point 5: the decenter if not 0, the derivatives if given (the edit
                 // form writes every key).
                 const auto numbers = [](const std::vector<double>& v) {
-                  OJson a = OJson::array();
-                  for (const double x : v) a.push_back(num(x));
-                  return a;
+                  OJson list = OJson::array();
+                  for (const double x : v) list.push_back(num(x));
+                  return list;
                 };
                 to["type"] = "grid_sag";
                 to["nx"] = term.nx;
