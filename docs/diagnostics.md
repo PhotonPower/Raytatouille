@@ -75,7 +75,7 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `element.material_list_not_allowed` | Fehler | Spiegel mit Liste von Segmentmaterialien | validate | `…/el/material` |
 | `element.material_missing` | Fehler | Linse oder Platte ohne Material | validate | `…/el/material` |
 | `element.material_not_allowed` | Fehler | dünnes Element, Blende oder Detektor mit Material | validate | `…/el/material` |
-| `element.plate_surface_not_plane` | Fehler | Fläche einer Platte ist keine Ebene | validate | `…/el/surfaces/i/shape` |
+| `element.plate_surface_not_plane` | Fehler | Fläche einer Platte ist keine Ebene oder hat Terme (ADR 0051) | validate | `…/el/surfaces/i/shape` |
 | `element.segment_count` | Fehler | Anzahl der Segmentmaterialien passt nicht zu den Flächen | validate | `…/el/material` |
 | `element.surface_count` | Fehler | falsche Flächenzahl für die Elementart | validate | `…/el/surfaces` |
 | `environment.air_out_of_range` | Warnung | Umgebung oder Objektraum ist AIR, aber eine Systemwellenlänge, die Temperatur oder der Druck liegt außerhalb des Bereichs der Ciddor-Formel (0,3–1,7 µm, −40…100 °C, 10–140 kPa); der Index wird extrapoliert (#335) | compile | `/environment/medium` bzw. `/object/medium` |
@@ -192,11 +192,12 @@ Pointer-Platzhalter: `…/el` steht für ein Element, z. B. `/root/children/1`; 
 | `shape.axicon_angle_invalid` | Fehler | Basiswinkel α des Axicons nicht endlich oder nicht im offenen Intervall (−90°, 90°) (ADR 0043, Punkt 4) | validate | `…/s/shape/base/angle_deg` |
 | `shape.conic_without_curvature` | Warnung | Konik ≠ 0 bei Krümmung 0 (ungerade Asphäre): Die Konik wirkt nicht, die Basis ist eben (ADR 0043, Punkt 4) | validate | `…/s/shape/base/conic` |
 | `shape.curvature_invalid` | Fehler | Krümmung der Basis (ungerade Asphäre) nicht endlich; 0 ist eine ebene Basis (ADR 0043, Punkt 4) | validate | `…/s/shape/base/curvature` |
-| `shape.normalization_radius_exceeded` | Warnung | Die Apertur reicht über den Normierungsradius ρ von Q-con oder Q-bfs hinaus (größter Abstand von der Achse: Radius, halbe Diagonale bzw. große Halbachse, mehr als 10⁻⁹ relativ); die Polynome werden dort extrapoliert (ADR 0043, Punkt 2) | validate | `…/s/shape/base/normalization_radius` |
+| `shape.normalization_radius_exceeded` | Warnung | Die Apertur reicht über den Normierungsradius ρ von Q-con, Q-bfs oder eines Zernike-Terms (ADR 0051) hinaus (größter Abstand von der Achse: Radius, halbe Diagonale bzw. große Halbachse, mehr als 10⁻⁹ relativ); die Polynome werden dort extrapoliert (ADR 0043, Punkt 2) | validate | `…/s/shape/base/normalization_radius` bzw. `…/s/shape/terms/i/normalization_radius` |
 | `shape.normalization_radius_invalid` | Fehler | Normierungsradius von Q-con oder Q-bfs nicht endlich oder ≤ 0 mm; bei Q-bfs auch (1 + k) c² ρ² ≥ 1, also φ = 0 innerhalb von ρ (ADR 0043, Punkt 4) | validate | `…/s/shape/base/normalization_radius` |
 | `shape.radius_invalid` | Fehler | Radius null oder nicht endlich | validate | `…/s/shape/base/radius` |
 | `shape.zernike_radius_invalid` | Fehler | Zernike-Normierungsradius nicht endlich oder ≤ 0 mm | validate | `…/s/shape/terms/i/normalization_radius` |
-| `shape.zernike_unsupported` | Fehler | Zernike-Pfeilhöhenterme noch nicht unterstützt (M8) | compile | `…/s/shape/terms/i` |
+| `shape.zernike_terms_invalid` | Fehler | mehr als 231 Noll- oder 37 Fringe-Koeffizienten eines Zernike-Terms (ADR 0051) | validate | `…/s/shape/terms/i/coefficients` |
+| `shape.zernike_unsupported` | Fehler | **nicht mehr erzeugt** (seit ADR 0051 werden Zernike-Terme kompiliert); vorher: Zernike-Pfeilhöhenterme noch nicht unterstützt (M8) | compile | `…/s/shape/terms/i` |
 | `shape.zernike_without_coefficients` | Warnung | Zernike-Term ohne Koeffizienten | validate | `…/s/shape/terms/i/coefficients` |
 | `stop.aperture_missing` | Fehler | Blendenelement oder Blendenfläche (`aperture.stop`, ADR 0039) ohne Apertur | validate | `…/el/surfaces/k/aperture` |
 | `stop.clips_beam` | Warnung | Strahlen der Abtastung enden an der Blende mit VIGNETTED: die Blendenöffnung beschneidet das Bündel, das die Systemapertur festlegt | analysis | Blendenfläche `…/s` |

@@ -622,12 +622,26 @@
       ]
     },
     "shape_term": {
-      "type": "object", "additionalProperties": false, "required": ["type", "normalization_radius"],
-      "properties": {
-        "type": {"const": "zernike_sag"},
-        "normalization_radius": {"$ref": "#/$defs/param"},
-        "coefficients": {"$ref": "#/$defs/param_list"}
-      }
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "normalization_radius"],
+          "description": "Zernike sag after Noll (ADR 0051, point 2): sum of a_j Z_j(r / R, theta), orthonormal polynomials, coefficients[0] = j = 1, in mm, at most 231; theta from +x counter-clockwise.",
+          "properties": {
+            "type": {"const": "zernike_sag"},
+            "normalization_radius": {"$ref": "#/$defs/param"},
+            "coefficients": {"$ref": "#/$defs/param_list"}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "normalization_radius"],
+          "description": "Zernike sag in the Fringe set (ADR 0051, point 3, schema 0.11): polynomials without normalisation (1 at the rim), coefficients[k] = Fringe term k + 1, in mm, at most 37.",
+          "properties": {
+            "type": {"const": "zernike_fringe_sag"},
+            "normalization_radius": {"$ref": "#/$defs/param"},
+            "coefficients": {"$ref": "#/$defs/param_list"}
+          }
+        }
+      ]
     },
     "aperture": {
       "oneOf": [

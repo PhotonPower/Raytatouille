@@ -10,9 +10,8 @@
 ///   for even j and m != 0, sqrt(2 (n + 1)) R_n^m(rho) sin(m theta) for odd j and m != 0,
 ///   sqrt(n + 1) R_n^0(rho) for m = 0 (Eq. (3)); R_n^m after Eq. (4); j <-> (n, m) after Eqs. (8)
 ///   and (9); the mean of Z_j Z_k over the unit disk is delta_jk (Eq. (7)). j starts at 1
-///   (piston), the Noll order of model::ZernikeSag. ZernikeSag is not evaluated yet (M8); when it
-///   is, it takes theta and the normalisation of zernike(), so that surface and wavefront
-///   coefficients agree.
+///   (piston), the Noll order of model::ZernikeSag. The surface term evaluates the same functions
+///   (rtt/math/zernike.hpp, ADR 0051, point 2), so that surface and wavefront coefficients agree.
 /// - rho = |p| <= 1 with the normalised pupil coordinates p = (px, py) (rim of the paraxial
 ///   entrance pupil); theta = atan2(py, px), from +x counter-clockwise (Niu/Tian, Sec. 2.1). Note:
 ///   trace::GaussPupil counts its arm angle from +y towards +x.
@@ -25,40 +24,19 @@
 
 #include "rtt/analysis/pupil.hpp"
 #include "rtt/compile/compiled_system.hpp"
+#include "rtt/math/zernike.hpp"
 #include "rtt/model/validate.hpp"
 
 namespace rtt::analysis {
 
-/// Largest Noll index: n <= 20 completely (231 terms). Up to n = 20 the integer coefficients of
-/// R_n^m are below 2^53 (the largest 2 333 760), so exact in double (ADR 0032, point 6).
-inline constexpr int kMaxZernikeTerms = 231;
-
-/// Radial degree n and azimuthal frequency m >= 0 of a Noll index; n - m is even. Whether the
-/// angular factor is the cosine or the sine follows from the parity of j (Niu/Tian Eq. (3)).
-struct NollIndex {
-  int n = 0;
-  int m = 0;
-};
-
-/// (n, m) of the Noll index j (Niu/Tian Eq. (8), evaluated in integers).
-/// @throws std::invalid_argument for j outside [1, kMaxZernikeTerms]
-[[nodiscard]] NollIndex noll_to_nm(int j);
-
-/// The Noll index of (n, m) with the sine (`sine`, odd j) or the cosine (even j) for m != 0
-/// (Niu/Tian Eq. (9): of the pair n(n+1)/2 + m, n(n+1)/2 + m + 1 the one with the parity);
-/// `sine` is ignored for m = 0.
-/// @throws std::invalid_argument unless 0 <= m <= n <= 20 and n - m is even
-[[nodiscard]] int noll_from_nm(int n, int m, bool sine);
-
-/// R_n^m(rho) after Niu/Tian Eq. (4), for 0 <= m <= n <= 20, n - m even. Evaluated as
-/// rho^m sum_s c_s x^(K - s) with x = rho^2, K = (n - m) / 2, Horner in x, the integer c_s exact;
-/// rounding error at most gamma_k sum_s |c_s| rho^(n - 2s), k = 3K + m + 1 (ADR 0032, point 6).
-/// @throws std::invalid_argument for (n, m) outside that range
-[[nodiscard]] double zernike_radial(int n, int m, double rho);
-
-/// Z_j(rho, theta), orthonormal (Niu/Tian Eq. (3)); theta in rad from +x counter-clockwise.
-/// @throws std::invalid_argument for j outside [1, kMaxZernikeTerms]
-[[nodiscard]] double zernike(int j, double rho, double theta);
+// The polynomials themselves live in rtt-math (ADR 0051, point 2), shared with the surface terms
+// of rtt-geom; the names stay available here.
+using rtt::math::kMaxZernikeTerms;
+using rtt::math::noll_from_nm;
+using rtt::math::noll_to_nm;
+using rtt::math::NollIndex;
+using rtt::math::zernike;
+using rtt::math::zernike_radial;
 
 /// Options of the Zernike fit (ADR 0032, point 6).
 struct ZernikeOptions {

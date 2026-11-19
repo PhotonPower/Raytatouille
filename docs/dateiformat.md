@@ -98,9 +98,15 @@ braucht das Substrat, ohne `material` ist es ein Kompilierfehler.
 Zahlenwerte dürfen auch als `{"value": …, "variable": true, "min": …, "max": …}` stehen: Das
 markiert sie als Optimierungsvariable mit Grenzen (beide optional, in der Einheit des Werts). Ein
 Zahlenwert kann stattdessen an eine Zeile der Parametertabelle gebunden sein,
-`{"param": "NAME"}`, ohne eigenen Wert (siehe unten). Zernike-Terme (`shape.terms`) kennt das
-Schema, die Engine kompiliert sie aber noch nicht, bis M8 (Meldung: "not supported before
-M8"). Gitter und Phasenflächen (`phases`) übernimmt die Kompilierung; der Tracer verfolgt seit #127
+`{"param": "NAME"}`, ohne eigenen Wert (siehe unten). Zernike-Terme (`shape.terms`) addieren sich
+seit #316 zur Basisform (ADR 0051): `{"type": "zernike_sag", "normalization_radius": R,
+"coefficients": [a_1, …]}` nach Noll (orthonormal wie die Fit-Analyse, `coefficients[0]` ist j = 1,
+höchstens 231) und ab Schema 0.11 `{"type": "zernike_fringe_sag", …}` mit denselben Schlüsseln im
+Fringe-Satz (ohne Normierung, am Rand 1, `coefficients[k]` ist der Fringe-Term k + 1, höchstens 37).
+Koeffizienten in mm, ρ = r/R, θ von +x gegen den Uhrzeigersinn; ausgewertet auch jenseits von R
+(Warnung `shape.normalization_radius_exceeded`). Nicht rotationssymmetrische Terme machen die Fläche
+paraxial unzugänglich (ADR 0041, Punkt 2); dann zielen Analysen mit dem Bezug eines Nennsystems.
+Eine `plate` hat keine Terme. ZMX- und CSV-Export lehnen Terme ab. Gitter und Phasenflächen (`phases`) übernimmt die Kompilierung; der Tracer verfolgt seit #127
 jede Beugungsordnung `order` nach der lokalen Gittergleichung (ADR 0025) und rechnet
 `diffraction_efficiency` in das Gewicht ein; evaneszente Ordnungen enden mit dem Status
 `Evanescent`. Kristalle mit `ordinary` und `extraordinary` verfolgt der Tracer seit #132

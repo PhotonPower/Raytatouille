@@ -12,6 +12,8 @@
 #include "rtt/geom/phase.hpp"
 #include "rtt/geom/plane.hpp"
 #include "rtt/geom/shape.hpp"
+#include "rtt/geom/stacked.hpp"
+#include "rtt/geom/terms.hpp"
 
 namespace rtt::geom {
 
@@ -35,8 +37,13 @@ static_assert(IntersectableShape<QCon<double>, double>);
 static_assert(DomainShape<QBfs<double>, double>);
 static_assert(ParaxialShape<QCon<double>, double>);
 static_assert(ParaxialShape<QBfs<double>, double>);
+static_assert(DomainShape<Stacked<double>, double>);  // ADR 0051, point 1
+static_assert(ParaxialShape<Stacked<double>, double>);
+static_assert(ParaxialShape<ZernikeTerm<double>, double>);
 
 template class Plane<double>;
+template class ZernikeTerm<double>;
+template class Stacked<double>;
 template class Conic<double>;
 template class EvenAsphere<double>;
 template class Biconic<double>;

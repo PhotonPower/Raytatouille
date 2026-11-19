@@ -80,7 +80,10 @@ class SurfaceLayout(NamedTuple):
     decenter_x, decenter_y, rotation_deg) or "elliptical" (semi_axis_x, semi_axis_y, decenter_x,
     decenter_y, rotation_deg); the centre lies at (decenter_x, decenter_y) in the local frame and
     rotation_deg turns the shape's axes from +x towards +y. They block light but do not cut the
-    profile of the surface (unlike inner_radius).
+    profile of the surface (unlike inner_radius). ``terms`` lists the additive terms of the shape
+    stack (ADR 0051) as (type, scalars): "zernike_sag" and "zernike_fringe_sag" with
+    normalization_radius (mm) and terms (the number of coefficients); ``shape`` and its fields
+    then describe the base. The coefficients themselves are in the system file.
 
     ``medium_front`` and ``medium_back`` index CompiledSystem.media: the media before and after
     the surface in the surface order of its element, as a refraction through the element's
@@ -113,6 +116,7 @@ class SurfaceLayout(NamedTuple):
     active: bool = True
     aperture_vertices: FloatArray | None = None
     obscurations: list[tuple[str, dict[str, float]]] = []
+    terms: list[tuple[str, dict[str, float]]] = []
 
     def to_dict(self) -> dict[str, Any]:
         """The data as plain Python values (ADR 0023, raytatouille.results)."""
@@ -137,13 +141,14 @@ def surfaces(system: CompiledSystem) -> list[SurfaceLayout]:
     for entry in _core.layout_surfaces(system):
         (sid, element, kind, rotation, translation,
          (shape, c, k, coefficients, c_x, k_x, rho, angle), max_radius, aperture, front,
-         back, active, vertices, obscurations) = entry
+         back, active, vertices, obscurations, terms) = entry
         out.append(SurfaceLayout(sid, int(element), kind, rotation, translation, shape, float(c),
                                  float(k), list(coefficients), max_radius, aperture, int(front),
                                  int(back), None if rho is None else float(rho),
                                  None if angle is None else float(angle), float(c_x),
                                  float(k_x), bool(active), vertices,
-                                 [(str(t), dict(p)) for t, p in obscurations]))
+                                 [(str(t), dict(p)) for t, p in obscurations],
+                                 [(str(t), dict(p)) for t, p in terms]))
     return out
 
 

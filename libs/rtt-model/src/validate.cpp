@@ -398,9 +398,11 @@ class Validator {
           report("element.surface_count", loc + "/surfaces", "a plate needs at least 2 surfaces");
         check_segment_materials(e, loc, "a plate");
         for (std::size_t i = 0; i < n; ++i) {
-          if (!std::holds_alternative<Plane>(e.surfaces[i].shape.base)) {
+          // A plate stays plane-parallel: no other base and no terms (ADR 0051, point 6).
+          if (!std::holds_alternative<Plane>(e.surfaces[i].shape.base) ||
+              !e.surfaces[i].shape.terms.empty()) {
             report("element.plate_surface_not_plane", idx(loc + "/surfaces", i) + "/shape",
-                   "plate surfaces must be planes");
+                   "plate surfaces must be planes without terms");
           }
         }
         break;
@@ -615,15 +617,28 @@ class Validator {
     }
   }
 
-  /// ADR 0043, point 2 (F3): Q-con and Q-bfs extrapolate beyond the normalization radius; a
-  /// warning if the largest distance of the aperture from the axis (radius, half the diagonal,
-  /// the major semi-axis) exceeds it by more than 1e-9 relative. No aperture, no warning.
+  /// ADR 0043, point 2 (F3): Q-con and Q-bfs extrapolate beyond the normalization radius, and so
+  /// do the Zernike terms (ADR 0051, point 1); a warning if the largest distance of the aperture
+  /// from the axis (radius, half the diagonal, the major semi-axis) exceeds it by more than 1e-9
+  /// relative. No aperture, no warning.
   void check_normalization_extent(const Surface& s, const std::string& loc) {
     if (!s.aperture) return;
-    const Param* rho = nullptr;
-    if (const auto* q = std::get_if<QCon>(&s.shape.base)) rho = &q->normalization_radius;
-    if (const auto* q = std::get_if<QBfs>(&s.shape.base)) rho = &q->normalization_radius;
-    if (rho == nullptr || rho->is_bound() || !finite_positive(rho->value)) return;
+    std::vector<std::pair<const Param*, std::string>> radii;
+    if (const auto* q = std::get_if<QCon>(&s.shape.base)) {
+      radii.emplace_back(&q->normalization_radius, loc + "/shape/base/normalization_radius");
+    }
+    if (const auto* q = std::get_if<QBfs>(&s.shape.base)) {
+      radii.emplace_back(&q->normalization_radius, loc + "/shape/base/normalization_radius");
+    }
+    for (std::size_t i = 0; i < s.shape.terms.size(); ++i) {
+      std::visit(
+          [&](const auto& t) {
+            radii.emplace_back(&t.normalization_radius,
+                               idx(loc + "/shape/terms", i) + "/normalization_radius");
+          },
+          s.shape.terms[i]);
+    }
+    if (radii.empty()) return;
     // The extent of the aperture: radius, half diagonal, major semi-axis, circumradius of a
     // regular polygon or the farthest vertex of a polygon (ADR 0050). A bound aperture dimension
     // has its value only after resolve_parameters (#353).
@@ -667,10 +682,13 @@ class Validator {
           }
         },
         *s.aperture);
-    if (extent > rho->value * (1.0 + 1e-9)) {
-      report("shape.normalization_radius_exceeded", loc + "/shape/base/normalization_radius",
-             "the aperture reaches beyond the normalization radius: the polynomials are "
-             "extrapolated there");
+    for (const auto& [rho, at] : radii) {
+      if (rho->is_bound() || !finite_positive(rho->value)) continue;
+      if (extent > rho->value * (1.0 + 1e-9)) {
+        report("shape.normalization_radius_exceeded", at,
+               "the aperture reaches beyond the normalization radius: the polynomials are "
+               "extrapolated there");
+      }
     }
   }
 
@@ -734,7 +752,13 @@ class Validator {
       std::visit(
           [&](const auto& term) {
             using S = std::decay_t<decltype(term)>;
-            if constexpr (std::is_same_v<S, ZernikeSag>) {
+            if constexpr (std::is_same_v<S, ZernikeSag> || std::is_same_v<S, ZernikeFringeSag>) {
+              // At most 231 Noll terms (n <= 20) or 37 Fringe terms (ADR 0051, points 2, 3).
+              constexpr std::size_t kMax = std::is_same_v<S, ZernikeSag> ? 231 : 37;
+              if (term.coefficients.size() > kMax) {
+                report("shape.zernike_terms_invalid", t + "/coefficients",
+                       "at most " + std::to_string(kMax) + " coefficients");
+              }
               check_param(term.normalization_radius, t + "/normalization_radius", true);
               for (std::size_t k = 0; k < term.coefficients.size(); ++k) {
                 check_param(term.coefficients[k], idx(t + "/coefficients", k), false);

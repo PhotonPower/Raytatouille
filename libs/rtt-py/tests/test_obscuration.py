@@ -1,5 +1,5 @@
 """Obscurations in Python (#320, ADR 0050, point 3): the model classes, the edit form, the
-layout field obscurations, the result format 0.1.22 and an end-to-end trace through
+layout field obscurations, the result format (obscurations since 0.1.22) and an end-to-end trace through
 m8/spider_telescope."""
 
 from __future__ import annotations
@@ -75,7 +75,7 @@ def test_result_format_carries_the_obscurations() -> None:
     surfaces = layout.surfaces(rt.compile(rt.load(TELESCOPE)))
     text = surfaces[1].to_json()
     doc = json.loads(text)
-    assert doc["schema_version"] == results.SCHEMA_VERSION == "0.1.22"
+    assert doc["schema_version"] == results.SCHEMA_VERSION == "0.1.23"
     assert doc["data"]["obscurations"] == [
         ["elliptical", {"semi_axis_x": 3.0, "semi_axis_y": 1.5, "decenter_x": 20.0,
                         "decenter_y": 5.0, "rotation_deg": 30.0}]]

@@ -91,7 +91,7 @@ ENUM_NAMES: dict[type, dict[str, str]] = {
 VARIANT_CLASSES: dict[str, type] = {
     "assembly": model.Assembly,
     "plane": model.Plane, "conic": model.Conic, "even_asphere": model.EvenAsphere,
-    "zernike_sag": model.ZernikeSag,
+    "zernike_sag": model.ZernikeSag, "zernike_fringe_sag": model.ZernikeFringeSag,
     "circular": model.CircularAperture, "rectangular": model.RectangularAperture,
     "elliptical": model.EllipticalAperture, "regular_polygon": model.RegularPolygonAperture,
     "polygon": model.PolygonAperture,
@@ -439,11 +439,12 @@ def test_every_variant_class_appears_in_the_reference_systems() -> None:
     tour = {type(o) for o in walk(rt.load(REFERENCE_DIR / "m0" / "feature_tour.rtt.json"))}
     # feature_tour without an ideal lens (ADR 0031, #178); the line above covers r2/ideal_lens,
     # m8/hexagon_mirror the polygon apertures and m8/spider_telescope the obscurations
-    # (ADR 0050).
+    # (ADR 0050), m8/zernike_mirror the Fringe term (ADR 0051).
     assert set(VARIANT_CLASSES.values()) - {model.IdealMirror, model.IdealLens,
                                              model.IdealCylinderLens,
                                              model.RegularPolygonAperture,
-                                             model.PolygonAperture} <= tour
+                                             model.PolygonAperture,
+                                             model.ZernikeFringeSag} <= tour
 
 
 def test_copies_are_read_only_and_not_constructible() -> None:

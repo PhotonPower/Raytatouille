@@ -329,3 +329,37 @@ TEST_CASE("obscurations: read errors and the version before 0.11 (ADR 0050)", "[
   CHECK(error_pointer(with_obscurations(R"([{"type": "circular", "radius": 1.0}])", "0.11.0")) ==
         "<no error>");
 }
+
+TEST_CASE("zernike_fringe_sag: canonical form, round trip, edit form, version (ADR 0051)",
+          "[io][0.11]") {
+  System s = rtt::model::test::make_singlet();
+  auto& lens = rtt::model::test::element(s, 1);
+  Param a(1e-4);
+  a.variable = true;
+  lens.surfaces[0].shape.terms = {
+      rtt::model::ZernikeSag{Param(12.0), {Param(0.0), Param(0.0), Param(0.0), Param(2e-4)}},
+      rtt::model::ZernikeFringeSag{Param(12.0), {Param(0.0), Param(0.0), Param(0.0), a}}};
+  const json j = json::parse(rtt::io::to_json(s));
+  const json& t = j["root"]["children"][1]["surfaces"][0]["shape"]["terms"];
+  CHECK(t[1] == json::parse(R"({"type": "zernike_fringe_sag", "normalization_radius": 12.0,
+      "coefficients": [0.0, 0.0, 0.0, {"value": 0.0001, "variable": true}]})"));
+  CHECK(t[0]["type"] == "zernike_sag");
+  CHECK(rtt::io::parse_system(j.dump()) == s);
+  CHECK_FALSE(rtt::model::has_errors(rtt::model::validate(s)));
+  // for_each_param visits the Fringe coefficients after the Noll term.
+  std::vector<std::string> pointers;
+  rtt::model::for_each_param(s,
+                             [&](std::string_view p, const Param&) { pointers.emplace_back(p); });
+  const std::string term = "/root/children/1/surfaces/0/shape/terms/1";
+  CHECK(std::find(pointers.begin(), pointers.end(), term + "/coefficients/3") != pointers.end());
+  // Before 0.11 the new term type is a read error at its type; zernike_sag stays readable.
+  json old = j;
+  old["schema_version"] = "0.10.0";
+  CHECK(error_pointer(old.dump()) == term + "/type");
+  old["root"]["children"][1]["surfaces"][0]["shape"]["terms"].erase(1);
+  CHECK(error_pointer(old.dump()) == "<no error>");
+  // Too many Fringe coefficients are a validation error, not a read error.
+  lens.surfaces[0].shape.terms = {
+      rtt::model::ZernikeFringeSag{Param(12.0), std::vector<Param>(38, Param(0.0))}};
+  CHECK(rtt::model::has_errors(rtt::model::validate(s)));
+}
