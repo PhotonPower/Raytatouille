@@ -71,7 +71,10 @@ class SurfaceLayout(NamedTuple):
     holds the whole domain (ADR 0042, point 1), None if the domain is unbounded (plane,
     cylinder, axicon, odd asphere with c = 0). ``aperture`` is None or (type, parameters in
     mm) with type "circular" (radius, inner_radius), "rectangular" (half_width_x,
-    half_width_y) or "elliptical" (semi_axis_x, semi_axis_y), centred on the local axis.
+    half_width_y), "elliptical" (semi_axis_x, semi_axis_y), "regular_polygon" (sides,
+    circumradius, rotation_deg) or "polygon" (no parameters), centred on the local axis.
+    ``aperture_vertices`` holds the vertices of both polygon apertures as an (n, 2) array in mm
+    in the local frame (ADR 0050, point 2), None for the other apertures.
 
     ``medium_front`` and ``medium_back`` index CompiledSystem.media: the media before and after
     the surface in the surface order of its element, as a refraction through the element's
@@ -102,6 +105,7 @@ class SurfaceLayout(NamedTuple):
     curvature_x: float
     conic_constant_x: float
     active: bool = True
+    aperture_vertices: FloatArray | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """The data as plain Python values (ADR 0023, raytatouille.results)."""
@@ -126,12 +130,12 @@ def surfaces(system: CompiledSystem) -> list[SurfaceLayout]:
     for entry in _core.layout_surfaces(system):
         (sid, element, kind, rotation, translation,
          (shape, c, k, coefficients, c_x, k_x, rho, angle), max_radius, aperture, front,
-         back, active) = entry
+         back, active, vertices) = entry
         out.append(SurfaceLayout(sid, int(element), kind, rotation, translation, shape, float(c),
                                  float(k), list(coefficients), max_radius, aperture, int(front),
                                  int(back), None if rho is None else float(rho),
                                  None if angle is None else float(angle), float(c_x),
-                                 float(k_x), bool(active)))
+                                 float(k_x), bool(active), vertices))
     return out
 
 

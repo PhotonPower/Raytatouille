@@ -3,6 +3,7 @@
 #include "rtt/analysis/reports.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -40,7 +41,8 @@ const compile::CompiledPath& checked_path(const compile::CompiledSystem& system,
 
 /// Semi-diameter of an aperture and its kind: the circumscribed radius (#177, decision of the
 /// coordinator): circle (outer radius of an annulus), half diagonal of a rectangle, major
-/// semi-axis of an ellipse; NaN without aperture.
+/// semi-axis of an ellipse, circumradius of a regular polygon, largest distance of a vertex
+/// from the axis for a polygon (ADR 0050, point 2); NaN without aperture.
 std::pair<double, ApertureKind> semi_diameter(const std::optional<model::Aperture>& aperture) {
   if (!aperture) return {kNaN, ApertureKind::None};
   if (const auto* c = std::get_if<model::CircularAperture>(&*aperture)) {
@@ -49,8 +51,16 @@ std::pair<double, ApertureKind> semi_diameter(const std::optional<model::Apertur
   if (const auto* r = std::get_if<model::RectangularAperture>(&*aperture)) {
     return {std::hypot(r->half_width_x.value, r->half_width_y.value), ApertureKind::Rectangular};
   }
-  const auto& e = std::get<model::EllipticalAperture>(*aperture);
-  return {std::max(e.semi_axis_x.value, e.semi_axis_y.value), ApertureKind::Elliptical};
+  if (const auto* e = std::get_if<model::EllipticalAperture>(&*aperture)) {
+    return {std::max(e->semi_axis_x.value, e->semi_axis_y.value), ApertureKind::Elliptical};
+  }
+  if (const auto* g = std::get_if<model::RegularPolygonAperture>(&*aperture)) {
+    return {g->circumradius.value, ApertureKind::RegularPolygon};
+  }
+  const auto& p = std::get<model::PolygonAperture>(*aperture);
+  double r = 0.0;
+  for (const std::array<double, 2>& v : p.vertices) r = std::max(r, std::hypot(v[0], v[1]));
+  return {r, ApertureKind::Polygon};
 }
 
 double sag(const compile::CompiledSystem& system, std::uint32_t surface, double x, double y) {

@@ -681,3 +681,73 @@ TEST_CASE("elements and the media in front of and behind each surface", "[layout
   REQUIRE(cs.elements()[0].media.empty());
   REQUIRE(cs.surfaces()[index_of(cs, "D2")].element == 1);
 }
+
+TEST_CASE("profiles of regular polygon and polygon apertures (ADR 0050)", "[layout]") {
+  // Plane surfaces in the x-y plane, so a profile end is (x, y, z_vertex) exactly at the rim.
+  // - Hexagon R = 10 at 0 deg: horizontal edges at y = +-R cos 30 deg, vertices on the x axis;
+  //   the y-z section ends at +-R cos 30 deg, the x-z section at +-R.
+  // - L polygon (the square [0, 4]^2 without [2, 4]^2): the line x = 3 meets y in [0, 2], the
+  //   line y = 3 meets x in [0, 2]; the line y = 2 along the edge of the missing corner gives x
+  //   in [0, 4] (the rim belongs to the aperture); the line y = x through the vertex (0, 0) and
+  //   the reflex vertex (2, 2) gives the diagonal from (0, 0) to (2, 2); the line x + y = 4.5
+  //   leaves the L through the missing corner and re-enters it: two pieces, (4, 0.5)-(2.5, 2)
+  //   and (2, 2.5)-(0.5, 4).
+  // Tolerance 1e-12.
+  System s = base_system();
+  Surface hex = surface("HX", 0.0, rtt::model::Plane{}, std::nullopt);
+  hex.aperture = rtt::model::RegularPolygonAperture{6, Param(10.0), 0.0};
+  Surface ell = surface("LL", 5.0, rtt::model::Plane{}, std::nullopt);
+  ell.aperture = rtt::model::PolygonAperture{
+      {{0.0, 0.0}, {4.0, 0.0}, {4.0, 2.0}, {2.0, 2.0}, {2.0, 4.0}, {0.0, 4.0}}};
+  Element plate{"P", ElementKind::Plate, Pose::along_z(0.0), "CONST:1.5", {hex, ell}};
+  s.root.children = {{plate}};
+  const MaterialLibrary lib;
+  const CompiledSystem cs = compile(s, lib);
+
+  const double r = 10.0 * std::cos(kPi / 6.0);
+  const auto hex_yz = rtt::compile::surface_profile(cs, 0, yz_plane(), 3);
+  REQUIRE(hex_yz.size() == 1);
+  CHECK((hex_yz[0].front() - Vec3(0.0, -r, 0.0)).norm() <= 1e-12);
+  CHECK((hex_yz[0].back() - Vec3(0.0, r, 0.0)).norm() <= 1e-12);
+  const SectionPlane xz{Vec3::Zero(), Vec3(0.0, 1.0, 0.0)};
+  const auto hex_xz = rtt::compile::surface_profile(cs, 0, xz, 3);
+  REQUIRE(hex_xz.size() == 1);
+  CHECK((hex_xz[0].front() - Vec3(10.0, 0.0, 0.0)).norm() <= 1e-12);
+  CHECK((hex_xz[0].back() - Vec3(-10.0, 0.0, 0.0)).norm() <= 1e-12);
+
+  // x = 3 (plane through (3, 0, 0) with normal +x, direction t = z x x = +y): y from 0 to 2.
+  const auto l_x3 = rtt::compile::surface_profile(cs, 1, yz_plane(3.0), 3);
+  REQUIRE(l_x3.size() == 1);
+  CHECK((l_x3[0].front() - Vec3(3.0, 0.0, 5.0)).norm() <= 1e-12);
+  CHECK((l_x3[0].back() - Vec3(3.0, 2.0, 5.0)).norm() <= 1e-12);
+  // y = 3 (direction -x): x from 2 to 0.
+  const SectionPlane y3{Vec3(0.0, 3.0, 0.0), Vec3(0.0, 1.0, 0.0)};
+  const auto l_y3 = rtt::compile::surface_profile(cs, 1, y3, 3);
+  REQUIRE(l_y3.size() == 1);
+  CHECK((l_y3[0].front() - Vec3(2.0, 3.0, 5.0)).norm() <= 1e-12);
+  CHECK((l_y3[0].back() - Vec3(0.0, 3.0, 5.0)).norm() <= 1e-12);
+  // y = 2 along the edge of the missing corner: the whole bottom part, x from 4 to 0.
+  const SectionPlane y2{Vec3(0.0, 2.0, 0.0), Vec3(0.0, 1.0, 0.0)};
+  const auto l_y2 = rtt::compile::surface_profile(cs, 1, y2, 3);
+  REQUIRE(l_y2.size() == 1);
+  CHECK((l_y2[0].front() - Vec3(4.0, 2.0, 5.0)).norm() <= 1e-12);
+  CHECK((l_y2[0].back() - Vec3(0.0, 2.0, 5.0)).norm() <= 1e-12);
+  // y = x through the reflex vertex (2, 2) and the vertex (0, 0): one piece on the diagonal.
+  const SectionPlane diagonal{Vec3::Zero(), Vec3(1.0, -1.0, 0.0).normalized()};
+  const auto l_d = rtt::compile::surface_profile(cs, 1, diagonal, 3);
+  REQUIRE(l_d.size() == 1);
+  CHECK((l_d[0].front() - Vec3(0.0, 0.0, 5.0)).norm() <= 1e-12);
+  CHECK((l_d[0].back() - Vec3(2.0, 2.0, 5.0)).norm() <= 1e-12);
+  // x + y = 4.5: direction t = z x n = (-1, 1) / sqrt 2, so the piece at (4, 0.5) comes first.
+  const SectionPlane cut{Vec3(2.25, 2.25, 0.0), Vec3(1.0, 1.0, 0.0).normalized()};
+  const auto l_two = rtt::compile::surface_profile(cs, 1, cut, 3);
+  REQUIRE(l_two.size() == 2);
+  CHECK((l_two[0].front() - Vec3(4.0, 0.5, 5.0)).norm() <= 1e-12);
+  CHECK((l_two[0].back() - Vec3(2.5, 2.0, 5.0)).norm() <= 1e-12);
+  CHECK((l_two[1].front() - Vec3(2.0, 2.5, 5.0)).norm() <= 1e-12);
+  CHECK((l_two[1].back() - Vec3(0.5, 4.0, 5.0)).norm() <= 1e-12);
+  // y = x + 4 touches the L only at its vertex (0, 4): an interval of length 0, no piece (ADR
+  // 0050, addendum PR 3).
+  const SectionPlane touch{Vec3(0.0, 4.0, 0.0), Vec3(1.0, -1.0, 0.0).normalized()};
+  CHECK(rtt::compile::surface_profile(cs, 1, touch, 3).empty());
+}

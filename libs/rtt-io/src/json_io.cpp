@@ -443,8 +443,34 @@ Aperture read_aperture(const Json& j, const Ctx& c) {
     return EllipticalAperture{read_param(require(j, "semi_axis_x", c), c.at("semi_axis_x")),
                               read_param(require(j, "semi_axis_y", c), c.at("semi_axis_y"))};
   }
+  if (type == "regular_polygon") {  // ADR 0050, point 2
+    expect_object(j, c, {"type", "sides", "circumradius", "rotation_deg"});
+    RegularPolygonAperture a;
+    const int sides = read_int(require(j, "sides", c), c.at("sides"));
+    if (sides < 0 || sides > std::numeric_limits<std::uint16_t>::max()) {
+      c.at("sides").fail("sides " + std::to_string(sides) + " out of range (0 ... 65535)");
+    }
+    a.sides = static_cast<std::uint16_t>(sides);
+    a.circumradius = read_param(require(j, "circumradius", c), c.at("circumradius"));
+    read_opt(j, "rotation_deg", c, a.rotation_deg, read_number);
+    return a;
+  }
+  if (type == "polygon") {
+    expect_object(j, c, {"type", "vertices"});
+    const Json& list = require(j, "vertices", c);
+    const Ctx at = c.at("vertices");
+    expect_array(list, at);
+    PolygonAperture a;
+    for (std::size_t i = 0; i < list.size(); ++i) {
+      const Json& v = list[i];
+      expect_array(v, at.at(i));
+      if (v.size() != 2) at.at(i).fail("expected [x, y]");
+      a.vertices.push_back({read_number(v[0], at.at(i).at(0)), read_number(v[1], at.at(i).at(1))});
+    }
+    return a;
+  }
   c.at("type").fail("unknown aperture type '" + type +
-                    "', expected circular, rectangular or elliptical");
+                    "', expected circular, rectangular, elliptical, regular_polygon or polygon");
 }
 
 PhaseLayer read_phase(const Json& j, const Ctx& c) {
@@ -780,14 +806,24 @@ void check_0_9_forms(const Json& node, const Ctx& c) {
   }
 }
 
-/// Files before 0.11 (ADR 0050, point 1): an aperture dimension that is not a number (a Param
-/// object) is an error at that dimension, so that a version is never silently upgraded.
+/// Files before 0.11 (ADR 0050, points 1 and 2): the aperture types regular_polygon and polygon
+/// are an error at the type, an aperture dimension that is not a number (a Param object) at that
+/// dimension, so that a version is never silently upgraded.
 void check_0_11_forms(const Json& node, const Ctx& c) {
   if (!node.is_object()) return;  // structural errors are reported by the reader
   if (const Json* surfaces = find(node, "surfaces"); surfaces != nullptr && surfaces->is_array()) {
     for (std::size_t i = 0; i < surfaces->size(); ++i) {
       const Json* aperture = find((*surfaces)[i], "aperture");
       if (aperture == nullptr || !aperture->is_object()) continue;
+      if (const Json* type = find(*aperture, "type");
+          type != nullptr && (*type == "regular_polygon" || *type == "polygon")) {
+        c.at("surfaces")
+            .at(i)
+            .at("aperture")
+            .at("type")
+            .fail("the aperture '" + type->get<std::string>() +
+                  "' needs schema_version 0.11 or later (ADR 0050)");
+      }
       for (const char* key : {"radius", "inner_radius", "half_width_x", "half_width_y",
                               "semi_axis_x", "semi_axis_y"}) {
         const Json* value = find(*aperture, key);
@@ -1759,6 +1795,18 @@ class Writer {
       o["type"] = "elliptical";
       o["semi_axis_x"] = param(e->semi_axis_x);
       o["semi_axis_y"] = param(e->semi_axis_y);
+    } else if (const auto* g = std::get_if<RegularPolygonAperture>(&a)) {
+      o["type"] = "regular_polygon";
+      o["sides"] = g->sides;
+      o["circumradius"] = param(g->circumradius);
+      if (edit_ || g->rotation_deg != 0.0) o["rotation_deg"] = num(g->rotation_deg);
+    } else if (const auto* poly = std::get_if<PolygonAperture>(&a)) {
+      o["type"] = "polygon";
+      OJson vertices = OJson::array();
+      for (const std::array<double, 2>& v : poly->vertices) {
+        vertices.push_back(OJson::array({num(v[0]), num(v[1])}));
+      }
+      o["vertices"] = std::move(vertices);
     }
     return o;
   }

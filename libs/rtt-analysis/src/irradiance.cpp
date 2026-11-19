@@ -1,10 +1,12 @@
 #include "rtt/analysis/irradiance.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <complex>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <numbers>
 #include <optional>
 #include <stdexcept>
@@ -26,6 +28,9 @@ namespace {
   throw std::invalid_argument("irradiance_map: " + what);
 }
 
+template <class>
+inline constexpr bool kUnhandledBounding = false;
+
 /// The bounding rectangle of an aperture in local coordinates (ADR 0048, point 3).
 IrradianceExtent bounding(const model::Aperture& aperture) {
   return std::visit(
@@ -36,9 +41,24 @@ IrradianceExtent bounding(const model::Aperture& aperture) {
         } else if constexpr (std::is_same_v<A, model::RectangularAperture>) {
           return {-a.half_width_x.value, a.half_width_x.value, -a.half_width_y.value,
                   a.half_width_y.value};
-        } else {
+        } else if constexpr (std::is_same_v<A, model::EllipticalAperture>) {
           return {-a.semi_axis_x.value, a.semi_axis_x.value, -a.semi_axis_y.value,
                   a.semi_axis_y.value};
+        } else if constexpr (std::is_same_v<A, model::RegularPolygonAperture> ||
+                             std::is_same_v<A, model::PolygonAperture>) {
+          // The axis-parallel rectangle about the vertices (ADR 0050, point 2).
+          IrradianceExtent e{
+              std::numeric_limits<double>::infinity(), -std::numeric_limits<double>::infinity(),
+              std::numeric_limits<double>::infinity(), -std::numeric_limits<double>::infinity()};
+          for (const std::array<double, 2>& v : model::aperture_vertices(a)) {
+            e.x_min = std::min(e.x_min, v[0]);
+            e.x_max = std::max(e.x_max, v[0]);
+            e.y_min = std::min(e.y_min, v[1]);
+            e.y_max = std::max(e.y_max, v[1]);
+          }
+          return e;
+        } else {
+          static_assert(kUnhandledBounding<A>, "bounding: unhandled aperture");
         }
       },
       aperture);

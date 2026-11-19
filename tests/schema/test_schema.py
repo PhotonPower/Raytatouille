@@ -661,3 +661,34 @@ def test_0_11_aperture_param_errors_are_rejected(aperture):
 def test_0_11_version_pattern():
     assert VALIDATOR.is_valid(_broken(lambda d: None))
     assert not VALIDATOR.is_valid(_broken(lambda d: d.update(schema_version="0.10.0")))
+
+
+# ---- schema 0.11 (#320, ADR 0050, point 2): regular_polygon and polygon apertures ----
+
+@pytest.mark.parametrize(
+    "aperture",
+    [{"type": "regular_polygon", "sides": 6, "circumradius": 12.7},
+     {"type": "regular_polygon", "sides": 5, "circumradius": {"value": 5.0, "variable": True},
+      "rotation_deg": 10.0},
+     {"type": "polygon", "vertices": [[0.0, 0.0], [4.0, 0.0], [4.0, 2.0], [2.0, 2.0],
+                                      [2.0, 4.0], [0.0, 4.0]]}],
+    ids=["hexagon", "pentagon-param", "l-shape"],
+)
+def test_0_11_polygon_apertures_are_accepted(aperture):
+    assert VALIDATOR.is_valid(_aperture(aperture))
+
+
+@pytest.mark.parametrize(
+    "aperture",
+    [{"type": "regular_polygon", "circumradius": 5.0},
+     {"type": "regular_polygon", "sides": 6.5, "circumradius": 5.0},
+     {"type": "regular_polygon", "sides": 6, "circumradius": 5.0, "rotation_deg": "30"},
+     {"type": "polygon"},
+     {"type": "polygon", "vertices": [[0.0, 0.0, 1.0]]},
+     {"type": "polygon", "vertices": [[0.0, {"value": 1.0}]]},
+     {"type": "hexagonal", "circumradius": 5.0}],
+    ids=["no-sides", "fractional-sides", "string-rotation", "no-vertices", "three-coordinates",
+         "param-vertex", "hexagonal"],
+)
+def test_0_11_polygon_aperture_errors_are_rejected(aperture):
+    assert not VALIDATOR.is_valid(_aperture(aperture))

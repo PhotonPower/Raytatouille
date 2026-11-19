@@ -5,6 +5,7 @@
 /// (docs/architecture.md, "Layer-Stack einer Fläche").
 
 #include <array>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <variant>
@@ -164,7 +165,35 @@ struct EllipticalAperture {
   bool operator==(const EllipticalAperture&) const = default;
 };
 
-using Aperture = std::variant<CircularAperture, RectangularAperture, EllipticalAperture>;
+/// Regular polygon (ADR 0050, point 2): vertex k at circumradius R and angle
+/// phi_k = rotation_deg + 360 k / sides degree, k = 0 ... sides - 1, measured from the local +x
+/// axis towards +y; rotation 0 puts the first vertex on +x.
+struct RegularPolygonAperture {
+  std::uint16_t sides = 0;    ///< 3 ... 1024
+  Param circumradius;         ///< R in mm, > 0
+  double rotation_deg = 0.0;  ///< theta_0 in degree, finite
+  bool operator==(const RegularPolygonAperture&) const = default;
+};
+
+/// Simple polygon (ADR 0050, point 2): at least 3 vertices (x, y) in mm in the local frame, in
+/// either orientation, convex or concave, without self-intersection; the last vertex joins the
+/// first and is not repeated. The vertices are plain numbers, not Params.
+struct PolygonAperture {
+  std::vector<std::array<double, 2>> vertices;
+  bool operator==(const PolygonAperture&) const = default;
+};
+
+using Aperture = std::variant<CircularAperture,
+                              RectangularAperture,
+                              EllipticalAperture,
+                              RegularPolygonAperture,
+                              PolygonAperture>;
+
+/// The vertices of a polygon aperture in local x, y in mm (ADR 0050, point 2): those of
+/// PolygonAperture as given, those of RegularPolygonAperture at R (cos phi_k, sin phi_k) with
+/// phi_k = (rotation_deg + 360 k / sides) degree; empty for the other apertures and for fewer
+/// than 3 sides. Uses the current value of the circumradius (resolve bound Params first).
+[[nodiscard]] std::vector<std::array<double, 2>> aperture_vertices(const Aperture& aperture);
 
 // --------------------------------------------------------------- phases -----
 

@@ -666,6 +666,20 @@ void bind_model_tree(nb::module_& m) {
       .def_ro("semi_axis_x", &model::EllipticalAperture::semi_axis_x, "Semi-axis in x, mm (Param).")
       .def_ro("semi_axis_y", &model::EllipticalAperture::semi_axis_y,
               "Semi-axis in y, mm (Param).");
+  read_only_class<model::RegularPolygonAperture>(
+      m, "RegularPolygonAperture",
+      "Regular polygon aperture (ADR 0050): vertex k at circumradius R and angle rotation_deg + "
+      "360 k / sides degree from the local +x axis towards +y (read-only copy).")
+      .def_ro("sides", &model::RegularPolygonAperture::sides, "Number of sides, 3 ... 1024.")
+      .def_ro("circumradius", &model::RegularPolygonAperture::circumradius,
+              "Circumradius R in mm (Param).")
+      .def_ro("rotation_deg", &model::RegularPolygonAperture::rotation_deg,
+              "Angle of the first vertex from the local +x axis towards +y, degree.");
+  read_only_class<model::PolygonAperture>(
+      m, "PolygonAperture",
+      "Simple polygon aperture (ADR 0050): vertices (x, y) in mm in the local frame, either "
+      "orientation, convex or concave; the last joins the first (read-only copy).")
+      .def_ro("vertices", &model::PolygonAperture::vertices, "Vertices [(x, y), ...] in mm.");
 
   // --------------------------------------------------------------- phases -----
   read_only_class<model::LinearGrating>(

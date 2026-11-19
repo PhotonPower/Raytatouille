@@ -287,3 +287,28 @@ def test_results_from_0_1_20_need_active(name: str):
 def test_active_is_a_boolean(name: str):
     with pytest.raises(jsonschema.ValidationError):
         VALIDATOR.validate(_with_active(name, "0.1.20", "yes"))
+
+
+# SurfaceLayout gained aperture_vertices in 0.1.21 (#320, ADR 0050, point 2; ADR 0023 addendum):
+# older files stay valid without it (no polygon aperture), from 0.1.21 on it is required and an
+# array object or null.
+def _surface_layout_0_1_21(version: str, vertices="absent") -> dict:
+    doc = _with_active("SurfaceLayout.result.json", version)
+    if vertices != "absent":
+        doc["data"]["aperture_vertices"] = vertices
+    return doc
+
+
+def test_older_surface_layouts_without_aperture_vertices_are_valid():
+    for version in ("0.1.0", "0.1.20"):
+        VALIDATOR.validate(_surface_layout_0_1_21(version))
+
+
+def test_surface_layouts_from_0_1_21_need_aperture_vertices():
+    VALIDATOR.validate(_surface_layout_0_1_21("0.1.21", None))
+    hexagon = {"dtype": "float64", "shape": [3, 2], "values": [1.0, 0.0, -0.5, 0.5, -0.5, -0.5]}
+    VALIDATOR.validate(_surface_layout_0_1_21("0.1.21", hexagon))
+    with pytest.raises(jsonschema.ValidationError):
+        VALIDATOR.validate(_surface_layout_0_1_21("0.1.21"))
+    with pytest.raises(jsonschema.ValidationError):
+        VALIDATOR.validate(_surface_layout_0_1_21("0.1.21", [[1.0, 0.0]]))

@@ -1,6 +1,7 @@
 #include "rtt/compile/layout.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -94,6 +95,58 @@ std::vector<Interval> intersect(const std::vector<Interval>& a, const std::vecto
   return out;
 }
 
+/// Crossings of the line with the edges of a polygon by the half-open rule on the signed
+/// distance d of the vertices from the line (ADR 0050, point 2): an edge counts if
+/// side(d_i) != side(d_j). `positive` selects side(d) = d > 0, else d < 0. A vertex on the line
+/// counts once; an edge on the line does not count, its neighbours set the bounds. The crossings,
+/// sorted and paired, are the intervals inside (even-odd rule).
+std::vector<Interval> polygon_crossings(const std::vector<std::array<double, 2>>& v,
+                                        const Line& line,
+                                        bool positive) {
+  const std::size_t n = v.size();
+  std::vector<double> s;
+  const auto dist = [&](const std::array<double, 2>& p) {
+    return (p[0] - line.q0x) * line.ty - (p[1] - line.q0y) * line.tx;
+  };
+  const auto side = [positive](double d) { return positive ? d > 0.0 : d < 0.0; };
+  for (std::size_t i = 0, j = n - 1; i < n; j = i++) {
+    const double di = dist(v[i]);
+    const double dj = dist(v[j]);
+    if (side(di) == side(dj)) continue;
+    const double lambda = dj / (dj - di);  // point v_j + lambda (v_i - v_j) on the line
+    const double x = v[j][0] + lambda * (v[i][0] - v[j][0]);
+    const double y = v[j][1] + lambda * (v[i][1] - v[j][1]);
+    s.push_back((x - line.q0x) * line.tx + (y - line.q0y) * line.ty);  // |t| = 1
+  }
+  std::sort(s.begin(), s.end());
+  std::vector<Interval> out;
+  for (std::size_t k = 0; k + 1 < s.size(); k += 2) out.push_back({s[k], s[k + 1]});
+  return out;
+}
+
+/// Parameter intervals of the line inside a polygon (ADR 0050, point 2). The rim belongs to the
+/// aperture: the union of the two half-open rules (d > 0 and d < 0) keeps an edge that lies on
+/// the line, whichever side the polygon is on; intervals of length 0 (a touched vertex) drop.
+std::vector<Interval> polygon_pieces(const std::vector<std::array<double, 2>>& v,
+                                     const Line& line) {
+  if (v.size() < 3) return {};
+  std::vector<Interval> all = polygon_crossings(v, line, true);
+  const std::vector<Interval> other = polygon_crossings(v, line, false);
+  all.insert(all.end(), other.begin(), other.end());
+  std::sort(all.begin(), all.end(),
+            [](const Interval& p, const Interval& q) { return p.lo < q.lo; });
+  std::vector<Interval> out;
+  for (const Interval& i : all) {
+    if (!out.empty() && i.lo <= out.back().hi) {
+      out.back().hi = std::max(out.back().hi, i.hi);
+    } else {
+      out.push_back(i);
+    }
+  }
+  std::erase_if(out, [](const Interval& i) { return !(i.hi > i.lo); });
+  return out;
+}
+
 /// Parameter intervals of the line inside the aperture (local x, y, centred on the axis).
 std::vector<Interval> aperture_pieces(const model::Aperture& aperture, const Line& line) {
   return std::visit(
@@ -135,6 +188,9 @@ std::vector<Interval> aperture_pieces(const model::Aperture& aperture, const Lin
           if (!(disc2 > 0.0)) return {};
           const double root = std::sqrt(disc2);
           return {{(-qb - root) / (2.0 * qa), (-qb + root) / (2.0 * qa)}};
+        } else if constexpr (std::is_same_v<A, model::RegularPolygonAperture> ||
+                             std::is_same_v<A, model::PolygonAperture>) {
+          return polygon_pieces(model::aperture_vertices(aperture), line);
         } else {
           static_assert(kUnhandledAperture<A>, "aperture type not handled");
         }

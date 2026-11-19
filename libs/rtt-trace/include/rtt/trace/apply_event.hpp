@@ -194,8 +194,11 @@ inline constexpr double kApertureTolerance = 1e-9;
 /// rims are inclusive with kApertureTolerance. Circular (r <= R + tol, with an inner radius
 /// r >= R_i - tol), rectangular (|x| <= a + tol, |y| <= b + tol, i.e. up to sqrt(2) tol at the
 /// corners) and elliptical apertures (semi-axes a + tol, b + tol: the normal allowance is tol on
-/// the axes and between 2 sqrt(ab) / (a + b) tol and tol elsewhere, never more than tol), all in
-/// local x, y, mm.
+/// the axes and between 2 sqrt(ab) / (a + b) tol and tol elsewhere, never more than tol),
+/// regular polygons (x cos psi_k + y sin psi_k <= R cos(pi / n) + tol for every edge k, ADR 0050;
+/// tol outside each edge, up to tol / cos(pi / n) at a vertex)
+/// and simple polygons (even-odd rule, or a distance of at most tol from an edge, ADR 0050), all
+/// in local x, y, mm.
 [[nodiscard]] bool inside_aperture(const compile::CompiledSurface& surface,
                                    const SurfaceHit& hit) noexcept;
 

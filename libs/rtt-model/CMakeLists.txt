@@ -1,4 +1,4 @@
-add_library(rtt_model src/element.cpp src/expression.cpp src/expression_eval.cpp
+add_library(rtt_model src/aperture.cpp src/element.cpp src/expression.cpp src/expression_eval.cpp
   src/parameters.cpp src/pose.cpp src/tolerance.cpp src/tolerance_targets.cpp src/validate.cpp)
 add_library(rtt::model ALIAS rtt_model)
 target_include_directories(rtt_model PUBLIC
@@ -26,7 +26,7 @@ if(RTT_BUILD_TESTS)
             tests/test_validate_object_medium.cpp tests/test_validate_object_reference.cpp
             tests/test_validate_aperture_stop.cpp tests/test_validate_aperture_reading.cpp
             tests/test_anamorphic_model.cpp tests/test_rotational_model.cpp
-            tests/test_forbes_model.cpp
+            tests/test_forbes_model.cpp tests/test_validate_polygon.cpp
     LIBS rtt::model rtt::model_test_support)
   # src/: the expression parser (expression.hpp) is tested directly.
   target_include_directories(rtt_model_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)

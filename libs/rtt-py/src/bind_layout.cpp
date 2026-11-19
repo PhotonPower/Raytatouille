@@ -10,6 +10,7 @@
 #include <nanobind/stl/tuple.h>
 #include <nanobind/stl/vector.h>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
@@ -42,6 +43,8 @@ using math::Vec3;
 /// shape_data() (ADR 0041, point 6).
 template <class>
 inline constexpr bool kUnhandledShape = false;
+template <class>
+inline constexpr bool kUnhandledAperture = false;
 
 using RealIn = nb::ndarray<const double, nb::ndim<1>, nb::c_contig, nb::device::cpu>;
 template <typename T>
@@ -187,12 +190,36 @@ std::optional<std::tuple<std::string, std::map<std::string, double>>> aperture_d
         } else if constexpr (std::is_same_v<A, model::RectangularAperture>) {
           return {"rectangular",
                   {{"half_width_x", a.half_width_x.value}, {"half_width_y", a.half_width_y.value}}};
-        } else {
+        } else if constexpr (std::is_same_v<A, model::EllipticalAperture>) {
           return {"elliptical",
                   {{"semi_axis_x", a.semi_axis_x.value}, {"semi_axis_y", a.semi_axis_y.value}}};
+        } else if constexpr (std::is_same_v<A, model::RegularPolygonAperture>) {
+          return {"regular_polygon",
+                  {{"sides", static_cast<double>(a.sides)},
+                   {"circumradius", a.circumradius.value},
+                   {"rotation_deg", a.rotation_deg}}};
+        } else if constexpr (std::is_same_v<A, model::PolygonAperture>) {
+          return {"polygon", {}};  // the vertices are in aperture_vertices (ADR 0050)
+        } else {
+          static_assert(kUnhandledAperture<A>, "aperture_data: unhandled aperture");
         }
       },
       *aperture);
+}
+
+/// The vertices of a polygon aperture as an (n, 2) array in mm, none for the other apertures
+/// (ADR 0050, point 2).
+std::optional<Out<double>> vertex_data(const std::optional<model::Aperture>& aperture) {
+  if (!aperture) return std::nullopt;
+  const std::vector<std::array<double, 2>> v = model::aperture_vertices(*aperture);
+  if (v.empty()) return std::nullopt;
+  std::vector<double> flat;
+  flat.reserve(2 * v.size());
+  for (const std::array<double, 2>& p : v) {
+    flat.push_back(p[0]);
+    flat.push_back(p[1]);
+  }
+  return owned(std::move(flat), {v.size(), 2});
 }
 
 }  // namespace
@@ -267,7 +294,8 @@ void bind_layout(nb::module_& m) {
           out.append(nb::make_tuple(
               c.id.str(), c.element, kind_name(c.element_kind), owned(std::move(rotation), {3, 3}),
               owned(std::vector<double>{t.x(), t.y(), t.z()}, {3}), shape_data(c.shape), max_radius,
-              aperture_data(c.aperture), c.medium_front, c.medium_back, c.active));
+              aperture_data(c.aperture), c.medium_front, c.medium_back, c.active,
+              vertex_data(c.aperture)));
         }
         return out;
       },

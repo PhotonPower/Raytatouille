@@ -346,6 +346,29 @@ std::vector<Case> cases() {
        [](System& s) { element(s, 1).surfaces[0].aperture = RectangularAperture{0.0, 1.0}; }},
       {"surface_aperture.semi_axis_invalid", "/root/children/1/surfaces/0/aperture",
        [](System& s) { element(s, 1).surfaces[0].aperture = EllipticalAperture{1.0, 0.0}; }},
+      {"surface_aperture.sides_invalid", "/root/children/1/surfaces/0/aperture/sides",
+       [](System& s) {
+         element(s, 1).surfaces[0].aperture = RegularPolygonAperture{2, Param(10.0), 0.0};
+       }},
+      {"surface_aperture.circumradius_invalid", "/root/children/1/surfaces/0/aperture/circumradius",
+       [](System& s) {
+         element(s, 1).surfaces[0].aperture = RegularPolygonAperture{6, Param(0.0), 0.0};
+       }},
+      {"surface_aperture.rotation_invalid", "/root/children/1/surfaces/0/aperture/rotation_deg",
+       [](System& s) {
+         element(s, 1).surfaces[0].aperture =
+             RegularPolygonAperture{6, Param(10.0), std::numeric_limits<double>::infinity()};
+       }},
+      {"surface_aperture.vertices_invalid", "/root/children/1/surfaces/0/aperture/vertices",
+       [](System& s) {
+         element(s, 1).surfaces[0].aperture = PolygonAperture{{{0.0, 0.0}, {1.0, 0.0}}};
+       }},
+      {"surface_aperture.polygon_self_intersecting",
+       "/root/children/1/surfaces/0/aperture/vertices",
+       [](System& s) {  // a bow tie
+         element(s, 1).surfaces[0].aperture =
+             PolygonAperture{{{0.0, 0.0}, {2.0, 2.0}, {2.0, 0.0}, {0.0, 2.0}}};
+       }},
       {"phase.lines_per_mm_invalid", "/root/children/1/surfaces/0/phases/0/lines_per_mm",
        [](System& s) {
          element(s, 1).surfaces[0].phases.push_back(LinearGrating{Param(0.0), 0.0});

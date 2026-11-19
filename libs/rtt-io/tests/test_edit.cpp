@@ -160,7 +160,9 @@ void surface_keys(const json& s, const std::string& at) {
     variant(s["aperture"],
             {{"circular", {"type", "radius", "inner_radius"}},
              {"rectangular", {"type", "half_width_x", "half_width_y"}},
-             {"elliptical", {"type", "semi_axis_x", "semi_axis_y"}}},
+             {"elliptical", {"type", "semi_axis_x", "semi_axis_y"}},
+             {"regular_polygon", {"type", "sides", "circumradius", "rotation_deg"}},
+             {"polygon", {"type", "vertices"}}},
             at + "/aperture", false);
   }
   for (const json& ph : s["phases"]) {

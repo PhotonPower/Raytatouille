@@ -1174,6 +1174,38 @@
       "if": {
         "properties": {
           "type": {
+            "const": "SurfaceLayout"
+          },
+          "schema_version": {
+            "not": {
+              "pattern": "^0\\.1\\.([0-9]|1[0-9]|20)$"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "aperture_vertices"
+            ],
+            "properties": {
+              "aperture_vertices": {
+                "description": "Vertices of a regular_polygon or polygon aperture, an (n, 2) float64 array in mm in the local frame; null for the other apertures (ADR 0050, schema 0.1.21).",
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
             "const": "TraceStats"
           }
         }

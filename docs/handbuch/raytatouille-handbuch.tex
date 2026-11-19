@@ -806,7 +806,10 @@ Schlüssel & Inhalt \\ \midrule \endhead
 \code{aperture} & \code{circular} (\code{radius}, optional \code{inner_radius} für einen Ring),
   \code{rectangular} (\code{half_width_x}, \code{half_width_y}) oder \code{elliptical}
   (\code{semi_axis_x}, \code{semi_axis_y}); in mm, zentriert auf der lokalen Achse. Ab
-  Schema~0.11 sind alle Maße Params (ADR~0050), etwa ein variabler Blendenradius bei
+  Schema~0.11 dazu \code{regular_polygon} (\code{sides}, \code{circumradius},
+  \code{rotation_deg}; der erste Eckpunkt liegt bei \code{rotation_deg} von $+x$ nach $+y$) und
+  \code{polygon} (\code{vertices}, einfach, auch konkav), und alle Maße außer den Eckpunkten
+  sind Params (ADR~0050), etwa ein variabler Blendenradius bei
   \code{stop_size}; Aperturen werden nicht toleriert. \\
 \code{phases} & Phasenschichten: \code{{"type": "linear_grating", "lines_per_mm": G,
   "orientation_deg": ψ}} oder \code{{"type": "radial_phase", "normalization_radius": R,
@@ -1487,7 +1490,9 @@ Klasse & Attribute und Bedeutung \\ \midrule \endhead
   (\code{ZernikeSag}) \\
 Aperturen & \code{CircularAperture} (\code{radius}, \code{inner_radius}),
   \code{RectangularAperture} (\code{half_width_x}, \code{half_width_y}),
-  \code{EllipticalAperture} (\code{semi_axis_x}, \code{semi_axis_y}) oder \code{None};
+  \code{EllipticalAperture} (\code{semi_axis_x}, \code{semi_axis_y}),
+  \code{RegularPolygonAperture} (\code{sides}, \code{circumradius}, \code{rotation_deg}),
+  \code{PolygonAperture} (\code{vertices}) oder \code{None};
   die Maße sind \code{Param} (Wert über \code{.value}) \\
 Phasen & \code{LinearGrating} (\code{lines_per_mm}, \code{orientation_deg}),
   \code{RadialPhase} (\code{normalization_radius}, \code{coefficients}) \\
@@ -3635,7 +3640,7 @@ Raytrace-Bericht: 3 Strahlen × 6 Slots
 {'ray': '0', 'slot': '3', 'surface': '2', 'y': '-9.345426510658275', 'z': '9.736750040831627', 'opl': '13.870551478840959', 'status': 'ALIVE'}
 {'ray': '0', 'slot': '4', 'surface': '3', 'y': '-9.088142950175145', 'z': '13.698007517376261', 'opl': '20.303263079100336', 'status': 'ALIVE'}
 {'ray': '0', 'slot': '5', 'surface': '4', 'y': '5.289730175124824', 'z': '110.614', 'opl': '118.30665051306643', 'status': 'ALIVE'}
-Ergebnisformat: SpotDiagram 0.1.20 | Schlüssel: ['field', 'wavelength', 'image_surface', 'chief', 'stats', 'rays_launched']
+Ergebnisformat: SpotDiagram 0.1.21 | Schlüssel: ['field', 'wavelength', 'image_surface', 'chief', 'stats', 'rays_launched']
 bitgleich: True
 \end{ausgabe}
 
@@ -5216,7 +5221,7 @@ Code & S & Quelle & Kurztext \\ \midrule \endhead
 \texttt{environment.medium\_empty} & F & validate & empty environment medium \\
 \texttt{environment.pressure\_invalid} & F & validate & pressure not finite or < 0 atm \\
 \texttt{environment.temperature\_invalid} & F & validate & temperature not finite or not above absolute zero \\
-\texttt{export.aperture\_unsupported} & F & export & system aperture or stop aperture without a ZMX mapping (object\_na read paraxially, rectangle or ellipse at the stop) \\
+\texttt{export.aperture\_unsupported} & F & export & system aperture or surface aperture without a ZMX mapping (object\_na read paraxially, a non-circular stop, a regular polygon or polygon on any surface) \\
 \texttt{export.coating\_dropped} & W & export & coating or ideal anti-reflection layer not exported \\
 \texttt{export.element\_in\_glass} & F & export & stop, thin element or detector with glass in front or behind \\
 \texttt{export.environment\_unsupported} & F & export & environment other than AIR at 20 degC and 1 atm \\
@@ -5342,10 +5347,15 @@ Code & S & Quelle & Kurztext \\ \midrule \endhead
 \texttt{surface.efficiency\_invalid} & F & validate & diffraction efficiency list empty, value outside [0, 1], order twice, or no phase layer \\
 \texttt{surface.id\_duplicate} & F & validate & surface id used twice \\
 \texttt{surface.id\_empty} & F & validate & empty surface id \\
+\texttt{surface\_aperture.circumradius\_invalid} & F & validate & regular polygon aperture circumradius not finite or <= 0 mm \\
 \texttt{surface\_aperture.half\_width\_invalid} & F & validate & rectangular aperture half width not finite or <= 0 mm \\
 \texttt{surface\_aperture.inner\_radius\_invalid} & F & validate & inner radius not finite, < 0 or >= radius \\
+\texttt{surface\_aperture.polygon\_self\_intersecting} & F & validate & two non-adjacent edges of a polygon aperture intersect or touch \\
 \texttt{surface\_aperture.radius\_invalid} & F & validate & circular aperture radius not finite or <= 0 mm \\
+\texttt{surface\_aperture.rotation\_invalid} & F & validate & rotation of a regular polygon aperture not finite \\
 \texttt{surface\_aperture.semi\_axis\_invalid} & F & validate & elliptical aperture semi axis not finite or <= 0 mm \\
+\texttt{surface\_aperture.sides\_invalid} & F & validate & regular polygon aperture with fewer than 3 or more than 1024 sides \\
+\texttt{surface\_aperture.vertices\_invalid} & F & validate & polygon aperture with fewer than 3 vertices, a vertex not finite, two equal consecutive vertices, a U-turn or area 0 \\
 \texttt{table.base\_dropped} & W & table & block of the base system that refers to its tree dropped \\
 \texttt{table.column} & F & table & missing, unknown or repeated column of a surface table \\
 \texttt{table.duplicate} & F & table & element name or surface id twice in a surface table \\
