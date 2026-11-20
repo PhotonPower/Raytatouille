@@ -1,8 +1,8 @@
 # The commands as a library (rtt::cli::run), so that the tests call them in their process.
 add_library(rtt_cli_core STATIC src/cli.cpp src/compute.cpp)
 target_include_directories(rtt_cli_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(rtt_cli_core PRIVATE rtt::io rtt::io_results rtt::model rtt::material
-  rtt::coating rtt::compile rtt::paraxial rtt::trace rtt::analysis TBB::tbb)
+target_link_libraries(rtt_cli_core PUBLIC rtt::trace PRIVATE rtt::io rtt::io_results rtt::model
+  rtt::material rtt::coating rtt::compile rtt::paraxial rtt::analysis rtt::optim TBB::tbb)
 target_compile_definitions(rtt_cli_core PRIVATE RTT_VERSION="${PROJECT_VERSION}")
 rtt_target_defaults(rtt_cli_core)
 
@@ -16,10 +16,14 @@ if(RTT_BUILD_TESTS)
   rtt_add_test(rtt_cli_tests
     SOURCES tests/test_cli.cpp
     LIBS rtt_cli_core rtt::io rtt::io_results rtt::material rtt::compile rtt::paraxial
-         rtt::trace rtt::analysis)
+         rtt::trace rtt::analysis rtt::optim)
   target_compile_definitions(rtt_cli_tests PRIVATE
     RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs"
     RTT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  # Ctrl-C at the real program in a child process (POSIX; ADR 0052, point 8).
+  rtt_add_test(rtt_cli_interrupt_tests SOURCES tests/test_interrupt.cpp LIBS)
+  target_compile_definitions(rtt_cli_interrupt_tests PRIVATE RTT_CLI_EXE="$<TARGET_FILE:rtt_cli>")
+  add_dependencies(rtt_cli_interrupt_tests rtt_cli)
   add_test(NAME cli.version COMMAND rtt_cli --version)
   add_test(NAME cli.validate.singlet
     COMMAND rtt_cli validate ${RTT_REFERENCE_DIR}/m0/singlet.rtt.json)

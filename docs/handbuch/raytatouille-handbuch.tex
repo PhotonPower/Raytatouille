@@ -5489,7 +5489,9 @@ rtt export <system.rtt.json> <aus.zmx|aus.csv> --catalog <katalog.agf>... [--pat
 rtt trace <system.rtt.json> [optionen]  Strahlen einer Pupillenabtastung verfolgen
 rtt analyze <art> <system.rtt.json> [optionen]
                                         first-order, seidel, spot, opd, zernike, psf, mtf
-rtt <befehl> --help                     Optionen von trace und analyze
+rtt optimize <system.rtt.json> [-o <neu.rtt.json>] [--result <datei>] [optionen]
+                                        mit der Gütefunktion der Datei optimieren
+rtt <befehl> --help                     Optionen von trace, analyze und optimize
 \end{shell}
 
 \paragraph{Rechnen: \code{trace} und \code{analyze}.} Beide laden das System, prüfen es wie
@@ -5507,7 +5509,21 @@ haben deren Vorgaben (\code{--field}, \code{--wavelength}, \code{--rays hexapola
 Kommandozeile, denn \code{rt.trace.make_rays} verlangt die Abtastung. \code{--reference <nennsystem.rtt.json>} zielt bei \code{spot}
 und \code{opd} mit dem Bezug eines Nennsystems, für Systeme ohne paraxiales Modell. Diagnosen
 gehen nach stderr. Exit-Code: 0 Erfolg (auch mit Warnungen), 1 ungültiges System oder
-gescheiterte Rechnung, 2 falscher Aufruf.
+gescheiterte Rechnung, 2 falscher Aufruf, 130 abgebrochen.
+
+\paragraph{Optimieren: \code{optimize}.} \code{rtt optimize} optimiert mit der Gütefunktion der
+Datei wie \code{rt.optim.optimize} und schreibt das optimierte System in kanonischer Form nach
+\code{-o} (sonst stdout); \code{-o} darf die Eingabedatei sein. \code{--result} schreibt dazu das
+\code{OptimResult}. Die Abbruchkriterien heißen wie in \code{OptimizeOptions}
+(\code{--max-iterations}, \code{--ftol}, \code{--xtol}, \code{--gtol}, \code{--tau},
+\code{--function-precision}). Endet der Lauf mit \code{FAILED}, schreibt \code{rtt} nur
+\code{--result} und endet mit 1.
+
+\paragraph{Abbrechen und Fortschritt.} Strg-C bricht \code{trace}, \code{analyze} und
+\code{optimize} ab: Es entsteht keine Ausgabedatei, auch keine halbe, und \code{rtt} endet mit 130
+(auch unter Windows). Bei \code{optimize} steht in \code{--result} der letzte angenommene Stand mit
+dem Status \code{CANCELLED}. Ein zweites Strg-C beendet sofort. \code{--progress} schreibt den
+Fortschritt zeilenweise nach stderr (\code{progress <stufe> <erledigt>/<gesamt>}).
 \begin{shell}
 rtt analyze spot achromat.rtt.json --catalog schott.agf --field 2 -o spot.json
 rtt analyze mtf paraboloid.rtt.json --grid 32 --format csv > mtf.csv

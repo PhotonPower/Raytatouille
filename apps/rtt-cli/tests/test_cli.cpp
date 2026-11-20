@@ -28,6 +28,7 @@
 #include "rtt/io/result_json.hpp"
 #include "rtt/io/result_names.hpp"
 #include "rtt/material/material.hpp"
+#include "rtt/optim/optimize.hpp"
 #include "rtt/paraxial/paraxial.hpp"
 #include "rtt/paraxial/seidel.hpp"
 #include "rtt/trace/ray_paths.hpp"
@@ -389,4 +390,81 @@ TEST_CASE("exit codes and messages (ADR 0052, point 4)", "[cli]") {
                with({"--field", "--wavelengths", "--aiming", "--focus-shift", "--apodization",
                      "--grid", "--map", "--complex-otf"}));
   CHECK(run({"analyze", "--help"}).out.find("zernike") != std::string::npos);
+}
+
+TEST_CASE("rtt optimize writes the optimized system and OptimResult (ADR 0052, point 3)", "[cli]") {
+  const std::string file = kRef + "/m5/singlet_optim.rtt.json";
+  const rtt::material::MaterialLibrary lib;
+  const rtt::optim::OptimResult r = rtt::optim::optimize(rtt::io::load_system(file), lib);
+  REQUIRE(r.status != rtt::optim::LmStatus::Failed);
+  REQUIRE(r.status != rtt::optim::LmStatus::Cancelled);
+  const fs::path dir = fs::temp_directory_path() / "rtt_cli_tests";
+  fs::create_directories(dir);
+  const fs::path result = dir / "optimize.result.json";
+  const Run run_ = run({"optimize", file, "--result", result.string()});
+  INFO(run_.err);
+  REQUIRE(run_.code == 0);
+  CHECK(run_.out == rtt::io::to_json(r.system));  // canonical form on stdout
+  const std::ifstream in(result, std::ios::binary);
+  std::ostringstream text;
+  text << in.rdbuf();
+  CHECK(text.str() == rtt::io::to_result_json(r));
+  CHECK(r.iterations > 0);  // content guard
+  // The options reach OptimizeOptions.
+  rtt::optim::OptimizeOptions one;
+  one.max_iterations = 1;
+  const rtt::optim::OptimResult r1 =
+      rtt::optim::optimize(rtt::io::load_system(file), lib, nullptr, one);
+  const Run run1 = run({"optimize", file, "--max-iterations", "1"});
+  CHECK(run1.code == 0);
+  CHECK(run1.out == rtt::io::to_json(r1.system));
+  CHECK(r1.status == rtt::optim::LmStatus::MaxIterations);
+  CHECK(run({"optimize", file, "--config", "0"}).code == 2);  // optimize takes no --config
+}
+
+TEST_CASE("a cancelled run writes nothing and exits 130 (ADR 0052, point 6)", "[cli]") {
+  rtt::trace::CancelToken cancelled;
+  cancelled.request_cancel();
+  const fs::path dir = fs::temp_directory_path() / "rtt_cli_tests";
+  fs::create_directories(dir);
+  const auto check = [&](std::vector<std::string> args, const fs::path& out) {
+    fs::remove(out);
+    args.emplace_back("-o");
+    args.push_back(out.string());
+    std::ostringstream o;
+    std::ostringstream e;
+    CHECK(rtt::cli::run(args, o, e, cancelled) == rtt::cli::kCancelled);
+    CHECK(o.str().empty());
+    CHECK_FALSE(fs::exists(out));
+  };
+  check({"trace", kSinglet}, dir / "c_trace.json");
+  check({"trace", kSinglet, "--paths"}, dir / "c_paths.json");
+  check({"analyze", "spot", kSinglet}, dir / "c_spot.json");
+  check({"analyze", "opd", kSinglet}, dir / "c_opd.json");
+  check({"analyze", "seidel", kSinglet}, dir / "c_seidel.json");  // no check inside: after
+  check({"analyze", "psf", kParaboloid, "--grid", "16"}, dir / "c_psf.json");
+  // optimize: the system is not written, --result is, with the status CANCELLED.
+  const fs::path result = dir / "c_optimize.result.json";
+  fs::remove(result);
+  check({"optimize", kRef + "/m5/singlet_optim.rtt.json", "--result", result.string()},
+        dir / "c_optimize.rtt.json");
+  const std::ifstream in(result, std::ios::binary);
+  std::ostringstream text;
+  text << in.rdbuf();
+  CHECK(text.str().find(R"("status": "CANCELLED")") != std::string::npos);
+}
+
+TEST_CASE("the interrupt handler cancels the token once, then the default follows", "[cli]") {
+  // What SIGINT and CTRL_C_EVENT / CTRL_BREAK_EVENT call (ADR 0052, point 6); the signal itself
+  // is tested in a child process under POSIX (test_interrupt.cpp).
+  CHECK_FALSE(rtt::cli::interrupt_token().cancelled());
+  CHECK(rtt::cli::on_interrupt());
+  CHECK(rtt::cli::interrupt_token().cancelled());
+  CHECK_FALSE(rtt::cli::on_interrupt());  // the second: the default action ends the process
+}
+
+TEST_CASE("progress lines on stderr with the option progress", "[cli]") {
+  const Run r = run({"analyze", "spot", kSinglet, "--progress"});
+  CHECK(r.code == 0);
+  CHECK(r.err.find("progress trace ") != std::string::npos);
 }

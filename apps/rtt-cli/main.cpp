@@ -18,5 +18,6 @@ int main(int argc, char** argv) {
   static_cast<void>(_setmode(_fileno(stdout), _O_BINARY));
 #endif
   const std::vector<std::string> args(argv + 1, argv + argc);
-  return rtt::cli::run(args, std::cout, std::cerr);
+  rtt::cli::install_interrupt_handler();  // Ctrl-C cancels trace, analyze and optimize
+  return rtt::cli::run(args, std::cout, std::cerr, rtt::cli::interrupt_token());
 }
