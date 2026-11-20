@@ -48,9 +48,10 @@ Case = tuple[list[str], Callable[[], Any], Callable[[dict[str, Any]], bool]]
 # a content guard on the data.
 CASES: dict[str, Case] = {
     "trace": (["trace", str(SINGLET), "--rays", "grid:5"], lambda: _traced(False),
-              lambda d: len(d["pos_x"]["values"]) > 10),
+              lambda d: len(d["pos_x"]["values"]) > 10 and set(d["status"]["values"]) == {0}),
     "trace_paths": (["trace", str(SINGLET), "--rays", "grid:5", "--paths"],
-                    lambda: _traced(True), lambda d: d["ray_count"] > 10),
+                    lambda: _traced(True),
+                    lambda d: d["ray_count"] > 10 and set(d["status"]["values"]) == {0}),
     "first_order": (["analyze", "first-order", str(ACHROMAT), "--catalog", str(SCHOTT)],
                     lambda: rt.paraxial.first_order(_compiled(ACHROMAT, True)),
                     lambda d: d["efl"] > 0),

@@ -5498,10 +5498,13 @@ rtt <befehl> --help                     Optionen von trace und analyze
 mit \code{-o} in eine Datei, im JSON-Ergebnisformat \code{raytatouille-result} (Modul \code{rt.results}). Die Datei ist
 Byte für Byte dieselbe, die \code{to_json} für denselben Aufruf in Python schreibt. Mit
 \code{--format csv} schreiben \code{trace}, \code{analyze spot} und \code{analyze mtf}
-stattdessen eine Tabelle mit Kopfzeile. Die Optionen heißen wie die Parameter der Python-API und
+stattdessen eine Tabelle mit Kopfzeile (Zahlen wie Pythons \code{repr}, NaN als leeres Feld; bei
+der MTF die Frequenz in Zyklen/mm und mit \code{--complex-otf} die Phase der OTF in rad). Die
+Optionen heißen wie die Parameter der Python-API und
 haben deren Vorgaben (\code{--field}, \code{--wavelength}, \code{--rays hexapolar:6},
 \code{--grid}, \code{--focus-shift}, \code{--aiming real|paraxial}, …); \code{rtt analyze
-<art> --help} nennt sie alle. \code{--reference <nennsystem.rtt.json>} zielt bei \code{spot}
+<art> --help} nennt sie alle. Bei \code{rtt trace} ist \code{--rays hexapolar:6} eine Vorgabe der
+Kommandozeile, denn \code{rt.trace.make_rays} verlangt die Abtastung. \code{--reference <nennsystem.rtt.json>} zielt bei \code{spot}
 und \code{opd} mit dem Bezug eines Nennsystems, für Systeme ohne paraxiales Modell. Diagnosen
 gehen nach stderr. Exit-Code: 0 Erfolg (auch mit Warnungen), 1 ungültiges System oder
 gescheiterte Rechnung, 2 falscher Aufruf.

@@ -41,6 +41,7 @@
 #include "rtt/io/result_json.hpp"
 #include "rtt/io/result_names.hpp"
 #include "rtt/material/material.hpp"
+#include "rtt/math/zernike.hpp"
 #include "rtt/model/parameters.hpp"
 #include "rtt/model/validate.hpp"
 #include "rtt/paraxial/paraxial.hpp"
@@ -103,7 +104,7 @@ Arguments parse(const std::vector<std::string>& args,
       a.operands.push_back(arg);
       continue;
     }
-    const std::string name = arg == "-o" ? "--output" : arg;
+    const std::string name = arg == "-o" ? "--output" : arg == "-h" ? "--help" : arg;
     const OptionSpec* spec = nullptr;
     for (const OptionSpec& s : specs) {
       if (s.name == name) spec = &s;
@@ -134,7 +135,9 @@ T integer(const std::string& text, std::string_view option, T min, T max) {
 
 double number(const std::string& text, std::string_view option) {
   double v = 0.0;
-  const auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), v);
+  // A leading + as in Python's float() (raytatouille.analysis accepts it).
+  const char* first = text.data() + (text.starts_with("+") ? 1 : 0);
+  const auto [end, ec] = std::from_chars(first, text.data() + text.size(), v);
   if (ec != std::errc{} || end != text.data() + text.size() || !std::isfinite(v)) {
     throw UsageError("option " + std::string(option) + ": '" + text + "' is not a finite number");
   }
@@ -273,6 +276,7 @@ std::optional<std::vector<std::uint16_t>> wavelengths(const Prepared& p, const A
   if (v == nullptr) return std::nullopt;
   const auto n = static_cast<std::uint16_t>(p.compiled->wavelengths_um().size());
   std::vector<std::uint16_t> list;
+  if (v->empty()) throw UsageError("option --wavelengths: an empty list");
   for (const std::string& s : split(*v, ',')) {
     list.push_back(
         integer<std::uint16_t>(s, "--wavelengths", 0, static_cast<std::uint16_t>(n - 1)));
@@ -291,8 +295,13 @@ std::optional<analysis::NominalReference> reference(const Prepared& p,
   Prepared nominal;
   Arguments same = a;
   same.values.erase("--reference");
+  same.values.erase("--path");  // the path of the system under test, by its index
   prepare(nominal, *file, same, err);
   keep = std::move(nominal.compiled);
+  if (p.path.index >= keep->paths().size()) {
+    err << *file << ": error the nominal system has no path " << p.path.index << "\n";
+    throw Failed("reference");
+  }
   return analysis::nominal_reference(*keep, p.path);
 }
 
@@ -313,7 +322,11 @@ void emit(const std::string& text, const std::string* file, std::ostream& out) {
     std::ofstream f(temporary, std::ios::binary | std::ios::trunc);
     f << text;
     f.close();
-    if (!f) throw std::runtime_error("cannot write " + *file);
+    if (!f) {
+      std::error_code ignored;
+      std::filesystem::remove(temporary, ignored);
+      throw std::runtime_error("cannot write " + *file);
+    }
   }
   std::error_code ec;
   std::filesystem::rename(temporary, target, ec);
@@ -391,7 +404,7 @@ std::string mtf_csv(const analysis::Mtf& m) {
 const std::vector<OptionSpec>& common_options() {
   static const std::vector<OptionSpec> specs = {
       {"--catalog", "file.agf", true, "glass catalogue (AGF), repeatable"},
-      {"--coatings", "dir", true, "coating catalogue, repeatable"},
+      {"--coatings", "file|dir", true, "coating catalogue, repeatable"},
       {"--config", "index|name", false, "configuration (default 0)"},
       {"--path", "name|index", false, "path; a path name, otherwise a 0-based index (default 0)"},
       {"--threads", "n", false, "worker threads (default: all)"},
@@ -417,14 +430,17 @@ const std::vector<Kind>& analyze_kinds() {
                               "wavelength indices (default: all with their weights)"};
   static const OptionSpec aim{"--aiming", "real|paraxial", false, "ray aiming (default real)"};
   static const OptionSpec ref{"--reference", "nominal.rtt.json", false,
-                              "aim with the reference of a nominal system (ADR 0041, point 3)"};
-  static const OptionSpec focus{"--focus-shift", "mm", false, "shift of the image plane, mm"};
+                              "aim with the reference of a nominal system, for systems without "
+                              "a paraxial model (ADR 0041, point 3; default none)"};
+  static const OptionSpec focus{"--focus-shift", "mm", false,
+                                "centre of the reference sphere along the chief ray, mm, + in "
+                                "the direction of propagation (default 0)"};
   static const OptionSpec apod{"--apodization", "value", false, "Gaussian apodization (default 0)"};
   static const std::vector<Kind> kinds = {
       {"first-order", "first-order properties (rt.paraxial.first_order)", {wl}},
       {"seidel",
        "Seidel sums (rt.paraxial.seidel)",
-       {wl, {"--pair", "i,j", false, "wavelength pair for the colour sums"}}},
+       {wl, {"--pair", "i,j", false, "wavelength pair for the colour sums (default none)"}}},
       {"spot",
        "spot diagram (rt.analysis.spot); CSV: x,y (polychromatic also wavelength,weight)",
        {field, wl, aim, ref, {"--rays", "sampling", false, "pupil sampling (default hexapolar:6)"}},
@@ -451,7 +467,8 @@ const std::vector<Kind>& analyze_kinds() {
         {"--grid", "n", false, "pupil grid (default 64)"},
         {"--padding", "q", false, "FFT padding (default 4)"}}},
       {"mtf",
-       "MTF (rt.analysis.mtf); CSV: direction,frequency,modulation (with --complex-otf phase)",
+       "MTF (rt.analysis.mtf); CSV: direction,frequency (cycles/mm),modulation, with "
+       "--complex-otf also phase (rad, arg of the OTF)",
        {field,
         wls,
         aim,
@@ -469,10 +486,12 @@ const std::vector<OptionSpec>& trace_options() {
   static const std::vector<OptionSpec> specs = {
       {"--field", "index", false, "field index (default: all fields)"},
       {"--wavelength", "index", false, "wavelength index (default: the reference)"},
-      {"--rays", "sampling", false, "pupil sampling (default hexapolar:6)"},
+      {"--rays", "sampling", false,
+       "pupil sampling, the shorthands of the Python API (default of the command line: "
+       "hexapolar:6)"},
       {"--aiming", "real|paraxial", false, "ray aiming (default real)"},
       {"--paths", "", false, "write RayPaths (all events) instead of the RayBatch"},
-      {"--max-recorded-rays", "n", false, "limit of rays recorded with --paths"},
+      {"--max-recorded-rays", "n", false, "limit of rays recorded with --paths (default 10000)"},
       {"--polarization", "", false, "record P and Q per slot with --paths"},
       {"--stats", "file", false, "write TraceStats to file"},
   };
@@ -621,6 +640,7 @@ int analyze_command(const std::vector<std::string>& args, std::ostream& out, std
   };
   const std::uint16_t wl = wavelength(p, a).value_or(cs.reference_wavelength());
   std::string text;
+  std::vector<model::Diagnostic> warnings;  // of the analysis, also for CSV (ADR 0052, point 4)
   in_arena(a, [&] {
     if (kind->name == "first-order") {
       text = io::to_result_json(paraxial::first_order(cs, path, wl));
@@ -640,6 +660,7 @@ int analyze_command(const std::vector<std::string>& args, std::ostream& out, std
       o.aiming = aiming(a);
       o.reference = ref;
       const analysis::SpotDiagram d = analysis::spot(cs, path, field(p, a), wavelength(p, a), o);
+      warnings = d.warnings;
       text = format == "csv" ? spot_csv(d) : io::to_result_json(d);
     } else if (kind->name == "opd") {
       analysis::OpdOptions o;
@@ -647,14 +668,18 @@ int analyze_command(const std::vector<std::string>& args, std::ostream& out, std
       o.focus_shift = real("--focus-shift", o.focus_shift);
       o.aiming = aiming(a);
       o.reference = ref;
-      text = io::to_result_json(analysis::opd_map(cs, path, field(p, a), wl, o));
+      const analysis::OpdMap m = analysis::opd_map(cs, path, field(p, a), wl, o);
+      warnings = m.warnings;
+      text = io::to_result_json(m);
     } else if (kind->name == "zernike") {
       analysis::ZernikeOptions z;
       if (const std::string* t = a.value("--terms")) {
-        z.terms = integer<int>(*t, "--terms", 1, 231);
+        z.terms = integer<int>(*t, "--terms", 1, rtt::math::kMaxZernikeTerms);
       }
-      text = io::to_result_json(
-          analysis::zernike_fit(analysis::pupil_function(cs, path, field(p, a), wl, pupil()), z));
+      const analysis::ZernikeFit f =
+          analysis::zernike_fit(analysis::pupil_function(cs, path, field(p, a), wl, pupil()), z);
+      warnings = f.warnings;
+      text = io::to_result_json(f);
     } else if (kind->name == "psf") {
       analysis::PsfOptions o;
       o.pupil = pupil();
@@ -662,7 +687,9 @@ int analyze_command(const std::vector<std::string>& args, std::ostream& out, std
         o.padding = integer<int>(*q, "--padding", 2, 65535);
       }
       o.wavelengths = wavelengths(p, a);
-      text = io::to_result_json(analysis::psf(cs, path, field(p, a), o));
+      const analysis::Psf f = analysis::psf(cs, path, field(p, a), o);
+      warnings = f.warnings;
+      text = io::to_result_json(f);
     } else {  // mtf
       analysis::MtfOptions o;
       o.pupil = pupil();
@@ -670,11 +697,26 @@ int analyze_command(const std::vector<std::string>& args, std::ostream& out, std
       o.outputs.map = a.flag("--map");
       o.outputs.complex_otf = a.flag("--complex-otf");
       const analysis::Mtf m = analysis::mtf(cs, path, field(p, a), o);
+      warnings = m.warnings;
       text = format == "csv" ? mtf_csv(m) : io::to_result_json(m);
     }
   });
+  print(err, p.file, warnings);
   emit(text, a.value("--output"), out);
   return kOk;
+}
+
+/// True for an option without a value (a flag) of any command, for the file name in messages.
+bool is_flag(std::string_view name) {
+  if (name == "-h") return true;
+  std::vector<const std::vector<OptionSpec>*> lists = {&common_options(), &trace_options()};
+  for (const Kind& k : analyze_kinds()) lists.push_back(&k.options);
+  for (const std::vector<OptionSpec>* list : lists) {
+    for (const OptionSpec& s : *list) {
+      if (s.name == name) return s.value.empty();
+    }
+  }
+  return false;
 }
 
 }  // namespace
@@ -687,10 +729,7 @@ int run_compute(const std::vector<std::string>& args, std::ostream& out, std::os
       file = args[i];
       break;
     }
-    if (args[i] != "--help" && args[i] != "--paths" && args[i] != "--polarization" &&
-        args[i] != "--map" && args[i] != "--complex-otf") {
-      ++i;  // the value of an option
-    }
+    if (!is_flag(args[i])) ++i;  // the value of an option
   }
   try {
     return args[0] == "trace" ? trace_command(args, out, err) : analyze_command(args, out, err);
