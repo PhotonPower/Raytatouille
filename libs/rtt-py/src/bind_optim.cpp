@@ -18,6 +18,7 @@
 
 #include "bindings.hpp"
 #include "rtt/coating/catalog.hpp"
+#include "rtt/io/result_names.hpp"
 #include "rtt/material/material.hpp"
 #include "rtt/model/system.hpp"
 #include "rtt/optim/generators.hpp"
@@ -87,15 +88,17 @@ void bind_optim(nb::module_& m) {
   using namespace optim;
 
   nb::enum_<LmStatus>(m, "OptimStatus", "How an optimization run ended (ADR 0030, point 8).")
-      .value("CONVERGED_GRADIENT", LmStatus::ConvergedGradient,
+      .value(io::result_name(LmStatus::ConvergedGradient).data(), LmStatus::ConvergedGradient,
              "scaled gradient below gtol (off by default)")
-      .value("CONVERGED_STEP", LmStatus::ConvergedStep, "step below xtol; the step is not applied")
-      .value("CONVERGED_MERIT", LmStatus::ConvergedMerit,
+      .value(io::result_name(LmStatus::ConvergedStep).data(), LmStatus::ConvergedStep,
+             "step below xtol; the step is not applied")
+      .value(io::result_name(LmStatus::ConvergedMerit).data(), LmStatus::ConvergedMerit,
              "small relative actual and predicted decrease of the merit (ftol)")
-      .value("MAX_ITERATIONS", LmStatus::MaxIterations, "max_iterations solves done")
-      .value("CANCELLED", LmStatus::Cancelled,
+      .value(io::result_name(LmStatus::MaxIterations).data(), LmStatus::MaxIterations,
+             "max_iterations solves done")
+      .value(io::result_name(LmStatus::Cancelled).data(), LmStatus::Cancelled,
              "cancelled through the CancelToken; the last accepted state")
-      .value("FAILED", LmStatus::Failed,
+      .value(io::result_name(LmStatus::Failed).data(), LmStatus::Failed,
              "a Jacobian column without valid evaluations; the last accepted state");
 
   nb::class_<OptimizeOptions>(

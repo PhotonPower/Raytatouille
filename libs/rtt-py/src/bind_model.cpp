@@ -19,6 +19,7 @@
 #include "bindings.hpp"
 #include "rtt/diagnostics/codes.hpp"
 #include "rtt/io/json_io.hpp"
+#include "rtt/io/result_names.hpp"
 #include "rtt/model/parameters.hpp"
 #include "rtt/model/system.hpp"
 #include "rtt/model/validate.hpp"
@@ -46,9 +47,10 @@ auto with_os_error(F&& f) {
 }  // namespace
 
 void bind_model(nb::module_& m) {
+  // Names from rtt/io/result_names.hpp, shared with the C++ result writer (ADR 0052).
   nb::enum_<model::Severity>(m, "Severity", "Severity of a Diagnostic.")
-      .value("ERROR", model::Severity::Error)
-      .value("WARNING", model::Severity::Warning);
+      .value(io::result_name(model::Severity::Error).data(), model::Severity::Error)
+      .value(io::result_name(model::Severity::Warning).data(), model::Severity::Warning);
 
   nb::class_<model::Diagnostic>(m, "Diagnostic", "Result of a semantic check of a System.")
       .def_ro("severity", &model::Diagnostic::severity)

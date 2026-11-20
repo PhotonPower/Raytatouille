@@ -1,0 +1,92 @@
+{
+  "schema_version": "0.11.0",
+  "name": "Singlet optimisation with two configurations and a variable conic row per configuration (result writer of the CLI, ADR 0052)",
+  "units": {"length": "mm", "wavelength": "um"},
+  "wavelengths": [
+    {"um": 0.5876, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 10.0},
+  "fields": {
+    "points": [
+      {}
+    ]
+  },
+  "configurations": [
+    {"name": "a"},
+    {"name": "b"}
+  ],
+  "parameters": [
+    {"name": "K", "values": [0.0, -0.1], "variable": true}
+  ],
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 5.0}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "L1",
+        "pose": {"position": [0.0, 0.0, 5.0]},
+        "material": "CONST:1.5168",
+        "surfaces": [
+          {
+            "id": "L1.S1",
+            "shape": {
+              "base": {
+                "type": "conic",
+                "radius": {"value": 103.36, "variable": true},
+                "conic": {"param": "K"}
+              }
+            },
+            "aperture": {"type": "circular", "radius": 12.7}
+          },
+          {
+            "id": "L1.S2",
+            "pose": {"position": [0.0, 0.0, 4.0]},
+            "shape": {
+              "base": {
+                "type": "conic",
+                "radius": {"value": -103.36, "variable": true}
+              }
+            },
+            "aperture": {"type": "circular", "radius": 12.7}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {
+          "position": [
+            0.0,
+            0.0,
+            {"value": 107.3, "variable": true}
+          ]
+        },
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ],
+  "optimization": {
+    "operands": [
+      {"type": "efl", "path": "main", "target": 100.0, "weight": 10000.0}
+    ],
+    "generators": [
+      {"type": "rms_spot", "path": "main"}
+    ]
+  }
+}

@@ -45,7 +45,7 @@ nanobind_add_module(_core NB_STATIC NB_SUPPRESS_WARNINGS
   src/polar_batch.cpp
   src/bind_layout.cpp)
 target_link_libraries(_core PRIVATE
-  rtt::io rtt::diagnostics rtt::model rtt::material rtt::coating rtt::compile rtt::paraxial
+  rtt::io rtt::io_results rtt::diagnostics rtt::model rtt::material rtt::coating rtt::compile rtt::paraxial
   rtt::trace rtt::analysis rtt::optim rtt::tolerance
   rtt::polar TBB::tbb)
 # LIBRARY: clang-tidy checks the bindings like the libraries (#336); the preset ci-linux-clang
@@ -219,12 +219,12 @@ if(RTT_BUILD_TESTS)
     tests/ideal_lens_cases.cpp tests/jones_cases.cpp tests/m6_cases.cpp tests/pupil_cases.cpp
     tests/psf_cases.cpp tests/q_cases.cpp tests/tolerance_cases.cpp tests/m7_cases.cpp
     tests/anamorphic_cases.cpp tests/rotational_cases.cpp
-    tests/forbes_cases.cpp
+    tests/forbes_cases.cpp tests/result_json_cases.cpp
     src/polar_batch.cpp)
   target_include_directories(rtt_py_reference PRIVATE src)
   target_link_libraries(rtt_py_reference PRIVATE
     rtt::io rtt::material rtt::coating rtt::compile rtt::paraxial rtt::trace rtt::analysis
-    rtt::optim rtt::polar rtt::tolerance TBB::tbb)
+    rtt::optim rtt::polar rtt::tolerance rtt::io_results TBB::tbb)
   rtt_target_defaults(rtt_py_reference)
 
   add_test(NAME rtt_py_pytest

@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "bindings.hpp"
+#include "rtt/io/result_names.hpp"
 #include "rtt/math/types.hpp"
 #include "rtt/trace/ray_batch.hpp"
 #include "rtt/trace/ray_paths.hpp"
@@ -140,17 +141,21 @@ trace::RunControl run_control(const std::optional<trace::CancelToken>& cancel,
 void bind_trace(nb::module_& m) {
   nb::enum_<RayStatus>(m, "RayStatus", nb::is_arithmetic(),
                        "State of a ray; RayBatch.status holds these values as uint8.")
-      .value("ALIVE", RayStatus::Alive, "still being traced")
-      .value("MISSED", RayStatus::Missed, "did not intersect the next surface")
-      .value("VIGNETTED", RayStatus::Vignetted, "hit a surface outside its aperture")
-      .value("TIR", RayStatus::Tir, "total internal reflection where refraction was requested")
-      .value("NO_CONVERGENCE", RayStatus::NoConvergence,
+      .value(io::result_name(RayStatus::Alive).data(), RayStatus::Alive, "still being traced")
+      .value(io::result_name(RayStatus::Missed).data(), RayStatus::Missed,
+             "did not intersect the next surface")
+      .value(io::result_name(RayStatus::Vignetted).data(), RayStatus::Vignetted,
+             "hit a surface outside its aperture")
+      .value(io::result_name(RayStatus::Tir).data(), RayStatus::Tir,
+             "total internal reflection where refraction was requested")
+      .value(io::result_name(RayStatus::NoConvergence).data(), RayStatus::NoConvergence,
              "iterative intersection or aiming did not converge")
-      .value("ABSORBED", RayStatus::Absorbed, "stopped by an absorbing surface")
-      .value("EVENT_IMPOSSIBLE", RayStatus::EventImpossible,
+      .value(io::result_name(RayStatus::Absorbed).data(), RayStatus::Absorbed,
+             "stopped by an absorbing surface")
+      .value(io::result_name(RayStatus::EventImpossible).data(), RayStatus::EventImpossible,
              "the requested event cannot happen (a modelling problem; TIR and EVANESCENT are "
              "physical limits)")
-      .value("EVANESCENT", RayStatus::Evanescent,
+      .value(io::result_name(RayStatus::Evanescent).data(), RayStatus::Evanescent,
              "the diffraction order has no real direction (ADR 0025)");
   m.attr("NO_SURFACE") = trace::kNoSurface;
 
