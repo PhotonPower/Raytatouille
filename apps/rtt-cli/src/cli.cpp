@@ -303,6 +303,8 @@ namespace {
 
 static_assert(std::atomic<bool>::is_always_lock_free,
               "the interrupt handler cancels with a lock-free atomic store");
+static_assert(std::atomic<int>::is_always_lock_free,
+              "the interrupt handler counts with a lock-free atomic fetch_add");
 
 /// Calls since the start; the handler is async-signal-safe: one atomic exchange and the store
 /// of CancelToken::request_cancel().

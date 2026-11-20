@@ -420,6 +420,20 @@ TEST_CASE("rtt optimize writes the optimized system and OptimResult (ADR 0052, p
   CHECK(run1.out == rtt::io::to_json(r1.system));
   CHECK(r1.status == rtt::optim::LmStatus::MaxIterations);
   CHECK(run({"optimize", file, "--config", "0"}).code == 2);  // optimize takes no --config
+  CHECK(run({"optimize", file, "--help"}).out.find("(default 1e-9)") != std::string::npos);
+  // -o may be the input file: it is replaced by the optimized system.
+  const fs::path copy = dir / "optimize_in_place.rtt.json";
+  fs::copy_file(file, copy, fs::copy_options::overwrite_existing);
+  REQUIRE(run({"optimize", copy.string(), "-o", copy.string()}).code == 0);
+  const std::ifstream replaced(copy, std::ios::binary);
+  std::ostringstream replaced_text;
+  replaced_text << replaced.rdbuf();
+  CHECK(replaced_text.str() == rtt::io::to_json(r.system));
+  // A system without variables: the diagnostics of OptimError as error [code] (ADR 0052, point 4).
+  const Run none = run({"optimize", kSinglet});
+  CHECK(none.code == 1);
+  CHECK(none.err.find(kSinglet + ": error [optim.no_variables]") != std::string::npos);
+  CHECK(none.out.empty());
 }
 
 TEST_CASE("a cancelled run writes nothing and exits 130 (ADR 0052, point 6)", "[cli]") {
@@ -442,6 +456,9 @@ TEST_CASE("a cancelled run writes nothing and exits 130 (ADR 0052, point 6)", "[
   check({"analyze", "spot", kSinglet}, dir / "c_spot.json");
   check({"analyze", "opd", kSinglet}, dir / "c_opd.json");
   check({"analyze", "seidel", kSinglet}, dir / "c_seidel.json");  // no check inside: after
+  check({"analyze", "first-order", kSinglet}, dir / "c_first_order.json");
+  check({"analyze", "zernike", kParaboloid, "--grid", "16"}, dir / "c_zernike.json");
+  check({"analyze", "mtf", kParaboloid, "--grid", "16"}, dir / "c_mtf.json");
   check({"analyze", "psf", kParaboloid, "--grid", "16"}, dir / "c_psf.json");
   // optimize: the system is not written, --result is, with the status CANCELLED.
   const fs::path result = dir / "c_optimize.result.json";
@@ -457,7 +474,9 @@ TEST_CASE("a cancelled run writes nothing and exits 130 (ADR 0052, point 6)", "[
 TEST_CASE("the interrupt handler cancels the token once, then the default follows", "[cli]") {
   // What SIGINT and CTRL_C_EVENT / CTRL_BREAK_EVENT call (ADR 0052, point 6); the signal itself
   // is tested in a child process under POSIX (test_interrupt.cpp).
-  CHECK_FALSE(rtt::cli::interrupt_token().cancelled());
+  // The test changes the token of the process: it runs once per process (ctest starts one per
+  // test case); a repeated run in the same process skips.
+  if (rtt::cli::interrupt_token().cancelled()) SKIP("the token of this process is cancelled");
   CHECK(rtt::cli::on_interrupt());
   CHECK(rtt::cli::interrupt_token().cancelled());
   CHECK_FALSE(rtt::cli::on_interrupt());  // the second: the default action ends the process

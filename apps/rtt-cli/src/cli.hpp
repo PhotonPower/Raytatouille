@@ -26,9 +26,10 @@ inline constexpr int kCancelled = 130;
 /// run() with a token nobody cancels.
 [[nodiscard]] int run(const std::vector<std::string>& args, std::ostream& out, std::ostream& err);
 
-/// The token of the process that the interrupt handler cancels (ADR 0052, point 6). The one
-/// piece of mutable global state of the command line, an exception from rule 4 for apps/rtt-cli
-/// that ADR 0052 records.
+/// The token of the process that the interrupt handler cancels (ADR 0052, point 6). Together
+/// with the handler's lock-free counter of interrupts (first: cancel, second: default action) the
+/// only mutable global state of the command line, the exception from rule 4 for apps/rtt-cli
+/// that ADR 0052, point 6, records.
 [[nodiscard]] const trace::CancelToken& interrupt_token();
 
 /// What the handler does on Ctrl-C (SIGINT; CTRL_C_EVENT and CTRL_BREAK_EVENT under Windows):

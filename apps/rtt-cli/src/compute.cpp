@@ -46,6 +46,7 @@
 #include "rtt/math/zernike.hpp"
 #include "rtt/model/parameters.hpp"
 #include "rtt/model/validate.hpp"
+#include "rtt/optim/merit.hpp"
 #include "rtt/optim/optimize.hpp"
 #include "rtt/paraxial/paraxial.hpp"
 #include "rtt/paraxial/seidel.hpp"
@@ -213,9 +214,14 @@ void print(std::ostream& err, const std::string& file, const std::vector<model::
   for (const model::Diagnostic& d : list) err << file << ": " << model::to_string(d) << "\n";
 }
 
-/// Loads, validates (errors: exit 1 before computing) and compiles `file` with the libraries
-/// and the configuration of the options; prints the warnings of reading and compiling.
-void prepare(Prepared& p, const std::string& file, const Arguments& a, std::ostream& err) {
+/// Loads, validates (errors: exit 1 before computing) and, with `compile`, compiles `file` with
+/// the libraries and the configuration of the options; prints the warnings of reading and
+/// compiling. optimize passes compile = false: it compiles itself.
+void prepare(Prepared& p,
+             const std::string& file,
+             const Arguments& a,
+             std::ostream& err,
+             bool compile = true) {
   p.file = file;
   std::vector<model::Diagnostic> read_warnings;
   try {
@@ -234,7 +240,7 @@ void prepare(Prepared& p, const std::string& file, const Arguments& a, std::ostr
   if (const auto it = a.values.find("--coatings"); it != a.values.end()) {
     for (const std::string& c : it->second) p.coatings.add_catalog(c);
   }
-  if (a.flag("--no-compile")) return;  // optimize compiles itself
+  if (!compile) return;  // optimize compiles itself
   if (const std::string* c = a.value("--config")) {
     if (const std::optional<std::size_t> i = model::find_configuration(p.system, *c)) {
       p.configuration = *i;
@@ -747,7 +753,7 @@ const std::vector<OptionSpec>& optimize_options() {
       {"--gtol", "value", false, "scaled gradient test (default 0, off)"},
       {"--tau", "value", false, "initial damping mu_0 = tau max diag(J^T J) (default 1e-3)"},
       {"--function-precision", "value", false,
-       "relative precision of the merit for the finite differences (default 2.2e-16)"},
+       "relative precision of the merit for the finite differences (default 1e-9)"},
   };
   return specs;
 }
@@ -795,8 +801,7 @@ int optimize_command(const std::vector<std::string>& args,
   o.tau = real("--tau", o.tau);
   o.function_precision = real("--function-precision", o.function_precision);
   Prepared p;
-  a.flags.insert("--no-compile");
-  prepare(p, a.operands[0], a, err);
+  prepare(p, a.operands[0], a, err, false);
   optim::OptimResult r;
   const trace::RunControl control = control_of(a, cancel, err);
   in_arena(a, [&] {
@@ -805,6 +810,9 @@ int optimize_command(const std::vector<std::string>& args,
     } catch (const compile::CompileError& e) {
       print(err, p.file, e.diagnostics());
       throw Failed("compile");
+    } catch (const optim::OptimError& e) {
+      print(err, p.file, e.diagnostics());  // no variables, no operands (ADR 0052, point 4)
+      throw Failed("optimize");
     }
   });
   print(err, p.file, r.diagnostics);

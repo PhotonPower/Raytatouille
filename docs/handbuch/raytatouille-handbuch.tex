@@ -5522,7 +5522,9 @@ Datei wie \code{rt.optim.optimize} und schreibt das optimierte System in kanonis
 \paragraph{Abbrechen und Fortschritt.} Strg-C bricht \code{trace}, \code{analyze} und
 \code{optimize} ab: Es entsteht keine Ausgabedatei, auch keine halbe, und \code{rtt} endet mit 130
 (auch unter Windows). Bei \code{optimize} steht in \code{--result} der letzte angenommene Stand mit
-dem Status \code{CANCELLED}. Ein zweites Strg-C beendet sofort. \code{--progress} schreibt den
+dem Status \code{CANCELLED}; kommt der Abbruch erst nach der letzten Iteration, steht dort deren
+Status, und \code{rtt} endet trotzdem mit 130 ohne \code{-o}. Ein zweites Strg-C beendet sofort. Die
+übrigen Befehle behalten die Standardwirkung von Strg-C. \code{--progress} schreibt den
 Fortschritt zeilenweise nach stderr (\code{progress <stufe> <erledigt>/<gesamt>}).
 \begin{shell}
 rtt analyze spot achromat.rtt.json --catalog schott.agf --field 2 -o spot.json

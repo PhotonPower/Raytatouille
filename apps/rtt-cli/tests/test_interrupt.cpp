@@ -1,6 +1,9 @@
 // Ctrl-C at the real program (ADR 0052, points 6 and 8), POSIX only: rtt optimize runs as a child
-// without a stopping criterion (--ftol 0 --xtol 0) and with --progress; after the first progress
-// line on stderr (so the handler is installed and the run is under way) the test sends SIGINT.
+// with --ftol 0 --xtol 0 (several seconds and some 26000 iterations until CONVERGED_STEP, so a
+// missing cancellation shows as exit 0) and with --progress; after the first progress line on
+// stderr (so the handler is installed and the run is under way) the test sends SIGINT. stderr is
+// drained until EOF before waiting, so the child never blocks on a full pipe; after 60 s the child
+// is killed and the test fails.
 // rtt must end with 130, not write the system and write --result with the status CANCELLED.
 // Under Windows the handler function is tested directly (test_cli.cpp).
 
@@ -72,9 +75,20 @@ TEST_CASE("SIGINT cancels rtt optimize with exit 130 (ADR 0052, point 6)", "[cli
   INFO(err);
   REQUIRE(ready);
   REQUIRE(kill(pid, SIGINT) == 0);
+  // Drain stderr until EOF (the child ended) or 60 s, then wait; kill the child after the limit.
+  const std::time_t sent = std::time(nullptr);
+  bool eof = false;
+  while (!eof && std::time(nullptr) - sent < 60) {
+    pollfd p{pipe_fds[0], POLLIN, 0};
+    if (poll(&p, 1, 1000) <= 0) continue;
+    std::array<char, 4096> buffer{};
+    eof = read(pipe_fds[0], buffer.data(), buffer.size()) <= 0;
+  }
+  close(pipe_fds[0]);
+  if (!eof) kill(pid, SIGKILL);
   int status = 0;
   REQUIRE(waitpid(pid, &status, 0) == pid);
-  close(pipe_fds[0]);
+  REQUIRE(eof);  // the child ended within 60 s of SIGINT
   REQUIRE(WIFEXITED(status));
   CHECK(WEXITSTATUS(status) == 130);
   CHECK_FALSE(fs::exists(out));
