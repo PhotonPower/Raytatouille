@@ -60,6 +60,7 @@ Präzisierungen und Ergänzungen einer angenommenen Entscheidung kommen als dati
 | [0049](0049.md) | Knoten vorübergehend aus der Rechnung nehmen (`active`, Schema 0.10.0; Geometrie bleibt, inaktive Blende = keine Blende) | angenommen |
 | [0050](0050.md) | Aperturformen (`regular_polygon`, `polygon`), Obskurationen und Aperturmaße als Param (Schema 0.11.0) | angenommen |
 | [0051](0051.md) | Freiformterme (Zernike Noll und Fringe, XY-Polynom, Grid-Sag) und Zernike-Flächenfehler als Toleranzart | angenommen |
+| [0052](0052.md) | Kommandozeile komplett (rtt trace, analyze, optimize) und Ergebnisformat in C++ | angenommen |
 
 ## Vorlage
 
