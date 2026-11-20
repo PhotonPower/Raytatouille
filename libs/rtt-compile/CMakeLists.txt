@@ -14,6 +14,7 @@ if(RTT_BUILD_TESTS)
             tests/test_migration.cpp tests/test_crystal.cpp tests/test_object_medium.cpp
             tests/test_relative_placement.cpp tests/test_configurations.cpp
             tests/test_node_frames.cpp tests/test_ideal_lens.cpp tests/test_perturbation.cpp
+            tests/test_zernike_perturbation.cpp
             tests/test_object_z.cpp tests/test_stop.cpp tests/test_surface_stop.cpp
             tests/test_anamorphic_compile.cpp tests/test_rotational_compile.cpp
             tests/test_forbes_compile.cpp tests/test_active.cpp tests/test_bound_ranges.cpp

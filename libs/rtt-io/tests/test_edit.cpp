@@ -262,8 +262,10 @@ void edit_form_keys(const json& e) {
   has_keys(t, {"class", "overrides", "items", "compensators", "criteria"},
            {"compensator_merit", "monte_carlo"}, "/tolerances");
   const Keys anchors = {"surface", "node", "parameter", "param", "segment"};
+  Keys item_keys = anchors;
+  item_keys.insert("term");  // the Noll index of the kind zernike (ADR 0051, point 7)
   for (const json& item : t["items"]) {
-    has_keys(item, {"id", "kind", "limit", "distribution"}, anchors, "/tolerances/items");
+    has_keys(item, {"id", "kind", "limit", "distribution"}, item_keys, "/tolerances/items");
   }
   for (const json& o : t["overrides"]) {
     if (o.contains("class")) {

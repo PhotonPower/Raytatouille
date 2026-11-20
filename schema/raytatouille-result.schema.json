@@ -2268,6 +2268,15 @@
         "limit",
         "distribution"
       ],
+      "properties": {
+        "term": {
+          "description": "Noll index of the kind zernike (schema 0.1.23, ADR 0051, point 7); null for the other kinds. Older files lack the key.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
       "oneOf": [
         {
           "properties": {

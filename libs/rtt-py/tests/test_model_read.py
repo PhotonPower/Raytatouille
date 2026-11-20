@@ -80,7 +80,8 @@ ENUM_NAMES: dict[type, dict[str, str]] = {
     # The tolerance set (ADR 0035, #253).
     model.ToleranceKind: {k: k.upper() for k in (
         "radius", "curvature_relative", "conic", "thickness", "param", "parameter", "decenter_x",
-        "decenter_y", "shift_z", "tilt_x_deg", "tilt_y_deg", "tilt_z_deg", "index", "abbe")},
+        "decenter_y", "shift_z", "tilt_x_deg", "tilt_y_deg", "tilt_z_deg", "index", "abbe",
+        "zernike")},
     model.ToleranceDistribution: {"normal": "NORMAL", "uniform": "UNIFORM",
                                   "endpoint": "ENDPOINT"},
     model.ToleranceClass: {"none": "NONE", "coarse": "COARSE", "normal": "NORMAL",

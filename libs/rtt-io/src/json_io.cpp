@@ -112,6 +112,7 @@ const EnumTable<ToleranceKind> kToleranceKinds = {
     {"tilt_z_deg", ToleranceKind::TiltZDeg},
     {"index", ToleranceKind::Index},
     {"abbe", ToleranceKind::Abbe},
+    {"zernike", ToleranceKind::Zernike},
 };
 
 const EnumTable<ToleranceDistribution> kToleranceDistributions = {
@@ -885,6 +886,36 @@ void check_0_9_forms(const Json& node, const Ctx& c) {
   }
 }
 
+/// Before schema 0.11 the tolerance kind zernike (items and overrides) and the key term of the
+/// items do not exist (ADR 0051, point 7).
+void check_0_11_tolerances(const Json& j, const Ctx& c) {
+  const Json* tolerances = find(j, "tolerances");
+  if (tolerances == nullptr || !tolerances->is_object()) return;
+  const Json* items = find(*tolerances, "items");
+  const Ctx at = c.at("tolerances").at("items");
+  for (std::size_t i = 0; items != nullptr && items->is_array() && i < items->size(); ++i) {
+    const Json& item = (*items)[i];
+    if (!item.is_object()) continue;
+    if (const Json* kind = find(item, "kind"); kind != nullptr && *kind == "zernike") {
+      at.at(i).at("kind").fail("the tolerance kind zernike needs schema_version 0.11 or later");
+    }
+    if (find(item, "term") != nullptr) {
+      at.at(i).at("term").fail("term needs schema_version 0.11 or later (ADR 0051)");
+    }
+  }
+  if (const Json* overrides = find(*tolerances, "overrides");
+      overrides != nullptr && overrides->is_array()) {
+    const Ctx oat = c.at("tolerances").at("overrides");
+    for (std::size_t i = 0; i < overrides->size(); ++i) {
+      const Json& o = (*overrides)[i];
+      if (!o.is_object()) continue;
+      if (const Json* kind = find(o, "kind"); kind != nullptr && *kind == "zernike") {
+        oat.at(i).at("kind").fail("the tolerance kind zernike needs schema_version 0.11 or later");
+      }
+    }
+  }
+}
+
 /// Files before 0.11 (ADR 0050, points 1 to 3; ADR 0051): the aperture types regular_polygon and
 /// polygon and a shape term other than zernike_sag are an error at the type, an aperture
 /// dimension that is not a number (a Param object) at that dimension and the key "obscurations"
@@ -1289,13 +1320,21 @@ ToleranceTarget read_target(const Json& j,
 }
 
 ToleranceItem read_tolerance_item(const Json& j, const Ctx& c) {
-  expect_object(
-      j, c,
-      {"id", "surface", "node", "parameter", "param", "segment", "kind", "limit", "distribution"});
+  expect_object(j, c,
+                {"id", "surface", "node", "parameter", "param", "segment", "term", "kind", "limit",
+                 "distribution"});
   ToleranceItem item;
   item.id = read_string(require(j, "id", c), c.at("id"));
   item.target = read_target(
       j, c, {ToleranceAnchor::Surface, ToleranceAnchor::Node, ToleranceAnchor::Parameter});
+  // The Noll index of the kind zernike (ADR 0051, point 7); its range is checked by validate.
+  if (const Json* term = find(j, "term")) {
+    const int v = read_int(*term, c.at("term"));
+    if (v < 0 || v > std::numeric_limits<std::uint16_t>::max()) {
+      c.at("term").fail("term " + std::to_string(v) + " out of range (0 ... 65535)");
+    }
+    item.target.term = static_cast<std::uint16_t>(v);
+  }
   item.kind = read_enum(require(j, "kind", c), c.at("kind"), kToleranceKinds);
   item.limit = read_number(require(j, "limit", c), c.at("limit"));
   if (const Json* d = find(j, "distribution")) {
@@ -1483,6 +1522,7 @@ System read_system_tree(const Json& j, std::vector<Diagnostic>* warnings) {
   }
   if (m.before_0_11) {
     if (const Json* root = find(j, "root")) check_0_11_forms(*root, c.at("root"));
+    check_0_11_tolerances(j, c);
   }
   if (!m.before_0_4) return read_migrated(j, m);
   Json current = j;
@@ -2323,6 +2363,7 @@ class Writer {
     o[std::string(enum_name(t.anchor, kToleranceAnchors))] = t.name;
     if (t.param) o["param"] = *t.param;
     if (t.segment) o["segment"] = *t.segment;
+    if (t.term) o["term"] = *t.term;
   }
 
   void put_kind_limit(OJson& o,

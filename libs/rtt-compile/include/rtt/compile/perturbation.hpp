@@ -2,7 +2,8 @@
 
 /// @file perturbation.hpp
 /// Overlay of tolerance perturbations on compile() (ADR 0036, points 1b and 1c; #254): rigid
-/// motions of nodes and surfaces and changes of n_d and nu_d of element materials. The nominal
+/// motions of nodes and surfaces, changes of n_d and nu_d of element materials and Zernike
+/// surface errors (ADR 0051, point 7; decision of the maintainer in #316). The nominal
 /// model stays unchanged; dimension tolerances are Param offsets on a copy of the model and not
 /// part of the overlay (ADR 0036, point 1a).
 ///
@@ -90,6 +91,13 @@ struct Perturbation {
   std::map<model::SurfaceId, RigidMotion> surfaces;
   /// Material changes of element segments.
   std::map<MaterialTarget, MaterialChange> materials;
+  /// Zernike surface errors by SurfaceId (ADR 0051, point 7): Noll coefficients a_1, a_2, ... in
+  /// mm (index k is j = k + 1, at most 231), orthonormal as rtt::math::zernike(), normalized to
+  /// the semi-diameter of the surface's aperture (the circumscribed radius, as the dimension
+  /// report, #177) in the configuration being compiled. compile() appends them to the compiled
+  /// shape as one ZernikeTerm after the surface's own terms; all zero is no change; the model
+  /// stays unchanged. The surface needs an aperture.
+  std::map<model::SurfaceId, std::vector<double>> zernike;
   /// The nominal z (mm, global) of the vertex of the surface that object.reference names, one
   /// entry per configuration (index of System::configurations, one entry without
   /// configurations), for a system with that reference (ADR 0038, point 5). compile() then
@@ -100,7 +108,8 @@ struct Perturbation {
 
   /// True if there are no entries at all.
   [[nodiscard]] bool empty() const noexcept {
-    return nodes.empty() && surfaces.empty() && materials.empty() && object_reference_z.empty();
+    return nodes.empty() && surfaces.empty() && materials.empty() && zernike.empty() &&
+           object_reference_z.empty();
   }
 };
 

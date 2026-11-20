@@ -35,6 +35,9 @@ enum class ToleranceKind : std::uint8_t {
   TiltZDeg,           ///< rigid rotation about z through the pivot, degree (file: "tilt_z_deg")
   Index,              ///< refractive index change dn_d, dimensionless (file: "index")
   Abbe,               ///< Abbe number change dnu_d, dimensionless (file: "abbe")
+  /// Zernike surface error: coefficient a_j in mm of the Noll term j (2 ... 231) on a surface,
+  /// normalized to the semi-diameter of its aperture (ADR 0051, point 7; file: "zernike")
+  Zernike,
 };
 
 /// Distribution of a tolerance within [-T, T] (ADR 0035, point 2; ADR 0036).
@@ -72,6 +75,9 @@ struct ToleranceTarget {
   /// 0-based segment of an element with several materials (ADR 0017); only with the kinds
   /// Index and Abbe.
   std::optional<std::uint32_t> segment;
+  /// Noll index j of the Zernike term, 2 ... 231 (j = 1, the piston, only shifts); only with the
+  /// kind Zernike, which requires it (ADR 0051, point 7).
+  std::optional<std::uint16_t> term;
   bool operator==(const ToleranceTarget&) const = default;
 };
 

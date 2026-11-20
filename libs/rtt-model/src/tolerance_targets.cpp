@@ -143,6 +143,10 @@ std::optional<std::string> quantity(const TargetIndex& index,
     case ToleranceKind::Abbe:
       return *anchor + ":" + std::string(tolerance_kind_name(kind)) + ":" +
              (target.segment ? std::to_string(*target.segment) : std::string("-"));
+    case ToleranceKind::Zernike:
+      // One coefficient a_j per surface and Noll index (ADR 0051, point 7).
+      if (target.anchor != ToleranceAnchor::Surface || !target.term) return std::nullopt;
+      return *anchor + ":zernike:" + std::to_string(*target.term);
     default:  // rigid
       return *anchor + ":" + std::string(tolerance_kind_name(kind));
   }

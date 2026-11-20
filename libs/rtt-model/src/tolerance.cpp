@@ -42,6 +42,8 @@ std::string_view tolerance_kind_name(ToleranceKind kind) noexcept {
       return "index";
     case ToleranceKind::Abbe:
       return "abbe";
+    case ToleranceKind::Zernike:
+      return "zernike";
   }
   return "?";
 }

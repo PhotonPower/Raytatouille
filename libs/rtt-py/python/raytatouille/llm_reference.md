@@ -255,7 +255,9 @@ print(round(sens.criteria[0].rss, 4), mc.yield_.good, "/", mc.yield_.total)
 ```
 
 Item `kind`: `radius`, `curvature_relative`, `conic`, `thickness`, `param`, `parameter`,
-`decenter_x/y`, `shift_z`, `tilt_x/y/z_deg`, `index`, `abbe`. A compensator that reaches its
+`decenter_x/y`, `shift_z`, `tilt_x/y/z_deg`, `index`, `abbe`, `zernike` (with `"term": j`, the
+Noll index 2 ... 231, on a surface with an aperture; coefficient in mm, normalized to the
+semi-diameter; no class generates it). A compensator that reaches its
 travel gives the warning `optim.parameter_at_bound` (as above for some trials). Targets are anchors
 (`surface`, `node`, `parameter`) plus an optional `param` pointer, never indices. `"class":
 "coarse" | "normal" | "precise"` generates items from a table (`rt.tolerance.expand` lists them).

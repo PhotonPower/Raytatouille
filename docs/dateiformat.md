@@ -422,6 +422,7 @@ ist der Namensraum der erzeugten Items).
 | `decenter_x`, `decenter_y`, `shift_z` | Fläche oder Knoten | mm | starre Verschiebung im Nennrahmen des Ziels und seines Teilbaums |
 | `tilt_x_deg`, `tilt_y_deg`, `tilt_z_deg` | Fläche oder Knoten | Grad | starre Drehung um die Achse des Nennrahmens durch den Pivot |
 | `index`, `abbe` | Element mit isotropem Material (Klassen: nur Lens und Plate) | dimensionslos | Δn_d bzw. Δν_d; `segment` (0-basiert) bei einer Liste `material`; eine Liste aus lauter gleichen Einträgen ist ein Material, dort gilt nur `segment` 0 |
+| `zernike` (ab Schema 0.11) | Fläche mit Apertur, dazu `term` | mm | hängt an die Fläche den Noll-Term j = `term` (2 bis 231) mit dem Koeffizienten δ an, normiert auf den Halbdurchmesser der Apertur (Umkreisradius wie im Maßreport); alle Zernike-Items einer Fläche bilden einen Term hinter ihren eigenen Termen (ADR 0051, Punkt 7). Keine Klasse erzeugt ihn. Nicht rotationssymmetrische Terme laufen mit dem Bezug des Nennsystems. Terme mit m = 0 (z. B. Z₄) haben einen konstanten Anteil und verschieben den Scheitel, also auch die Mittendicke im Maßreport, wie ein von Hand angehängter Term |
 
 `thickness` ist ein Maß (Offset auf ein Param), `shift_z` eine Lage (starr): Eine Dickentoleranz
 schiebt relativ platzierte Folgeknoten mit, eine starre Verschiebung nicht. Params auf

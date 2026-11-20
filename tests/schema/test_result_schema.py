@@ -368,3 +368,17 @@ def test_surface_layouts_from_0_1_23_need_terms():
     for broken in (None, [["grid", {}]], [["zernike_sag"]]):
         with pytest.raises(jsonschema.ValidationError):
             VALIDATOR.validate(_surface_layout_0_1_23("0.1.23", broken))
+
+
+def test_tolerance_item_term_is_an_integer_or_null():
+    """ToleranceItem.term (#316, ADR 0051, point 7; 0.1.23): optional, an integer or null."""
+    doc = json.loads((ROOT / "tests" / "reference" / "results" / "ToleranceItems.result.json")
+                     .read_text(encoding="utf-8"))
+    VALIDATOR.validate(doc)
+    item = doc["data"]["items"][0]
+    for term in (None, 4):
+        item["term"] = term
+        VALIDATOR.validate(doc)
+    item["term"] = "x"
+    with pytest.raises(jsonschema.ValidationError):
+        VALIDATOR.validate(doc)
