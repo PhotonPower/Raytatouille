@@ -24,6 +24,7 @@
 #include "rtt/io/json_io.hpp"
 #include "rtt/io/result_json.hpp"
 #include "rtt/material/material.hpp"
+#include "rtt/model/model.hpp"
 #include "rtt/optim/optimize.hpp"
 #include "rtt/paraxial/paraxial.hpp"
 #include "rtt/paraxial/seidel.hpp"
@@ -61,6 +62,17 @@ void run_result_json_cases(const fs::path& reference_dir,
   const CompiledSystem paraboloid =
       compile::compile(io::load_system(reference_dir / "m2/paraboloid_stop.rtt.json"), plain);
   const model::System optim_singlet = io::load_system(reference_dir / "m5/singlet_optim.rtt.json");
+  const model::System optim_configurations =
+      io::load_system(reference_dir / "m5/singlet_optim_configurations.rtt.json");
+  // The paraboloid with its mirror aperture reduced to 21 mm (beam radius 30 mm): vignetting, as
+  // in analysis_cases.cpp.
+  model::System clipped = io::load_system(reference_dir / "m2/paraboloid_stop.rtt.json");
+  std::get<model::Element>(clipped.root.children[1].value).surfaces[0].aperture =
+      model::CircularAperture{21.0, 0.0};
+  const CompiledSystem paraboloid21 = compile::compile(clipped, plain);
+  // Without a stop: no pupils in the first order.
+  const CompiledSystem no_stop =
+      compile::compile(io::load_system(reference_dir / "m1/paraboloid_mirror.rtt.json"), plain);
   const PathId path{0};
 
   oneapi::tbb::task_arena arena(threads);
@@ -110,6 +122,46 @@ void run_result_json_cases(const fs::path& reference_dir,
     write(out, "mtf", io::to_result_json(analysis::mtf(paraboloid, path, 0, mo)));
 
     write(out, "optimize", io::to_result_json(optim::optimize(optim_singlet, plain)));
+
+    // Branches the cases above do not reach (review of PR A):
+    // Q in the batch and P and Q per slot.
+    trace::RayBatch q_rays = trace::make_rays(singlet, path, fields, singlet.reference_wavelength(),
+                                              trace::HexapolarPupil{2});
+    q_rays.enable_q();
+    trace::RayPaths q_paths;
+    q_paths.polarization = true;
+    static_cast<void>(trace::SequentialTracer().trace(singlet, path, q_rays, q_paths));
+    write(out, "rays_q", io::to_result_json(q_rays));
+    write(out, "paths_q", io::to_result_json(q_paths));
+    // Lost rays: status values, lost_at, NaN slots, losses with a worst surface.
+    const std::uint16_t field0[] = {0};
+    trace::RayBatch lost = trace::make_rays(
+        paraboloid21, path, field0, paraboloid21.reference_wavelength(), trace::GridPupil{21});
+    trace::RayPaths lost_paths;
+    const trace::TraceStats lost_stats =
+        trace::SequentialTracer().trace(paraboloid21, path, lost, lost_paths);
+    write(out, "rays_lost", io::to_result_json(lost));
+    write(out, "paths_lost", io::to_result_json(lost_paths));
+    write(out, "stats_lost", io::to_result_json(lost_stats));
+    analysis::SpotOptions grid21;
+    grid21.sampling = trace::GridPupil{21};
+    write(out, "spot_lost",
+          io::to_result_json(analysis::spot(paraboloid21, path, 0, std::nullopt, grid21)));
+    // Seidel without a pair, a monochromatic spot, the MTF with the default outputs.
+    write(out, "seidel_plain",
+          io::to_result_json(paraxial::seidel(achromat, path, achromat.reference_wavelength())));
+    write(out, "spot_mono",
+          io::to_result_json(
+              analysis::spot(singlet, path, 2, std::uint16_t{0}, analysis::SpotOptions{})));
+    analysis::MtfOptions plain_mtf;
+    plain_mtf.pupil.grid = 32;
+    write(out, "mtf_plain", io::to_result_json(analysis::mtf(paraboloid, path, 0, plain_mtf)));
+    // First order without a stop (no pupils).
+    write(out, "first_order_no_stop",
+          io::to_result_json(paraxial::first_order(no_stop, path, no_stop.reference_wavelength())));
+    // A variable row per configuration (VariableValue.row and configuration set).
+    write(out, "optimize_configurations",
+          io::to_result_json(optim::optimize(optim_configurations, plain)));
   });
 }
 

@@ -30,6 +30,11 @@ std::string python_float_repr(double x) {
   // The shortest digits of std::to_chars in scientific notation (the general form would choose
   // the shorter of fixed and scientific, not Python's rule), then Python's layout
   // (float_repr_style "short": repr uses scientific notation for decpt <= -4 or decpt > 16).
+  if (!std::isfinite(x)) {
+    throw std::invalid_argument(
+        "python_float_repr: only finite values (NaN and infinities are "
+        "written as strings, ADR 0023)");
+  }
   std::array<char, 64> buffer{};
   const std::to_chars_result r =
       std::to_chars(buffer.data(), buffer.data() + buffer.size(), x, std::chars_format::scientific);
@@ -43,7 +48,9 @@ std::string python_float_repr(double x) {
   const std::string_view exp_text = s.substr(e + 1);
   const char* first = exp_text.data();
   if (*first == '+') ++first;
-  std::from_chars(first, exp_text.data() + exp_text.size(), exponent);
+  if (std::from_chars(first, exp_text.data() + exp_text.size(), exponent).ec != std::errc{}) {
+    throw std::logic_error("python_float_repr: from_chars failed");
+  }
   std::string digits;
   for (const char c : mantissa) {
     if (c != '.') digits += c;
@@ -265,6 +272,7 @@ void array(Writer& w,
     } else if constexpr (std::is_same_v<V, bool>) {
       w.boolean(v);
     } else {
+      static_assert(std::is_integral_v<V>, "array: double, complex, bool or integer elements");
       w.integer(v);
     }
   }
@@ -287,12 +295,12 @@ void matrix2(Writer& w, const std::array<double, 4>& m) {
   array(w, "float64", {2, 2}, 4, [&](std::size_t i) { return m[i]; });
 }
 
-/// A float64 (or complex128) square map: (side, side) with side^2 = size, or (0, 0) if empty
-/// (bind_psf.cpp, square()).
+/// A float64 (or complex128) square map (side, side) as the binding shapes it (bind_psf.cpp,
+/// square()): `side` from the result (Psf::length, 2 Mtf::grid - 1), (0, 0) if empty.
 template <class T>
-void square(Writer& w, std::string_view dtype, const std::vector<T>& v) {
-  const auto side =
-      static_cast<std::size_t>(std::llround(std::sqrt(static_cast<double>(v.size()))));
+void square(Writer& w, std::string_view dtype, const std::vector<T>& v, std::size_t side) {
+  if (v.empty()) side = 0;
+  if (side * side != v.size()) throw std::logic_error("result_json: a map is not side x side");
   array(w, dtype, {side, side}, v.size(), [&](std::size_t i) { return v[i]; });
 }
 
@@ -769,9 +777,10 @@ std::string to_result_json(const analysis::Mtf& m) {
     w.key("frequency_matrix");
     matrix2(w, m.frequency_matrix);
     w.key("map");
-    square(w, "float64", m.map);
+    const auto side = static_cast<std::size_t>(2 * m.grid - 1);
+    square(w, "float64", m.map, side);
     w.key("otf_map");
-    square(w, "complex128", m.otf_map);
+    square(w, "complex128", m.otf_map, side);
     w.key("edge_energy_deficit");
     w.number(m.edge_energy_deficit);
     w.key("wavelengths");
@@ -803,7 +812,7 @@ std::string to_result_json(const analysis::Psf& p) {
     w.key("lattice");
     matrix2(w, p.lattice);
     w.key("intensity");
-    square(w, "float64", p.intensity);
+    square(w, "float64", p.intensity, static_cast<std::size_t>(p.length));
     w.key("strehl");
     w.number(p.strehl);
     w.key("peak");

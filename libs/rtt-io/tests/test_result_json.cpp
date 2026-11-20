@@ -3,11 +3,17 @@
 // and json.dumps(..., ensure_ascii=False)); test_result_json.py compares whole results.
 
 #include <catch2/catch_test_macros.hpp>
+#include <cstddef>
 #include <limits>
+#include <set>
+#include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 #include "rtt/io/result_json.hpp"
+#include "rtt/io/result_names.hpp"
 
 TEST_CASE("floats are written as Python's repr (ADR 0052, point 1)", "[io][result_json]") {
   const std::pair<double, const char*> cases[] = {
@@ -59,4 +65,42 @@ TEST_CASE("strings, NaN and the envelope as json.dumps (ADR 0052, point 1)", "[i
   CHECK(text.find(R"("step_norm": {"dtype": "float64", "shape": [1], "values": ["Infinity"]})") !=
         std::string::npos);
   CHECK(text.ends_with(R"("failed_evaluations": 0}})"));  // no final newline
+}
+
+TEST_CASE("every enum member of the format has one distinct name (ADR 0052, point 1)",
+          "[io][result_json]") {
+  const auto check = [](const std::vector<std::string_view>& names) {
+    for (const std::string_view n : names) CHECK(n != "?");
+    const std::set<std::string_view> distinct(names.begin(), names.end());
+    CHECK(distinct.size() == names.size());
+  };
+  using rtt::optim::LmStatus;
+  check({rtt::io::result_name(LmStatus::ConvergedGradient),
+         rtt::io::result_name(LmStatus::ConvergedStep),
+         rtt::io::result_name(LmStatus::ConvergedMerit),
+         rtt::io::result_name(LmStatus::MaxIterations), rtt::io::result_name(LmStatus::Cancelled),
+         rtt::io::result_name(LmStatus::Failed)});
+  using rtt::diagnostics::Severity;
+  check({rtt::io::result_name(Severity::Error), rtt::io::result_name(Severity::Warning)});
+  std::vector<std::string_view> status;
+  for (std::size_t s = 0; s < rtt::trace::kRayStatusCount; ++s) {
+    status.push_back(rtt::io::result_name(static_cast<rtt::trace::RayStatus>(s)));
+  }
+  check(status);
+}
+
+TEST_CASE("NaN as a scalar and -infinity in an array as the format writes them",
+          "[io][result_json]") {
+  // json.dumps of to_dict: a scalar NaN as {"float": "NaN"}, an array element -inf as
+  // "-Infinity" (ADR 0023, point 3).
+  rtt::analysis::ZernikeFit f;
+  f.strehl = std::numeric_limits<double>::quiet_NaN();
+  f.coefficients = {1.5, -std::numeric_limits<double>::infinity()};
+  const std::string text = rtt::io::to_result_json(f);
+  CHECK(text.find(R"("strehl": {"float": "NaN"})") != std::string::npos);
+  CHECK(
+      text.find(
+          R"("coefficients": {"dtype": "float64", "shape": [2], "values": [1.5, "-Infinity"]})") !=
+      std::string::npos);
+  CHECK_THROWS_AS(rtt::io::python_float_repr(f.strehl), std::invalid_argument);
 }
