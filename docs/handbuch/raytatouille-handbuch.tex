@@ -5486,6 +5486,29 @@ rtt import <datei.zmx> <neu.rtt.json> --catalog <katalog.agf>...
 rtt import <tabelle.csv> <neu.rtt.json> --base <system.rtt.json> --catalog <katalog.agf>...
 rtt export <system.rtt.json> <aus.zmx|aus.csv> --catalog <katalog.agf>... [--path <name>]
            [--config <index>]
+rtt trace <system.rtt.json> [optionen]  Strahlen einer Pupillenabtastung verfolgen
+rtt analyze <art> <system.rtt.json> [optionen]
+                                        first-order, seidel, spot, opd, zernike, psf, mtf
+rtt <befehl> --help                     Optionen von trace und analyze
+\end{shell}
+
+\paragraph{Rechnen: \code{trace} und \code{analyze}.} Beide laden das System, prüfen es wie
+\code{validate} und kompilieren es mit den Katalogen aus \code{--catalog} (und
+\code{--coatings}) in der Konfiguration \code{--config}. Das Ergebnis geht nach stdout oder
+mit \code{-o} in eine Datei, im JSON-Ergebnisformat \code{raytatouille-result} (Modul \code{rt.results}). Die Datei ist
+Byte für Byte dieselbe, die \code{to_json} für denselben Aufruf in Python schreibt. Mit
+\code{--format csv} schreiben \code{trace}, \code{analyze spot} und \code{analyze mtf}
+stattdessen eine Tabelle mit Kopfzeile. Die Optionen heißen wie die Parameter der Python-API und
+haben deren Vorgaben (\code{--field}, \code{--wavelength}, \code{--rays hexapolar:6},
+\code{--grid}, \code{--focus-shift}, \code{--aiming real|paraxial}, …); \code{rtt analyze
+<art> --help} nennt sie alle. \code{--reference <nennsystem.rtt.json>} zielt bei \code{spot}
+und \code{opd} mit dem Bezug eines Nennsystems, für Systeme ohne paraxiales Modell. Diagnosen
+gehen nach stderr. Exit-Code: 0 Erfolg (auch mit Warnungen), 1 ungültiges System oder
+gescheiterte Rechnung, 2 falscher Aufruf.
+\begin{shell}
+rtt analyze spot achromat.rtt.json --catalog schott.agf --field 2 -o spot.json
+rtt analyze mtf paraboloid.rtt.json --grid 32 --format csv > mtf.csv
+rtt trace singlet.rtt.json --rays grid:21 --paths -o paths.json
 \end{shell}
 
 \paragraph{ZMX-Import.} \code{rtt import} liest den sequenziellen Teil einer OpticStudio-Datei
