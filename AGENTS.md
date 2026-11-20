@@ -65,7 +65,8 @@ Fehlerquellen, die nur die CI sieht, vorab lokal prüfen:
   (`test_bitwise*.py`) brauchen `RTT_PY_REFERENCE_EXE`, `RTT_REFERENCE_DIR` und `RTT_CATALOG_DIR`;
   ctest setzt sie (`ctest -R rtt_py`). Ohne sie werden die Bitvergleiche still übersprungen, und
   pytest ist trotzdem grün. Wer pytest direkt startet, setzt die drei Variablen wie
-  `libs/rtt-py/CMakeLists.txt` und prüft, dass kein Bitvergleich übersprungen wurde.
+  `libs/rtt-py/CMakeLists.txt` und prüft, dass kein Bitvergleich übersprungen wurde. Dazu kommt
+  `RTT_CLI_EXE` (das Programm `rtt` im Build); ohne sie schlägt `test_cli.py` fehl (ADR 0052).
 - **Veralteter `__pycache__` der Python-Tests.** Sind lokal nur die Tests rot, die den Dateinamen
   einer Warnung prüfen (`w.filename == __file__`), und steht in `w.filename` ein fremder oder anders
   geschriebener Pfad (z. B. Backslashes statt Vorwärts-Slashes), liegt es am Cache: pytest

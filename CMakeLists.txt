@@ -84,4 +84,7 @@ endif()
 if(RTT_BUILD_APPS)
   add_subdirectory(apps/rtt-cli)
   add_subdirectory(apps/rtt-bench)
+elseif(RTT_BUILD_PYTHON AND RTT_BUILD_TESTS)
+  # The Python tests compare the command line with the Python API (ADR 0052, point 8).
+  add_subdirectory(apps/rtt-cli)
 endif()

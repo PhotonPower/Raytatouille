@@ -215,7 +215,7 @@ jobs:
         # (Windows registry) without nanobind, numpy and pytest.
         run: cmake --preset ${{ matrix.preset }} "-DPython_EXECUTABLE=${{ steps.python.outputs.python-path }}"
       - name: Build
-        run: cmake --build --preset ${{ matrix.preset }} --target _core rtt_py_stub rtt_py_reference
+        run: cmake --build --preset ${{ matrix.preset }} --target _core rtt_py_stub rtt_py_reference rtt_cli
       - name: Test (pytest, mypy)
         run: ctest --preset ${{ matrix.preset }} -R rtt_py
       - name: Smoke test pip install .
@@ -234,7 +234,9 @@ jobs:
           python -m pip install . -v
           cd "$RUNNER_TEMP"
           python -c "import raytatouille as rt; print(rt.__version__, rt.__file__)"
-          python -m pytest -q -p no:cacheprovider "$GITHUB_WORKSPACE/libs/rtt-py/tests"
+          # The wheel has no command line rtt: test_cli.py runs through ctest (ADR 0052, point 8).
+          python -m pytest -q -p no:cacheprovider "$GITHUB_WORKSPACE/libs/rtt-py/tests" \
+            --ignore="$GITHUB_WORKSPACE/libs/rtt-py/tests/test_cli.py"
       - name: Examples of the user manual (#322)
         # The 24 examples of docs/handbuch/raytatouille-handbuch.tex against the package installed
         # by the smoke test, with the printed outputs compared character by character. Only on
