@@ -4,6 +4,14 @@
 
 #include "cli.hpp"
 
+#include <atomic>
+#include <csignal>
+
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#endif
+
 #include <cctype>
 #include <charconv>
 #include <cstddef>
@@ -55,7 +63,9 @@ class Commands {
           "  rtt analyze <kind> <file.rtt.json> [options]\n"
           "                                       first-order, seidel, spot, opd, zernike, psf, "
           "mtf\n"
-          "  rtt <command> --help                 options of trace and analyze\n";
+          "  rtt optimize <file.rtt.json> [-o <out.rtt.json>] [--result <file>] [options]\n"
+          "                                       optimize with the merit function of the file\n"
+          "  rtt <command> --help                 options of trace, analyze and optimize\n";
   }
 
   std::string read_text(const std::string& path) {
@@ -273,11 +283,76 @@ class Commands {
 
 }  // namespace
 
-int run(const std::vector<std::string>& args, std::ostream& out, std::ostream& err) {
-  if (!args.empty() && (args[0] == "trace" || args[0] == "analyze")) {
-    return run_compute(args, out, err);
+int run(const std::vector<std::string>& args,
+        std::ostream& out,
+        std::ostream& err,
+        const trace::CancelToken& cancel) {
+  if (!args.empty() && (args[0] == "trace" || args[0] == "analyze" || args[0] == "optimize")) {
+    return run_compute(args, out, err, cancel);
   }
   return Commands(out, err).run_commands(args);
+}
+
+int run(const std::vector<std::string>& args, std::ostream& out, std::ostream& err) {
+  return run(args, out, err, trace::CancelToken{});
+}
+
+// ------------------------------------------------------------------------------ Ctrl-C ---
+
+namespace {
+
+static_assert(std::atomic<bool>::is_always_lock_free,
+              "the interrupt handler cancels with a lock-free atomic store");
+static_assert(std::atomic<int>::is_always_lock_free,
+              "the interrupt handler counts with a lock-free atomic fetch_add");
+
+/// Calls since the start; the handler is async-signal-safe: one atomic exchange and the store
+/// of CancelToken::request_cancel().
+std::atomic<int>& interrupts() {
+  static std::atomic<int> count{0};
+  return count;
+}
+
+#ifdef _WIN32
+BOOL WINAPI console_handler(DWORD event) {
+  if (event != CTRL_C_EVENT && event != CTRL_BREAK_EVENT) return FALSE;
+  return on_interrupt() ? TRUE : FALSE;  // FALSE: the default handler ends the process
+}
+#else
+extern "C" void signal_handler(int /*signal*/) {
+  if (!on_interrupt()) {
+    std::signal(SIGINT, SIG_DFL);
+    std::raise(SIGINT);
+  }
+}
+#endif
+
+}  // namespace
+
+namespace {
+trace::CancelToken& token_storage() {
+  static trace::CancelToken token;  // created before the handler is installed
+  return token;
+}
+}  // namespace
+
+const trace::CancelToken& interrupt_token() {
+  return token_storage();
+}
+
+bool on_interrupt() noexcept {
+  const bool first = interrupts().fetch_add(1) == 0;
+  if (first) token_storage().request_cancel();
+  return first;
+}
+
+void install_interrupt_handler() {
+  static_cast<void>(interrupt_token());
+#ifdef _WIN32
+  SetConsoleCtrlHandler(console_handler, TRUE);
+#else
+  std::signal(SIGINT, signal_handler);
+#endif
 }
 
 }  // namespace rtt::cli

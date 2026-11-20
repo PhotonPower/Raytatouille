@@ -1,6 +1,7 @@
-// rtt trace and rtt analyze (ADR 0052, points 2 to 5): load, validate and compile the system,
-// run one computation with the options of the Python API, write the result in the format
-// raytatouille-result (rtt::io::to_result_json, byte for byte as to_json in Python) or as CSV.
+// rtt trace, rtt analyze and rtt optimize (ADR 0052, points 2 to 6): load, validate and compile
+// the system, run one computation with the options of the Python API under a RunControl (Ctrl-C,
+// --progress), write the result in the format raytatouille-result (rtt::io::to_result_json, byte
+// for byte as to_json in Python) or as CSV.
 
 #include "compute.hpp"
 
@@ -29,6 +30,7 @@
 #include <variant>
 #include <vector>
 
+#include "cli.hpp"
 #include "rtt/analysis/nominal_reference.hpp"
 #include "rtt/analysis/opd.hpp"
 #include "rtt/analysis/psf.hpp"
@@ -44,6 +46,8 @@
 #include "rtt/math/zernike.hpp"
 #include "rtt/model/parameters.hpp"
 #include "rtt/model/validate.hpp"
+#include "rtt/optim/merit.hpp"
+#include "rtt/optim/optimize.hpp"
 #include "rtt/paraxial/paraxial.hpp"
 #include "rtt/paraxial/seidel.hpp"
 #include "rtt/trace/ray_paths.hpp"
@@ -210,9 +214,14 @@ void print(std::ostream& err, const std::string& file, const std::vector<model::
   for (const model::Diagnostic& d : list) err << file << ": " << model::to_string(d) << "\n";
 }
 
-/// Loads, validates (errors: exit 1 before computing) and compiles `file` with the libraries
-/// and the configuration of the options; prints the warnings of reading and compiling.
-void prepare(Prepared& p, const std::string& file, const Arguments& a, std::ostream& err) {
+/// Loads, validates (errors: exit 1 before computing) and, with `compile`, compiles `file` with
+/// the libraries and the configuration of the options; prints the warnings of reading and
+/// compiling. optimize passes compile = false: it compiles itself.
+void prepare(Prepared& p,
+             const std::string& file,
+             const Arguments& a,
+             std::ostream& err,
+             bool compile = true) {
   p.file = file;
   std::vector<model::Diagnostic> read_warnings;
   try {
@@ -231,6 +240,7 @@ void prepare(Prepared& p, const std::string& file, const Arguments& a, std::ostr
   if (const auto it = a.values.find("--coatings"); it != a.values.end()) {
     for (const std::string& c : it->second) p.coatings.add_catalog(c);
   }
+  if (!compile) return;  // optimize compiles itself
   if (const std::string* c = a.value("--config")) {
     if (const std::optional<std::size_t> i = model::find_configuration(p.system, *c)) {
       p.configuration = *i;
@@ -410,6 +420,7 @@ const std::vector<OptionSpec>& common_options() {
       {"--threads", "n", false, "worker threads (default: all)"},
       {"--output", "file", false, "write the result to file (-o), otherwise to stdout"},
       {"--format", "json|csv", false, "json (default) or csv where the command has CSV"},
+      {"--progress", "", false, "progress lines (stage done/total) on stderr"},
       {"--help", "", false, "this help"},
   };
   return specs;
@@ -536,7 +547,26 @@ std::string format_of(const Arguments& a, bool csv_allowed) {
   return "csv";
 }
 
-int trace_command(const std::vector<std::string>& args, std::ostream& out, std::ostream& err) {
+/// The RunControl of a command (ADR 0052, point 6): the cancel token, and with --progress one
+/// line per report on stderr ("progress <stage> <done>/<total>").
+trace::RunControl control_of(const Arguments& a,
+                             const trace::CancelToken& cancel,
+                             std::ostream& err) {
+  trace::RunControl control;
+  control.cancel = cancel;
+  if (a.flag("--progress")) {
+    control.progress = [&err](const trace::Progress& p) {
+      err << "progress " << p.stage << ' ' << p.done << '/' << p.total << '\n';
+      err.flush();
+    };
+  }
+  return control;
+}
+
+int trace_command(const std::vector<std::string>& args,
+                  std::ostream& out,
+                  std::ostream& err,
+                  const trace::CancelToken& cancel) {
   const std::vector<OptionSpec> specs = with_common(trace_options());
   const Arguments a = parse(args, 1, specs);
   if (a.flag("--help")) {
@@ -570,7 +600,8 @@ int trace_command(const std::vector<std::string>& args, std::ostream& out, std::
   std::string text;
   std::string stats_text;
   in_arena(a, [&] {
-    trace::RayBatch rays = trace::make_rays(cs, p.path, fields, wl, s, aiming(a));
+    const trace::RunControl control = control_of(a, cancel, err);
+    trace::RayBatch rays = trace::make_rays(cs, p.path, fields, wl, s, aiming(a), control);
     trace::TraceStats stats;
     if (record) {
       trace::RayPaths paths;
@@ -582,17 +613,21 @@ int trace_command(const std::vector<std::string>& args, std::ostream& out, std::
       stats = trace::SequentialTracer().trace(cs, p.path, rays, paths, std::nullopt, limit);
       text = format == "csv" ? paths_csv(paths) : io::to_result_json(paths);
     } else {
-      stats = trace::SequentialTracer().trace(cs, p.path, rays);
+      stats = trace::SequentialTracer().trace(cs, p.path, rays, control);
       text = format == "csv" ? trace_csv(rays) : io::to_result_json(rays);
     }
     stats_text = io::to_result_json(stats);
   });
+  if (cancel.cancelled()) return kCancelled;  // nothing written (ADR 0052, point 6)
   emit(text, a.value("--output"), out);
   if (const std::string* f = a.value("--stats")) emit(stats_text, f, out);
   return kOk;
 }
 
-int analyze_command(const std::vector<std::string>& args, std::ostream& out, std::ostream& err) {
+int analyze_command(const std::vector<std::string>& args,
+                    std::ostream& out,
+                    std::ostream& err,
+                    const trace::CancelToken& cancel) {
   const std::vector<Kind>& kinds = analyze_kinds();
   if (args.size() < 2 || args[1] == "--help" || args[1] == "-h") {
     if (args.size() < 2) throw UsageError("rtt analyze needs a kind");
@@ -641,6 +676,7 @@ int analyze_command(const std::vector<std::string>& args, std::ostream& out, std
   const std::uint16_t wl = wavelength(p, a).value_or(cs.reference_wavelength());
   std::string text;
   std::vector<model::Diagnostic> warnings;  // of the analysis, also for CSV (ADR 0052, point 4)
+  const trace::RunControl control = control_of(a, cancel, err);
   in_arena(a, [&] {
     if (kind->name == "first-order") {
       text = io::to_result_json(paraxial::first_order(cs, path, wl));
@@ -659,7 +695,8 @@ int analyze_command(const std::vector<std::string>& args, std::ostream& out, std
       if (const std::string* r = a.value("--rays")) o.sampling = sampling(*r);
       o.aiming = aiming(a);
       o.reference = ref;
-      const analysis::SpotDiagram d = analysis::spot(cs, path, field(p, a), wavelength(p, a), o);
+      const analysis::SpotDiagram d =
+          analysis::spot(cs, path, field(p, a), wavelength(p, a), o, control);
       warnings = d.warnings;
       text = format == "csv" ? spot_csv(d) : io::to_result_json(d);
     } else if (kind->name == "opd") {
@@ -668,7 +705,7 @@ int analyze_command(const std::vector<std::string>& args, std::ostream& out, std
       o.focus_shift = real("--focus-shift", o.focus_shift);
       o.aiming = aiming(a);
       o.reference = ref;
-      const analysis::OpdMap m = analysis::opd_map(cs, path, field(p, a), wl, o);
+      const analysis::OpdMap m = analysis::opd_map(cs, path, field(p, a), wl, o, control);
       warnings = m.warnings;
       text = io::to_result_json(m);
     } else if (kind->name == "zernike") {
@@ -676,8 +713,8 @@ int analyze_command(const std::vector<std::string>& args, std::ostream& out, std
       if (const std::string* t = a.value("--terms")) {
         z.terms = integer<int>(*t, "--terms", 1, rtt::math::kMaxZernikeTerms);
       }
-      const analysis::ZernikeFit f =
-          analysis::zernike_fit(analysis::pupil_function(cs, path, field(p, a), wl, pupil()), z);
+      const analysis::ZernikeFit f = analysis::zernike_fit(
+          analysis::pupil_function(cs, path, field(p, a), wl, pupil(), control), z);
       warnings = f.warnings;
       text = io::to_result_json(f);
     } else if (kind->name == "psf") {
@@ -687,7 +724,7 @@ int analyze_command(const std::vector<std::string>& args, std::ostream& out, std
         o.padding = integer<int>(*q, "--padding", 2, 65535);
       }
       o.wavelengths = wavelengths(p, a);
-      const analysis::Psf f = analysis::psf(cs, path, field(p, a), o);
+      const analysis::Psf f = analysis::psf(cs, path, field(p, a), o, control);
       warnings = f.warnings;
       text = io::to_result_json(f);
     } else {  // mtf
@@ -696,20 +733,104 @@ int analyze_command(const std::vector<std::string>& args, std::ostream& out, std
       o.wavelengths = wavelengths(p, a);
       o.outputs.map = a.flag("--map");
       o.outputs.complex_otf = a.flag("--complex-otf");
-      const analysis::Mtf m = analysis::mtf(cs, path, field(p, a), o);
+      const analysis::Mtf m = analysis::mtf(cs, path, field(p, a), o, control);
       warnings = m.warnings;
       text = format == "csv" ? mtf_csv(m) : io::to_result_json(m);
     }
   });
+  if (cancel.cancelled()) return kCancelled;  // also after seidel and the like (no checks inside)
   print(err, p.file, warnings);
   emit(text, a.value("--output"), out);
+  return kOk;
+}
+
+const std::vector<OptionSpec>& optimize_options() {
+  static const std::vector<OptionSpec> specs = {
+      {"--result", "file", false, "write OptimResult to file (also when cancelled or failed)"},
+      {"--max-iterations", "n", false, "solves of Levenberg-Marquardt (default 100)"},
+      {"--ftol", "value", false, "merit test (default sqrt(machine epsilon))"},
+      {"--xtol", "value", false, "step test (default sqrt(machine epsilon))"},
+      {"--gtol", "value", false, "scaled gradient test (default 0, off)"},
+      {"--tau", "value", false, "initial damping mu_0 = tau max diag(J^T J) (default 1e-3)"},
+      {"--function-precision", "value", false,
+       "relative precision of the merit for the finite differences (default 1e-9)"},
+  };
+  return specs;
+}
+
+/// rtt optimize (ADR 0052, point 3): the optimized system in canonical form to -o (or stdout),
+/// OptimResult to --result. CANCELLED and FAILED write --result only (exit 130 and 1).
+int optimize_command(const std::vector<std::string>& args,
+                     std::ostream& out,
+                     std::ostream& err,
+                     const trace::CancelToken& cancel) {
+  std::vector<OptionSpec> own = optimize_options();
+  std::vector<OptionSpec> specs;
+  for (const OptionSpec& c : common_options()) {
+    // optimize runs the merit function of the file: no configuration, path or format
+    if (c.name != "--config" && c.name != "--path" && c.name != "--format") specs.push_back(c);
+  }
+  own.insert(own.end(), specs.begin(), specs.end());
+  Arguments a = parse(args, 1, own);
+  if (a.flag("--help")) {
+    out << "usage: rtt optimize <system.rtt.json> [options]\n"
+           "Damped least squares on the merit function of the file (rt.optim.optimize).\n"
+           "Output: the optimized system in canonical form (-o or stdout); --result OptimResult.\n"
+           "Exit 0 for CONVERGED_* and MAX_ITERATIONS, 1 for FAILED, 130 when "
+           "cancelled.\n\noptions:\n";
+    const auto line = [&](const OptionSpec& o) {
+      std::string left = "  " + std::string(o.name == "--output" ? "-o, --output" : o.name);
+      if (!o.value.empty()) left += " <" + std::string(o.value) + ">";
+      out << left << std::string(left.size() < 34 ? 34 - left.size() : 1, ' ') << o.help << "\n";
+    };
+    for (const OptionSpec& o : own) line(o);
+    return kOk;
+  }
+  if (a.operands.size() != 1) throw UsageError("rtt optimize needs one system file");
+  optim::OptimizeOptions o;
+  const auto real = [&](std::string_view name, double fallback) {
+    const std::string* v = a.value(name);
+    return v != nullptr ? number(*v, name) : fallback;
+  };
+  if (const std::string* n = a.value("--max-iterations")) {
+    o.max_iterations = integer<int>(*n, "--max-iterations", 0, 2147483647);
+  }
+  o.ftol = real("--ftol", o.ftol);
+  o.xtol = real("--xtol", o.xtol);
+  o.gtol = real("--gtol", o.gtol);
+  o.tau = real("--tau", o.tau);
+  o.function_precision = real("--function-precision", o.function_precision);
+  Prepared p;
+  prepare(p, a.operands[0], a, err, false);
+  optim::OptimResult r;
+  const trace::RunControl control = control_of(a, cancel, err);
+  in_arena(a, [&] {
+    try {
+      r = optim::optimize(p.system, p.materials, &p.coatings, o, control);
+    } catch (const compile::CompileError& e) {
+      print(err, p.file, e.diagnostics());
+      throw Failed("compile");
+    } catch (const optim::OptimError& e) {
+      print(err, p.file, e.diagnostics());  // no variables, no operands (ADR 0052, point 4)
+      throw Failed("optimize");
+    }
+  });
+  print(err, p.file, r.diagnostics);
+  if (const std::string* f = a.value("--result")) emit(io::to_result_json(r), f, out);
+  if (r.status == optim::LmStatus::Cancelled || cancel.cancelled()) return kCancelled;
+  if (r.status == optim::LmStatus::Failed) {
+    err << p.file << ": error the optimization failed (status FAILED)\n";
+    return kFailed;
+  }
+  emit(io::to_json(r.system), a.value("--output"), out);
   return kOk;
 }
 
 /// True for an option without a value (a flag) of any command, for the file name in messages.
 bool is_flag(std::string_view name) {
   if (name == "-h") return true;
-  std::vector<const std::vector<OptionSpec>*> lists = {&common_options(), &trace_options()};
+  std::vector<const std::vector<OptionSpec>*> lists = {&common_options(), &trace_options(),
+                                                       &optimize_options()};
   for (const Kind& k : analyze_kinds()) lists.push_back(&k.options);
   for (const std::vector<OptionSpec>* list : lists) {
     for (const OptionSpec& s : *list) {
@@ -721,7 +842,10 @@ bool is_flag(std::string_view name) {
 
 }  // namespace
 
-int run_compute(const std::vector<std::string>& args, std::ostream& out, std::ostream& err) {
+int run_compute(const std::vector<std::string>& args,
+                std::ostream& out,
+                std::ostream& err,
+                const trace::CancelToken& cancel) {
   // The system file for the messages: the first operand after the command (and the kind).
   std::string file;
   for (std::size_t i = args[0] == "analyze" ? 2 : 1; i < args.size(); ++i) {
@@ -732,12 +856,16 @@ int run_compute(const std::vector<std::string>& args, std::ostream& out, std::os
     if (!is_flag(args[i])) ++i;  // the value of an option
   }
   try {
-    return args[0] == "trace" ? trace_command(args, out, err) : analyze_command(args, out, err);
+    if (args[0] == "trace") return trace_command(args, out, err, cancel);
+    if (args[0] == "optimize") return optimize_command(args, out, err, cancel);
+    return analyze_command(args, out, err, cancel);
   } catch (const UsageError& e) {
     err << "rtt " << args[0] << ": " << e.what() << " (see rtt " << args[0] << " --help)\n";
     return kUsage;
   } catch (const Failed&) {
     return kFailed;  // the diagnostics are printed
+  } catch (const trace::Cancelled&) {
+    return kCancelled;  // nothing written (ADR 0052, point 6)
   } catch (const std::exception& e) {
     // ParaxialError, AnalysisError, NoStopError, std::invalid_argument of the API, files.
     err << (file.empty() ? std::string("rtt") : file) << ": error " << e.what() << "\n";

@@ -90,3 +90,19 @@ def test_command_line_equals_to_json(name: str) -> None:
     expected = results.to_json(call())
     assert done.stdout.decode("utf-8") == expected
     assert guard(json.loads(expected)["data"]), f"{name}: content guard"
+
+
+@pytest.mark.skipif(not CLI, reason="RTT_CLI_EXE not set (test_the_command_line_is_given fails)")
+def test_optimize_equals_the_python_api(tmp_path: Any) -> None:
+    """rtt optimize: the system on stdout is System.to_json() of rt.optim.optimize, --result is
+    to_json of the OptimResult (ADR 0052, point 3)."""
+    assert CLI is not None
+    file = REFERENCE_DIR / "m5" / "singlet_optim.rtt.json"
+    result_file = tmp_path / "optimize.result.json"
+    done = subprocess.run([CLI, "optimize", str(file), "--result", str(result_file)],
+                          capture_output=True, check=False)
+    assert done.returncode == 0, done.stderr.decode("utf-8", "replace")
+    r = rt.optim.optimize(rt.load(file))
+    assert done.stdout.decode("utf-8") == r.system.to_json()
+    assert result_file.read_text(encoding="utf-8") == results.to_json(r)
+    assert r.status.name.startswith("CONVERGED_") and r.iterations > 0  # content guard

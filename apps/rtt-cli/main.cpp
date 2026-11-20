@@ -18,5 +18,9 @@ int main(int argc, char** argv) {
   static_cast<void>(_setmode(_fileno(stdout), _O_BINARY));
 #endif
   const std::vector<std::string> args(argv + 1, argv + argc);
-  return rtt::cli::run(args, std::cout, std::cerr);
+  // Ctrl-C cancels trace, analyze and optimize; the other commands keep the default action.
+  if (!args.empty() && (args[0] == "trace" || args[0] == "analyze" || args[0] == "optimize")) {
+    rtt::cli::install_interrupt_handler();
+  }
+  return rtt::cli::run(args, std::cout, std::cerr, rtt::cli::interrupt_token());
 }
