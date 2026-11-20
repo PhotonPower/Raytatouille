@@ -215,7 +215,7 @@ jobs:
         # (Windows registry) without nanobind, numpy and pytest.
         run: cmake --preset ${{ matrix.preset }} "-DPython_EXECUTABLE=${{ steps.python.outputs.python-path }}"
       - name: Build
-        run: cmake --build --preset ${{ matrix.preset }} --target _core rtt_py_stub rtt_py_reference
+        run: cmake --build --preset ${{ matrix.preset }} --target _core rtt_py_stub rtt_py_reference rtt_cli
       - name: Test (pytest, mypy)
         run: ctest --preset ${{ matrix.preset }} -R rtt_py
       - name: Smoke test pip install .
