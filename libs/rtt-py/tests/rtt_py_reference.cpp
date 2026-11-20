@@ -44,6 +44,7 @@
 #include "pupil_cases.hpp"
 #include "q_cases.hpp"
 #include "reports_cases.hpp"
+#include "result_json_cases.hpp"
 #include "rotational_cases.hpp"
 #include "rtt/coating/catalog.hpp"
 #include "rtt/compile/compiled_system.hpp"
@@ -345,6 +346,7 @@ int main(int argc, char** argv) {
     rtt::py::reference::run_ideal_lens_cases(args[0], args[2], threads);
     rtt::py::reference::run_q_cases(args[0], args[2], threads);
     rtt::py::reference::run_pupil_cases(args[0], args[1], args[2], threads);
+    rtt::py::reference::run_result_json_cases(args[0], args[1], args[2], threads);
     rtt::py::reference::run_jones_cases(args[0], args[2], threads);
     rtt::py::reference::run_psf_cases(args[0], args[2], threads);
     rtt::py::reference::run_m6_cases(args[0], args[2], threads);

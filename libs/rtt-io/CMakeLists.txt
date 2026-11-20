@@ -9,6 +9,22 @@ target_link_libraries(rtt_io PUBLIC rtt::model PRIVATE rtt::json rtt::diagnostic
   nlohmann_json::nlohmann_json)
 rtt_target_defaults(rtt_io LIBRARY)
 
+# The writer of the result format for the command line (ADR 0052, point 1): its own target, so
+# that reading and writing system files does not pull in the analyses and the optimizer.
+add_library(rtt_io_results src/result_json.cpp)
+add_library(rtt::io_results ALIAS rtt_io_results)
+target_include_directories(rtt_io_results PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+target_link_libraries(rtt_io_results PUBLIC rtt::io rtt::analysis rtt::optim rtt::paraxial
+  rtt::trace rtt::diagnostics)
+rtt_target_defaults(rtt_io_results LIBRARY)
+
+if(RTT_BUILD_TESTS)
+  rtt_add_test(rtt_io_results_tests
+    SOURCES tests/test_result_json.cpp
+    LIBS rtt::io_results)
+endif()
+
 if(RTT_BUILD_TESTS)
   rtt_add_test(rtt_io_tests
     SOURCES tests/test_roundtrip.cpp tests/test_parse_errors.cpp tests/test_segment_materials.cpp
