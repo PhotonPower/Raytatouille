@@ -1,7 +1,6 @@
 #include "rtt/io/lens_catalog.hpp"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstddef>
 #include <filesystem>
@@ -100,7 +99,9 @@ class Reader {
   }
 
   /// Array of exactly `count` entries.
-  const Json& array(const Json& j, const std::string& pointer, std::size_t count) const {
+  [[nodiscard]] const Json& array(const Json& j,
+                                  const std::string& pointer,
+                                  std::size_t count) const {
     if (!j.is_array()) fail(pointer, "expected an array");
     if (j.size() != count) {
       fail(pointer,

@@ -50,7 +50,11 @@ TEST_CASE("the demo lens catalogue loads with its three kinds", "[io][lens_catal
   CHECK(ach.materials == std::vector<std::string>{"SCHOTT:N-BK7", "SCHOTT:F2"});
   const LensEntry& trp = catalog.lenses[2];
   CHECK(trp.kind == LensKind::Triplet);
-  CHECK(trp.radii.size() == 6);
+  CHECK(trp.radii ==
+        std::vector<std::optional<double>>{23.713, 7331.288, -24.456, 21.896, 86.759, -20.4942});
+  CHECK(trp.materials ==
+        std::vector<std::string>{"SCHOTT:N-LAK9", "SCHOTT:N-SF5", "SCHOTT:N-LAK9"});
+  CHECK(ach.diameter == 25.4);
   CHECK(trp.thicknesses == std::vector<double>{4.831, 0.975, 3.127});
   CHECK(trp.gaps == std::vector<double>{5.86, 4.822});
   CHECK_FALSE(trp.diameter.has_value());
@@ -113,6 +117,13 @@ TEST_CASE("lens catalogue errors name the file and the JSON pointer", "[io][lens
       {lens(R"("kind": "singlet", "radii": [1.0, 2.0], "thicknesses": [1.0], "gaps": [],
                "materials": ["M"])"),
        "/lenses/0/gaps", "only a triplet"},
+      {lens(R"("kind": "doublet", "radii": [1.0, 2.0, 3.0], "thicknesses": [1.0, 1.0],
+               "gaps": [1.0], "materials": ["M", "N"])"),
+       "/lenses/0/gaps", "only a triplet"},
+      {lens(R"("kind": "singlet", "radii": [-0.0, 2.0], "thicknesses": [1.0], "materials": ["M"])"),
+       "/lenses/0/radii/0", "radius != 0"},
+      {lens(R"("kind": "singlet", "radii": [1.0, 2.0], "thicknesses": [-1.0], "materials": ["M"])"),
+       "/lenses/0/thicknesses/0", "> 0"},
       {lens(R"("kind": "singlet", "radii": [0.0, 2.0], "thicknesses": [1.0], "materials": ["M"])"),
        "/lenses/0/radii/0", "radius != 0"},
       {lens(R"("kind": "singlet", "radii": [1.0, "x"], "thicknesses": [1.0], "materials": ["M"])"),

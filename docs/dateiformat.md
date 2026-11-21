@@ -697,7 +697,7 @@ Namen. Eine feste Dateiendung gibt es nicht, erkannt wird das Format an `format`
 | `radii` (mm, `null` = plan, nicht 0) | 2 | 3 | 6 |
 | `thicknesses` (mm, > 0) | 1 | 2 | 3 |
 | `gaps` (mm, ≥ 0, Luftabstände) | fehlt | fehlt | 2 |
-| `materials` (`KATALOG:NAME`) | 1 | 2 | 3 |
+| `materials` (`KATALOG:NAME`, nicht leer) | 1 | 2 | 3 |
 
 - Radien in Reihenfolge entlang +z mit dem Vorzeichen des Systemformats (Krümmungsmittelpunkt in +z:
   positiv). `gaps` zählt vom Scheitel der hinteren Fläche einer Linse zum Scheitel der nächsten.

@@ -77,6 +77,7 @@ class LensCatalogError : public std::runtime_error {
   /// @param message description of the error
   LensCatalogError(std::string file, std::string pointer, const std::string& message);
 
+  /// File name as given to the parser; empty for text without file.
   [[nodiscard]] const std::string& file() const noexcept { return file_; }
   /// JSON pointer to the offending value; empty for the whole file (I/O, syntax).
   [[nodiscard]] const std::string& pointer() const noexcept { return pointer_; }
@@ -97,6 +98,7 @@ class LensCatalogError : public std::runtime_error {
                                              const std::string& file = {});
 
 /// Reads a lens catalogue file.
+/// @param file path of the catalogue file (any name; the format is recognised by "format")
 /// @throws LensCatalogError if the file cannot be read or is malformed
 [[nodiscard]] LensCatalog load_lens_catalog(const std::filesystem::path& file);
 
