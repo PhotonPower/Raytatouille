@@ -1,5 +1,5 @@
 add_library(rtt_io src/json_io.cpp src/json_format.cpp src/json_patch.cpp src/edit.cpp src/zmx.cpp
-  src/export_path.cpp src/zmx_export.cpp src/surface_table.cpp)
+  src/export_path.cpp src/zmx_export.cpp src/surface_table.cpp src/lens_catalog.cpp)
 add_library(rtt::io ALIAS rtt_io)
 target_include_directories(rtt_io PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -36,7 +36,10 @@ if(RTT_BUILD_TESTS)
             tests/test_format_rotational.cpp
             tests/test_format_forbes.cpp
             tests/test_aperture_stop.cpp tests/test_aperture_reading.cpp
+            tests/test_lens_catalog.cpp
     LIBS rtt::io rtt::json rtt::diagnostics rtt::model_test_support nlohmann_json::nlohmann_json)
+  target_compile_definitions(rtt_io_tests PRIVATE
+    RTT_CATALOG_DIR="${PROJECT_SOURCE_DIR}/tests/catalogs")
 endif()
 
 if(RTT_BUILD_TESTS)
