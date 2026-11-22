@@ -166,9 +166,11 @@ def test_the_lens_schema_is_in_the_package() -> None:
 
 def test_numpy_and_integer_arguments() -> None:
     # Integers and NumPy scalars are numbers; +-inf (also float32) is plano.
-    s = design.singlet((51.68, np.float32("inf")), 4, "CONST:1.5168", epd=20, stop_distance=5,
+    plano: Any = np.float32("inf")  # NumPy scalars are not in the annotations, but accepted
+    index: Any = np.int64(1)
+    s = design.singlet((51.68, plano), 4, "CONST:1.5168", epd=20, stop_distance=5,
                        semi_diameter=12.7, fields_y=(0, 3.5, 5), image_distance=97.363,
-                       reference=np.int64(1), name=SINGLET_NAME)
+                       reference=index, name=SINGLET_NAME)
     assert s.to_json() == _text(SINGLET)
 
 
