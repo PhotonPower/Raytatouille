@@ -92,7 +92,7 @@ Details und Begründungen stehen in `docs/adr/`. Kurzfassung:
 
 | Schicht | Bibliotheken | Status |
 | --- | --- | --- |
-| Schnittstellen | `rtt-py` (Python-API), `apps/rtt-cli` (Kommandozeile), `rtt-io` (Dateien; dazu das Ziel `rtt::io_results`, der Schreiber des Ergebnisformats für die Kommandozeile, ADR 0052) | `rtt-cli`, `rtt-io`: M0; `rtt-py`: M2; `rtt::io_results`: #319 |
+| Schnittstellen | `rtt-py` (Python-API), `apps/rtt-cli` (Kommandozeile), `rtt-io` (Dateien, auch Linsenkataloge `raytatouille-lenses`, ADR 0053; dazu das Ziel `rtt::io_results`, der Schreiber des Ergebnisformats für die Kommandozeile, ADR 0052) | `rtt-cli`, `rtt-io`: M0; `rtt-py`: M2; `rtt::io_results`: #319; Linsenkataloge: #321 |
 | Workflows | `rtt-optim`, `rtt-tolerance` | M5, M7 |
 | Auswertung | `rtt-analysis` | M2, M6 |
 | Tracing | `rtt-compile` < `rtt-paraxial` < `rtt-trace` | M1 |

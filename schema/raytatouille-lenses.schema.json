@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/PhotonPower/Raytatouille/schema/raytatouille-lenses.schema.json",
+  "title": "Raytatouille lens catalogue (ADR 0053), format version 0.1",
+  "description": "Stock lenses (singlet, cemented doublet, triplet) for the design helpers of the Python API (rt.design.from_catalog). Lengths in mm, radii with the sign convention of the system format, null is plano. Parsing in rtt-io (parse_lens_catalog) is the reference; this schema must accept exactly what it accepts structurally. Not expressible here and checked only by the parser: unique lens names within a catalogue, duplicate keys and numbers outside the range of double.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "schema_version",
+    "catalog",
+    "lenses"
+  ],
+  "properties": {
+    "format": {
+      "const": "raytatouille-lenses"
+    },
+    "schema_version": {
+      "const": "0.1.0"
+    },
+    "catalog": {
+      "$ref": "#/$defs/name"
+    },
+    "lenses": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/lens"
+      }
+    }
+  },
+  "$defs": {
+    "name": {
+      "type": "string",
+      "pattern": "^[^:]+$"
+    },
+    "radius": {
+      "description": "Vertex radius in mm, != 0; null is plano.",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "number",
+          "not": {
+            "const": 0
+          }
+        }
+      ]
+    },
+    "lens": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "kind",
+        "radii",
+        "thicknesses",
+        "materials"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "kind": {
+          "enum": [
+            "singlet",
+            "doublet",
+            "triplet"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "radii": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/radius"
+          }
+        },
+        "thicknesses": {
+          "description": "Centre thicknesses of the glass segments in mm.",
+          "type": "array",
+          "items": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        },
+        "gaps": {
+          "description": "Triplet only: air gaps between the lenses in mm.",
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "materials": {
+          "description": "One material reference CATALOG:NAME per glass segment.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "diameter": {
+          "description": "Clear diameter of every surface in mm.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "singlet"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "radii": {
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "thicknesses": {
+                "minItems": 1,
+                "maxItems": 1
+              },
+              "materials": {
+                "minItems": 1,
+                "maxItems": 1
+              }
+            },
+            "not": {
+              "required": [
+                "gaps"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "doublet"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "radii": {
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "thicknesses": {
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "materials": {
+                "minItems": 2,
+                "maxItems": 2
+              }
+            },
+            "not": {
+              "required": [
+                "gaps"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "triplet"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "radii": {
+                "minItems": 6,
+                "maxItems": 6
+              },
+              "thicknesses": {
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "materials": {
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "gaps": {
+                "minItems": 2,
+                "maxItems": 2
+              }
+            },
+            "required": [
+              "gaps"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

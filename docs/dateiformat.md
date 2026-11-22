@@ -673,6 +673,45 @@ oder doppelte Spalte ist der Fehler `table.column`.
   einem Hinweis. Als CSV mit Komma und Dezimalpunkt speichern. Tabellenprogramme speichern oft nur
   15 Stellen; das ist eine Grenze des Programms, nicht des Formats.
 
+## Linsenkataloge (`raytatouille-lenses`, ADR 0053)
+
+Ein Linsenkatalog ist eine eigene JSON-Datei mit Lagerlinsen: Einzellinsen, verkittete Dubletts
+und Tripletts. Er beschreibt nur Linsen, keine Blende und keine Systemdaten; die Konstruktionshelfer
+der Python-API (`rt.design.from_catalog`) machen aus einem Eintrag ein System. Herstellerdaten
+gehören nicht ins Repository; das Beispiel `tests/catalogs/lenses/demo.json` hat ausgedachte
+Namen. Eine feste Dateiendung gibt es nicht, erkannt wird das Format an `format`.
+
+```json
+{
+  "format": "raytatouille-lenses", "schema_version": "0.1.0", "catalog": "DEMO",
+  "lenses": [
+    {"name": "ACH-25-100", "kind": "doublet", "description": "Achromat, f etwa 100 mm",
+     "radii": [61.5, -35.2, -136.9], "thicknesses": [6.0, 3.0],
+     "materials": ["SCHOTT:N-BK7", "SCHOTT:F2"], "diameter": 25.4}
+  ]
+}
+```
+
+| Schlüssel | singlet | doublet (verkittet) | triplet |
+| --- | --- | --- | --- |
+| `radii` (mm, `null` = plan, nicht 0) | 2 | 3 | 6 |
+| `thicknesses` (mm, > 0) | 1 | 2 | 3 |
+| `gaps` (mm, ≥ 0, Luftabstände) | fehlt | fehlt | 2 |
+| `materials` (`KATALOG:NAME`, nicht leer) | 1 | 2 | 3 |
+
+- Radien in Reihenfolge entlang +z mit dem Vorzeichen des Systemformats (Krümmungsmittelpunkt in +z:
+  positiv). `gaps` zählt vom Scheitel der hinteren Fläche einer Linse zum Scheitel der nächsten.
+- `diameter` (optional, mm, > 0) ist der freie Durchmesser jeder Fläche; `description` ist
+  optional.
+- Katalog- und Linsennamen sind nicht leer und enthalten kein `:`; Linsennamen sind im Katalog
+  eindeutig.
+- Die Materialien werden erst beim Kompilieren aufgelöst.
+- Der Parser ist strikt wie bei System- und Coating-Dateien: Unbekannte Schlüssel, falsche Typen und
+  falsche Anzahlen sind Fehler mit Datei und JSON-Pointer (`LensCatalogError`). Das Schema steht in
+  `schema/raytatouille-lenses.schema.json`.
+
+C++: `rtt::io::load_lens_catalog`, `parse_lens_catalog` in `rtt/io/lens_catalog.hpp`.
+
 ## Prüfen und laden
 
 ```powershell
