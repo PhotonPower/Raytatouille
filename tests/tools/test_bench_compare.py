@@ -60,6 +60,21 @@ def fake(tmp_path: Path, name: str, output: str) -> str:
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="fake programs are scripts with a shebang")
+def test_extra_arguments_reach_the_programs(tmp_path: Path) -> None:
+    # The fake baseline fails unless it gets "--reference-dir DIR" as two arguments (as rtt_bench).
+    old = tmp_path / "old"
+    old.write_text(
+        f"#!{sys.executable}\nimport sys\n"
+        "ok = sys.argv[1:] == ['--quick', '--runs', '1', '--reference-dir', 'DIR']\n"
+        f"print({OLD!r}) if ok else sys.exit(3)\n", encoding="utf-8")
+    old.chmod(old.stat().st_mode | stat.S_IEXEC)
+    argv = ["--base", str(old), "--base-arg=--reference-dir", "--base-arg=DIR",
+            "--new", fake(tmp_path, "new", new_json(4.0)), "--rounds", "1", "--runs", "1"]
+    assert bench_compare.main(argv) == 0
+    assert bench_compare.main([*argv[:2], *argv[4:]]) == 2  # without them: the baseline fails
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="fake programs are scripts with a shebang")
 @pytest.mark.parametrize(("spot", "code"), [(4.9, 0), (5.0, 0), (5.1, 1)])
 def test_exit_code_and_summary(tmp_path: Path, spot: float, code: int,
                                capsys: pytest.CaptureFixture[str]) -> None:

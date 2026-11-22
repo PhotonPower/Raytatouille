@@ -103,13 +103,19 @@ jobs:
       # built once and cached with the reference files of that version) alternates with the
       # current one on this runner; the job fails if the spot of the Cooke triplet (1 thread) is
       # more than 25 % slower (tools/bench_compare.py).
+      # The key names the compiler (a new GCC in the runner image rebuilds the baseline, so that
+      # both builds use the same compiler) and a recipe counter (r1) for changes of the steps.
+      - name: Compiler version for the baseline benchmark
+        if: matrix.preset == 'ci-linux-gcc'
+        id: gcc
+        run: echo "version=$(g++ -dumpfullversion)" >> "$GITHUB_OUTPUT"
       - name: Restore the baseline benchmark
         if: matrix.preset == 'ci-linux-gcc'
         id: bench-base
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}/../bench-base
-          key: bench-base-${{ env.BENCH_BASE_TAG }}-${{ runner.os }}-ci-linux-gcc-${{ env.VCPKG_COMMIT }}
+          key: bench-base-r1-${{ env.BENCH_BASE_TAG }}-${{ runner.os }}-gcc${{ steps.gcc.outputs.version }}-${{ env.VCPKG_COMMIT }}
       - name: Build the baseline benchmark
         if: matrix.preset == 'ci-linux-gcc' && steps.bench-base.outputs.cache-hit != 'true'
         run: |
@@ -123,6 +129,13 @@ jobs:
           cp build/ci-linux-gcc/apps/rtt-bench/rtt_bench ../bench-base/
           cp tests/reference/m2/cooke_triplet.rtt.json ../bench-base/reference/m2/
           cp tests/catalogs/m2/schott.agf ../bench-base/catalogs/m2/
+      # Saved right after the build, also when the comparison below fails.
+      - name: Save the baseline benchmark
+        if: matrix.preset == 'ci-linux-gcc' && steps.bench-base.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/../bench-base
+          key: ${{ steps.bench-base.outputs.cache-primary-key }}
       - name: Benchmark against the baseline (fails above 1.25 x)
         if: matrix.preset == 'ci-linux-gcc'
         run: >-

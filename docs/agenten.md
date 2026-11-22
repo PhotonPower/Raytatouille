@@ -93,8 +93,10 @@ Wenn ein Meilenstein abgeschlossen ist, schlage die Issues für den nächsten vo
    `pyproject.toml`, `vcpkg.json` und `libs/rtt-py/python/raytatouille/__init__.py`
    (`__version__`). Dazu kommt von Hand die Zeile „Stand: Version …“ in `README.md`.
    Ab v1.0 gehört in den Versions-PR die Messung des Benchmark-Ziels (#323): auf der
-   Referenzmaschine (`docs/architecture.md`, Absatz Benchmark) einen Release-Build mit Clang ohne
-   Tests bauen, `apps/rtt-bench/rtt_bench --runs 21` auf der ruhigen Maschine laufen lassen und
+   Referenzmaschine (`docs/architecture.md`, Absatz Benchmark) im Netzbetrieb einen Release-Build
+   mit Apple Clang ohne Tests bauen (`cmake --preset ci-macos-clang -DRTT_BUILD_TESTS=OFF`,
+   `cmake --build build/ci-macos-clang --target rtt_bench`),
+   `build/ci-macos-clang/apps/rtt-bench/rtt_bench --runs 21` auf der ruhigen Maschine laufen lassen und
    die Tabelle (Spot je System, Feld und Threadzahl, Median und Minimum) mit Modell,
    Betriebssystem und Compiler in den PR-Text schreiben.
 

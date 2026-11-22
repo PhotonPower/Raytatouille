@@ -6,13 +6,15 @@ rounds on the same machine, each with ``--quick --runs N`` (one thread, axis fie
 the spot of the Cooke triplet: per round the minimum over the runs, then the median over the
 rounds. Alternating the order (base, new / new, base) and taking minima damps the noise of shared
 CI runners. The check fails (exit 1) if the current build is slower than ``--threshold`` times
-the baseline (default 1.25: more than 25 % slower).
+the baseline (default 1.25: more than 25 % slower); exit 2 if a program cannot be run or its
+output is not usable.
 
 The baseline's JSON has no "system" key (before #323 rtt_bench measured only the Cooke triplet);
 an entry without it counts as the Cooke triplet.
 
 Usage:
-    python tools/bench_compare.py --base OLD/rtt_bench --base-arg=--reference-dir=DIR ... \\
+    python tools/bench_compare.py --base OLD/rtt_bench \\
+        --base-arg=--reference-dir --base-arg=DIR ... \\
         --new build/ci-linux-gcc/apps/rtt-bench/rtt_bench [--rounds 7] [--runs 21] \\
         [--threshold 1.25] [--summary FILE] [--github]
 """
@@ -111,13 +113,19 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     base: list[Sample] = []
     new: list[Sample] = []
-    for k in range(args.rounds):
-        order = [("base", args.base, args.base_arg), ("new", args.new, args.new_arg)]
-        if k % 2 == 1:
-            order.reverse()
-        for which, exe, extra in order:
-            (base if which == "base" else new).append(run(exe, extra, args.runs))
-    c = compare(base, new)
+    try:
+        for k in range(args.rounds):
+            order = [("base", args.base, args.base_arg), ("new", args.new, args.new_arg)]
+            if k % 2 == 1:
+                order.reverse()
+            for which, exe, extra in order:
+                (base if which == "base" else new).append(run(exe, extra, args.runs))
+        c = compare(base, new)
+    except (OSError, RuntimeError, ValueError, KeyError, IndexError) as e:
+        print(f"bench_compare: {e}", file=sys.stderr)
+        if args.github:
+            print(f"::error title=Benchmark::the comparison could not run: {e}")
+        return 2
     text = summary_text(c, args.base_name, args.threshold, base[0].rays)
     print(text, end="")
     if args.summary:

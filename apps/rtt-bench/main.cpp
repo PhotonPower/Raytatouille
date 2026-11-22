@@ -12,7 +12,8 @@
 // changes. A third system, "cooke_triplet_zernike", keeps the spheres and adds a small Zernike
 // sag term (Noll j = 9, 10, 14, 15: trefoil and tetrafoil, kZernikeCoefficient each) to every
 // surface: a freeform surface without rotational symmetry, also on the Newton intersection
-// (#323). These terms start with rho^3 and rho^4, so the vertex keeps its paraxial model (no
+// (#323). These terms start with rho^3 and rho^4 (Niu/Tian Eq. (8): j -> (n, m) = (3, 3) and
+// (4, 4); Eq. (4): R_n^n = rho^n), so the vertex keeps its paraxial model (no
 // tilt or astigmatism at the vertex, ADR 0041, point 2) and real aiming works. The rough
 // guide applies to the Cooke triplet only.
 //
