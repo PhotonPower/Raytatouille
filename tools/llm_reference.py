@@ -35,6 +35,7 @@ SECTIONS: list[tuple[str, str, str]] = [
     ("rt.optim", "optim", ""),
     ("rt.tolerance", "tolerance", ""),
     ("rt.layout", "layout", ""),
+    ("rt.design", "design", ""),
     ("rt.reports", "reports", ""),
     ("rt.results", "results", ""),
     ("rt.plot (matplotlib)", "plot", ""),

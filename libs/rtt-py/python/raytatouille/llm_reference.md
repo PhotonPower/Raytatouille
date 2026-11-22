@@ -198,6 +198,27 @@ The edit form (`s.to_dict()`, pointers from `locate_surface`, `locate_node`, `lo
 `locate_parameter`) writes every Param as an object, so values sit at `…/value`. Read-only typed
 views: `s.root`, `s.paths`, `s.fields`, `s.aperture`, `s.object_space` (classes in `rt.model`).
 
+### Starting systems and lens catalogues
+
+```python
+achromat = rt.design.doublet((61.5, -35.2, -136.9), (6.0, 3.0), ("SCHOTT:N-BK7", "SCHOTT:F2"),
+                             epd=20.0, stop_distance=5.0, semi_diameter=12.7,
+                             fields_y=(0.0, 3.5, 5.0), image_distance=96.614)
+print([n.name for n in achromat.root.children])   # ['stop', 'L1', 'image']
+catalog = rt.design.parse_lens_catalog("""{"format": "raytatouille-lenses",
+  "schema_version": "0.1.0", "catalog": "MY", "lenses": [{"name": "PCX-25-100",
+  "kind": "singlet", "radii": [51.68, null], "thicknesses": [4.0],
+  "materials": ["CONST:1.5168"], "diameter": 25.4}]}""")   # file: rt.design.load_lens_catalog
+pcx = rt.design.from_catalog(catalog["PCX-25-100"], epd=20.0, stop_distance=5.0,
+                             image_distance=97.363)
+print(pcx.name, rt.paraxial.first_order(rt.compile(pcx)).efl)   # PCX-25-100, about 100 mm
+```
+
+`singlet(radii, thickness, material, …)`, `doublet(radii, thicknesses, materials, …)` (cemented),
+`triplet(radii, thicknesses, gaps, materials, …)`: radii in mm (None = plano), the stop as
+`stop_distance` (> 0, own node in front) or `stop_surface` (+ `stop_radius`), `image_distance`
+from the last vertex, `reference` is 0-based. Errors: ValueError, DesignError, LensCatalogError.
+
 ### Materials
 
 ```python
@@ -426,6 +447,17 @@ sag(system: CompiledSystem, surface: int | str, x: npt.ArrayLike, y: npt.ArrayLi
 surfaces(system: CompiledSystem) -> list[SurfaceLayout]
 ```
 Classes: `CompiledElement`, `NodeFrame`, `SurfaceLayout`.
+
+### rt.design
+```text
+doublet(radii: Sequence[Radius], thicknesses: Sequence[float], materials: Sequence[str], *, epd: float, image_distance: float, stop_distance: float | None = None, stop_surface: str | None = None, stop_radius: float | None = None, semi_diameter: float | None = None, fields_y: Sequence[float] = (0.0,), wavelengths: Sequence[float] = (0.4861, 0.5876, 0.6563), reference: int = 1, name: str = 'Doublet') -> System
+from_catalog(entry: LensEntry, *, epd: float, image_distance: float, stop_distance: float | None = None, stop_surface: str | None = None, stop_radius: float | None = None, semi_diameter: float | None = None, fields_y: Sequence[float] = (0.0,), wavelengths: Sequence[float] = (0.4861, 0.5876, 0.6563), reference: int = 1, name: str | None = None) -> System
+load_lens_catalog(file: str | os.PathLike) -> LensCatalog
+parse_lens_catalog(text: str, file: str = '') -> LensCatalog
+singlet(radii: Sequence[Radius], thickness: float, material: str, *, epd: float, image_distance: float, stop_distance: float | None = None, stop_surface: str | None = None, stop_radius: float | None = None, semi_diameter: float | None = None, fields_y: Sequence[float] = (0.0,), wavelengths: Sequence[float] = (0.4861, 0.5876, 0.6563), reference: int = 1, name: str = 'Singlet') -> System
+triplet(radii: Sequence[Radius], thicknesses: Sequence[float], gaps: Sequence[float], materials: Sequence[str], *, epd: float, image_distance: float, stop_distance: float | None = None, stop_surface: str | None = None, stop_radius: float | None = None, semi_diameter: float | None = None, fields_y: Sequence[float] = (0.0,), wavelengths: Sequence[float] = (0.4861, 0.5876, 0.6563), reference: int = 1, name: str = 'Triplet') -> System
+```
+Classes: `LensCatalog`, `LensEntry`.
 
 ### rt.reports
 ```text

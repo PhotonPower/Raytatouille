@@ -43,7 +43,8 @@ nanobind_add_module(_core NB_STATIC NB_SUPPRESS_WARNINGS
   src/bind_polar.cpp
   src/bind_results.cpp
   src/polar_batch.cpp
-  src/bind_layout.cpp)
+  src/bind_layout.cpp
+  src/bind_design.cpp)
 target_link_libraries(_core PRIVATE
   rtt::io rtt::io_results rtt::diagnostics rtt::model rtt::material rtt::coating rtt::compile rtt::paraxial
   rtt::trace rtt::analysis rtt::optim rtt::tolerance
@@ -60,6 +61,7 @@ set(RTT_PY_SOURCES
   python/raytatouille/__init__.py
   python/raytatouille/_util.py
   python/raytatouille/analysis.py
+  python/raytatouille/design.py
   python/raytatouille/diagnostics.py
   python/raytatouille/edit.py
   python/raytatouille/errors.py
@@ -92,7 +94,8 @@ endforeach()
 set(RTT_PY_SCHEMAS
   "${PROJECT_SOURCE_DIR}/schema/raytatouille.schema.json"
   "${PROJECT_SOURCE_DIR}/schema/raytatouille-result.schema.json"
-  "${PROJECT_SOURCE_DIR}/schema/raytatouille-coatings.schema.json")
+  "${PROJECT_SOURCE_DIR}/schema/raytatouille-coatings.schema.json"
+  "${PROJECT_SOURCE_DIR}/schema/raytatouille-lenses.schema.json")
 foreach(file IN LISTS RTT_PY_SCHEMAS)
   get_filename_component(name "${file}" NAME)
   add_custom_command(

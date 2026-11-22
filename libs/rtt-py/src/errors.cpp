@@ -15,6 +15,7 @@
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/io/edit.hpp"
 #include "rtt/io/json_io.hpp"
+#include "rtt/io/lens_catalog.hpp"
 #include "rtt/material/agf.hpp"
 #include "rtt/material/material.hpp"
 #include "rtt/optim/merit.hpp"
@@ -84,6 +85,8 @@ void register_errors(nb::module_& /*m*/) {
             optional(e.code()));
     } catch (const coating::CoatingCatalogError& e) {
       raise("CoatingCatalogError", e.what(), e.file(), e.pointer());
+    } catch (const io::LensCatalogError& e) {
+      raise("LensCatalogError", e.what(), e.file(), e.pointer());
     } catch (const trace::Cancelled& e) {
       raise("Cancelled", e.what());
     }
