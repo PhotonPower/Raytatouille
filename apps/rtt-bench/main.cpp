@@ -9,7 +9,12 @@
 // A second system, "cooke_triplet_asphere", is the same triplet with every sphere turned into an
 // even asphere with the same radius and A4 = kAsphereA4: the spheres use the analytic conic
 // intersection, the aspheres the Newton intersection (rtt-geom), whose hot path ADR 0041 (M8 S0)
-// changes. The rough guide applies to the Cooke triplet only.
+// changes. A third system, "cooke_triplet_zernike", keeps the spheres and adds a small Zernike
+// sag term (Noll j = 9, 10, 14, 15: trefoil and tetrafoil, kZernikeCoefficient each) to every
+// surface: a freeform surface without rotational symmetry, also on the Newton intersection
+// (#323). These terms start with rho^3 and rho^4, so the vertex keeps its paraxial model (no
+// tilt or astigmatism at the vertex, ADR 0041, point 2) and real aiming works. The rough
+// guide applies to the Cooke triplet only.
 //
 // Output: one JSON line on stdout. With --summary FILE a Markdown table is appended to FILE
 // (GitHub job summary); with --github a GitHub warning is printed when the median of a spot
@@ -29,6 +34,7 @@
 #include <fstream>
 #include <functional>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -48,6 +54,10 @@ constexpr int kRings = 18;           // 1 + 3 * 18 * 19 = 1027 rays
 // A4 of the asphere variant, mm^-3: about 1e-4 mm of sag at the rim of the lenses (r ~ 6 mm),
 // enough for a few Newton steps from the conic start value, small against the design.
 constexpr double kAsphereA4 = 1e-7;
+// Zernike variant (#323): normalisation radius above every ray height of the triplet (the
+// polynomials continue outside), coefficients in mm, small against the design like A4 above.
+constexpr double kZernikeRadius = 12.0;
+constexpr double kZernikeCoefficient = 1e-4;
 
 struct Timing {
   double median_ms = 0.0;
@@ -90,6 +100,26 @@ rtt::model::System with_aspheres(rtt::model::System s) {
         surface.shape.base =
             rtt::model::EvenAsphere{conic->radius, conic->conic, {rtt::model::Param(kAsphereA4)}};
       }
+    }
+  }
+  return s;
+}
+
+/// The system with a Zernike sag term (Noll, coefficients for j = 9, 10, 14, 15 equal to
+/// kZernikeCoefficient, the others 0) added to every surface with a Conic base shape.
+rtt::model::System with_zernike(rtt::model::System s) {
+  for (rtt::model::Node& node : s.root.children) {
+    auto* element = std::get_if<rtt::model::Element>(&node.value);
+    if (element == nullptr) continue;
+    for (rtt::model::Surface& surface : element->surfaces) {
+      if (!std::holds_alternative<rtt::model::Conic>(surface.shape.base)) continue;
+      rtt::model::ZernikeSag term;
+      term.normalization_radius = rtt::model::Param(kZernikeRadius);
+      for (int j = 1; j <= 15; ++j) {
+        const bool used = j == 9 || j == 10 || j == 14 || j == 15;
+        term.coefficients.emplace_back(used ? kZernikeCoefficient : 0.0);
+      }
+      surface.shape.terms.emplace_back(std::in_place_type<rtt::model::ZernikeSag>, std::move(term));
     }
   }
   return s;
@@ -179,12 +209,16 @@ int main(int argc, char** argv) {
         rtt::io::load_system(reference_dir + "/m2/cooke_triplet.rtt.json");
     const rtt::compile::CompiledSystem cs = rtt::compile::compile(cooke, lib);
     const rtt::compile::CompiledSystem aspheres = rtt::compile::compile(with_aspheres(cooke), lib);
+    const rtt::compile::CompiledSystem zernike = rtt::compile::compile(with_zernike(cooke), lib);
     const int all = oneapi::tbb::info::default_concurrency();
     std::vector<int> thread_counts{1};
     if (all > 1 && !quick) thread_counts.push_back(all);
 
     std::vector<Result> results = bench("cooke_triplet", cs, runs, quick, thread_counts);
     for (const Result& r : bench("cooke_triplet_asphere", aspheres, runs, quick, thread_counts)) {
+      results.push_back(r);
+    }
+    for (const Result& r : bench("cooke_triplet_zernike", zernike, runs, quick, thread_counts)) {
       results.push_back(r);
     }
 
@@ -210,7 +244,8 @@ int main(int argc, char** argv) {
          << " rays, median of " << runs << " runs)\n\n"
          << "Rough guide: " << kTargetMs << " ms; warning above " << kWarnFactor * kTargetMs
          << " ms (never an error).\n\n"
-         << "The variant with even aspheres (Newton intersection) has no guide.\n\n"
+         << "The variants with even aspheres and with Zernike terms (Newton intersection) have "
+            "no guide.\n\n"
          << "| system | threads | field | aim (ms) | trace (ms) | spot (ms) | spot min (ms) |\n"
          << "| --- | --- | --- | --- | --- | --- | --- |\n";
       for (const Result& r : results) {

@@ -13,6 +13,8 @@ concurrency:
 env:
   # Must match "builtin-baseline" in vcpkg.json.
   VCPKG_COMMIT: 9e593bb18ea69cc5095e012465dcd675a822ed0d
+  # Baseline of the relative benchmark check (#323): the current build may be at most 25 % slower.
+  BENCH_BASE_TAG: v0.9.0
 
 jobs:
   format:
@@ -37,7 +39,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r tests/schema/requirements.txt
-      - run: pytest -q tests/schema
+      - run: pytest -q tests/schema tests/tools
       - name: Changelog fragments
         run: python tools/changelog.py check
       - name: One version in all places (#336)
@@ -97,6 +99,39 @@ jobs:
         if: matrix.preset == 'ci-linux-gcc'
         continue-on-error: true
         run: ./build/ci-linux-gcc/apps/rtt-bench/rtt_bench --runs 21 --github --summary "$GITHUB_STEP_SUMMARY"
+      # Relative check (#323): the rtt_bench of BENCH_BASE_TAG (same preset and vcpkg baseline,
+      # built once and cached with the reference files of that version) alternates with the
+      # current one on this runner; the job fails if the spot of the Cooke triplet (1 thread) is
+      # more than 25 % slower (tools/bench_compare.py).
+      - name: Restore the baseline benchmark
+        if: matrix.preset == 'ci-linux-gcc'
+        id: bench-base
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/../bench-base
+          key: bench-base-${{ env.BENCH_BASE_TAG }}-${{ runner.os }}-ci-linux-gcc-${{ env.VCPKG_COMMIT }}
+      - name: Build the baseline benchmark
+        if: matrix.preset == 'ci-linux-gcc' && steps.bench-base.outputs.cache-hit != 'true'
+        run: |
+          git fetch -q --depth 1 origin "refs/tags/$BENCH_BASE_TAG:refs/tags/$BENCH_BASE_TAG"
+          git worktree add -q ../rtt-base "$BENCH_BASE_TAG"
+          cd ../rtt-base
+          # No -Werror: the old sources need not be clean for a newer compiler on the runner.
+          cmake --preset ci-linux-gcc -DRTT_BUILD_TESTS=OFF -DRTT_WARNINGS_AS_ERRORS=OFF
+          cmake --build build/ci-linux-gcc --target rtt_bench
+          mkdir -p ../bench-base/reference/m2 ../bench-base/catalogs/m2
+          cp build/ci-linux-gcc/apps/rtt-bench/rtt_bench ../bench-base/
+          cp tests/reference/m2/cooke_triplet.rtt.json ../bench-base/reference/m2/
+          cp tests/catalogs/m2/schott.agf ../bench-base/catalogs/m2/
+      - name: Benchmark against the baseline (fails above 1.25 x)
+        if: matrix.preset == 'ci-linux-gcc'
+        run: >-
+          python3 tools/bench_compare.py
+          --base ../bench-base/rtt_bench --base-name "$BENCH_BASE_TAG"
+          --base-arg=--reference-dir --base-arg=../bench-base/reference
+          --base-arg=--catalog-dir --base-arg=../bench-base/catalogs
+          --new ./build/ci-linux-gcc/apps/rtt-bench/rtt_bench
+          --rounds 7 --runs 21 --threshold 1.25 --github --summary "$GITHUB_STEP_SUMMARY"
 
   windows:
     name: Windows MSVC
