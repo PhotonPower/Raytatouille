@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import math
+import operator
 import warnings
 from collections.abc import Sequence
 from typing import Any
@@ -48,10 +49,9 @@ from .errors import DesignError, RaytatouilleWarning
 #: Default wavelengths in um (F, d, C lines); the reference is index 1 (d).
 DEFAULT_WAVELENGTHS: tuple[float, ...] = (0.4861, 0.5876, 0.6563)
 
-Radius = float | None
-
-
 def _finite(value: float, what: str) -> float:
+    if isinstance(value, bool):
+        raise ValueError(f"{what} must be a number, got {value!r}")
     number = float(value)
     if not math.isfinite(number):
         raise ValueError(f"{what} must be finite, got {value!r}")
@@ -72,9 +72,11 @@ def _count(values: Sequence[Any], count: int, what: str) -> list[Any]:
     return items
 
 
-def _radius(value: Radius, what: str) -> float | None:
-    if value is None or (isinstance(value, float) and math.isinf(value)):
+def _radius(value: float | None, what: str) -> float | None:
+    if value is None:
         return None
+    if not isinstance(value, bool) and math.isinf(float(value)):
+        return None  # +-inf is plano, as None
     number = _finite(value, what)
     if number == 0.0:
         raise ValueError(f"{what} must not be 0 (None is plano)")
@@ -100,7 +102,7 @@ class _Lens:
 def _build(lenses: list[_Lens], gaps: list[float], *, epd: float, image_distance: float,
            stop_distance: float | None, stop_surface: str | None, stop_radius: float | None,
            semi_diameter: float | None, fields_y: Sequence[float], wavelengths: Sequence[float],
-           reference: int, name: str) -> System:
+           reference: int, name: str, stacklevel: int) -> System:
     epd = _positive(epd, "epd")
     image_distance = _finite(image_distance, "image_distance")
     if (stop_distance is None) == (stop_surface is None):
@@ -110,9 +112,15 @@ def _build(lenses: list[_Lens], gaps: list[float], *, epd: float, image_distance
     waves = [_positive(w, "wavelength") for w in wavelengths]
     if not waves:
         raise ValueError("wavelengths must not be empty")
-    if isinstance(reference, bool) or not isinstance(reference, int) or not (
-            0 <= reference < len(waves)):
+    try:
+        index = -1 if isinstance(reference, bool) else operator.index(reference)
+    except TypeError:
+        index = -1
+    if not 0 <= index < len(waves):
         raise ValueError(f"reference must be an index 0..{len(waves) - 1}, got {reference!r}")
+    reference = index
+    if not isinstance(name, str) or not name:
+        raise ValueError(f"name must be a non-empty string, got {name!r}")
     fields = [_finite(f, "field angle") for f in fields_y]
     if not fields:
         raise ValueError("fields_y must not be empty")
@@ -186,11 +194,49 @@ def _build(lenses: list[_Lens], gaps: list[float], *, epd: float, image_distance
         raise DesignError("the built system is invalid: " + "; ".join(str(d) for d in errors),
                           errors)
     for d in diagnostics:
-        warnings.warn(RaytatouilleWarning(d.message, d.code, d.location), stacklevel=3)
+        warnings.warn(RaytatouilleWarning(d.message, d.code, d.location), stacklevel=stacklevel)
     return system
 
 
-def singlet(radii: Sequence[Radius], thickness: float, material: str, *, epd: float,
+# The lens data of each kind as _Lens objects and gaps; the public helpers and from_catalog call
+# these with the common arguments and the stack level of the caller for the warnings.
+
+def _singlet_parts(radii: Sequence[float | None], thickness: float,
+                   material: str) -> tuple[list[_Lens], list[float]]:
+    r = [_radius(v, f"radii[{k}]") for k, v in enumerate(_count(radii, 2, "radii"))]
+    return [_Lens(r, [_positive(thickness, "thickness")], [_material(material, "material")])], []
+
+
+def _doublet_parts(radii: Sequence[float | None], thicknesses: Sequence[float],
+                   materials: Sequence[str]) -> tuple[list[_Lens], list[float]]:
+    r = [_radius(v, f"radii[{k}]") for k, v in enumerate(_count(radii, 3, "radii"))]
+    t = [_positive(v, f"thicknesses[{k}]")
+         for k, v in enumerate(_count(thicknesses, 2, "thicknesses"))]
+    m = [_material(v, f"materials[{k}]") for k, v in enumerate(_count(materials, 2, "materials"))]
+    return [_Lens(r, t, m)], []
+
+
+def _triplet_parts(radii: Sequence[float | None], thicknesses: Sequence[float],
+                   gaps: Sequence[float],
+                   materials: Sequence[str]) -> tuple[list[_Lens], list[float]]:
+    r = [_radius(v, f"radii[{k}]") for k, v in enumerate(_count(radii, 6, "radii"))]
+    t = [_positive(v, f"thicknesses[{k}]")
+         for k, v in enumerate(_count(thicknesses, 3, "thicknesses"))]
+    g = []
+    for k, v in enumerate(_count(gaps, 2, "gaps")):
+        gap = _finite(v, f"gaps[{k}]")
+        if gap < 0.0:
+            raise ValueError(f"gaps[{k}] must be >= 0, got {v!r}")
+        g.append(gap)
+    m = [_material(v, f"materials[{k}]") for k, v in enumerate(_count(materials, 3, "materials"))]
+    return [_Lens(r[2 * k:2 * k + 2], [t[k]], [m[k]]) for k in range(3)], g
+
+
+# Warnings point at the caller of a public function: _build -> public function -> caller.
+_CALLER = 3
+
+
+def singlet(radii: Sequence[float | None], thickness: float, material: str, *, epd: float,
             image_distance: float, stop_distance: float | None = None,
             stop_surface: str | None = None, stop_radius: float | None = None,
             semi_diameter: float | None = None, fields_y: Sequence[float] = (0.0,),
@@ -208,19 +254,19 @@ def singlet(radii: Sequence[Radius], thickness: float, material: str, *, epd: fl
     ``reference``; ``name`` of the system. Raises ValueError for wrong arguments and DesignError
     if the built system is invalid; warnings of validate arrive as RaytatouilleWarning.
     """
-    r = [_radius(v, f"radii[{k}]") for k, v in enumerate(_count(radii, 2, "radii"))]
-    lens = _Lens(r, [_positive(thickness, "thickness")], [_material(material, "material")])
-    return _build([lens], [], epd=epd, image_distance=image_distance, stop_distance=stop_distance,
-                  stop_surface=stop_surface, stop_radius=stop_radius, semi_diameter=semi_diameter,
-                  fields_y=fields_y, wavelengths=wavelengths, reference=reference, name=name)
+    lenses, gaps = _singlet_parts(radii, thickness, material)
+    return _build(lenses, gaps, epd=epd, image_distance=image_distance,
+                  stop_distance=stop_distance, stop_surface=stop_surface, stop_radius=stop_radius,
+                  semi_diameter=semi_diameter, fields_y=fields_y, wavelengths=wavelengths,
+                  reference=reference, name=name, stacklevel=_CALLER)
 
 
-def doublet(radii: Sequence[Radius], thicknesses: Sequence[float], materials: Sequence[str], *,
-            epd: float, image_distance: float, stop_distance: float | None = None,
-            stop_surface: str | None = None, stop_radius: float | None = None,
-            semi_diameter: float | None = None, fields_y: Sequence[float] = (0.0,),
-            wavelengths: Sequence[float] = DEFAULT_WAVELENGTHS, reference: int = 1,
-            name: str = "Doublet") -> System:
+def doublet(radii: Sequence[float | None], thicknesses: Sequence[float],
+            materials: Sequence[str], *, epd: float, image_distance: float,
+            stop_distance: float | None = None, stop_surface: str | None = None,
+            stop_radius: float | None = None, semi_diameter: float | None = None,
+            fields_y: Sequence[float] = (0.0,), wavelengths: Sequence[float] = DEFAULT_WAVELENGTHS,
+            reference: int = 1, name: str = "Doublet") -> System:
     """A cemented doublet L1 (three surfaces, a material per segment, ADR 0017) with a stop and
     a detector (ADR 0053, point 1).
 
@@ -228,17 +274,14 @@ def doublet(radii: Sequence[Radius], thicknesses: Sequence[float], materials: Se
     ``materials`` = (glass 1, glass 2) as CATALOG:NAME. ``image_distance``: mm from the vertex
     of L1.S3 to the image plane. The other arguments as in ``singlet``.
     """
-    r = [_radius(v, f"radii[{k}]") for k, v in enumerate(_count(radii, 3, "radii"))]
-    t = [_positive(v, f"thicknesses[{k}]")
-         for k, v in enumerate(_count(thicknesses, 2, "thicknesses"))]
-    m = [_material(v, f"materials[{k}]") for k, v in enumerate(_count(materials, 2, "materials"))]
-    return _build([_Lens(r, t, m)], [], epd=epd, image_distance=image_distance,
+    lenses, gaps = _doublet_parts(radii, thicknesses, materials)
+    return _build(lenses, gaps, epd=epd, image_distance=image_distance,
                   stop_distance=stop_distance, stop_surface=stop_surface, stop_radius=stop_radius,
                   semi_diameter=semi_diameter, fields_y=fields_y, wavelengths=wavelengths,
-                  reference=reference, name=name)
+                  reference=reference, name=name, stacklevel=_CALLER)
 
 
-def triplet(radii: Sequence[Radius], thicknesses: Sequence[float], gaps: Sequence[float],
+def triplet(radii: Sequence[float | None], thicknesses: Sequence[float], gaps: Sequence[float],
             materials: Sequence[str], *, epd: float, image_distance: float,
             stop_distance: float | None = None, stop_surface: str | None = None,
             stop_radius: float | None = None, semi_diameter: float | None = None,
@@ -252,20 +295,11 @@ def triplet(radii: Sequence[Radius], thicknesses: Sequence[float], gaps: Sequenc
     the vertex of L3.S2 to the image plane. The other arguments as in ``singlet``; a stop between
     the lenses is a surface stop, e.g. ``stop_surface="L2.S1"``.
     """
-    r = [_radius(v, f"radii[{k}]") for k, v in enumerate(_count(radii, 6, "radii"))]
-    t = [_positive(v, f"thicknesses[{k}]")
-         for k, v in enumerate(_count(thicknesses, 3, "thicknesses"))]
-    g = []
-    for k, v in enumerate(_count(gaps, 2, "gaps")):
-        gap = _finite(v, f"gaps[{k}]")
-        if gap < 0.0:
-            raise ValueError(f"gaps[{k}] must be >= 0, got {v!r}")
-        g.append(gap)
-    m = [_material(v, f"materials[{k}]") for k, v in enumerate(_count(materials, 3, "materials"))]
-    lenses = [_Lens(r[2 * k:2 * k + 2], [t[k]], [m[k]]) for k in range(3)]
-    return _build(lenses, g, epd=epd, image_distance=image_distance, stop_distance=stop_distance,
-                  stop_surface=stop_surface, stop_radius=stop_radius, semi_diameter=semi_diameter,
-                  fields_y=fields_y, wavelengths=wavelengths, reference=reference, name=name)
+    lenses, air = _triplet_parts(radii, thicknesses, gaps, materials)
+    return _build(lenses, air, epd=epd, image_distance=image_distance,
+                  stop_distance=stop_distance, stop_surface=stop_surface, stop_radius=stop_radius,
+                  semi_diameter=semi_diameter, fields_y=fields_y, wavelengths=wavelengths,
+                  reference=reference, name=name, stacklevel=_CALLER)
 
 
 def from_catalog(entry: LensEntry, *, epd: float, image_distance: float,
@@ -281,17 +315,18 @@ def from_catalog(entry: LensEntry, *, epd: float, image_distance: float,
     """
     if semi_diameter is None and entry.diameter is not None:
         semi_diameter = entry.diameter / 2.0
-    common: dict[str, Any] = {
-        "epd": epd, "image_distance": image_distance, "stop_distance": stop_distance,
-        "stop_surface": stop_surface, "stop_radius": stop_radius, "semi_diameter": semi_diameter,
-        "fields_y": fields_y, "wavelengths": wavelengths, "reference": reference,
-        "name": entry.name if name is None else name,
-    }
     if entry.kind == "singlet":
-        return singlet(entry.radii, entry.thicknesses[0], entry.materials[0], **common)
-    if entry.kind == "doublet":
-        return doublet(entry.radii, entry.thicknesses, entry.materials, **common)
-    return triplet(entry.radii, entry.thicknesses, entry.gaps, entry.materials, **common)
+        lenses, gaps = _singlet_parts(entry.radii, entry.thicknesses[0], entry.materials[0])
+    elif entry.kind == "doublet":
+        lenses, gaps = _doublet_parts(entry.radii, entry.thicknesses, entry.materials)
+    else:
+        lenses, gaps = _triplet_parts(entry.radii, entry.thicknesses, entry.gaps,
+                                      entry.materials)
+    return _build(lenses, gaps, epd=epd, image_distance=image_distance,
+                  stop_distance=stop_distance, stop_surface=stop_surface, stop_radius=stop_radius,
+                  semi_diameter=semi_diameter, fields_y=fields_y, wavelengths=wavelengths,
+                  reference=reference, name=entry.name if name is None else name,
+                  stacklevel=_CALLER)
 
 
 __all__ = [

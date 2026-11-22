@@ -218,6 +218,7 @@ print(pcx.name, rt.paraxial.first_order(rt.compile(pcx)).efl)   # PCX-25-100, ab
 `triplet(radii, thicknesses, gaps, materials, …)`: radii in mm (None = plano), the stop as
 `stop_distance` (> 0, own node in front) or `stop_surface` (+ `stop_radius`), `image_distance`
 from the last vertex, `reference` is 0-based. Errors: ValueError, DesignError, LensCatalogError.
+`rt.SCHEMA_VERSION` is the system file version (results: `rt.results.SCHEMA_VERSION`).
 
 ### Materials
 
@@ -450,12 +451,12 @@ Classes: `CompiledElement`, `NodeFrame`, `SurfaceLayout`.
 
 ### rt.design
 ```text
-doublet(radii: Sequence[Radius], thicknesses: Sequence[float], materials: Sequence[str], *, epd: float, image_distance: float, stop_distance: float | None = None, stop_surface: str | None = None, stop_radius: float | None = None, semi_diameter: float | None = None, fields_y: Sequence[float] = (0.0,), wavelengths: Sequence[float] = (0.4861, 0.5876, 0.6563), reference: int = 1, name: str = 'Doublet') -> System
+doublet(radii: Sequence[float | None], thicknesses: Sequence[float], materials: Sequence[str], *, epd: float, image_distance: float, stop_distance: float | None = None, stop_surface: str | None = None, stop_radius: float | None = None, semi_diameter: float | None = None, fields_y: Sequence[float] = (0.0,), wavelengths: Sequence[float] = (0.4861, 0.5876, 0.6563), reference: int = 1, name: str = 'Doublet') -> System
 from_catalog(entry: LensEntry, *, epd: float, image_distance: float, stop_distance: float | None = None, stop_surface: str | None = None, stop_radius: float | None = None, semi_diameter: float | None = None, fields_y: Sequence[float] = (0.0,), wavelengths: Sequence[float] = (0.4861, 0.5876, 0.6563), reference: int = 1, name: str | None = None) -> System
 load_lens_catalog(file: str | os.PathLike) -> LensCatalog
 parse_lens_catalog(text: str, file: str = '') -> LensCatalog
-singlet(radii: Sequence[Radius], thickness: float, material: str, *, epd: float, image_distance: float, stop_distance: float | None = None, stop_surface: str | None = None, stop_radius: float | None = None, semi_diameter: float | None = None, fields_y: Sequence[float] = (0.0,), wavelengths: Sequence[float] = (0.4861, 0.5876, 0.6563), reference: int = 1, name: str = 'Singlet') -> System
-triplet(radii: Sequence[Radius], thicknesses: Sequence[float], gaps: Sequence[float], materials: Sequence[str], *, epd: float, image_distance: float, stop_distance: float | None = None, stop_surface: str | None = None, stop_radius: float | None = None, semi_diameter: float | None = None, fields_y: Sequence[float] = (0.0,), wavelengths: Sequence[float] = (0.4861, 0.5876, 0.6563), reference: int = 1, name: str = 'Triplet') -> System
+singlet(radii: Sequence[float | None], thickness: float, material: str, *, epd: float, image_distance: float, stop_distance: float | None = None, stop_surface: str | None = None, stop_radius: float | None = None, semi_diameter: float | None = None, fields_y: Sequence[float] = (0.0,), wavelengths: Sequence[float] = (0.4861, 0.5876, 0.6563), reference: int = 1, name: str = 'Singlet') -> System
+triplet(radii: Sequence[float | None], thicknesses: Sequence[float], gaps: Sequence[float], materials: Sequence[str], *, epd: float, image_distance: float, stop_distance: float | None = None, stop_surface: str | None = None, stop_radius: float | None = None, semi_diameter: float | None = None, fields_y: Sequence[float] = (0.0,), wavelengths: Sequence[float] = (0.4861, 0.5876, 0.6563), reference: int = 1, name: str = 'Triplet') -> System
 ```
 Classes: `LensCatalog`, `LensEntry`.
 

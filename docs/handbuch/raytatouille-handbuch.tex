@@ -1195,7 +1195,16 @@ Version (z.\,B. 0.11) liest 0.10 nicht.
   \item \textbf{Ein leeres System:} \code{rt.System()} hat nur Standardwerte und ist als
         Ausgangspunkt für den \code{Editor} gedacht (Kapitel~\ref{chap:aendern}). Weil es weder
         Wellenlängen noch Elemente hat, ist der Weg über ein Dictionary meist bequemer.
+  \item \textbf{Aus einem Konstruktionshelfer:} \code{rt.design.singlet}, \code{doublet} und
+        \code{triplet} bauen ein fertiges Startsystem aus wenigen Zahlen
+        (Abschnitt~\ref{sec:design}).
 \end{enumerate}
+
+\begin{achtung}[Kein Konstruktor für Flächen und Elemente]
+Die Klassen in \code{rt.model} (\code{Element}, \code{Surface}, \code{Conic}, \ldots) sind
+\emph{Lesetypen} ohne Konstruktor. Ein Modell entsteht nur aus JSON; geändert wird es mit
+JSON Patch. Das hält Datei, Python und eine spätere Oberfläche konsistent.
+\end{achtung}
 
 \section{Startsysteme und Linsenkataloge}
 \label{sec:design}
@@ -1247,13 +1256,11 @@ system = rt.design.from_catalog(lens, epd=20.0, stop_distance=5.0,
                                 image_distance=96.614)
 \end{pycode}
 
-Ein fehlerhafter Katalog ergibt \code{LensCatalogError} mit \code{file} und \code{pointer}.
-
-\begin{achtung}[Kein Konstruktor für Flächen und Elemente]
-Die Klassen in \code{rt.model} (\code{Element}, \code{Surface}, \code{Conic}, \ldots) sind
-\emph{Lesetypen} ohne Konstruktor. Ein Modell entsteht nur aus JSON; geändert wird es mit
-JSON Patch. Das hält Datei, Python und eine spätere Oberfläche konsistent.
-\end{achtung}
+Der Pfad im Beispiel zeigt auf den Testkatalog im Quellbaum (aus der Wurzel des Repositorys
+aufgerufen); das installierte Paket enthält keine Linsenkataloge. Ein fehlerhafter Katalog
+ergibt \code{LensCatalogError} mit \code{file} und \code{pointer}. \code{rt.SCHEMA_VERSION}
+ist die Version des Systemformats, die die Helfer schreiben; die Version des Ergebnisformats
+heißt \code{rt.results.SCHEMA_VERSION}.
 
 \section{Ein Baukasten für eigene Programme}
 

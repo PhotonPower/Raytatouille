@@ -123,6 +123,9 @@ def test_the_lens_catalogue_reads_the_demo() -> None:
     assert catalog["TRP-50"].diameter is None
     with pytest.raises(KeyError, match="NONE"):
         catalog["NONE"]
+    assert [e.name for e in catalog] == ["PCX-25-100", "ACH-25-100", "TRP-50"]
+    assert "TRP-50" in catalog
+    assert "NONE" not in catalog
 
 
 def test_from_catalog_gives_the_reference_systems() -> None:
@@ -135,6 +138,12 @@ def test_from_catalog_gives_the_reference_systems() -> None:
     named = design.from_catalog(catalog["PCX-25-100"], epd=20.0, stop_distance=5.0,
                                 image_distance=97.363)
     assert named.name == "PCX-25-100"
+    # A given semi_diameter wins over diameter / 2 (12.7).
+    small = design.from_catalog(catalog["PCX-25-100"], epd=20.0, stop_distance=5.0,
+                                image_distance=97.363, semi_diameter=11.0)
+    s1 = small.locate_surface("L1.S1")
+    assert s1 is not None
+    assert small.json_at(s1 + "/aperture/radius/value") == 11.0
 
 
 def test_a_malformed_catalogue_is_a_lens_catalog_error() -> None:
@@ -153,6 +162,14 @@ def test_a_malformed_catalogue_is_a_lens_catalog_error() -> None:
 def test_the_lens_schema_is_in_the_package() -> None:
     schema = rt.schema("lenses")
     assert schema["properties"]["format"]["const"] == "raytatouille-lenses"
+
+
+def test_numpy_and_integer_arguments() -> None:
+    # Integers and NumPy scalars are numbers; +-inf (also float32) is plano.
+    s = design.singlet((51.68, np.float32("inf")), 4, "CONST:1.5168", epd=20, stop_distance=5,
+                       semi_diameter=12.7, fields_y=(0, 3.5, 5), image_distance=97.363,
+                       reference=np.int64(1), name=SINGLET_NAME)
+    assert s.to_json() == _text(SINGLET)
 
 
 GOOD: dict[str, Any] = {"epd": 10.0, "stop_distance": 2.0, "image_distance": 45.0}
@@ -189,6 +206,9 @@ GOOD: dict[str, Any] = {"epd": 10.0, "stop_distance": 2.0, "image_distance": 45.
                                 ("M:A", "M:B", "M:A"), **GOOD), "gaps"),
         (lambda: design.triplet((1.0, 2.0, 3.0, 4.0, 5.0, 6.0), (1.0, 1.0, 1.0), (1.0,),
                                 ("M:A", "M:B", "M:A"), **GOOD), "gaps needs 2"),
+        (lambda: design.singlet((50.0, None), True, "M:A", **GOOD), "must be a number"),
+        (lambda: design.singlet((50.0, None), 4.0, "M:A", reference=True, **GOOD), "reference"),
+        (lambda: design.singlet((50.0, None), 4.0, "M:A", name="", **GOOD), "name"),
     ],
 )
 def test_wrong_arguments_are_value_errors(call: Any, message: str) -> None:
@@ -227,3 +247,10 @@ def test_warnings_of_validate_are_raytatouille_warnings(monkeypatch: pytest.Monk
     assert [w.message.code for w in record if isinstance(w.message, rt.RaytatouilleWarning)] == [
         "aperture.na_not_physical"]
     assert system.to_json() == _text(SINGLET)  # a warning does not stop the helper
+    # The warning names the caller, for the helpers and for from_catalog.
+    assert all(w.filename == __file__ for w in record)
+    catalog = design.load_lens_catalog(DEMO)
+    with pytest.warns(rt.RaytatouilleWarning) as record:
+        design.from_catalog(catalog["PCX-25-100"], epd=20.0, stop_distance=5.0,
+                            image_distance=97.363)
+    assert record and all(w.filename == __file__ for w in record)

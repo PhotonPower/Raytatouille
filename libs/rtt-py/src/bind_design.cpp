@@ -1,5 +1,6 @@
 // Lens catalogues (ADR 0053, point 3): the loader of rtt-io for rt.design.
 
+#include <nanobind/make_iterator.h>
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/filesystem.h>
 #include <nanobind/stl/optional.h>
@@ -57,7 +58,23 @@ void bind_design(nb::module_& m) {
             throw nb::key_error(("no lens '" + name + "' in catalog '" + c.name + "'").c_str());
           },
           "name"_a, "The lens with this name; KeyError if there is none.")
-      .def("__len__", [](const io::LensCatalog& c) { return c.lenses.size(); });
+      .def("__len__", [](const io::LensCatalog& c) { return c.lenses.size(); })
+      .def(
+          "__iter__",
+          [](const io::LensCatalog& c) {
+            return nb::make_iterator(nb::type<io::LensCatalog>(), "lens_iterator", c.lenses.begin(),
+                                     c.lenses.end());
+          },
+          nb::keep_alive<0, 1>(), "The lenses in file order.")
+      .def(
+          "__contains__",
+          [](const io::LensCatalog& c, const std::string& name) {
+            for (const io::LensEntry& e : c.lenses) {
+              if (e.name == name) return true;
+            }
+            return false;
+          },
+          "name"_a, "True if the catalogue has a lens with this name.");
 
   m.def("load_lens_catalog", &io::load_lens_catalog, "file"_a,
         "Reads a lens catalogue file (format raytatouille-lenses, ADR 0053). Raises "
