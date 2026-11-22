@@ -1195,6 +1195,9 @@ Version (z.\,B. 0.11) liest 0.10 nicht.
   \item \textbf{Ein leeres System:} \code{rt.System()} hat nur Standardwerte und ist als
         Ausgangspunkt für den \code{Editor} gedacht (Kapitel~\ref{chap:aendern}). Weil es weder
         Wellenlängen noch Elemente hat, ist der Weg über ein Dictionary meist bequemer.
+  \item \textbf{Aus einem Konstruktionshelfer:} \code{rt.design.singlet}, \code{doublet} und
+        \code{triplet} bauen ein fertiges Startsystem aus wenigen Zahlen
+        (Abschnitt~\ref{sec:design}).
 \end{enumerate}
 
 \begin{achtung}[Kein Konstruktor für Flächen und Elemente]
@@ -1202,6 +1205,62 @@ Die Klassen in \code{rt.model} (\code{Element}, \code{Surface}, \code{Conic}, \l
 \emph{Lesetypen} ohne Konstruktor. Ein Modell entsteht nur aus JSON; geändert wird es mit
 JSON Patch. Das hält Datei, Python und eine spätere Oberfläche konsistent.
 \end{achtung}
+
+\section{Startsysteme und Linsenkataloge}
+\label{sec:design}
+
+Für die häufigsten Startsysteme gibt es fertige Helfer in \code{rt.design} (ADR~0053):
+\code{singlet}, \code{doublet} (verkittet) und \code{triplet} (drei Einzellinsen mit
+Luftabständen). Sie geben ein vollständiges, geprüftes \code{System} zurück: Blende, Linsen,
+Detektor, Eintrittspupille, Felder und Wellenlängen.
+
+\begin{pycode}
+import raytatouille as rt
+
+achromat = rt.design.doublet(
+    (61.5, -35.2, -136.9), (6.0, 3.0), ("SCHOTT:N-BK7", "SCHOTT:F2"),
+    epd=20.0, stop_distance=5.0, semi_diameter=12.7,
+    fields_y=(0.0, 3.5, 5.0), image_distance=96.614)
+\end{pycode}
+
+\begin{itemize}
+  \item Radien in mm mit dem Vorzeichen des Dateiformats, \code{None} ist plan; Dicken und
+        Luftabstände in mm; Materialien als \code{KATALOG:NAME}.
+  \item Pflicht sind \code{epd} (mm) und \code{image_distance} (> 0), der Abstand vom Scheitel
+        der letzten Fläche zur Bildebene (mm). Einen paraxialen Fokus rechnen die Helfer nicht.
+  \item Die Blende ist entweder ein eigener Knoten um \code{stop_distance} (> 0) vor der ersten
+        Linse, Radius \code{stop_radius} (Vorgabe \code{epd/2}), oder eine Linsenfläche
+        \code{stop_surface} (z.\,B. \code{"L2.S1"}) mit Pflichtangabe \code{stop_radius}.
+  \item \code{semi_diameter} setzt die Apertur aller übrigen Linsenflächen; \code{fields_y}
+        sind Feldwinkel in Grad; \code{wavelengths} in µm mit dem 0-basierten Index
+        \code{reference} (Vorgabe F, d, C mit d als Referenz).
+  \item Namen im Ergebnis: Linsen \code{L1}, \code{L2}, \code{L3} mit Flächen \code{L1.S1},
+        \ldots, Blende \code{stop}/\code{STO}, Detektor \code{image}/\code{IMG}, Pfad
+        \code{main}.
+  \item Falsche Argumente ergeben \code{ValueError}, ein ungültiges Ergebnis von
+        \code{rt.validate} \code{DesignError} mit \code{diagnostics}.
+\end{itemize}
+
+Asphären, Neigungen und Beschichtungen ergänzt man danach mit \code{rt.apply_patch}
+(Kapitel~\ref{chap:aendern}).
+
+Ein \emph{Linsenkatalog} (Format \code{raytatouille-lenses}, Abschnitt Linsenkataloge in
+\code{docs/dateiformat.md}) enthält Lagerlinsen als Daten. \code{rt.design.load_lens_catalog}
+liest ihn, \code{from_catalog} macht aus einem Eintrag ein System; \code{semi_diameter} kommt
+dann aus dem Durchmesser des Eintrags, der Systemname aus dem Linsennamen:
+
+\begin{pycode}
+catalog = rt.design.load_lens_catalog("tests/catalogs/lenses/demo.json")
+lens = catalog["ACH-25-100"]          # LensEntry: kind, radii, thicknesses, ...
+system = rt.design.from_catalog(lens, epd=20.0, stop_distance=5.0,
+                                image_distance=96.614)
+\end{pycode}
+
+Der Pfad im Beispiel zeigt auf den Testkatalog im Quellbaum (aus der Wurzel des Repositorys
+aufgerufen); das installierte Paket enthält keine Linsenkataloge. Ein fehlerhafter Katalog
+ergibt \code{LensCatalogError} mit \code{file} und \code{pointer}. \code{rt.SCHEMA_VERSION}
+ist die Version des Systemformats, die die Helfer schreiben; die Version des Ergebnisformats
+heißt \code{rt.results.SCHEMA_VERSION}.
 
 \section{Ein Baukasten für eigene Programme}
 
@@ -1799,6 +1858,8 @@ Exception
     │   └── NoStopError  (auch ParaxialError und ValueError)  path_name, location
     ├── UnknownMaterial       (+ KeyError)
     ├── CoatingCatalogError   (+ ValueError)  file, pointer
+    ├── LensCatalogError      (+ ValueError)  file, pointer
+    ├── DesignError           (+ ValueError)  diagnostics, codes
     ├── AgfError              (+ ValueError)  file, line
     ├── OptimError            (+ ValueError)  diagnostics, codes
     └── Cancelled
@@ -1832,8 +1893,10 @@ Ausnahme & Typische Ursache und Behandlung \\ \midrule \endhead
   eine. Ist gleichzeitig \code{ParaxialError}, \code{AnalysisError} und \code{ValueError}. \\
 \code{UnknownMaterial} & \code{MaterialLibrary.index} oder \code{glass} kennt den Verweis
   nicht. \\
-\code{AgfError}, \code{CoatingCatalogError} & Katalogdatei fehlerhaft; \code{file},
-  \code{line} bzw. \code{pointer} nennen die Stelle. \\
+\code{AgfError}, \code{CoatingCatalogError}, \code{LensCatalogError} & Katalogdatei
+  fehlerhaft; \code{file}, \code{line} bzw. \code{pointer} nennen die Stelle. \\
+\code{DesignError} & ein Konstruktionshelfer (\code{rt.design}) hat ein System gebaut, das
+  \code{rt.validate} ablehnt; \code{codes} auswerten. \\
 \code{OptimError} & Optimierung kann nicht starten: \code{optim.no_variables},
   \code{optim.no_operands}, \code{merit.operand_unsupported}. \\
 \code{Cancelled} & Lauf über \code{CancelToken} abgebrochen; Ausgaben des Laufs sind

@@ -176,6 +176,8 @@ void bind_optim(nanobind::module_& m);
 void bind_tolerance(nanobind::module_& m);
 void bind_polar(nanobind::module_& m);
 void bind_layout(nanobind::module_& m);
+/// Lens catalogues and SCHEMA_VERSION for rt.design (ADR 0053).
+void bind_design(nanobind::module_& m);
 /// to_dict()/to_json() on the result classes (ADR 0023); call after all bind_* functions.
 void bind_result_methods(nanobind::module_& m);
 

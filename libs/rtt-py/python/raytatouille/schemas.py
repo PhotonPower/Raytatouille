@@ -15,15 +15,17 @@ _FILES = {
     "system": "raytatouille.schema.json",
     "result": "raytatouille-result.schema.json",
     "coatings": "raytatouille-coatings.schema.json",
+    "lenses": "raytatouille-lenses.schema.json",
 }
 
 
 def schema(name: str = "system") -> dict[str, Any]:
     """The JSON schema (draft 2020-12) of a file format as a dict.
 
-    ``name``: ``"system"`` (system file ``.rtt.json``), ``"result"`` (result file) or
-    ``"coatings"`` (coating catalogue). Raises ``ValueError`` for another name. A new dict on
-    every call; changing it does not change the package's files.
+    ``name``: ``"system"`` (system file ``.rtt.json``), ``"result"`` (result file),
+    ``"coatings"`` (coating catalogue) or ``"lenses"`` (lens catalogue, ADR 0053). Raises
+    ``ValueError`` for another name. A new dict on every call; changing it does not change the
+    package's files.
     """
     file = _FILES.get(name)
     if file is None:

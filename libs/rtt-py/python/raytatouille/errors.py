@@ -22,7 +22,9 @@ __all__ = [
     "Cancelled",
     "CoatingCatalogError",
     "CompileError",
+    "DesignError",
     "EditError",
+    "LensCatalogError",
     "NoStopError",
     "OptimError",
     "ParaxialError",
@@ -190,6 +192,30 @@ class CoatingCatalogError(RaytatouilleError, ValueError):
         super().__init__(message)
         self.file = file
         self.pointer = pointer
+
+
+class LensCatalogError(RaytatouilleError, ValueError):
+    """Malformed lens catalogue (ADR 0053); ``file`` and ``pointer`` (JSON pointer to the
+    offending value, empty for the whole file)."""
+
+    def __init__(self, message: str, file: str, pointer: str) -> None:
+        super().__init__(message)
+        self.file = file
+        self.pointer = pointer
+
+
+class DesignError(RaytatouilleError, ValueError):
+    """A system built by a design helper (raytatouille.design, ADR 0053) does not pass
+    ``validate``; ``diagnostics`` lists the errors with JSON pointers into the built system."""
+
+    def __init__(self, message: str, diagnostics: list[Diagnostic]) -> None:
+        super().__init__(message)
+        self.diagnostics = diagnostics
+
+    @property
+    def codes(self) -> list[str]:
+        """The stable codes of ``diagnostics``, in the same order."""
+        return [d.code for d in self.diagnostics]
 
 
 class AgfError(RaytatouilleError, ValueError):
