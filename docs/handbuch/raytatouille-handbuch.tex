@@ -1226,8 +1226,8 @@ achromat = rt.design.doublet(
 \begin{itemize}
   \item Radien in mm mit dem Vorzeichen des Dateiformats, \code{None} ist plan; Dicken und
         Luftabstände in mm; Materialien als \code{KATALOG:NAME}.
-  \item Pflicht sind \code{epd} (mm) und \code{image_distance}, der Abstand vom Scheitel der
-        letzten Fläche zur Bildebene (mm). Einen paraxialen Fokus rechnen die Helfer nicht.
+  \item Pflicht sind \code{epd} (mm) und \code{image_distance} (> 0), der Abstand vom Scheitel
+        der letzten Fläche zur Bildebene (mm). Einen paraxialen Fokus rechnen die Helfer nicht.
   \item Die Blende ist entweder ein eigener Knoten um \code{stop_distance} (> 0) vor der ersten
         Linse, Radius \code{stop_radius} (Vorgabe \code{epd/2}), oder eine Linsenfläche
         \code{stop_surface} (z.\,B. \code{"L2.S1"}) mit Pflichtangabe \code{stop_radius}.

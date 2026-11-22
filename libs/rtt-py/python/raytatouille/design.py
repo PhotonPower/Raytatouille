@@ -104,7 +104,9 @@ def _build(lenses: list[_Lens], gaps: list[float], *, epd: float, image_distance
            semi_diameter: float | None, fields_y: Sequence[float], wavelengths: Sequence[float],
            reference: int, name: str, stacklevel: int) -> System:
     epd = _positive(epd, "epd")
-    image_distance = _finite(image_distance, "image_distance")
+    # > 0: at 0 the detector lies in the vertex plane of the last surface and every ray misses
+    # (#151, #177); a negative value puts it into the glass or in front of the lens (#321).
+    image_distance = _positive(image_distance, "image_distance")
     if (stop_distance is None) == (stop_surface is None):
         raise ValueError("give exactly one of stop_distance and stop_surface")
     if semi_diameter is not None:
@@ -245,8 +247,8 @@ def singlet(radii: Sequence[float | None], thickness: float, material: str, *, e
     """A single lens L1 with a stop and a detector (ADR 0053, point 1).
 
     ``radii`` = (R1, R2) in mm (None: plano); ``thickness`` > 0 in mm; ``material`` a
-    reference CATALOG:NAME. ``epd``: entrance pupil diameter in mm. ``image_distance``: mm from
-    the vertex of L1.S2 to the image plane. The stop: exactly one of ``stop_distance`` (mm > 0, a
+    reference CATALOG:NAME. ``epd``: entrance pupil diameter in mm. ``image_distance``: mm > 0
+    from the vertex of L1.S2 to the image plane. The stop: exactly one of ``stop_distance`` (mm > 0, a
     stop node at z = 0 in front of the lens) and ``stop_surface`` (a surface id such as
     "L1.S1"); ``stop_radius`` in mm, default epd/2 with ``stop_distance``, required with
     ``stop_surface``. ``semi_diameter``: aperture radius in mm of every other lens surface.
