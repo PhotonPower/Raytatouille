@@ -568,6 +568,22 @@ Ein Feature ist erst fertig, wenn es mindestens einen Referenztest gegen eine un
   - `LmStatus::Failed` eines Kompensators hat keinen eigenen Test (#278).
   - efl, bfl, image_fnumber und magnification eines Prüflings kommen aus parabasalen Strahlen bei h = 10⁻³ des Pupillenradius, nicht aus einem y-nu-Trace. Auch der Nennwert Φ₀ weicht deshalb vom paraxialen Wert ab, um die Aberration bei h (beim N-BK7-Fall etwa −4,3·10⁻⁷ mm).
 
+**Abnahme M8 (#324):** `libs/rtt-analysis/tests/test_m8_acceptance.cpp` (Tag `[m8]`) prüft die Flächen aus S1 bis S3 und die Aperturen aus F1 durchgehend: gelesen über `rtt-io` aus `tests/reference/m8/` und `examples/`, übersetzt, gezielt oder mit eigenen Startstrahlen getraced und ausgewertet. Die Sollwerte rechnet der Test selbst aus der Quelle (Brechungsgesetz, eigener y-nu-Trace nach Greivenkamp, Radialpolynome nach Niu/Tian, Flächen nach MathWorld); Plan und Sollwerte standen vor dem Code fest (Plan v1 in #324).
+- **Toleranzregel:** Strahlkoordinaten und OPL auf 10⁻¹¹ mm (Abbruch des Newton-Schnitts bei 10⁻¹² mm), Richtungen auf 10⁻¹⁴, erste Ordnung relativ 10⁻¹², durchgelassene Anteile binomial mit 5σ.
+- **Fälle:**
+  1. Axicon: Ablenkung asin(n sin α) − α und Schnitt mit der Achse, Höhe, Richtung und OPL am Detektor: `examples/rotational/axicon_planoconvex`; keine erste Ordnung.
+  2. Q-bfs: am Normierungsradius liegt der Auftreffpunkt auf der Basiskonik; efl und bfl mit c + 2S₀/ρ²: `examples/forbes/qbfs_singlet` mit geöffneter Blende.
+  3. Ungerade Asphäre und Q-con: efl und bfl mit der Scheitelkrümmung (c + 2A₂ bzw. c): `examples/rotational/odd_asphere_singlet`, `examples/forbes/qcon_singlet`.
+  4. Zylinder und Bikonik: efl und bfl je Schnitt, der flache Schnitt des Zylinders afokal, ein Strahl in der x-z-Ebene bleibt achsparallel: `examples/anamorphic/`.
+  5. Zernike (Noll und Fringe): Scheitellage und Krümmung aus den ρ⁰- und ρ²-Koeffizienten, efl und Brennpunkt; ein realer achsnaher Strahl trifft den paraxialen Brennpunkt (Richardson): `m8/zernike_mirror`.
+  6. XY-Polynom: Krümmung −1/200 + 2c_x²/R², efl und Brennpunkt: `m8/xy_mirror`; mit einem zusätzlichen x²y-Term bleibt die erste Ordnung gleich, `seidel` gibt `ParaxialError` (ADR 0041, Punkt 2; Entscheidung des Maintainers vom 2026-11-23).
+  7. Grid-Sag einer Quadrik: dieselben Treffer wie die analytische Fläche (Konik mit XY-Term) in den inneren Zellen, gezielt über das Nennsystem; keine erste Ordnung: `m8/grid_sag_mirror`.
+  8. Sechseck auf dem Spiegel: Anteil 1 − 6 Kreisabschnitte: `m8/hexagon_mirror`.
+  9. Spinne, Mittenabschattung und dezentrierte Ellipse: durchgelassener Anteil und die Verluste getrennt an Blende und Spiegel: `m8/spider_telescope`.
+  10. Zielung, Trace und ein Spot bei 1, 4 und allen Threads bitgleich.
+- **Python** ist für die Freiformflächen aus S3 und die Aperturen aus F1 bitgleich zu C++ (`test_bitwise_m8.py`, mit Inhaltswächtern); für S1 und S2 gelten die Bitvergleiche aus #314 und #315. Ohne Bezug auf ein Nennsystem in Python nimmt der Grid-Sag-Fall die Startstrahlen des Nennsystems.
+- **ZMX-Import (I1):** abgenommen durch `test_zmx.cpp` und `test_zmx_surfaces.cpp` (Import gleich der Solldatei, erste Ordnung gegen einen unabhängigen y-nu-Trace). Zernike-Sag und XY-Polynom im Import folgen in v1.x (#430).
+
 **Teststufen:** Unit-Tests mit Catch2 v3 in jeder Bibliothek; Property-Tests (RapidCheck, ab M1) für Energieerhaltung, |dir| = 1, P·k_ein = k_aus, Umkehrbarkeit, Invarianz bei starrer Bewegung; Golden-Tests mit Standardsystemen aus der Literatur; NSC-Tests (M9) gegen analytische Fälle (Lambert-Strahler, Etendue, Integrationskugel, Leistungsbilanz); Benchmarks mit Google Benchmark (Ziel ≥ 5 Mio. Strahl-Flächen-Schnitte pro Sekunde und Kern bei Sphären inkl. Polarisation, Regression > 10 % blockiert); Schema-Tests mit pytest.
 
 **CI (`.github/workflows/ci.yml`):** clang-format, JSON-Schema, Linux GCC (Release), Linux Clang mit clang-tidy (Release, auch für die Python-Bindungen `_core`, #336), Linux Clang mit ASan/UBSan (Debug), Windows MSVC (Release), macOS 26 arm64 mit Apple clang (Release, ADR 0047); Warnungen sind Fehler. Job Python (ADR 0018): Paket `raytatouille` in der CMake-Baumstruktur (Presets `ci-linux-python` mit Python 3.10 und 3.13, `ci-windows-python` mit 3.13), pytest einschließlich Bitvergleich mit C++ und mypy --strict über ctest; je OS ein Smoke-Test mit `pip install .`.
