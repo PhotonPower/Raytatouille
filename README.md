@@ -85,7 +85,7 @@ dazu `r2/` und `r3/`), Python-Beispiele unter `examples/python/`.
 
 ## Dokumentation
 
-- **Benutzerhandbuch für die Python-API (0.10.0):** [PDF](https://github.com/PhotonPower/Raytatouille/releases/download/v0.10.0/raytatouille-handbuch-0.10.0.pdf), [LaTeX-Quelle](https://github.com/PhotonPower/Raytatouille/blob/main/docs/handbuch/README.md)
+- **Benutzerhandbuch für die Python-API (1.0.0):** [PDF](https://github.com/PhotonPower/Raytatouille/releases/download/v1.0.0/raytatouille-handbuch-1.0.0.pdf), [LaTeX-Quelle](https://github.com/PhotonPower/Raytatouille/blob/main/docs/handbuch/README.md)
 - [Architektur, Konventionen, Roadmap](https://github.com/PhotonPower/Raytatouille/blob/main/docs/architecture.md)
 - [Roadmap-Erweiterungen](https://github.com/PhotonPower/Raytatouille/blob/main/docs/roadmap-erweiterungen.md)
 - [Systemdateien `.rtt.json` schreiben (Kurzanleitung)](https://github.com/PhotonPower/Raytatouille/blob/main/docs/dateiformat.md)

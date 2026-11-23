@@ -1,13 +1,14 @@
 % =============================================================================
-%  Raytatouille 0.10 – Benutzerhandbuch für die Python-API
+%  Raytatouille 1.0 – Benutzerhandbuch für die Python-API
 %  Übersetzen mit LuaLaTeX (oder XeLaTeX), zweimal für Verzeichnisse und Verweise:
 %      lualatex raytatouille-handbuch.tex
 %      lualatex raytatouille-handbuch.tex
 %  Benötigt: TeX Live mit babel-german, fontspec, listings, tcolorbox, booktabs,
 %  longtable, siunitx, hyperref; Schrift DejaVu Sans Mono (Code, enthält griechische
 %  Buchstaben). Die Abbildungen liegen im Unterordner abbildungen/.
-%  Alle Programmbeispiele und Ausgaben wurden mit raytatouille 0.10.0 (Wheel von PyPI,
-%  Tag v0.10.0) unter Python 3.14 ausgeführt; die Ausgaben sind unverändert übernommen.
+%  Alle Programmbeispiele und Ausgaben wurden mit raytatouille 1.0.0 (Release-Build des
+%  Quellstands von Tag v1.0.0, macOS 26 arm64) unter Python 3.14 ausgeführt; die Ausgaben sind
+%  unverändert übernommen.
 %  Prüfen: python tools/handbuch_beispiele.py (zieht die Beispiele heraus, führt sie aus und
 %  vergleicht die Ausgaben).
 % =============================================================================
@@ -153,7 +154,7 @@
 \setlength{\emergencystretch}{3em}
 \raggedbottom
 
-\hypersetup{pdftitle={Raytatouille 0.10 – Benutzerhandbuch für die Python-API},
+\hypersetup{pdftitle={Raytatouille 1.0 – Benutzerhandbuch für die Python-API},
   pdfauthor={Raytatouille-Dokumentation}, pdflang={de-DE}}
 
 \begin{document}
@@ -163,15 +164,15 @@
   \vspace*{30mm}
   {\sffamily\bfseries\fontsize{40}{46}\selectfont\color{rttblau} Raytatouille\par}
   \vspace{6mm}
-  {\sffamily\LARGE Version 0.10\par}
+  {\sffamily\LARGE Version 1.0\par}
   \vspace{18mm}
   {\sffamily\huge Benutzerhandbuch für die Python-API\par}
   \vspace{6mm}
   {\large Raytracing für Optikdesign in eigenen Python-Programmen\par}
   \vfill
   \begin{tabular}{rl}
-    Bibliothek: & \code{raytatouille} 0.10.0 (Git-Tag \code{v0.10.0}, PyPI)\\
-    Dateiformat: & Schema 0.10.0, Ergebnisformat 0.1.20\\
+    Bibliothek: & \code{raytatouille} 1.0.0 (Git-Tag \code{v1.0.0}, PyPI)\\
+    Dateiformat: & Schema 0.11.0, Ergebnisformat 0.1.23\\
     Python: & ab 3.10, NumPy ab 1.24, optional matplotlib ab 3.8\\
     Lizenz der Bibliothek: & MIT
   \end{tabular}
@@ -194,7 +195,7 @@ aus Python zugänglich und liefert Ergebnisse als NumPy-Arrays. Die Bibliothek a
 eingebunden zu werden -- in Auswerteskripte, Parameterstudien, Optimierungsschleifen,
 Prüfstände, Web-Dienste oder eine eigene grafische Oberfläche.
 
-Dieses Handbuch richtet sich an Entwicklerinnen und Entwickler, die Raytatouille~0.10 in ihre
+Dieses Handbuch richtet sich an Entwicklerinnen und Entwickler, die Raytatouille~1.0 in ihre
 eigenen Python-Programme einbauen wollen. Es setzt Grundkenntnisse in Python und NumPy sowie
 in geometrischer Optik voraus (Brennweite, Pupillen, Bildfehler). Es erklärt
 \begin{itemize}
@@ -209,31 +210,27 @@ in geometrischer Optik voraus (Brennweite, Pupillen, Bildfehler). Es erklärt
 
 \section{Stand und Gültigkeit}
 
-Das Handbuch beschreibt genau die Version \textbf{0.10.0} (Git-Tag \code{v0.10.0}, die erste
-Version auf PyPI). Jedes Programmbeispiel wurde mit dieser Version ausgeführt, installiert als
-Wheel von PyPI; die abgedruckten Ausgaben sind unverändert übernommen. Andere Versionen können
-abweichen: Vor Version~1.0 sind nicht alle Schnittstellen stabil, und das Dateiformat erhöht bei
-Änderungen seine Version (Abschnitt~\ref{sec:migration}). Stabil über Versionen hinweg sind die
+Das Handbuch beschreibt genau die Version \textbf{1.0.0} (Git-Tag \code{v1.0.0}). Jedes
+Programmbeispiel wurde mit dem Quellstand dieser Version ausgeführt (Release-Build unter macOS~26
+arm64); die abgedruckten Ausgaben sind unverändert übernommen. Andere Versionen können abweichen;
+das Dateiformat erhöht bei Änderungen seine Version (Abschnitt~\ref{sec:migration}). Stabil über Versionen hinweg sind die
 \emph{Diagnosecodes} (z.\,B. \code{material.unknown}): Sie werden nie umbenannt oder
 umgedeutet, nur ergänzt.
 
-\begin{hinweis}[Neu seit der Ausgabe für 0.8]
-Die Beispiele der Ausgabe für 0.8 laufen unverändert; ihre Ausgaben sind bis auf Versionsnummern,
-eine neue Spalte und eine letzte Stelle gleich geblieben. Neu beschrieben sind:
+\begin{hinweis}[Neu seit der Ausgabe für 0.10]
+Die Beispiele der Ausgabe für 0.10 laufen unverändert. Neu beschrieben sind:
 \begin{itemize}
-  \item die Installation von PyPI und macOS~26 als Plattform (Kapitel~\ref{chap:installation});
-  \item das Dateiformat bis Schema~0.10: neue Flächentypen, Blende auf einer Fläche, Bezugsfläche
-        und Medium des Objektraums, reale Lesart der objektseitigen NA, aktive und inaktive
-        Bauteile und der Abschnitt \code{tolerances} (Kapitel~\ref{chap:format});
-  \item ungerade Asphären, Axicon, Forbes-Asphären und anamorphe Flächen mit erster Ordnung je
-        Schnitt (Kapitel~\ref{chap:flaechen});
-  \item die eingebaute Toleranzierung mit Sensitivität und Monte Carlo
-        (Kapitel~\ref{chap:toleranzierung});
-  \item die Bestrahlungsstärke auf einer Fläche (Abschnitt~\ref{sec:irradiance}), der
-        Zwischenstand der Optimierung je Iteration (Abschnitt~\ref{sec:on-iteration}),
-        Pickle für \code{System} (Abschnitt~\ref{sec:prozesse}) und die mitgelieferten
-        JSON-Schemas (Abschnitt~\ref{sec:schemas});
-  \item ZMX-Import und -Export über das Kommandozeilenwerkzeug (Anhang~\ref{chap:cli}).
+  \item Schema~0.11: Freiformterme \code{zernike_sag}, \code{zernike_fringe_sag},
+        \code{xy_polynomial} und \code{grid_sag}, Aperturen als regelmäßiges Polygon und als
+        Polygon, Obskurationen an Flächen und Aperturmaße als Param
+        (Kapitel~\ref{chap:format}); die paraxiale Behandlung der Freiformterme
+        (Abschnitt~\ref{sec:freiform});
+  \item Zernike-Flächenfehler als Toleranzart \code{zernike} (Abschnitt~\ref{sec:tol-format});
+  \item Startsysteme mit \code{rt.design} und Linsenkataloge (Abschnitt~\ref{sec:design});
+  \item \code{rt.llm_reference}, die kompakte Befehlsreferenz für Sprachmodelle
+        (Kapitel~\ref{chap:api});
+  \item im Kommandozeilenwerkzeug \code{rtt trace}, \code{rtt analyze} und \code{rtt optimize}
+        mit Fortschritt und Abbruch (Anhang~\ref{chap:cli}).
 \end{itemize}
 \end{hinweis}
 
@@ -243,7 +240,7 @@ eine neue Spalte und eine letzte Stelle gleich geblieben. Neu beschrieben sind:
   \item[Teil I] führt ein: Installation, ein vollständiges erstes Programm und die
         Grundbegriffe (Lebenszyklus eines Systems, Einheiten, Koordinaten, Vorzeichen,
         Pupillenkoordinaten).
-  \item[Teil II] beschreibt, wie man Systeme formuliert: das Dateiformat Schema~0.10
+  \item[Teil II] beschreibt, wie man Systeme formuliert: das Dateiformat Schema~0.11
         vollständig, das Erzeugen von Systemen in Python, das Lesen des Modellbaums, das
         Ändern mit JSON Patch (mit Undo) und die Prüfung mit Diagnosen und Ausnahmen.
   \item[Teil III] behandelt das Rechnen: Materialien und Beschichtungen, Kompilieren und
@@ -271,7 +268,7 @@ import raytatouille as rt
 print(rt.__version__)
 \end{pycode}
 \begin{ausgabe}
-0.10.0
+1.0.0
 \end{ausgabe}
 \begin{itemize}
   \item Kästen »Hinweis« ergänzen, »Achtung« warnt vor typischen Fehlern, »Tipp« zeigt
@@ -319,7 +316,7 @@ mit scikit-build-core und nanobind gebaut; im Wurzelverzeichnis genügt:
 \begin{shell}
 git clone https://github.com/PhotonPower/Raytatouille.git
 cd Raytatouille
-git checkout v0.10.0
+git checkout v1.0.0
 pip install .              # oder: pip install ".[plot]"  (mit matplotlib)
 \end{shell}
 Unter Ubuntu~24.04 lassen sich die C++-Abhängigkeiten aus den Systempaketen installieren, unter
@@ -335,8 +332,8 @@ Unter macOS braucht \code{pip install .} mit einem Python von python.org vorher
 länger.
 
 \begin{hinweis}[Kommandozeilenwerkzeug \code{rtt}]
-Das Wheel enthält nur das Python-Paket. Das Werkzeug \code{rtt} (Prüfen, Formatieren, ZMX-Import
-und -Export, Flächentabelle) entsteht beim CMake-Bau des ganzen Projekts
+Das Wheel enthält nur das Python-Paket. Das Werkzeug \code{rtt} (Prüfen, Formatieren, Trace,
+Analysen, Optimierung, ZMX-Import und -Export, Flächentabelle) entsteht beim CMake-Bau des ganzen Projekts
 (\code{cmake --preset dev}, \code{cmake --build --preset dev}). Aus Python stehen Prüfen und
 Formatieren als \code{rt.validate} und \code{System.to_json} zur Verfügung
 (Anhang~\ref{chap:cli}).
@@ -346,17 +343,16 @@ Formatieren als \code{rt.validate} und \code{System.to_json} zur Verfügung
 
 \begin{pycode}
 import raytatouille as rt
-print(rt.__version__)                      # 0.10.0
-print(rt.System().schema_version)          # 0.10.0 (Dateiformat, das geschrieben wird)
-print(rt.results.SCHEMA_VERSION)           # 0.1.20 (Ergebnisformat)
+print(rt.__version__)                      # 1.0.0
+print(rt.System().schema_version)          # 0.11.0 (Dateiformat, das geschrieben wird)
+print(rt.results.SCHEMA_VERSION)           # 0.1.23 (Ergebnisformat)
 \end{pycode}
 
 \section{Abhängigkeit im eigenen Projekt festlegen}
 
-Weil sich vor Version~1.0 Schnittstellen ändern können, sollte ein eigenes Projekt die
-Version festschreiben, etwa in \code{pyproject.toml}:
+Ein eigenes Projekt sollte die Version festschreiben, etwa in \code{pyproject.toml}:
 \begin{shell}
-dependencies = ["raytatouille==0.10.*", "numpy>=1.24"]
+dependencies = ["raytatouille==1.0.*", "numpy>=1.24"]
 \end{shell}
 Wer einen eigenen Paketspiegel betreibt, übernimmt die Wheels von PyPI oder baut sie einmal je
 Plattform und Python-Version selbst (\code{pip wheel . -w dist/}).
@@ -626,12 +622,12 @@ hat (etwa wenn der Hauptstrahl die Bildfläche nicht erreicht).
 \part{Systeme beschreiben}
 % =============================================================================
 
-\chapter{Das Dateiformat \code{.rtt.json} (Schema 0.10)}
+\chapter{Das Dateiformat \code{.rtt.json} (Schema 0.11)}
 \label{chap:format}
 
 Ein optisches System ist eine JSON-Datei mit der Endung \code{.rtt.json}. Dasselbe Format
 verarbeitet \code{rt.System.from_json} als Text. Dieses Kapitel beschreibt es vollständig für
-Schema~0.10.0, die Version, die Raytatouille~0.10 schreibt. Maßgeblich ist der strenge
+Schema~0.11.0, die Version, die Raytatouille~1.0 schreibt. Maßgeblich ist der strenge
 C++-Parser der Bibliothek; das JSON-Schema (\code{rt.schema("system")},
 Abschnitt~\ref{sec:schemas}) dient externen Werkzeugen.
 
@@ -658,7 +654,7 @@ Abschnitt~\ref{sec:schemas}) dient externen Werkzeugen.
 \begin{longtable}{@{}L{3.1cm}L{1.2cm}L{10.4cm}@{}}
 \toprule
 Schlüssel & Pflicht & Inhalt \\ \midrule \endhead
-\code{schema_version} & ja & \code{"0.10.0"} (Muster \code{0.10.x}; ältere Versionen werden
+\code{schema_version} & ja & \code{"0.11.0"} (Muster \code{0.11.x}; ältere Versionen werden
   migriert, Abschnitt~\ref{sec:migration}) \\
 \code{name} & nein & Anzeigename \\
 \code{units} & ja & genau \code{{"length": "mm", "wavelength": "um"}} \\
@@ -1095,7 +1091,7 @@ Das Plankonvex-Singlet des Schnellstarts in kanonischer Form (so schreibt es
 \code{rt.save}):
 \begin{jsoncode}
 {
-  "schema_version": "0.10.0",
+  "schema_version": "0.11.0",
   "name": "Singlet",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [
@@ -1165,8 +1161,8 @@ Das Plankonvex-Singlet des Schnellstarts in kanonischer Form (so schreibt es
 \label{sec:migration}
 
 Vor Version~1.0 müssen Major- und Minor-Version passen oder zu einer älteren Version gehören,
-die migriert wird. Raytatouille~0.10 liest Dateien mit Schema 0.1 bis 0.10 und schreibt immer
-0.10.0. Bei der Migration
+die migriert wird. Raytatouille~1.0 liest Dateien mit Schema 0.1 bis 0.11 und schreibt immer
+0.11.0. Bei der Migration
 \begin{itemize}
   \item wird die Ereignisart \code{diffract} (bis 0.2) zu \code{transmit} mit derselben Ordnung,
   \item fällt ein \code{pickup} aus einer Datei vor 0.4 weg; der Wert bleibt, und
@@ -1176,8 +1172,10 @@ die migriert wird. Raytatouille~0.10 liest Dateien mit Schema 0.1 bis 0.10 und s
 Neuere Schlüssel in einer älteren Datei sind ein Lesefehler, damit die Version zum Inhalt passt,
 unter anderem: \code{tolerances} braucht 0.6, \code{object.medium} 0.7, \code{object.reference},
 \code{aperture.stop} und \code{aperture.reading} 0.8, die Flächentypen aus
-Kapitel~\ref{chap:flaechen} 0.9 und \code{active} 0.10. Eine Datei einer \emph{neueren}
-Version (z.\,B. 0.11) liest 0.10 nicht.
+Kapitel~\ref{chap:flaechen} 0.9, \code{active} 0.10 sowie \code{zernike_fringe_sag},
+\code{xy_polynomial}, \code{grid_sag}, die Aperturen \code{regular_polygon} und \code{polygon},
+\code{obscurations}, Aperturmaße als Param-Objekt und die Toleranzart \code{zernike} 0.11. Eine
+Datei einer \emph{neueren} Version (z.\,B. 0.12) liest 1.0 nicht.
 
 % -----------------------------------------------------------------------------
 \chapter{Systeme in Python erzeugen, speichern und laden}
@@ -1270,7 +1268,7 @@ Blenden, Linsen (auch Kittglieder), Detektoren und ganze Systeme; \code{param} e
 Bedarf ein Param-Objekt für die Optimierung.
 
 \begin{pycode}[title={\code{rtt_bausteine.py}}]
-"""Bausteine, um Raytatouille-Systeme (Schema 0.10) als Python-Dictionary zu erzeugen.
+"""Bausteine, um Raytatouille-Systeme (Schema 0.11) als Python-Dictionary zu erzeugen.
 
 Alle Längen in mm, Wellenlängen in µm, Winkel in Grad.
 """
@@ -1282,7 +1280,7 @@ from typing import Any
 
 import raytatouille as rt
 
-SCHEMA = "0.10.0"
+SCHEMA = "0.11.0"
 FRAUNHOFER_FDC = [{"um": 0.4861}, {"um": 0.5876, "reference": True}, {"um": 0.6563}]
 
 
@@ -1448,7 +1446,7 @@ schema_version: 0.11.0
 \code{name} & Anzeigename (les- und schreibbar) \\
 \code{environment} & \code{Environment} mit \code{temperature_c}, \code{pressure_atm},
   \code{medium} (les- und schreibbar, wirkt auf dieses System) \\
-\code{schema_version} & Formatversion, z.\,B. \code{"0.10.0"} \\
+\code{schema_version} & Formatversion, z.\,B. \code{"0.11.0"} \\
 \code{wavelengths}, \code{fields}, \code{aperture}, \code{object_space}, \code{root},
   \code{paths}, \code{configurations}, \code{parameters}, \code{optimization} &
   Lesekopien des Modells (Kapitel~\ref{chap:lesen}); \code{root} kopiert bei jedem Zugriff
@@ -1936,7 +1934,7 @@ In Bibliotheken und Diensten Warnungen nicht global abschalten, sondern lokal st
 
 \code{rt.diagnostics.CODES} bildet jeden Code auf \code{CodeInfo(code, severity, producer,
 summary)} ab; \code{producer} ist die Stufe, etwa \code{"validate"}, \code{"compile"},
-\code{"analysis"} oder \code{"tolerance"}. Version 0.10.0 kennt 248 Codes; die vollständige Liste steht in Anhang~\ref{chap:codes}. Codes
+\code{"analysis"} oder \code{"tolerance"}. Version 1.0.0 kennt 267 Codes; die vollständige Liste steht in Anhang~\ref{chap:codes}. Codes
 sind über Versionen stabil: Ein Programm darf auf \code{"material.unknown"} reagieren, ohne
 fürchten zu müssen, dass der Code später etwas anderes bedeutet.
 
@@ -2461,6 +2459,96 @@ mit $u^4$; der Koeffizient $a_0=-0{,}0104$~mm (der erste der Liste) verringert d
 Aberration aber um fast den Faktor vier: den RMS-Spot auf der Achse um 3,7, die Seidel-Summe
 $S_I$ um 4,2. Die Zylinderlinse ist im x-Schnitt afokal und im y-Schnitt eine
 \SI{100}{mm}-Linse.
+
+\section{Freiformterme}
+\label{sec:freiform}
+
+Freiformflächen entstehen aus einer Basisform und additiven Termen in \code{shape.terms}
+(Kapitel~\ref{chap:format}): \code{zernike_sag}, \code{zernike_fringe_sag},
+\code{xy_polynomial} und \code{grid_sag}. Für die paraxiale Rechnung zählt, was die Terme im
+Scheitel beitragen (ADR~0041, Punkt~2):
+\begin{itemize}
+  \item Rotationssymmetrische Anteile zweiter Ordnung (Zernike-Defokus $Z_4$, sphärische Terme,
+        XY mit gleichen Koeffizienten von $x^2$ und $y^2$) ändern die Scheitelkrümmung, ein
+        konstanter Anteil verschiebt den Scheitel. \code{first_order} rechnet damit;
+        \code{seidel} braucht zusätzlich Rotationssymmetrie bis zur vierten Ordnung.
+  \item Kippung oder Astigmatismus im Scheitel (Zernike $Z_2$, $Z_3$, $Z_5$, $Z_6$, XY mit $x$
+        oder $x^2 \ne y^2$) sind für \code{first_order} ein \code{ParaxialError}.
+  \item Grid-Sag ist nur einmal stetig differenzierbar und hat kein paraxiales Modell.
+\end{itemize}
+Wo das paraxiale Modell fehlt, gibt es auch keine automatische Zielung; Strahlen startet man
+dann selbst (Abschnitt~\ref{sec:eigene-strahlen}).
+
+\begin{pycode}[title={\code{ex25_freiform.py}}]
+"""Freiformterme auf der Vorderfläche des Singlets: was erste Ordnung und Seidel daraus machen."""
+import math
+
+import raytatouille as rt
+from rtt_bausteine import als_system, blende, detektor, flaeche, system
+
+R = 12.7    # Normierungsradius = Halbdurchmesser der Apertur, mm
+A = 0.002   # Koeffizient der Terme, mm
+
+
+def singlet_mit(terme: list) -> rt.CompiledSystem:
+    """Das Singlet des Schnellstarts, die Vorderfläche mit den Termen `terme`."""
+    form = {"base": {"type": "conic", "radius": 51.68}, "terms": terme}
+    s1 = flaeche("L1.S1", halbdurchmesser=R, shape=form)
+    s2 = flaeche("L1.S2", None, 4.0, halbdurchmesser=R)
+    linse = {"type": "lens", "name": "L1", "pose": {"position": [0.0, 0.0, 5.0]},
+             "material": "CONST:1.5168", "surfaces": [s1, s2]}
+    teile = [blende(0.0, 10.0), linse, detektor(106.442)]
+    return rt.compile(als_system(system("Freiform", teile, epd=20.0)))
+
+
+def zernike(j: int) -> dict:
+    """Ein Noll-Term Z_j mit dem Koeffizienten A (coefficients[0] ist j = 1)."""
+    return {"type": "zernike_sag", "normalization_radius": R,
+            "coefficients": [0.0] * (j - 1) + [A]}
+
+
+gitter = [A * ((x * x + y * y) / R**2) for y in range(-16, 17, 8) for x in range(-16, 17, 8)]
+varianten = {
+    "ohne Term": [],
+    "Z4 Defokus": [zernike(4)],
+    "Z6 Astigmatismus": [zernike(6)],
+    # Reihenfolge x, y, x^2, xy, y^2, x^3, x^2 y, ...: Index 6 ist x^2 y (dritte Ordnung).
+    "XY x^2 y": [{"type": "xy_polynomial", "normalization_radius": R,
+                  "coefficients": [0.0] * 6 + [A]}],
+    "Grid-Sag": [{"type": "grid_sag", "nx": 5, "ny": 5, "spacing_x": 8.0, "spacing_y": 8.0,
+                  "sag": gitter}],
+}
+for name, terme in varianten.items():
+    cs = singlet_mit(terme)
+    try:
+        erste = f"EFL {rt.paraxial.first_order(cs).efl:8.4f} mm"
+    except rt.ParaxialError as e:
+        erste = "first_order: " + str(e).split(": ", 2)[-1].split(" (")[0]
+    try:
+        rt.paraxial.seidel(cs)
+        seidel = "Seidel ja"
+    except rt.ParaxialError:
+        seidel = "Seidel nein"
+    print(f"{name:17s} {seidel:11s} {erste}")
+
+# Z4 = sqrt(3) (2 rho^2 - 1) hat im Scheitel die Krümmung 4 sqrt(3) A / R^2.
+c = 1 / 51.68
+print(f"Scheitelkrümmung mit Z4: {c + 4 * math.sqrt(3) * A / R**2:.6f} statt {c:.6f} 1/mm")
+\end{pycode}
+\begin{ausgabe}
+ohne Term         Seidel ja   EFL 100.0527 mm
+Z4 Defokus        Seidel ja   EFL  99.6105 mm
+Z6 Astigmatismus  Seidel nein first_order: not rotationally symmetric in second order; no paraxial model
+XY x^2 y          Seidel nein EFL 100.0527 mm
+Grid-Sag          Seidel nein first_order: no paraxial model at the vertex
+Scheitelkrümmung mit Z4: 0.019436 statt 0.019350 1/mm
+\end{ausgabe}
+
+Der Defokusterm vergrößert die Scheitelkrümmung der Vorderfläche um $4\sqrt3\,A/R^2$; die
+Brennweite sinkt im selben Verhältnis wie bei einer dünnen Plankonvexlinse. Der Term $x^2y$ ist
+dritter Ordnung: Die erste Ordnung bleibt die der Kugel, aber für Seidel fehlt die
+Rotationssymmetrie bis zur vierten Ordnung. Astigmatismus im Scheitel und Grid-Sag lassen schon
+die erste Ordnung scheitern.
 
 % -----------------------------------------------------------------------------
 \chapter{Strahlen erzeugen und verfolgen}
@@ -4086,7 +4174,7 @@ $1$; die Theorie der dünnen Linse liefert für $n=1{,}52$ etwa $q\approx0{,}7$)
   \item[Typen prüfen.] Das Paket enthält Typ-Stubs (\code{py.typed}); \code{mypy --strict}
         erkennt falsche Argumente und \code{None}-Fälle (z.\,B. \code{fo.entrance_pupil}
         ist \code{Pupil | None}).
-  \item[Version festschreiben.] \code{raytatouille==0.10.*} in den Abhängigkeiten; beim Wechsel
+  \item[Version festschreiben.] \code{raytatouille==1.0.*} in den Abhängigkeiten; beim Wechsel
         die eigenen Referenzergebnisse neu prüfen.
 \end{description}
 
@@ -4208,13 +4296,14 @@ Wellenfront statt Spot (\code{rt.analysis.opd_points} braucht dieselbe Zielung; 
 \code{jones_pupil(start=…, chief=…)} gibt es eine Startstrahl-Form mit Phase).
 
 % -----------------------------------------------------------------------------
-\chapter{Bekannte Grenzen von Version 0.10}
+\chapter{Bekannte Grenzen von Version 1.0}
 \label{chap:grenzen}
 
 \begin{itemize}
-  \item \textbf{Freiformflächen} sind erst zum Teil da: Zernike-Terme nach Noll und im
-        Fringe-Satz, XY-Polynome und Grid-Sag (ADR~0051); als Toleranzart fehlen
-        Zernike-Flächenfehler noch (M8).
+  \item \textbf{Freiformflächen:} Zernike-Terme nach Noll und im Fringe-Satz, XY-Polynome und
+        Grid-Sag (ADR~0051). Terme mit Kippung oder Astigmatismus im Scheitel und Grid-Sag haben
+        kein paraxiales Modell und damit keine automatische Zielung; Strahlen startet man dort
+        selbst (Abschnitt~\ref{sec:freiform}).
   \item \textbf{Zielung nur für rotationssymmetrische und anamorphe Pfade.} Gekippte,
         dezentrierte und gefaltete Pfade brauchen eigene Startstrahlen
         (Kapitel~\ref{chap:toleranz}); ebenso Pfade mit Axicon oder ungerader Asphäre mit
@@ -4225,8 +4314,8 @@ Wellenfront statt Spot (\code{rt.analysis.opd_points} braucht dieselbe Zielung; 
         Strahlen, Spot, Strahl-Operanden und der Spot-Generator.
   \item \textbf{Keine globale Optimierung}; Levenberg-Marquardt findet das nächste lokale
         Minimum.
-  \item \textbf{Toleranzierung:} keine Korrelationen zwischen Toleranzen, keine
-        Flächenfehler, Strehl und MTF nicht als Kriterien, keine Materialtoleranz für Kristalle
+  \item \textbf{Toleranzierung:} keine Korrelationen zwischen Toleranzen, Flächenfehler nur als
+        Zernike-Terme, Strehl und MTF nicht als Kriterien, keine Materialtoleranz für Kristalle
         und Metalle.
   \item \textbf{Nur sequenzielles Raytracing} über definierte Pfade; kein nicht-sequenzielles
         Tracing und keine Streuung.
@@ -4235,12 +4324,14 @@ Wellenfront statt Spot (\code{rt.analysis.opd_points} braucht dieselbe Zielung; 
   \item \textbf{Geisterbilder} nur als Zweifachreflexionen, nicht für Basispfade mit
         Beugungsordnungen oder Kristallmoden.
   \item \textbf{ZMX-Import und -Export} nur im Kommandozeilenwerkzeug und in C++, nicht aus
-        Python (Anhang~\ref{chap:cli}); Gläser kommen aus AGF-Katalogen.
+        Python (Anhang~\ref{chap:cli}); Gläser kommen aus AGF-Katalogen. Zernike-Sag- und
+        Extended-Polynomial-Flächen einer ZMX-Datei werden noch nicht importiert
+        (\code{zmx.surface_unsupported}).
   \item \textbf{Pickle} nur für \code{System}; \code{CompiledSystem} und Ergebnisse werden
         über JSON ausgetauscht.
   \item \code{rt.analysis.through_focus} fehlt in \code{__all__} (der Aufruf funktioniert).
-  \item Die Paketversion ist 0.x: Schnittstellen können sich bis 1.0 ändern. Stabil sind die
-        Diagnosecodes und das Ergebnisformat innerhalb von 0.1.x.
+  \item Stabil über Versionen sind die Diagnosecodes und das Ergebnisformat innerhalb von
+        0.1.x.
 \end{itemize}
 
 % =============================================================================
@@ -4250,7 +4341,7 @@ Wellenfront statt Spot (\code{rt.analysis.opd_points} braucht dieselbe Zielung; 
 \chapter{Funktionsreferenz}
 \label{chap:api}
 
-Die Signaturen in diesem Kapitel sind automatisch aus der installierten Version 0.10.0 erzeugt
+Die Signaturen in diesem Kapitel sind automatisch aus der installierten Version 1.0.0 erzeugt
 (Typannotationen der Python-Module bzw. der Typ-Stubs der Erweiterung). \code{SystemLike}
 steht für \code{System | CompiledSystem}, \code{PupilSampling} für eine der
 Abtastungsklassen aus \code{rt.trace}. Parameter nach \code{*} sind nur als Schlüsselwort
@@ -4292,6 +4383,7 @@ apply_patch_with_inverse(
     check: Check = 'no_new_errors'
 ) -> PatchResult
 schema(name: str = 'system') -> dict[str, Any]
+llm_reference() -> str
 \end{signatur}
 \begin{longtable}{@{}L{4.2cm}L{10.5cm}@{}}
 \toprule
@@ -4307,7 +4399,9 @@ Funktion & Kurzbeschreibung \\ \midrule \endhead
 \code{apply_patch} & Patch anwenden, neues System; \code{EditError} \\
 \code{apply_patch_with_inverse} & dazu inverser Patch und Diagnosen (\code{PatchResult}) \\
 \code{schema} & JSON-Schema eines Dateiformats (\code{"system"}, \code{"result"},
-  \code{"coatings"}) als \code{dict} \\
+  \code{"coatings"}, \code{"lenses"}) als \code{dict} \\
+\code{llm_reference} & kompakte Befehlsreferenz für Sprachmodelle und Agenten (Markdown,
+  englisch) als Text \\
 \bottomrule
 \end{longtable}
 Klassen auf oberster Ebene: \code{System}, \code{CompiledSystem}, \code{CompiledMedium},
@@ -4961,6 +5055,89 @@ outlines(
 ) -> list[FloatArray]
 \end{signatur}
 
+\section{\code{rt.design}}
+\begin{signatur}
+singlet(
+    radii: Sequence[float | None],
+    thickness: float,
+    material: str,
+    *,
+    epd: float,
+    image_distance: float,
+    stop_distance: float | None = None,
+    stop_surface: str | None = None,
+    stop_radius: float | None = None,
+    semi_diameter: float | None = None,
+    fields_y: Sequence[float] = (0.0,),
+    wavelengths: Sequence[float] = DEFAULT_WAVELENGTHS,
+    reference: int = 1,
+    name: str = 'Singlet'
+) -> System
+doublet(
+    radii: Sequence[float | None],
+    thicknesses: Sequence[float],
+    materials: Sequence[str],
+    *,
+    epd: float,
+    image_distance: float,
+    stop_distance: float | None = None,
+    stop_surface: str | None = None,
+    stop_radius: float | None = None,
+    semi_diameter: float | None = None,
+    fields_y: Sequence[float] = (0.0,),
+    wavelengths: Sequence[float] = DEFAULT_WAVELENGTHS,
+    reference: int = 1,
+    name: str = 'Doublet'
+) -> System
+triplet(
+    radii: Sequence[float | None],
+    thicknesses: Sequence[float],
+    gaps: Sequence[float],
+    materials: Sequence[str],
+    *,
+    epd: float,
+    image_distance: float,
+    stop_distance: float | None = None,
+    stop_surface: str | None = None,
+    stop_radius: float | None = None,
+    semi_diameter: float | None = None,
+    fields_y: Sequence[float] = (0.0,),
+    wavelengths: Sequence[float] = DEFAULT_WAVELENGTHS,
+    reference: int = 1,
+    name: str = 'Triplet'
+) -> System
+from_catalog(
+    entry: LensEntry,
+    *,
+    epd: float,
+    image_distance: float,
+    stop_distance: float | None = None,
+    stop_surface: str | None = None,
+    stop_radius: float | None = None,
+    semi_diameter: float | None = None,
+    fields_y: Sequence[float] = (0.0,),
+    wavelengths: Sequence[float] = DEFAULT_WAVELENGTHS,
+    reference: int = 1,
+    name: str | None = None
+) -> System
+load_lens_catalog(file: str | os.PathLike) -> LensCatalog
+parse_lens_catalog(text: str, file: str = '') -> LensCatalog
+\end{signatur}
+\begin{longtable}{@{}L{4.2cm}L{10.5cm}@{}}
+\toprule
+Funktion & Kurzbeschreibung \\ \midrule \endhead
+\code{singlet}, \code{doublet}, \code{triplet} & Startsystem aus Radien (\code{None} plan),
+  Dicken, Luftabständen und Materialien; Blende über \code{stop_distance} oder
+  \code{stop_surface}; \code{ValueError}, \code{DesignError} (Abschnitt~\ref{sec:design}) \\
+\code{from_catalog} & Startsystem aus einem \code{LensEntry} eines Linsenkatalogs \\
+\code{load_lens_catalog} & Linsenkatalog (\code{raytatouille-lenses}) aus einer Datei;
+  \code{LensCatalogError} \\
+\code{parse_lens_catalog} & dasselbe aus Text; \code{file} erscheint in Fehlermeldungen \\
+\bottomrule
+\end{longtable}
+\code{rt.design} enthält außerdem \code{DEFAULT_WAVELENGTHS} (F, d, C in µm, Referenz d) und
+die Klassen \code{LensCatalog} und \code{LensEntry}.
+
 \section{\code{rt.reports}, \code{rt.results}, \code{rt.plot}}
 \begin{signatur}
 to_csv(report: Report) -> str
@@ -4986,7 +5163,7 @@ through_focus(result: ThroughFocus, ax: Axes | None = None) -> Axes
 \end{signatur}
 \code{rt.reports} enthält außerdem die Spaltenfolgen \code{RAYTRACE_COLUMNS} und
 \code{DIMENSION_COLUMNS}; \code{rt.results} die Konstanten \code{FORMAT}
-(\code{"raytatouille-result"}), \code{SCHEMA_VERSION} (\code{"0.1.20"}) und \code{TYPES}.
+(\code{"raytatouille-result"}), \code{SCHEMA_VERSION} (\code{"0.1.23"}) und \code{TYPES}.
 
 \section{\code{rt.edit} und \code{rt.Editor}}
 \begin{signatur}
@@ -5023,7 +5200,7 @@ add_catalog(path: str | os.PathLike) -> None
 
 Die folgende Tabelle listet alle Klassen der Erweiterung \code{raytatouille._core} mit ihren
 öffentlichen Attributen und Methoden (ohne \code{to_dict}, \code{to_json} und \code{to_csv},
-die jede Ergebnisklasse hat). Sie ist automatisch aus Version 0.10.0 erzeugt. Die Bedeutung der
+die jede Ergebnisklasse hat). Sie ist automatisch aus Version 1.0.0 erzeugt. Die Bedeutung der
 wichtigsten Attribute erklären die Kapitel des Teils~III; die englischen Docstrings zeigt
 \code{help(Klasse)}.
 
@@ -5037,6 +5214,7 @@ Klasse & Attribute und Methoden \\ \midrule \endhead
 \code{CancelToken} & \code{cancel}, \code{cancelled} \\
 \code{ChromaticPair} & \code{first}, \code{second} \\
 \code{CircularAperture} & \code{radius}, \code{inner_radius} \\
+\code{CircularObscuration} & \code{radius}, \code{decenter_x}, \code{decenter_y} \\
 \code{ClassTolerance} & \code{id}, \code{surface}, \code{node}, \code{segment}, \code{kind}, \code{level}, \code{tolerance_class}, \code{value_override}, \code{replaced_by}, \code{skip}, \code{generated} \\
 \code{ClassTolerances} & \code{items}, \code{value_overrides} \\
 \code{CoatingLibrary} & \code{add_catalog} \\
@@ -5063,6 +5241,7 @@ Klasse & Attribute und Methoden \\ \midrule \endhead
 \code{DistortionSweep} & \code{fraction}, \code{field_x}, \code{field_y}, \code{real_height}, \code{paraxial_height}, \code{percent} \\
 \code{Element} & \code{name}, \code{kind}, \code{pose}, \code{material}, \code{segment_materials}, \code{crystal}, \code{optic_axis}, \code{surfaces}, \code{active}, \code{segment_material} \\
 \code{EllipticalAperture} & \code{semi_axis_x}, \code{semi_axis_y} \\
+\code{EllipticalObscuration} & \code{semi_axis_x}, \code{semi_axis_y}, \code{decenter_x}, \code{decenter_y}, \code{rotation_deg} \\
 \code{EncircledEnergy} & \code{field}, \code{grid}, \code{centre}, \code{e_x}, \code{e_y}, \code{offset}, \code{radii}, \code{energy}, \code{radius_max}, \code{edge_energy_deficit}, \code{wavelengths}, \code{losses}, \code{warnings} \\
 \code{Environment} & \code{temperature_c}, \code{pressure_atm}, \code{medium} \\
 \code{EvenAsphere} & \code{radius}, \code{conic}, \code{coefficients} \\
@@ -5103,6 +5282,8 @@ Klasse & Attribute und Methoden \\ \midrule \endhead
 \code{IterationState} & \code{k}, \code{phi}, \code{values}, \code{patch} \\
 \code{JonesPupil} & \code{path}, \code{field}, \code{wavelength}, \code{wavelength_um}, \code{reference_wavelength_um}, \code{basis}, \code{remove_global_phase}, \code{field_amplitude}, \code{global_phase}, \code{x_in}, \code{y_in}, \code{k_in}, \code{x_out}, \code{y_out}, \code{k_out}, \code{sphere}, \code{px}, \code{py}, \code{status}, \code{w}, \code{j}, \code{transmission}, \code{diattenuation}, \code{diattenuation_orientation}, \code{diattenuation_ellipticity}, \code{retardance}, \code{retardance_orientation}, \code{retardance_ellipticity}, \code{losses}, \code{warnings} \\
 \code{LateralColour} & \code{field}, \code{chief}, \code{offset} \\
+\code{LensCatalog} & \code{name}, \code{lenses} \\
+\code{LensEntry} & \code{name}, \code{description}, \code{kind}, \code{radii}, \code{thicknesses}, \code{gaps}, \code{materials}, \code{diameter} \\
 \code{LinearGrating} & \code{lines_per_mm}, \code{orientation_deg} \\
 \code{LoadWarning} & \code{code}, \code{file}, \code{line}, \code{message} \\
 \code{LongitudinalColour} & \code{pair}, \code{foci}, \code{paraxial}, \code{real} \\
@@ -5139,6 +5320,7 @@ Klasse & Attribute und Methoden \\ \midrule \endhead
 \code{Point2} & \code{x}, \code{y} \\
 \code{PointListPupil} & \code{px}, \code{py} \\
 \code{Points2} & \code{x}, \code{y} \\
+\code{PolygonAperture} & \code{vertices} \\
 \code{Pose} & \code{reference}, \code{order}, \code{position}, \code{rotation_deg}, \code{pivot} \\
 \code{Prescription} & \code{surfaces}, \code{total_track}, \code{object_distance}, \code{paraxial_working_f_number}, \code{paraxial_image_na}, \code{lagrange_invariant}, \code{marginal_start}, \code{chief_start}, \code{first_order} \\
 \code{PrescriptionSurfaces} & \code{surface}, \code{z}, \code{n}, \code{y}, \code{u}, \code{i}, \code{y_bar}, \code{u_bar}, \code{i_bar}, \code{lagrange} \\
@@ -5163,7 +5345,9 @@ Klasse & Attribute und Methoden \\ \midrule \endhead
 \code{RaytraceReport} & \code{path}, \code{rows}, \code{rays}, \code{slots} \\
 \code{RaytraceRows} & \code{ray}, \code{slot}, \code{surface}, \code{x}, \code{y}, \code{z}, \code{dx}, \code{dy}, \code{dz}, \code{local_x}, \code{local_y}, \code{local_z}, \code{local_dx}, \code{local_dy}, \code{local_dz}, \code{opl}, \code{weight}, \code{status} \\
 \code{RectangularAperture} & \code{half_width_x}, \code{half_width_y} \\
+\code{RectangularObscuration} & \code{half_width_x}, \code{half_width_y}, \code{decenter_x}, \code{decenter_y}, \code{rotation_deg} \\
 \code{ReferenceSphere} & \code{centre}, \code{radius} \\
+\code{RegularPolygonAperture} & \code{sides}, \code{circumradius}, \code{rotation_deg} \\
 \code{Seidel} & \code{surfaces}, \code{sum}, \code{lagrange}, \code{marginal}, \code{chief}, \code{chromatic} \\
 \code{SeidelSurfaces} & \code{surface}, \code{y}, \code{y_bar}, \code{a}, \code{a_bar}, \code{lagrange}, \code{s1}, \code{s2}, \code{s3}, \code{s4}, \code{s5}, \code{c_l}, \code{c_t} \\
 \code{SeidelTerms} & \code{s1}, \code{s2}, \code{s3}, \code{s4}, \code{s5}, \code{c_l}, \code{c_t} \\
@@ -5174,14 +5358,14 @@ Klasse & Attribute und Methoden \\ \midrule \endhead
 \code{SpotRmsOperand} & \code{target}, \code{weight}, \code{configuration}, \code{path}, \code{field}, \code{wavelength}, \code{polychromatic}, \code{reference}, \code{rings} \\
 \code{SpotStatistics} & \code{centroid}, \code{rms_centroid}, \code{rms_chief}, \code{geo_centroid}, \code{geo_chief} \\
 \code{StokesPupil} & \code{path}, \code{field}, \code{wavelength}, \code{wavelength_um}, \code{e1}, \code{e2}, \code{x_in}, \code{y_in}, \code{x_out}, \code{y_out}, \code{px}, \code{py}, \code{status}, \code{s0}, \code{s1}, \code{s2}, \code{s3}, \code{orientation}, \code{ellipticity}, \code{warnings} \\
-\code{Surface} & \code{id}, \code{pose}, \code{shape}, \code{aperture}, \code{phases}, \code{diffraction_efficiency}, \code{interaction} \\
+\code{Surface} & \code{id}, \code{pose}, \code{shape}, \code{aperture}, \code{obscurations}, \code{phases}, \code{diffraction_efficiency}, \code{interaction} \\
 \code{SurfaceReference} & \code{surface} \\
 \code{System} & \code{name}, \code{schema_version}, \code{environment}, \code{wavelengths}, \code{object_space}, \code{aperture}, \code{fields}, \code{root}, \code{paths}, \code{configurations}, \code{parameters}, \code{optimization}, \code{tolerances}, \code{json_at}, \code{locate_surface}, \code{locate_node}, \code{locate_path}, \code{locate_parameter}, \code{resolved}, \code{from_json}, \code{save} \\
 \code{SystemAperture} & \code{type}, \code{value}, \code{stop}, \code{reading} \\
 \code{SystemReport} & \code{path}, \code{wavelength}, \code{wavelengths_um}, \code{reference_wavelength}, \code{field_count}, \code{surface_count}, \code{event_count}, \code{stop}, \code{prescription}, \code{warnings} \\
 \code{ThroughFocus} & \code{field}, \code{wavelength}, \code{shifts}, \code{strehl}, \code{arrived_fraction}, \code{losses}, \code{warnings} \\
 \code{ToleranceClassOverride} & \code{node}, \code{tolerance_class} \\
-\code{ToleranceItem} & \code{id}, \code{surface}, \code{node}, \code{parameter}, \code{param}, \code{segment}, \code{kind}, \code{limit}, \code{distribution} \\
+\code{ToleranceItem} & \code{id}, \code{surface}, \code{node}, \code{parameter}, \code{param}, \code{segment}, \code{term}, \code{kind}, \code{limit}, \code{distribution} \\
 \code{ToleranceItems} & \code{items}, \code{origins}, \code{classes}, \code{warnings} \\
 \code{TolerancePivotOverride} & \code{surface}, \code{node}, \code{pivot} \\
 \code{ToleranceSensitivity} & \code{nominal}, \code{items}, \code{criteria}, \code{limits}, \code{confirmation}, \code{warnings}, \code{expansion}, \code{status} \\
@@ -5198,8 +5382,8 @@ Klasse & Attribute und Methoden \\ \midrule \endhead
 \code{XyPolynomial} & \code{normalization_radius}, \code{coefficients} \\
 \code{Yield} & \code{good}, \code{total}, \code{fraction}, \code{lower}, \code{upper} \\
 \code{ZernikeFit} & \code{path}, \code{field}, \code{wavelength}, \code{wavelength_um}, \code{reference_wavelength_um}, \code{coefficients}, \code{residual_rms}, \code{sigma}, \code{sigma_bf}, \code{strehl}, \code{cells}, \code{arrived_fraction}, \code{warnings} \\
-\code{ZernikeSag} & \code{normalization_radius}, \code{coefficients} \\
 \code{ZernikeFringeSag} & \code{normalization_radius}, \code{coefficients} \\
+\code{ZernikeSag} & \code{normalization_radius}, \code{coefficients} \\
 \bottomrule
 \end{longtable}
 }
@@ -5211,7 +5395,7 @@ Klasse & Attribute und Methoden \\ \midrule \endhead
 \toprule
 Aufzählung & Werte \\ \midrule \endhead
 \code{Aiming} & \code{REAL}, \code{PARAXIAL} \\
-\code{ApertureKind} & \code{NONE}, \code{CIRCULAR}, \code{RECTANGULAR}, \code{ELLIPTICAL} \\
+\code{ApertureKind} & \code{NONE}, \code{CIRCULAR}, \code{RECTANGULAR}, \code{ELLIPTICAL}, \code{REGULAR_POLYGON}, \code{POLYGON} \\
 \code{ApertureReading} & \code{PARAXIAL}, \code{REAL} \\
 \code{ClassSkip} & \code{NONE}, \code{PLANE}, \code{SPHERE}, \code{BOUND}, \code{NO_MATERIAL_IN_BEAM}, \code{NO_MATERIAL}, \code{CRYSTAL}, \code{METAL}, \code{CONST_ABBE}, \code{SHAPE_TYPE}, \code{INACTIVE} \\
 \code{CriterionKind} & \code{LINEAR}, \code{QUADRATIC} \\
@@ -5237,7 +5421,7 @@ Aufzählung & Werte \\ \midrule \endhead
 \code{SystemApertureType} & \code{ENTRANCE_PUPIL_DIAMETER}, \code{IMAGE_SPACE_F_NUMBER}, \code{OBJECT_SPACE_NA}, \code{STOP_SIZE} \\
 \code{ToleranceClass} & \code{NONE}, \code{COARSE}, \code{NORMAL}, \code{PRECISE} \\
 \code{ToleranceDistribution} & \code{NORMAL}, \code{UNIFORM}, \code{ENDPOINT} \\
-\code{ToleranceKind} & \code{RADIUS}, \code{CURVATURE_RELATIVE}, \code{CONIC}, \code{THICKNESS}, \code{PARAM}, \code{PARAMETER}, \code{DECENTER_X}, \code{DECENTER_Y}, \code{SHIFT_Z}, \code{TILT_X_DEG}, \code{TILT_Y_DEG}, \code{TILT_Z_DEG}, \code{INDEX}, \code{ABBE} \\
+\code{ToleranceKind} & \code{RADIUS}, \code{CURVATURE_RELATIVE}, \code{CONIC}, \code{THICKNESS}, \code{PARAM}, \code{PARAMETER}, \code{DECENTER_X}, \code{DECENTER_Y}, \code{SHIFT_Z}, \code{TILT_X_DEG}, \code{TILT_Y_DEG}, \code{TILT_Z_DEG}, \code{INDEX}, \code{ABBE}, \code{ZERNIKE} \\
 \code{ToleranceLevel} & \code{SURFACE}, \code{ELEMENT}, \code{ASSEMBLY} \\
 \code{TrialStatus} & \code{VALID}, \code{INVALID}, \code{CANCELLED} \\
 \bottomrule
@@ -5248,7 +5432,7 @@ Aufzählung & Werte \\ \midrule \endhead
 \chapter{Diagnosecodes}
 \label{chap:codes}
 
-Alle 248 registrierten Codes der Version 0.10.0, automatisch aus \code{rt.diagnostics.CODES}
+Alle 267 registrierten Codes der Version 1.0.0, automatisch aus \code{rt.diagnostics.CODES}
 erzeugt. Spalte »S« ist der Schweregrad (F = Fehler, W = Warnung), »Quelle« die Stufe, in der
 der Code entsteht: \code{validate}, \code{compile}, \code{analysis}, \code{trace},
 \code{optim}, \code{tolerance}, \code{edit}, \code{io} (Lesen), \code{agf}
@@ -5471,7 +5655,7 @@ Code & S & Quelle & Kurztext \\ \midrule \endhead
 \texttt{tolerances.compensator\_bounds} & F & validate & compensator travel\_min >= 0, travel\_max <= 0 or not finite \\
 \texttt{tolerances.compensator\_infeasible} & W & tolerance & the perturbed value of a compensator lies on or outside a bound of its target; it stays there in this trial (ADR 0036, point 3) \\
 \texttt{tolerances.compensator\_merit\_missing} & F & validate & compensators, but the compensator merit (or the optimization it falls back on) is missing or empty \\
-\texttt{tolerances.compensator\_target} & F & validate & compensator neither an unbound Param nor a row of the form value, a target twice, or a row the object distance or the system aperture depend on \\
+\texttt{tolerances.compensator\_target} & F & validate & compensator neither an unbound Param nor a row of the form value, a target twice, a row the object distance or the system aperture depend on, or an aperture dimension or its row \\
 \texttt{tolerances.criterion\_bounds} & F & validate & criterion without bound, min > max, max\_change <= 0, a bound not finite, or target or weight at its operand \\
 \texttt{tolerances.id\_duplicate} & F & validate & tolerance item id or criterion id used twice \\
 \texttt{tolerances.id\_hash\_collision} & F & validate & two tolerance ids (explicit or generated) with the same 64-bit FNV-1a hash \\
@@ -5482,7 +5666,7 @@ Code & S & Quelle & Kurztext \\ \midrule \endhead
 \texttt{tolerances.quantity\_duplicate} & F & validate & two explicit tolerance items perturb the same quantity \\
 \texttt{tolerances.rss\_negative} & W & tolerance & the RSS sum Phi\_0\textasciicircum{}2 + sum q\_i or the prediction Phi\_0\textasciicircum{}2 + sum c\_i\textasciicircum{}2 q\_i of a quadratic criterion is negative; reported as 0 (ADR 0036, point 6) \\
 \texttt{tolerances.target\_inactive} & W & tolerance & explicit tolerance, single value or compensator at an inactive node; it is skipped \\
-\texttt{tolerances.target\_invalid} & F & validate & tolerance kind, anchor, param pointer or segment do not fit the target, a single value of a kind no class generates there, or a row the object distance or the system aperture depend on \\
+\texttt{tolerances.target\_invalid} & F & validate & tolerance kind, anchor, param pointer or segment do not fit the target, a single value of a kind no class generates there, a row the object distance or the system aperture depend on, or an aperture dimension or its row \\
 \texttt{tolerances.unknown\_target} & F & validate & tolerance target (surface, node or parameter row) not found \\
 \texttt{value.not\_finite} & F & validate & number of the model not finite \\
 \texttt{wavelengths.empty} & F & validate & no wavelength \\
