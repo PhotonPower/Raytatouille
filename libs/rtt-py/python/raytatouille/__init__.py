@@ -96,7 +96,7 @@ def llm_reference() -> str:
     return (resources.files(__package__) / "llm_reference.md").read_text(encoding="utf-8")
 
 
-__version__ = "0.10.0"
+__version__ = "1.0.0"
 
 __all__ = [
     "AgfError",

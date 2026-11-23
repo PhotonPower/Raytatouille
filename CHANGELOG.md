@@ -6,6 +6,108 @@ Neue Einträge stehen bis zum nächsten Release als Fragmente in [`changelog.d/`
 
 ## [Unreleased]
 
+## [1.0.0] – Freiformflächen, CLI komplett und Handbuch (M8)
+
+### Hinzugefügt
+- Zernike-Flächenterme werden jetzt gerechnet (ADR 0051): `zernike_sag` nach Noll (orthonormal
+  wie die Fit-Analyse) und neu `zernike_fringe_sag` im Fringe-Satz (ohne Normierung, 37 Terme,
+  Schema 0.11). Eine Fläche mit Termen wird ein Stapel aus Basis und Termen (`geom::Stacked`);
+  Schnitt, Layout, Scheitelentwicklung und Paraxialrechnung kennen ihn. Nicht
+  rotationssymmetrische Terme machen die Fläche paraxial unzugänglich; Analysen laufen dann mit
+  dem Bezug eines Nennsystems. Neuer Code `shape.zernike_terms_invalid`; `shape.zernike_unsupported`
+  wird nicht mehr erzeugt. Die Zernike-Polynome liegen jetzt in `rtt/math/zernike.hpp`. Python:
+  `ZernikeFringeSag`, `SurfaceLayout.terms` (Ergebnisformat 0.1.23) (#316).
+- XY-Polynom als additiver Flächenterm `xy_polynomial` (ADR 0051, Punkt 4, Schema 0.11):
+  z = Σ c_k (x/R)^i (y/R)^j ohne konstanten Term, bis Grad 20 (230 Koeffizienten), in der
+  Reihenfolge des „Extended Polynomial“ von OpticStudio. Neue Codes `shape.xy_terms_invalid`,
+  `shape.xy_radius_invalid` und `shape.xy_without_coefficients`; Python `XyPolynomial`; Beispiel
+  `tests/reference/m8/xy_mirror.rtt.json` (#316).
+- Tabellierte Pfeilhöhe als additiver Flächenterm `grid_sag` (ADR 0051, Punkt 5, Schema 0.11):
+  nx × ny Werte mit Abstand und Versatz, bikubisch nach Hermite interpoliert; Ableitungen
+  optional, sonst finite Differenzen zweiter Ordnung. Außerhalb des Gitters verfehlen Strahlen
+  die Fläche; paraxial gibt es kein Modell, Analysen laufen mit dem Bezug eines Nennsystems.
+  Neue Codes `shape.grid_size_invalid`, `shape.grid_spacing_invalid`, `shape.grid_values_invalid`,
+  `shape.grid_aperture_outside` und `shape.grid_vertex_outside`; Python `GridSag`; Beispiel
+  `tests/reference/m8/grid_sag_mirror.rtt.json` (#316).
+- Zernike-Flächenfehler als Toleranzart `zernike` (ADR 0051, Punkt 7, Schema 0.11): ein Item an
+  einer Fläche mit Apertur und dem Noll-Index `term` hängt im Versuch einen Noll-Term an, normiert
+  auf den Halbdurchmesser der Apertur; alle Zernike-Items einer Fläche bilden einen Term. Der
+  Versuch geht über `compile::Perturbation`, das Modell bleibt unverändert. Python
+  `ToleranceKind.ZERNIKE` und `ToleranceItem.term` (#316).
+- Schreiber des Ergebnisformats in C++ (ADR 0052, Punkt 1): `rtt::io::to_result_json` (Ziel
+  `rtt::io_results`) schreibt `RayBatch`, `RayPaths`, `TraceStats`, `FirstOrder`, `Seidel`,
+  `SpotDiagram`, `OpdMap`, `ZernikeFit`, `Mtf`, `Psf` und `OptimResult` Byte für Byte wie
+  `to_json` in Python, als Grundlage der Kommandozeile `rtt trace`, `analyze` und `optimize`.
+  Die Enum-Namen des Formats stehen für Bindung und Schreiber in `rtt/io/result_names.hpp` (#319).
+- Kommandozeile: `rtt trace` (Strahlen einer Pupillenabtastung, `RayBatch` oder mit `--paths`
+  `RayPaths`) und `rtt analyze first-order|seidel|spot|opd|zernike|psf|mtf` (ADR 0052). Die
+  Ausgabe ist das JSON-Ergebnisformat, Byte für Byte wie `to_json` in Python, oder CSV für
+  `trace`, `spot` und `mtf`; Optionen und Vorgaben wie in der Python-API, `--help` je Befehl,
+  Exit-Codes 0, 1 und 2, `--reference` bei `spot` und `opd` (#319).
+- Kommandozeile: `rtt optimize` (das optimierte System kanonisch nach `-o` oder stdout,
+  `--result` mit dem `OptimResult`), Abbruch mit Strg-C für `trace`, `analyze` und `optimize`
+  (keine Ausgabedatei, Exit 130; bei `optimize` `--result` mit `CANCELLED`) und `--progress`
+  (ADR 0052) (#319).
+- Aperturformen `regular_polygon` (Seitenzahl, Umkreisradius als Param, Drehung; z. B. ein
+  Sechseck) und `polygon` (beliebiges einfaches Polygon, auch konkav) auf Flächen (Schema 0.11,
+  ADR 0050). Trace, Layout, Bestrahlungsstärke, Maßreport (`ApertureKind.REGULAR_POLYGON`,
+  `POLYGON`), Validierung (fünf neue Codes `surface_aperture.*`) und Python
+  (`RegularPolygonAperture`, `PolygonAperture`, `SurfaceLayout.aperture_vertices`,
+  Ergebnisformat 0.1.21) kennen sie; ZMX- und CSV-Export lehnen sie mit
+  `export.aperture_unsupported` ab (#320).
+- Obskurationen an Flächen (Schema 0.11, ADR 0050, Punkt 3): Liste `obscurations` mit Kreis,
+  Rechteck und Ellipse, Versatz `decenter_x`/`decenter_y` und Drehung `rotation_deg`, Maße als
+  Param; auch ohne Apertur, z. B. eine Spinne vor einem Fenster. Ein Strahl darin endet
+  `Vignetted`. Eine zentrierte Kreis-Obskuration an der Blende wirkt genau wie `inner_radius`
+  (Ringzellen, ε, `stop.clips_beam`). Virtuelle Strahlen in zwei Stufen:
+  `trace::ObscurationTest` mit `RayBatch::set_obscuration_test()`; Referenzstrahlen ignorieren
+  alle Obskurationen, die Zellen am Innenrand der Pupillenfunktion nur die zentrierten Kreise.
+  Fünf neue Codes `surface_obscuration.*`. ZMX-Import und -Export von `OBSC`, `SQOB`, `ELOB` mit
+  `OBDC`. Python: `CircularObscuration`, `RectangularObscuration`, `EllipticalObscuration`,
+  `Surface.obscurations`, `SurfaceLayout.obscurations` (Ergebnisformat 0.1.22) (#320).
+- `rtt-io`: Linsenkataloge als eigene JSON-Dateien (`raytatouille-lenses` 0.1.0) mit Schema und
+  strengem Parser `rtt::io::load_lens_catalog` (ADR 0053) (#321).
+- Python: Konstruktionshelfer `rt.design.singlet`, `doublet` (verkittet) und `triplet` geben ein
+  vollständiges System zurück; `rt.design.load_lens_catalog` und `from_catalog` machen aus
+  Linsenkatalogen Systeme; neu `rt.DesignError`, `rt.LensCatalogError` und `rt.SCHEMA_VERSION`
+  (ADR 0053) (#321).
+- Benutzerhandbuch für die Python-API (Deutsch, LaTeX) unter `docs/handbuch/`, auf Stand 0.10.0:
+  Installation von PyPI, Dateiformat bis Schema 0.10, neue Kapitel zu Flächentypen und anamorphen
+  Systemen und zur Toleranzierung, Bestrahlungsstärke, Zwischenstand der Optimierung, Pickle,
+  JSON-Schemas, ZMX über die CLI; Referenz, Klassen und Diagnosecodes aus 0.10.0 erzeugt. Alle
+  24 Beispiele laufen gegen das Wheel von PyPI; `tools/handbuch_beispiele.py` prüft das. Das PDF
+  hängt am GitHub-Release (#322).
+- Benchmark: Variante des Cooke-Tripletts mit Zernike-Freiformflächen in `rtt_bench`; relative
+  Prüfung in der CI gegen 0.9.0 auf demselben Runner (`tools/bench_compare.py`, Fehler über 25 %
+  langsamer); Ziel für v1.0 mit Referenzmaschine und Messung im Versions-PR (#323).
+- Abnahmetest M8 `test_m8_acceptance.cpp` (Tag `[m8]`): Axicon, Q-bfs, ungerade Asphäre, Q-con,
+  Zylinder und Bikonik, Zernike- und XY-Spiegel, Grid-Sag gegen die analytische Fläche, Sechseck
+  und Obskurationen, je mit analytischem Sollwert, dazu der Determinismus bei 1, 4 und allen
+  Threads; Bitvergleich Python ↔ C++ für die Freiformflächen aus S3 und die Aperturen aus F1
+  (`test_bitwise_m8.py`) (#324).
+- `rtt-py`: kompakte Befehlsreferenz für Sprachmodelle und Agenten im Paket
+  (`raytatouille/llm_reference.md`, auf Englisch): Ablauf, Konventionen, Dateiformat, lauffähige
+  Rezepte und ein erzeugter Index aller öffentlichen Funktionen; `rt.llm_reference()` gibt sie
+  zurück, `help(raytatouille)` verweist darauf. `tools/llm_reference.py --write` erzeugt den
+  Index, `test_llm_reference.py` prüft Rezepte und Index (#408).
+
+### Geändert
+- Aperturmaße sind Params (Schema 0.11.0, ADR 0050): `radius`, `inner_radius`, `half_width_x/_y`
+  und `semi_axis_x/_y` nehmen eine Zahl, `{"value", "variable", "min", "max"}` oder
+  `{"param": "NAME"}`. Damit lässt sich z. B. der Blendenradius bei `stop_size` optimieren (#281).
+  Aperturmaße und Zeilen der Parametertabelle, an die eines gebunden ist, sind keine Toleranz- und
+  keine Kompensatorziele. Dateien bis 0.10 lesen sich unverändert. **Inkompatibel:** In Python und
+  C++ sind diese Felder `Param` statt `float`/`double` (Wert über `.value`), und die
+  Bearbeitungsform schreibt sie als Objekte; ein Patch auf den Wert geht an
+  `…/aperture/radius/value` (#320).
+- CI: Der Job „Python 3.13 ci-macos-python“ führt die 24 Beispiele des Benutzerhandbuchs gegen
+  das gebaute Paket aus und vergleicht ihre Ausgaben mit den abgedruckten
+  (`tools/handbuch_beispiele.py`; #322).
+
+### Behoben
+- `libs/rtt-py/tests/requirements.txt` lässt sich unter Python 3.11 installieren: NumPy ist
+  dort auf 2.4.6 gepinnt, weil numpy 2.5 Python ≥ 3.12 verlangt (#406).
+
 ## [0.10.0] – Flächentypen, ZMX-Austausch, macOS und PyPI
 
 ### Hinzugefügt
