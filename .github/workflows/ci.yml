@@ -286,7 +286,7 @@ jobs:
           python -m pytest -q -p no:cacheprovider "$GITHUB_WORKSPACE/libs/rtt-py/tests" \
             --ignore="$GITHUB_WORKSPACE/libs/rtt-py/tests/test_cli.py"
       - name: Examples of the user manual (#322)
-        # The 24 examples of docs/handbuch/raytatouille-handbuch.tex against the package installed
+        # The 25 examples of docs/handbuch/raytatouille-handbuch.tex against the package installed
         # by the smoke test, with the printed outputs compared character by character. Only on
         # macOS: the outputs come from macOS arm64 (ADR 0047), and results are bitwise equal only
         # per platform and compiler (ADR 0011). matplotlib comes from the test requirements.

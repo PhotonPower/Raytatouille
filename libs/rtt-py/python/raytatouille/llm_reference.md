@@ -1,6 +1,6 @@
 # raytatouille – compact reference for language models and agents
 
-Version 0.10.0. Read this first; then `help(obj)` for details (all docstrings are English) and
+Version 1.0.0. Read this first; then `help(obj)` for details (all docstrings are English) and
 `raytatouille/_core.pyi` for exact types. Everything below works with the installed wheel alone.
 The code blocks run in order as one session (a test checks that).
 
@@ -106,7 +106,8 @@ Format essentials (`rt.schema("system")` returns the full JSON schema as a dict)
   in mm with `spacing_x`, `spacing_y`, `decenter_x`, `decenter_y`, value k = j nx + i, optional
   `dz_dx`, `dz_dy`, `d2z_dxdy` together, else finite differences; bicubic Hermite; rays outside
   the grid miss; no paraxial model). Terms that are not rotationally symmetric need
-  a nominal reference for aiming (`reference=` of spot and OPD options).
+  a nominal reference for aiming (CLI `rtt analyze spot|opd --reference`; in Python start rays
+  yourself).
   `interaction`: `fresnel` (default), `ideal_mirror`, `absorber`, `ideal_beam_splitter`,
   `ideal_polarizer`, `ideal_retarder`, `ideal_lens`, `coating` (`"name": "CAT:NAME"`), … .
 - Materials: `CONST:n` or `CONST:n,k`, `AIR`, `VACUUM`, `CATALOG:NAME` from a loaded AGF file
@@ -398,6 +399,7 @@ seidel(system: SystemLike, path: int | str = 0, wavelength: int | None = None, *
 spot(system: SystemLike, path: int | str = 0, field: int = 0, wavelength: int | None = None, *, rays: str | PupilSampling = 'hexapolar:6', aiming: Aiming = Aiming.REAL, …) -> SpotDiagram
 stokes_pupil(jones: JonesPupil, e1: complex, e2: complex) -> StokesPupil
 system_report(system: SystemLike, path: int | str = 0, wavelength: int | None = None, *, …) -> SystemReport
+through_focus(system: SystemLike, path: int | str = 0, field: int = 0, wavelength: int | None = None, *, shifts: Sequence[float], grid: int = 64, apodization: float = 0.0, aiming: Aiming = Aiming.REAL, …) -> ThroughFocus
 zernike(j: int, rho: float, theta: float) -> float
 zernike_fit(pupil: PupilFunction, *, terms: int = 37, incomplete_warning_fraction: float = 0.01) -> ZernikeFit
 zernike_radial(n: int, m: int, rho: float) -> float

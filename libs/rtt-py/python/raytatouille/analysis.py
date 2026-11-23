@@ -217,6 +217,7 @@ __all__ = [
     "spot",
     "stokes_pupil",
     "system_report",
+    "through_focus",
     "zernike",
     "zernike_fit",
     "zernike_radial",

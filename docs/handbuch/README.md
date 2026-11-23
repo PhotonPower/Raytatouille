@@ -1,11 +1,11 @@
 # Benutzerhandbuch
 
 `raytatouille-handbuch.tex` ist das Benutzerhandbuch für die Python-API (Deutsch, LaTeX). Es
-beschreibt genau eine Version, derzeit **0.10.0**; jedes Beispiel wurde mit dieser Version
+beschreibt genau eine Version, derzeit **1.0.0**; jedes Beispiel wurde mit dieser Version
 ausgeführt, die abgedruckten Ausgaben sind unverändert übernommen.
 
-**PDF zum Herunterladen:** an jedem GitHub-Release, für 0.10.0
-[raytatouille-handbuch-0.10.0.pdf](https://github.com/PhotonPower/Raytatouille/releases/download/v0.10.0/raytatouille-handbuch-0.10.0.pdf).
+**PDF zum Herunterladen:** an jedem GitHub-Release, für 1.0.0
+[raytatouille-handbuch-1.0.0.pdf](https://github.com/PhotonPower/Raytatouille/releases/download/v1.0.0/raytatouille-handbuch-1.0.0.pdf).
 Das PDF liegt nicht im Repository.
 
 ## Bauen
