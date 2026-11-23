@@ -103,6 +103,11 @@ Neue Einträge stehen bis zum nächsten Release als Fragmente in [`changelog.d/`
 - CI: Der Job „Python 3.13 ci-macos-python“ führt die 24 Beispiele des Benutzerhandbuchs gegen
   das gebaute Paket aus und vergleicht ihre Ausgaben mit den abgedruckten
   (`tools/handbuch_beispiele.py`; #322).
+- Benutzerhandbuch auf Stand 1.0.0 mit 25 Beispielen: Abschnitt „Freiformterme“ (paraxiale
+  Behandlung, Beispiel `ex25_freiform.py`), `rt.design`, die CLI-Befehle `trace`, `analyze` und
+  `optimize`, Schema 0.11, Zusage zur Stabilität nach SemVer ab 1.0 (#324).
+- Python: `rt.analysis.through_focus` steht in `__all__` und gehört damit zur öffentlichen API
+  (#324).
 
 ### Behoben
 - `libs/rtt-py/tests/requirements.txt` lässt sich unter Python 3.11 installieren: NumPy ist

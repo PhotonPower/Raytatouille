@@ -212,13 +212,22 @@ in geometrischer Optik voraus (Brennweite, Pupillen, Bildfehler). Es erklärt
 
 Das Handbuch beschreibt genau die Version \textbf{1.0.0} (Git-Tag \code{v1.0.0}). Jedes
 Programmbeispiel wurde mit dem Quellstand dieser Version ausgeführt (Release-Build unter macOS~26
-arm64); die abgedruckten Ausgaben sind unverändert übernommen. Andere Versionen können abweichen;
-das Dateiformat erhöht bei Änderungen seine Version (Abschnitt~\ref{sec:migration}). Stabil über Versionen hinweg sind die
-\emph{Diagnosecodes} (z.\,B. \code{material.unknown}): Sie werden nie umbenannt oder
-umgedeutet, nur ergänzt.
+arm64); die abgedruckten Ausgaben sind unverändert übernommen.
+
+Ab 1.0 folgen die Versionen SemVer: Die öffentliche Python-API (die Namen in \code{__all__} von
+\code{raytatouille} und seinen Modulen), das Dateiformat und die Diagnosecodes ändern sich in 1.x
+nur verträglich; inkompatible Änderungen kommen erst mit 2.0. Das Dateiformat erhöht bei
+Änderungen seine Version, ältere Dateien werden beim Lesen migriert
+(Abschnitt~\ref{sec:migration}). Die \emph{Diagnosecodes} (z.\,B. \code{material.unknown})
+werden nie umbenannt oder umgedeutet, nur ergänzt. Zahlen in den letzten Stellen können zwischen
+Plattformen und Versionen abweichen.
 
 \begin{hinweis}[Neu seit der Ausgabe für 0.10]
-Die Beispiele der Ausgabe für 0.10 laufen unverändert. Neu beschrieben sind:
+Eine Änderung ist nicht verträglich: Aperturmaße (\code{radius}, \code{inner_radius},
+\code{half_width_x}/\code{_y}, \ldots) sind seit Schema~0.11 \code{Param} statt \code{float}; den
+Wert liest man über \code{.value}, und die Bearbeitungsform schreibt sie als Objekt (ein Patch auf
+den Wert geht an \code{…/aperture/radius/value}). Die Beispiele in
+Kapitel~\ref{chap:format} sind entsprechend angepasst. Neu beschrieben sind:
 \begin{itemize}
   \item Schema~0.11: Freiformterme \code{zernike_sag}, \code{zernike_fringe_sag},
         \code{xy_polynomial} und \code{grid_sag}, Aperturen als regelmäßiges Polygon und als
@@ -2472,12 +2481,15 @@ Scheitel beitragen (ADR~0041, Punkt~2):
         XY mit gleichen Koeffizienten von $x^2$ und $y^2$) ändern die Scheitelkrümmung, ein
         konstanter Anteil verschiebt den Scheitel. \code{first_order} rechnet damit;
         \code{seidel} braucht zusätzlich Rotationssymmetrie bis zur vierten Ordnung.
-  \item Kippung oder Astigmatismus im Scheitel (Zernike $Z_2$, $Z_3$, $Z_5$, $Z_6$, XY mit $x$
-        oder $x^2 \ne y^2$) sind für \code{first_order} ein \code{ParaxialError}.
+  \item Eine Steigung im Scheitel (Zernike-Kippung $Z_2$, $Z_3$ und Koma $Z_7$, $Z_8$; XY mit $x$
+        oder $y$) oder eine nicht isotrope Hessesche (Zernike-Astigmatismus $Z_5$, $Z_6$,
+        $Z_{12}$, $Z_{13}$; XY mit $xy$ oder ungleichen Koeffizienten von $x^2$ und $y^2$) ist für
+        \code{first_order} ein \code{ParaxialError}.
   \item Grid-Sag ist nur einmal stetig differenzierbar und hat kein paraxiales Modell.
 \end{itemize}
-Wo das paraxiale Modell fehlt, gibt es auch keine automatische Zielung; Strahlen startet man
-dann selbst (Abschnitt~\ref{sec:eigene-strahlen}).
+Wo das paraxiale Modell fehlt, gibt es auch keine automatische Zielung. In Python startet man die
+Strahlen dann selbst (Abschnitt~\ref{sec:eigene-strahlen}); das Kommandozeilenwerkzeug zielt mit
+dem Bezug eines Nennsystems (\code{rtt analyze spot|opd --reference}, Anhang~\ref{chap:cli}).
 
 \begin{pycode}[title={\code{ex25_freiform.py}}]
 """Freiformterme auf der Vorderfläche des Singlets: was erste Ordnung und Seidel daraus machen."""
@@ -2545,7 +2557,8 @@ Scheitelkrümmung mit Z4: 0.019436 statt 0.019350 1/mm
 \end{ausgabe}
 
 Der Defokusterm vergrößert die Scheitelkrümmung der Vorderfläche um $4\sqrt3\,A/R^2$; die
-Brennweite sinkt im selben Verhältnis wie bei einer dünnen Plankonvexlinse. Der Term $x^2y$ ist
+Brennweite sinkt im umgekehrten Verhältnis der Scheitelkrümmungen; bei ebener Rückfläche gilt das
+auch für die dicke Linse exakt. Der Term $x^2y$ ist
 dritter Ordnung: Die erste Ordnung bleibt die der Kugel, aber für Seidel fehlt die
 Rotationssymmetrie bis zur vierten Ordnung. Astigmatismus im Scheitel und Grid-Sag lassen schon
 die erste Ordnung scheitern.
@@ -4303,7 +4316,9 @@ Wellenfront statt Spot (\code{rt.analysis.opd_points} braucht dieselbe Zielung; 
   \item \textbf{Freiformflächen:} Zernike-Terme nach Noll und im Fringe-Satz, XY-Polynome und
         Grid-Sag (ADR~0051). Terme mit Kippung oder Astigmatismus im Scheitel und Grid-Sag haben
         kein paraxiales Modell und damit keine automatische Zielung; Strahlen startet man dort
-        selbst (Abschnitt~\ref{sec:freiform}).
+        selbst oder zielt im Kommandozeilenwerkzeug mit dem Bezug eines Nennsystems
+        (Abschnitt~\ref{sec:freiform}). Ebenso braucht die Optimierung solcher Systeme einen
+        eigenen Bezug.
   \item \textbf{Zielung nur für rotationssymmetrische und anamorphe Pfade.} Gekippte,
         dezentrierte und gefaltete Pfade brauchen eigene Startstrahlen
         (Kapitel~\ref{chap:toleranz}); ebenso Pfade mit Axicon oder ungerader Asphäre mit
@@ -4326,12 +4341,13 @@ Wellenfront statt Spot (\code{rt.analysis.opd_points} braucht dieselbe Zielung; 
   \item \textbf{ZMX-Import und -Export} nur im Kommandozeilenwerkzeug und in C++, nicht aus
         Python (Anhang~\ref{chap:cli}); Gläser kommen aus AGF-Katalogen. Zernike-Sag- und
         Extended-Polynomial-Flächen einer ZMX-Datei werden noch nicht importiert
-        (\code{zmx.surface_unsupported}).
+        (\code{zmx.surface_unsupported}); Fringe-Zernike und Grid-Sag ebenso nicht. Der Export
+        lehnt Freiformterme (\code{export.surface_unsupported}) und Polygon-Aperturen
+        (\code{export.aperture_unsupported}) ab.
   \item \textbf{Pickle} nur für \code{System}; \code{CompiledSystem} und Ergebnisse werden
         über JSON ausgetauscht.
-  \item \code{rt.analysis.through_focus} fehlt in \code{__all__} (der Aufruf funktioniert).
-  \item Stabil über Versionen sind die Diagnosecodes und das Ergebnisformat innerhalb von
-        0.1.x.
+  \item Das Ergebnisformat ist innerhalb von 0.1.x verträglich; seine Version zählt getrennt von
+        der Paketversion.
 \end{itemize}
 
 % =============================================================================
