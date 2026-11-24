@@ -349,7 +349,12 @@ class Importer {
   void read_trailer(std::size_t from);
   [[nodiscard]] double length(double v) const { return v * scale_; }
   std::string resolve_glass(const ZSurface& s);
-  model::ShapeStack shape(const ZSurface& s, bool& powered) const;
+  struct TermData {
+    double radius = 0.0;               ///< mm
+    std::vector<double> coefficients;  ///< mm
+  };
+  [[nodiscard]] TermData term_data(const ZSurface& s, int max_terms) const;
+  model::ShapeStack shape(const ZSurface& s, bool& powered);
   std::optional<model::Aperture> aperture(const ZSurface& s);
   std::optional<model::Obscuration> obscuration(const ZSurface& s);
   model::System build();
@@ -586,17 +591,74 @@ std::string Importer::resolve_glass(const ZSurface& s) {
            (searched.empty() ? std::string("(no GCAT)") : searched));
 }
 
-model::ShapeStack Importer::shape(const ZSurface& s, bool& powered) const {
+/// Extra data of SZERNSAG, FZERNSAG and XPOLYNOM (UG "Zernike Standard Sag", "Zernike Fringe Sag",
+/// "Extended Polynomial"): parameter 13 = number of terms N (at most max_terms), 14 =
+/// normalization radius in lens units, 14 + j = A_j in lens units. Extra data 12 + n is XDAT n
+/// (UG "Extended Polynomial": "the 12th term ..., which is extra data term number 14"). Terms
+/// beyond N are ignored as in OpticStudio, zeros at the end dropped; radius and A_j in mm.
+Importer::TermData Importer::term_data(const ZSurface& s, int max_terms) const {
+  const auto xd = [&](int i) {
+    const auto it = s.xdat.find(i);
+    return it == s.xdat.end() ? Located{0.0, s.type_line} : it->second;
+  };
+  for (const auto& [i, v] : s.xdat) {
+    if ((i < 1 || i > 2 + max_terms) && v.value != 0.0) {
+      fail("zmx.parse", v.line,
+           s.type + " has the extra data 1 to " + std::to_string(2 + max_terms) + " only");
+    }
+  }
+  const Located terms = xd(1);
+  if (!(terms.value >= 0.0 && terms.value <= static_cast<double>(max_terms)) ||
+      terms.value != static_cast<double>(static_cast<int>(terms.value))) {
+    fail("zmx.parse", terms.line,
+         "the number of terms of " + s.type + " is 0 to " + std::to_string(max_terms));
+  }
+  TermData out;
+  const int n = static_cast<int>(terms.value);
+  out.coefficients.reserve(static_cast<std::size_t>(n));
+  for (int j = 1; j <= n; ++j) out.coefficients.push_back(length(xd(2 + j).value));
+  while (!out.coefficients.empty() && out.coefficients.back() == 0.0) {
+    out.coefficients.pop_back();
+  }
+  const Located radius = xd(2);
+  out.radius = length(radius.value);
+  if (!out.coefficients.empty() && !(std::isfinite(out.radius) && out.radius > 0.0)) {
+    fail("zmx.parse", radius.line, "the normalization radius of " + s.type + " must be > 0");
+  }
+  return out;
+}
+
+model::ShapeStack Importer::shape(const ZSurface& s, bool& powered) {
   model::ShapeStack out;
   const double c = s.curv.value / scale_;
   powered = c != 0.0;
-  if (s.type == "EVENASPH") {
+  // UG "Zernike Standard Sag" and "Zernike Fringe Sag": the base is that of "Even Asphere"
+  // (parameters 1 to 8 = alpha_1 ... alpha_8); parameter 0 = extrapolate flag, 9 and 10 = the
+  // decenter of the Zernike terms in lens units.
+  const bool zernike = s.type == "SZERNSAG" || s.type == "FZERNSAG";
+  if (s.type == "EVENASPH" || zernike) {
     // alpha_i (r^(2i)) in L^(1 - 2i): times 1/s for (2i - 1) times, no pow (ADR 0044, point 3)
     std::vector<double> alpha(8, 0.0);
     for (const auto& [i, v] : s.parm) {
+      if (zernike && i == 0) {
+        if (v.value != 0.0 && v.value != 1.0) {
+          fail("zmx.parse", v.line, "the extrapolate flag of " + s.type + " is 0 or 1");
+        }
+        continue;
+      }
+      if (zernike && (i == 9 || i == 10)) {
+        if (v.value != 0.0) {
+          // the model has no decenter of the terms (decision on #430)
+          fail("zmx.surface_unsupported", v.line,
+               s.type + " with a decenter of the Zernike terms is not supported");
+        }
+        continue;
+      }
       if (i < 1 || i > 8) {
         if (v.value != 0.0) {
-          fail("zmx.parse", v.line, "EVENASPH has the parameters 1 to 8 only");
+          fail("zmx.parse", v.line,
+               s.type + (zernike ? " has the parameters 0 to 10 only"
+                                 : " has the parameters 1 to 8 only"));
         }
         continue;
       }
@@ -609,8 +671,9 @@ model::ShapeStack Importer::shape(const ZSurface& s, bool& powered) const {
     if (!alpha.empty()) {
       if (alpha[0] != 0.0) {
         fail("zmx.asphere_r2", s.parm.at(1).line,
-             "EVENASPH with alpha1 (r^2) != 0 is not imported: its paraxial reading is not "
-             "documented");
+             s.type +
+                 " with alpha1 (r^2) != 0 is not imported: its paraxial reading is not "
+                 "documented");
       }
       powered = true;
       if (c != 0.0) {
@@ -626,9 +689,56 @@ model::ShapeStack Importer::shape(const ZSurface& s, bool& powered) const {
         }
         out.base = a;
       }
-      return out;
+    } else if (c != 0.0) {
+      out.base = model::Conic{1.0 / c, s.coni.value};
     }
-  } else if (s.type == "ODDASPHE") {
+    if (zernike) {
+      // Zernike Standard = Noll, orthonormal ("Zernike Standard Coefficients"), as zernike_sag;
+      // Fringe as zernike_fringe_sag (ADR 0051, points 2 and 3). At most 231 and 37 terms.
+      const bool standard = s.type == "SZERNSAG";
+      const TermData d = term_data(s, standard ? 231 : 37);
+      if (!d.coefficients.empty()) {
+        powered = true;
+        const std::vector<model::Param> a(d.coefficients.begin(), d.coefficients.end());
+        if (standard) {
+          out.terms.emplace_back(model::ZernikeSag{d.radius, a});
+        } else {
+          out.terms.emplace_back(model::ZernikeFringeSag{d.radius, a});
+        }
+        // Extrapolate = 0: OpticStudio drops the terms beyond the normalization radius, the model
+        // evaluates them everywhere (ADR 0051, point 1); equal up to the semi-diameter DIAM
+        // (decision on #430).
+        const auto flag = s.parm.find(0);
+        if ((flag == s.parm.end() || flag->second.value == 0.0) &&
+            length(s.diam.value) > d.radius) {
+          warnings_.push_back(Ignored::warning(
+              "zmx.zernike_extrapolate", flag == s.parm.end() ? s.type_line : flag->second.line,
+              s.type + " with extrapolate = 0 and a semi-diameter beyond the normalization "
+                       "radius: the terms are evaluated there"));
+        }
+      }
+    }
+    return out;
+  }
+  if (s.type == "XPOLYNOM") {
+    // UG "Extended Polynomial": z = c r^2 / (1 + sqrt(1 - (1 + k) c^2 r^2)) + sum A_i E_i(x, y),
+    // x and y divided by the normalization radius, E_i = x, y, x^2, x y, y^2, ... as xy_polynomial
+    // (ADR 0051, point 4); at most 230 terms. The page lists no parameters below 13.
+    for (const auto& [i, v] : s.parm) {
+      if (v.value != 0.0) {
+        fail("zmx.parse", v.line, "XPOLYNOM has no parameters (its data are extra data)");
+      }
+    }
+    if (c != 0.0) out.base = model::Conic{1.0 / c, s.coni.value};
+    const TermData d = term_data(s, 230);
+    if (!d.coefficients.empty()) {
+      powered = true;
+      out.terms.emplace_back(model::XyPolynomial{
+          d.radius, std::vector<model::Param>(d.coefficients.begin(), d.coefficients.end())});
+    }
+    return out;
+  }
+  if (s.type == "ODDASPHE") {
     // UG "Odd Asphere": z = c r^2 / (1 + sqrt(1 - (1 + k) c^2 r^2)) + beta_1 r + ... + beta_8 r^8,
     // parameters 1 to 8 = beta_1 ... beta_8 (also optiland); the odd_asphere of ADR 0043 with
     // A_n = beta_n. beta_n in L^(1 - n): times 1/s for (n - 1) times (ADR 0044, point 3).
@@ -1345,7 +1455,8 @@ ZmxImport Importer::run() {
   }
   read_trailer(i);
   for (const ZSurface& s : surfaces_) {
-    if (!s.xdat.empty() && s.type != "TOROIDAL" && s.type != "QED_TYPE") {
+    if (!s.xdat.empty() && s.type != "TOROIDAL" && s.type != "QED_TYPE" && s.type != "SZERNSAG" &&
+        s.type != "FZERNSAG" && s.type != "XPOLYNOM") {
       fail("zmx.keyword_unsupported", s.xdat.begin()->second.line,
            "extra data (XDAT) of a " + s.type + " surface is not supported");
     }

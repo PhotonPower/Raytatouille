@@ -99,7 +99,8 @@ UNITS = {"MM": 1.0, "CM": 10.0, "IN": 25.4, "METER": 1000.0}
 
 
 def surf(**kw):
-    base = dict(type="STANDARD", curv=0.0, coni=0.0, parm=[], xdat=[], disz=0.0, glas="",
+    base = dict(type="STANDARD", curv=0.0, coni=0.0, parm=[], parm0=None, xdat=[], disz=0.0,
+                glas="",
                 diam=(0.0, 0, 0), clap=None, flap=None, sqap=None, elap=None, stop=False)
     base.update(kw)
     return base
@@ -341,6 +342,111 @@ CASES["biconic_in"] = biconic("IN")
 CASES["qcon"] = qtype("MM", 1, 1.0 / 40.0, -0.2, [1e-3, -2e-4, 5e-5])
 CASES["qcon_in"] = qtype("IN", 1, 1.0 / 40.0, -0.2, [1e-3, -2e-4, 5e-5])
 CASES["qbfs"] = qtype("MM", 0, 1.0 / 45.0, 0.0, [2e-3, -1e-4])
+
+
+# ------------------------------------------------------- #430: SZERNSAG, FZERNSAG, XPOLYNOM
+
+def noll_nm(j: int) -> tuple[int, int]:
+    """(n, m) of the Noll index j (Niu/Tian 2022, Eqs. (8), (9)): row n holds j = n(n+1)/2 + 1
+    ... (n+1)(n+2)/2, |m| ascending with each m != 0 twice; m > 0 (cos) for even j."""
+    n = 0
+    while (n + 1) * (n + 2) // 2 < j:
+        n += 1
+    k = j - n * (n + 1) // 2  # 1 ... n + 1
+    ms = sorted([m for m in range(n % 2, n + 1, 2) for _ in range(1 if m == 0 else 2)])
+    m = ms[k - 1]
+    return n, (m if m == 0 or j % 2 == 0 else -m)
+
+
+def fringe_nm(j: int) -> tuple[int, int]:
+    """(n, m) of the Fringe index j (from 1; Niu/Tian Table 4): N = (n + |m|) / 2 ascending, n
+    ascending, m descending; j = 37 is (12, 0)."""
+    if j == 37:
+        return 12, 0
+    order = []
+    for big_n in range(6):
+        for n in range(big_n, 2 * big_n + 1):
+            m = 2 * big_n - n
+            order += [(n, m)] if m == 0 else [(n, m), (n, -m)]
+    return order[j - 1]
+
+
+def radial_power(n: int, m: int, p: int) -> float:
+    """Coefficient of rho^p in R_n^|m|(rho) (Niu/Tian Eq. (4))."""
+    m = abs(m)
+    out = 0.0
+    for k in range((n - m) // 2 + 1):
+        if n - 2 * k == p:
+            out += ((-1) ** k * math.factorial(n - k)
+                    / (math.factorial(k) * math.factorial((n + m) // 2 - k)
+                       * math.factorial((n - m) // 2 - k)))
+    return out
+
+
+def zernike_vertex(kind: str, a_mm: list[float], radius_mm: float) -> tuple[float, float]:
+    """Vertex offset (mm) and added vertex curvature (1/mm) of Zernike terms (ADR 0051, point 2):
+    only m = 0 contributes, sum a N_n R_n^0 with N_n = sqrt(n + 1) for Noll (Niu/Tian Eq. (3)),
+    1 for Fringe (Eq. (22)); z = a N (k0 + k2 r^2 / R^2 + ...) gives z0 = a N k0, c = 2 a N k2 / R^2."""
+    z0 = 0.0
+    dc = 0.0
+    for j, a in enumerate(a_mm, start=1):
+        n, m = noll_nm(j) if kind == "SZERNSAG" else fringe_nm(j)
+        if m != 0 or a == 0.0:
+            continue
+        norm = math.sqrt(n + 1) if kind == "SZERNSAG" else 1.0
+        z0 += a * norm * radial_power(n, 0, 0)
+        dc += 2.0 * a * norm * radial_power(n, 0, 2) / radius_mm ** 2
+    return z0, dc
+
+
+def freeform(unit: str, typ: str, curv: float, coni: float, parm: list[float], terms: list[float],
+             radius: float, parm0: float | None = 1.0, diam: float = 8.0) -> dict:
+    # #430: the freeform type on the front of a singlet (UG "Zernike Standard Sag", "Zernike
+    # Fringe Sag", "Extended Polynomial": extra data 13 = number of terms, 14 = normalization
+    # radius, 15 ff. = A1, A2, ...; XDAT n = parameter 12 + n). The terms in mm.
+    return dict(
+        name=typ, unit=unit, catalog="schott.agf", aperture=("ENPD", 8.0), ftyp=0,
+        fields=[(0.0, 0.0, 1.0), (0.0, 2.0, 1.0), (2.0, 0.0, 1.0)],
+        waves=[(0.5875618, 1.0)], pwav=1, object=None,
+        surfaces=[
+            surf(disz=3.0, diam=(4.0, 1, 0), stop=True),
+            surf(type=typ, curv=curv, coni=coni, parm=parm, parm0=parm0,
+                 xdat=[float(len(terms)), radius] + terms, disz=6.0, glas="N-BK7",
+                 diam=(diam, 1, 0), flap=diam),
+            surf(curv=-1.0 / 80.0, disz=50.0, diam=(8.0, 0, 0)),
+            surf(),
+        ],
+        merit=False, thic=None)
+
+
+def noll_terms() -> list[float]:
+    # Noll 4 (2, 0) and 11 (4, 0) change vertex and curvature, 20 (5, 5) only the shape
+    a = [0.0] * 20
+    a[3], a[10], a[19] = 2e-3, -5e-4, 3e-4
+    return a
+
+
+def fringe_terms() -> list[float]:
+    # Fringe 4 (2, 0) and 9 (4, 0) change vertex and curvature, 26 (5, 5) only the shape
+    a = [0.0] * 26
+    a[3], a[8], a[25] = -1.5e-3, 4e-4, 2e-4
+    return a
+
+
+def xy_terms() -> list[float]:
+    # x^2 (3) and y^2 (5) equal: a rotational curvature 2 b / R^2; x y^2 (8) and x^4 (10) only
+    # the shape (third and fourth order)
+    a = [0.0] * 10
+    a[2], a[4], a[7], a[9] = 1.2e-3, 1.2e-3, 3e-4, -2e-4
+    return a
+
+
+# Zernike on an even asphere base (alpha2 != 0) and on a conic; the polynomial on a conic.
+CASES["szernsag"] = freeform("MM", "SZERNSAG", 1.0 / 40.0, -0.3, [0.0, 1e-6], noll_terms(), 9.0)
+CASES["szernsag_in"] = freeform("IN", "SZERNSAG", 1.0 / 40.0, -0.3, [0.0, 1e-6], noll_terms(), 9.0)
+CASES["fzernsag"] = freeform("MM", "FZERNSAG", 1.0 / 45.0, 0.0, [], fringe_terms(), 9.0)
+CASES["xpolynom"] = freeform("MM", "XPOLYNOM", 1.0 / 42.0, -0.5, [], xy_terms(), 9.0, None)
+CASES["xpolynom_in"] = freeform("IN", "XPOLYNOM", 1.0 / 42.0, -0.5, [], xy_terms(), 9.0, None)
 
 # #360, decision H2: a toroid with an infinite y-z radius has power in x only; it is imported as
 # a cylinder turned by 90 deg about z, with a turned frame after it. Its expected data are the
@@ -651,7 +757,13 @@ def printed(case: dict) -> dict:
         # QED_TYPE extra data: type, number of terms, normalization radius (lens units), then
         # the coefficients A0, A1, ... (lens units)
         x = sf["xdat"]
-        p["xdat_s"] = [] if not x else [e(x[0]), e(x[1]), e(x[2] / s)] + [e(a / s) for a in x[3:]]
+        if sf["type"] in ("SZERNSAG", "FZERNSAG", "XPOLYNOM"):
+            # #430: number of terms, normalization radius (lens units), A1, A2, ... (lens units)
+            p["xdat_s"] = [e(x[0]), e(x[1] / s)] + [e(a / s) for a in x[2:]]
+        else:
+            p["xdat_s"] = [] if not x else ([e(x[0]), e(x[1]), e(x[2] / s)]
+                                            + [e(a / s) for a in x[3:]])
+        p["parm0_s"] = None if sf.get("parm0") is None else e(sf["parm0"])
         out["surfaces"].append(p)
     ap = case["aperture"]
     out["aperture_s"] = (ap[0],) if ap[0] == "FLOA" else (
@@ -696,6 +808,8 @@ def write_zmx(name: str, c: dict) -> None:
             L.append("  STOP")
         L.append(f"  TYPE {sf['type']}")
         L.append(f"  CURV {sf['curv_s']} 0 {zero} {zero} 0")
+        if sf.get("parm0_s") is not None:
+            L.append(f"  PARM 0 {sf['parm0_s']}")
         for i, a in enumerate(sf["parm_s"]):
             L.append(f"  PARM {i + 1} {a}")
         for i, a in enumerate(sf.get("xdat_s", [])):
@@ -817,7 +931,8 @@ def build_expected(c: dict, glasses: dict) -> tuple[dict, dict]:
             if rot == 0.0:
                 return {"type": "cylinder"} | profile
             return {"type": "toroid"} | profile | {"radius_of_rotation": rot}
-        if sf["type"] == "EVENASPH" and any(float(a) != 0.0 for a in sf["parm_s"]):
+        if (sf["type"] in ("EVENASPH", "SZERNSAG", "FZERNSAG")
+                and any(float(a) != 0.0 for a in sf["parm_s"])):
             alphas = []
             for i, a in enumerate(sf["parm_s"]):
                 x = float(a)
@@ -880,8 +995,25 @@ def build_expected(c: dict, glasses: dict) -> tuple[dict, dict]:
         else:
             node["pose"] = {"reference": "relative_to_preceding", "position": [0.0, 0.0, z]}
 
+    def terms(sf) -> list:
+        # #430: the extra data as one term (SZERNSAG zernike_sag, FZERNSAG zernike_fringe_sag,
+        # XPOLYNOM xy_polynomial), lengths times s, zeros at the end dropped
+        kind = {"SZERNSAG": "zernike_sag", "FZERNSAG": "zernike_fringe_sag",
+                "XPOLYNOM": "xy_polynomial"}.get(sf["type"])
+        if kind is None:
+            return []
+        x = [float(v) for v in sf["xdat_s"]]
+        coeffs = [v * s for v in x[2:2 + int(x[0])]]
+        while coeffs and coeffs[-1] == 0.0:
+            coeffs.pop()
+        if not coeffs:
+            return []
+        return [{"type": kind, "normalization_radius": x[1] * s, "coefficients": coeffs}]
+
     def surface_node(k: int, sf) -> dict:
         node = {"id": f"S{k}", "shape": {"base": shape(sf)}}
+        if terms(sf):
+            node["shape"]["terms"] = terms(sf)
         a = aperture(sf)
         if sf["stop"] and a is None:
             a = {"type": "circular", "radius": stop_radius(sf)}
@@ -982,7 +1114,26 @@ def vertex_curvature(sf: dict, s: float, section: str | None) -> float:
     if sf["type"] == "TOROIDAL" and section == "x":
         rot = float(sf["parm_s"][0]) * s
         return 0.0 if rot == 0.0 else 1.0 / rot
+    if sf["type"] in ("SZERNSAG", "FZERNSAG"):
+        # c + 2 alpha1 (alpha1 = 0 here) + the m = 0 Zernike terms (ADR 0051, point 2)
+        assert not sf["parm_s"] or float(sf["parm_s"][0]) == 0.0
+        x = [float(v) * s for v in sf["xdat_s"]]
+        return cv + zernike_vertex(sf["type"], x[2:], x[1])[1]
+    if sf["type"] == "XPOLYNOM":
+        # z = sum A_i E_i(x / R, y / R): x^2 (3) and y^2 (5) equal, x (1), y (2), x y (4) zero
+        x = [float(v) * s for v in sf["xdat_s"]]
+        a = x[2:] + [0.0] * 5
+        assert a[0] == a[1] == a[3] == 0.0 and a[2] == a[4]
+        return cv + 2.0 * a[2] / x[1] ** 2
     return cv
+
+
+def vertex_offset(sf: dict, s: float) -> float:
+    """Shift of the paraxial vertex, mm: sag(0, 0) of the terms (ADR 0041, point 2)."""
+    if sf["type"] in ("SZERNSAG", "FZERNSAG"):
+        x = [float(v) * s for v in sf["xdat_s"]]
+        return zernike_vertex(sf["type"], x[2:], x[1])[0]
+    return 0.0
 
 
 def first_order(c: dict, glasses: dict, lam_ref: float, nair: float,
@@ -1007,6 +1158,8 @@ def first_order(c: dict, glasses: dict, lam_ref: float, nair: float,
         n = index(c.get("object_glass") or "AIR")
         sum_abs = 0.0
         surfaces = c["surfaces"][:-1]
+        # vertex shifts of the terms (#430): the gaps between the paraxial vertices
+        offs = [vertex_offset(sf, s) for sf in surfaces] + [0.0]
         z = 0.0
         z_last = 0.0
         y1 = None
@@ -1022,7 +1175,7 @@ def first_order(c: dict, glasses: dict, lam_ref: float, nair: float,
                 sum_abs += abs(y * phi)
                 nu = nu - y * phi
                 t = float(sf["disz_s"]) * s
-                y = y + t * nu / n
+                y = y + (t + offs[k + 1] - offs[k]) * nu / n
                 z += t
                 continue
             if sf["glas"] == "MIRROR":
@@ -1033,19 +1186,19 @@ def first_order(c: dict, glasses: dict, lam_ref: float, nair: float,
             if phi != 0.0 or n_next != n:
                 if y1 is None:
                     y1 = y
-                z_last = z
+                z_last = z + offs[k]
             sum_abs += abs(y * phi)
             nu = nu - y * phi
             n = n_next
             t = float(sf["disz_s"]) * s
-            y = y + t * nu / n
+            y = y + (t + offs[k + 1] - offs[k]) * nu / n
             z += t
         # y now at the image plane; back to the last vertex
         t_img = float(surfaces[-1]["disz_s"]) * s
         u = nu / n
-        y_last = y - t_img * u
+        y_last = y - (t_img - offs[-2]) * u
         power = -nu / y1
-        z_focus = (z - t_img) - y_last / u
+        z_focus = (z - t_img + offs[-2]) - y_last / u
         direction = 1.0 if n > 0 else -1.0
         return {"efl": 1.0 / power, "rear_focal_length": abs(n) / power,
                 "bfl": (z_focus - z_last) * direction, "condition": sum_abs / abs(y1 * power)}

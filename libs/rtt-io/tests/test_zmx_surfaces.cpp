@@ -589,3 +589,187 @@ TEST_CASE("the rules of BICONICX and QED_TYPE reject what the model cannot hold"
     }
   }
 }
+
+// ---------------------------------------------------- #430: SZERNSAG, FZERNSAG and XPOLYNOM
+
+TEST_CASE("the SZERNSAG, FZERNSAG and XPOLYNOM cases import to their expected systems",
+          "[zmx][430]") {
+  // Bitwise as acceptance 1 of ADR 0044; wavelengths to 1e-14 (two Ciddor implementations).
+  for (const char* name : {"szernsag", "szernsag_in", "fzernsag", "xpolynom", "xpolynom_in"}) {
+    INFO(name);
+    const ZmxImport r = import_case(name);
+    REQUIRE(r.warnings.empty());
+    System imported = r.system;
+    const System expected = rtt::io::load_system(kZmxDir + name + ".rtt.json");
+    REQUIRE(imported.wavelengths.size() == expected.wavelengths.size());
+    for (std::size_t i = 0; i < expected.wavelengths.size(); ++i) {
+      REQUIRE(rel(imported.wavelengths[i].um, expected.wavelengths[i].um) <= 1e-14);
+      imported.wavelengths[i].um = expected.wavelengths[i].um;
+    }
+    INFO("imported:\n"
+         << rtt::io::to_json(imported) << "\nexpected:\n"
+         << rtt::io::to_json(expected));
+    REQUIRE(imported == expected);
+  }
+}
+
+TEST_CASE("the freeform cases meet the y-nu trace with the vertex terms of the terms",
+          "[zmx][430]") {
+  // Zernike: vertex curvature c + 2 sum a N_n k2 / R^2 and vertex shift sum a N_n k0 over the
+  // m = 0 terms (ADR 0051, point 2); XPOLYNOM: c + 2 A(x^2) / R^2. make_zmx_cases.py computes
+  // both from its own Noll and Fringe tables (Niu/Tian Eqs. (3), (4), (8), (9), (22)).
+  const auto& fo = first_order_data();
+  for (const char* name : {"szernsag", "szernsag_in", "fzernsag", "xpolynom", "xpolynom_in"}) {
+    INFO(name);
+    const auto& e = fo.at(name);
+    const auto cs = rtt::compile::compile(import_case(name).system, schott());
+    const auto f = rtt::paraxial::first_order(cs, {0}, 0);
+    REQUIRE(f.efl);
+    REQUIRE(f.bfl);
+    const double bound = 1e-12 * std::max(1.0, e.at("condition").get<double>());
+    REQUIRE(rel(*f.efl, e.at("efl").get<double>()) <= bound);
+    REQUIRE(rel(*f.bfl, e.at("bfl").get<double>()) <= bound);
+  }
+  // guard: the terms change the first order (against the base alone)
+  const auto with_terms = rtt::paraxial::first_order(
+      rtt::compile::compile(import_case("szernsag").system, schott()), {0}, 0);
+  System base = import_case("szernsag").system;
+  std::get<Element>(base.root.children.at(1).value).surfaces[0].shape.terms.clear();
+  const auto without = rtt::paraxial::first_order(rtt::compile::compile(base, schott()), {0}, 0);
+  REQUIRE(with_terms.efl);
+  REQUIRE(without.efl);
+  REQUIRE(rel(*with_terms.efl, *without.efl) > 1e-3);
+}
+
+TEST_CASE("content guard: the freeform cases trace, all rays arrive, the fields differ",
+          "[zmx][430]") {
+  for (const char* name : {"szernsag", "fzernsag", "xpolynom"}) {
+    INFO(name);
+    const auto cs = rtt::compile::compile(import_case(name).system, schott());
+    std::set<std::pair<double, double>> centres;
+    for (const auto& [ax, ay] : {std::pair{0.0, 0.0}, std::pair{2.0, 0.0}, std::pair{0.0, 2.0}}) {
+      const RayBatch b = trace_rays(cs, bundle(3.5, ax, ay));
+      REQUIRE(b.size() > 40);
+      Vec3 mean = Vec3::Zero();
+      for (std::size_t i = 0; i < b.size(); ++i) {
+        REQUIRE(b.status()[i] == RayStatus::Alive);
+        mean += Vec3(b.pos_x()[i], b.pos_y()[i], b.pos_z()[i]);
+      }
+      mean /= static_cast<double>(b.size());
+      centres.insert({mean.x(), mean.y()});
+    }
+    REQUIRE(centres.size() == 3);
+  }
+}
+
+TEST_CASE("freeform terms beyond the number of terms are ignored, none leave the base",
+          "[zmx][430]") {
+  // As OpticStudio ("terms beyond ... are ignored"); with 0 terms the surface is its base.
+  const std::string z = read_file(kZmxDir + "szernsag.zmx");
+  const std::string more = in_surface(
+      z, 2, "XDAT 22", "  XDAT 22 3.000000000000E-004 0 0 1 0 0\r\n  XDAT 23 0.5 0 0 1 0 0");
+  REQUIRE(more != z);
+  REQUIRE(import_zmx(more, schott()).system == import_case("szernsag").system);
+  const System none =
+      import_zmx(in_surface(z, 2, "XDAT 1", "  XDAT 1 0.000000000000E+000 0 0 1 0 0"), schott())
+          .system;
+  const auto& s = element(none, 1).surfaces[0].shape;
+  REQUIRE(s.terms.empty());
+  REQUIRE(std::holds_alternative<rtt::model::EvenAsphere>(s.base));
+  const std::string x = read_file(kZmxDir + "xpolynom.zmx");
+  const System plain =
+      import_zmx(in_surface(x, 2, "XDAT 1", "  XDAT 1 0.000000000000E+000 0 0 1 0 0"), schott())
+          .system;
+  const auto& p = element(plain, 1).surfaces[0].shape;
+  REQUIRE(p.terms.empty());
+  const auto* conic = std::get_if<rtt::model::Conic>(&p.base);
+  REQUIRE(conic != nullptr);
+  REQUIRE(conic->radius.value == 42.0);
+}
+
+TEST_CASE("extrapolate = 0 warns only with a semi-diameter beyond the normalization radius",
+          "[zmx][430]") {
+  // Decision on #430: inside the normalization radius both readings agree. The cases have
+  // DIAM 8 and R = 9.
+  const std::string z = read_file(kZmxDir + "szernsag.zmx");
+  const std::string flag0 = in_surface(z, 2, "PARM 0", "  PARM 0 0.000000000000E+000");
+  REQUIRE(import_zmx(flag0, schott()).warnings.empty());
+  const std::string beyond =
+      in_surface(flag0, 2, "XDAT 2", "  XDAT 2 7.000000000000E+000 0 0 1 0 0");
+  // compile adds its own warning for an aperture beyond the normalization radius
+  const std::vector<std::string> both{"zmx.zernike_extrapolate",
+                                      "shape.normalization_radius_exceeded"};
+  const ZmxImport w = import_zmx(beyond, schott());
+  REQUIRE(codes_of(w.warnings) == both);
+  REQUIRE(w.warnings[0].location ==
+          "line " + std::to_string(line_of(beyond, "PARM 0 0.000000000000E+000")));
+  // without PARM 0 (0 by default): the warning at the TYPE line
+  const std::string fz = read_file(kZmxDir + "fzernsag.zmx");
+  const std::string no_flag =
+      in_surface(in_surface(fz, 2, "PARM 0", "  CONI 0"), 2, "XDAT 2", "  XDAT 2 7.0 0 0 1 0 0");
+  const ZmxImport v = import_zmx(no_flag, schott());
+  REQUIRE(codes_of(v.warnings) == both);
+  REQUIRE(v.warnings[0].location == "line " + std::to_string(line_of(no_flag, "TYPE FZERNSAG")));
+  // extrapolate = 1: only the warning of compile
+  REQUIRE(
+      codes_of(
+          import_zmx(in_surface(z, 2, "XDAT 2", "  XDAT 2 7.0 0 0 1 0 0"), schott()).warnings) ==
+      std::vector<std::string>{"shape.normalization_radius_exceeded"});
+}
+
+TEST_CASE("the rules of SZERNSAG, FZERNSAG and XPOLYNOM reject what the model cannot hold",
+          "[zmx][430]") {
+  const std::string z = read_file(kZmxDir + "szernsag.zmx");
+  const std::string fz = read_file(kZmxDir + "fzernsag.zmx");
+  const std::string x = read_file(kZmxDir + "xpolynom.zmx");
+  struct Case {
+    std::string code;
+    std::string text;
+    std::string needle;
+  };
+  const std::vector<Case> cases{
+      // alpha1 (r^2), as EVENASPH
+      {"zmx.asphere_r2", in_surface(z, 2, "PARM 1", "  PARM 1 1.0E-003"), "PARM 1 1.0E-003"},
+      // a decenter of the Zernike terms: the model has none (decision on #430)
+      {"zmx.surface_unsupported",
+       in_surface(z, 2, "PARM 2", "  PARM 2 1.000000000000E-006\r\n  PARM 9 5.0E-001"),
+       "PARM 9 5.0E-001"},
+      {"zmx.surface_unsupported", in_surface(fz, 2, "PARM 0", "  PARM 0 1\r\n  PARM 10 -2.0E-001"),
+       "PARM 10 -2.0E-001"},
+      // a parameter beyond the table, an extrapolate flag other than 0 and 1
+      {"zmx.parse",
+       in_surface(z, 2, "PARM 2", "  PARM 2 1.000000000000E-006\r\n  PARM 11 1.0E-003"),
+       "PARM 11 1.0E-003"},
+      {"zmx.parse", in_surface(z, 2, "PARM 0", "  PARM 0 2.0E+000"), "PARM 0 2.0E+000"},
+      // more terms than the type has (231 Standard, 37 Fringe, 230 polynomial terms)
+      {"zmx.parse", in_surface(z, 2, "XDAT 1", "  XDAT 1 2.320000000000E+002 0 0 1 0 0"),
+       "XDAT 1 2.32"},
+      {"zmx.parse", in_surface(fz, 2, "XDAT 1", "  XDAT 1 3.800000000000E+001 0 0 1 0 0"),
+       "XDAT 1 3.8"},
+      {"zmx.parse", in_surface(x, 2, "XDAT 1", "  XDAT 1 2.310000000000E+002 0 0 1 0 0"),
+       "XDAT 1 2.31"},
+      // a number of terms that is not a whole number, extra data beyond the table
+      {"zmx.parse", in_surface(x, 2, "XDAT 1", "  XDAT 1 2.500000000000E+000 0 0 1 0 0"),
+       "XDAT 1 2.5"},
+      {"zmx.parse",
+       in_surface(fz, 2, "XDAT 1", "  XDAT 1 2.6E+001 0 0 1 0 0\r\n  XDAT 40 1.0E-003 0 0 1 0 0"),
+       "XDAT 40 1.0E-003"},
+      // terms with a normalization radius <= 0
+      {"zmx.parse", in_surface(x, 2, "XDAT 2", "  XDAT 2 0.000000000000E+000 0 0 1 0 0"),
+       "XDAT 2 0.0"},
+      // XPOLYNOM has no parameters
+      {"zmx.parse", in_surface(x, 2, "XDAT 1", "  PARM 1 1.0E-003\r\n  XDAT 1 1.0E+001 0 0 1 0 0"),
+       "PARM 1 1.0E-003"},
+  };
+  for (const Case& c : cases) {
+    INFO(c.code << " / " << c.needle);
+    try {
+      (void)import_zmx(c.text, schott());
+      FAIL("no ZmxError");
+    } catch (const ZmxError& e) {
+      INFO(e.what());
+      REQUIRE(e.code() == c.code);
+      REQUIRE(e.line() == line_of(c.text, c.needle));
+    }
+  }
+}
