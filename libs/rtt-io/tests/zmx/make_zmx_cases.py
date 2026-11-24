@@ -434,7 +434,7 @@ def fringe_terms() -> list[float]:
 
 
 def xy_terms() -> list[float]:
-    # x^2 (3) and y^2 (5) equal: a rotational curvature 2 b / R^2; x^2 y (8) and x^4 (10) only
+    # x^2 (3) and y^2 (5) equal: a rotational curvature 2 b / R^2; x y^2 (8) and x^4 (10) only
     # the shape (third and fourth order)
     a = [0.0] * 10
     a[2], a[4], a[7], a[9] = 1.2e-3, 1.2e-3, 3e-4, -2e-4
