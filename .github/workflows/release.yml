@@ -1,19 +1,19 @@
-# Wheels and sdist of the Python package raytatouille, upload to TestPyPI or PyPI (#404,
-# ADR 0018, addendum #404). Trusted Publishing (OIDC): no token; PyPI and TestPyPI each have a
-# (pending) publisher for this repository, this workflow file and the environment of the job.
+# Wheels and sdist of the Python package raytatouille, upload to PyPI (#404, ADR 0018, addenda
+# #404 and #437). Trusted Publishing (OIDC): no token; PyPI has a publisher for this repository,
+# this workflow file and the environment of the job. TestPyPI is not used (#437).
 #
 # - Pull request that changes this file, pyproject.toml or LICENSES/: build and test only.
 # - By hand (Actions -> Release -> Run workflow): choose the ref (a tag v* for PyPI) and the
-#   target: none (build only), testpypi or pypi.
+#   target: none (build only) or pypi.
 name: Release
 
 on:
   workflow_dispatch:
     inputs:
       target:
-        description: "Upload target: none (build only), testpypi or pypi (only from a tag v*)"
+        description: "Upload target: none (build only) or pypi (only from a tag v*)"
         type: choice
-        options: [none, testpypi, pypi]
+        options: [none, pypi]
         default: none
   pull_request:
     paths:
@@ -150,28 +150,6 @@ jobs:
           name: dist-sdist
           path: dist/*.tar.gz
           if-no-files-found: error
-
-  testpypi:
-    name: Upload to TestPyPI
-    needs: [wheels, sdist]
-    if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
-    runs-on: ubuntu-24.04
-    environment:
-      name: testpypi
-      url: https://test.pypi.org/p/raytatouille
-    permissions:
-      id-token: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: dist-*
-          path: dist
-          merge-multiple: true
-      - uses: pypa/gh-action-pypi-publish@v1.14.3
-        with:
-          repository-url: https://test.pypi.org/legacy/
-          # TestPyPI keeps every file forever; a repeated trial of the same version is no error.
-          skip-existing: true
 
   pypi:
     name: Upload to PyPI
