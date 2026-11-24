@@ -480,7 +480,7 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "CLAP or FLAP with radius 0 or rmax <= rmin, or an aperture or obscuration size <= 0"},
     {"zmx.aperture_unsupported", Severity::Error, "zmx",
      "ZMX aperture or system aperture setting without a mapping"},
-    {"zmx.asphere_r2", Severity::Error, "zmx", "EVENASPH with alpha1 (r^2) != 0"},
+    {"zmx.asphere_r2", Severity::Error, "zmx", "ZMX asphere term alpha1 (r^2 or y^2) != 0"},
     {"zmx.config_mismatch", Severity::Error, "zmx",
      "THIC or CRVT of the single configuration differs from the surface data"},
     {"zmx.coordbrk_surface", Severity::Error, "zmx", "STOP or aperture on a ZMX coordinate break"},
@@ -524,6 +524,8 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
      "tilted ZMX image surface: image coordinates in the tilted plane"},
     {"zmx.unit_unsupported", Severity::Error, "zmx", "ZMX lens unit other than MM, CM, IN, METER"},
     {"zmx.vignetting_unsupported", Severity::Error, "zmx", "ZMX vignetting factors != 0"},
+    {"zmx.zernike_extrapolate", Severity::Warning, "zmx",
+     "ZMX Zernike terms with extrapolate = 0 beyond the normalization radius"},
 });
 
 /// Codes that stay registered but are no longer produced (ADR 0022: a code is never removed or

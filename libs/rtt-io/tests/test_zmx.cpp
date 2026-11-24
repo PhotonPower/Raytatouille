@@ -425,7 +425,7 @@ std::vector<ErrorCase> error_cases() {
        "VDYN 0 1.0E-001"},
       {"zmx.multi_config", with(s, "MNUM", "MNUM 2"), "MNUM 2"},
       {"zmx.config_mismatch", with(s, "THIC", "THIC 3 1 4.4E+001 0 0 0 1 1 0"), "THIC 3 1 4.4"},
-      {"zmx.surface_unsupported", in_surface(2, "TYPE", "  TYPE SZERNSAG"), "TYPE SZERNSAG"},
+      {"zmx.surface_unsupported", in_surface(2, "TYPE", "  TYPE AZERNSAG"), "TYPE AZERNSAG"},
       {"zmx.asphere_r2", with(asph, "PARM 1", "  PARM 1 1.0E-003"), "PARM 1 1.0E-003"},
       {"zmx.object_medium_infinite", in_surface(0, "DISZ", "  DISZ INFINITY\r\n  GLAS N-BK7 0 0"),
        "GLAS N-BK7 0 0"},
@@ -569,6 +569,11 @@ TEST_CASE("every warning of the import has a case at its line", "[zmx]") {
        in_surface(read_file(kZmxDir + "paraxial.zmx"), 1, "PARM 2", "  PARM 2 3.0E+000"),
        "PARM 2 3.0E+000", &schott()},
       {"zmx.tilted_image", read_file(kZmxDir + "tilt_image.zmx"), "TYPE TILTSURF", &schott()},
+      // #430: extrapolate = 0 and a semi-diameter (8) beyond the normalization radius (7)
+      {"zmx.zernike_extrapolate",
+       with(with(read_file(kZmxDir + "szernsag.zmx"), "PARM 0", "  PARM 0 0.0E+000"), "XDAT 2 ",
+            "  XDAT 2 7.0E+000 0 0 1 0 0"),
+       "PARM 0 0.0E+000", &schott()},
   };
   std::set<std::string> covered;
   for (const WarningCase& c : cases) {
