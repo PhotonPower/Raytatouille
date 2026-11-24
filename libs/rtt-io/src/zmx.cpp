@@ -719,7 +719,8 @@ model::ShapeStack Importer::shape(const ZSurface& s, bool& powered) {
       }
     }
     return out;
-  } else if (s.type == "XPOLYNOM") {
+  }
+  if (s.type == "XPOLYNOM") {
     // UG "Extended Polynomial": z = c r^2 / (1 + sqrt(1 - (1 + k) c^2 r^2)) + sum A_i E_i(x, y),
     // x and y divided by the normalization radius, E_i = x, y, x^2, x y, y^2, ... as xy_polynomial
     // (ADR 0051, point 4); at most 230 terms. The page lists no parameters below 13.
@@ -736,7 +737,8 @@ model::ShapeStack Importer::shape(const ZSurface& s, bool& powered) {
           d.radius, std::vector<model::Param>(d.coefficients.begin(), d.coefficients.end())});
     }
     return out;
-  } else if (s.type == "ODDASPHE") {
+  }
+  if (s.type == "ODDASPHE") {
     // UG "Odd Asphere": z = c r^2 / (1 + sqrt(1 - (1 + k) c^2 r^2)) + beta_1 r + ... + beta_8 r^8,
     // parameters 1 to 8 = beta_1 ... beta_8 (also optiland); the odd_asphere of ADR 0043 with
     // A_n = beta_n. beta_n in L^(1 - n): times 1/s for (n - 1) times (ADR 0044, point 3).
