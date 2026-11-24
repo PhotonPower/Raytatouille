@@ -134,7 +134,13 @@ EventKind automatic_kind(ElementKind k) {
 /// The shape seen from the global frame of a surface with the axis -e_z: z_global = -f(r), the
 /// root of the conic holds only c^2, so -f has the curvature -c, the same conic and -A_i
 /// (ADR 0045, point 2). + 0.0 keeps a zero coefficient +0.
-void mirror_shape(model::ShapeStack& shape) {
+void mirror_shape(model::ShapeStack& shape, const std::string& id) {
+  if (!shape.terms.empty()) {
+    // a term would need its own mirror image (z -> -z with a turn of x, y); not mapped
+    // (ADR 0045, addendum #430)
+    export_fail("export.surface_unsupported", id,
+                "a shape term on a surface mirrored in its export frame has no mapping");
+  }
   const auto negate = [](model::Param& p) { p.value = -p.value + 0.0; };
   if (auto* c = std::get_if<model::Conic>(&shape.base)) {
     negate(c->radius);
@@ -320,7 +326,7 @@ void fold_path(ExportPath& out,
     const math::Mat3 s =
         keep ? (take_second ? rz : math::Mat3(math::Mat3::Identity())) : (take_second ? ry : rx);
     row.local_xy = {s(0, 0), s(0, 1), s(1, 0), s(1, 1)};
-    if (!keep) mirror_shape(row.surface.shape);
+    if (!keep) mirror_shape(row.surface.shape, id);
     if (k == 0) {
       // surface 0: its thickness along the global z, then one break with decenter and turn
       const math::Mat3 turn = frames[0].r;
@@ -590,7 +596,7 @@ ExportPath walk_export_path(const model::System& system,
     if (out.rows[k].mirror) ++reflections;
   }
   for (std::size_t k = 0; k < out.rows.size(); ++k) {
-    if (axis_down[k]) mirror_shape(out.rows[k].surface.shape);
+    if (axis_down[k]) mirror_shape(out.rows[k].surface.shape, out.rows[k].surface.id.str());
   }
 
   // Thicknesses (ADR 0045, point 4): the t of the poses if the system is canonical (then the

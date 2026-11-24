@@ -5807,7 +5807,8 @@ ist, meldet der Import mit einem Code \code{zmx.*} und der Zeile der Datei, stat
 
 \paragraph{ZMX-Export und Flächentabelle.} \code{rtt export} schreibt einen Pfad als ZMX-Datei
 oder als CSV-Flächentabelle (Endung \code{.zmx} bzw. \code{.csv}). Exportiert werden koaxiale
-Systeme sowie gefaltete und gekippte Pfade mit Spiegeln; was OpticStudio nicht gleich darstellen
+Systeme sowie gefaltete und gekippte Pfade mit Spiegeln, Freiformflächen mit genau einem Term
+als \code{SZERNSAG}, \code{FZERNSAG} oder \code{XPOLYNOM}; was OpticStudio nicht gleich darstellen
 kann, ist ein Fehler \code{export.*}, inaktive Elemente fallen mit der Warnung
 \code{export.inactive_skipped} weg. Die Flächentabelle bleibt auf koaxiale Systeme beschränkt
 (\code{export.not_coaxial}); der ZMX-Export gefalteter Systeme ist mit OpticStudio selbst noch
