@@ -430,7 +430,8 @@ TEST_CASE("every reference system exports and imports again, or fails with its e
   for (const char* name :
        {"m0/singlet.rtt.json", "m2/achromat.rtt.json", "m2/cooke_triplet_surface_stop.rtt.json",
         "m2/paraboloid_stop.rtt.json", "m6/paraboloid_f10.rtt.json", "m6/paraboloid_f50.rtt.json",
-        "m7/achromat_tolerances.rtt.json", "r2/ideal_lens.rtt.json"}) {
+        "m7/achromat_tolerances.rtt.json", "m8/xy_mirror.rtt.json", "r2/ideal_lens.rtt.json"}) {
+    // m8/xy_mirror: one xy_polynomial term as XPOLYNOM (ADR 0045, addendum #430)
     // r2/ideal_lens: its explicit path refracts at the stop and the image (the default event
     // kind), which keeps the medium as transmit (ADR 0045, addendum PR B)
     INFO(name);
@@ -439,7 +440,7 @@ TEST_CASE("every reference system exports and imports again, or fails with its e
   REQUIRE(outcome.at("m1/paraboloid_mirror.rtt.json") == "export.stop_missing");
   REQUIRE(outcome.at("m2/cooke_triplet.rtt.json") == "export.element_in_glass");
   REQUIRE(outcome.at("m3/ar_mgf2.rtt.json") == "export.environment_unsupported");
-  REQUIRE(ok == 8);
+  REQUIRE(ok == 9);
 }
 
 TEST_CASE("a lens turned by 180 degrees about x is written with mirrored shapes", "[zmx][export]") {

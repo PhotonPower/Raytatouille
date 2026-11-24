@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <fstream>
+#include <functional>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -343,4 +344,133 @@ TEST_CASE("a turned lens writes its odd asphere mirrored", "[zmx][export][368]")
   const std::string text = export_zmx(plain, schott()).text;
   REQUIRE(block_type(surface_block(text, 3)) == "ODDASPHE");
   REQUIRE(export_zmx(s, schott()).text == text);
+}
+
+// ------------------------------------------------- #430, PR B: SZERNSAG, FZERNSAG, XPOLYNOM
+
+TEST_CASE("the freeform cases survive import, export and import", "[zmx][export][430]") {
+  // ADR 0045, addendum #430: one term as SZERNSAG, FZERNSAG or XPOLYNOM, bitwise back; R of the
+  // conic and even asphere bases (1/R twice) and the wavelengths to 1e-15 relative, as #368.
+  const std::vector<std::pair<std::string, std::string>> cases{
+      {"szernsag", "SZERNSAG"}, {"szernsag_in", "SZERNSAG"}, {"fzernsag", "FZERNSAG"},
+      {"xpolynom", "XPOLYNOM"}, {"xpolynom_in", "XPOLYNOM"},
+  };
+  for (const auto& [name, type] : cases) {
+    INFO(name);
+    System a = import_zmx(read_file(kZmxDir + name + ".zmx"), schott()).system;
+    const ZmxExport out = export_zmx(a, schott());
+    INFO(out.text);
+    REQUIRE(out.warnings.empty());
+    const auto block = surface_block(out.text, 2);
+    REQUIRE(block_type(block) == type);
+    if (type != "XPOLYNOM") REQUIRE(block_value(block, "PARM", "0") == 1.0);  // extrapolate
+    const auto again = import_zmx(out.text, schott());
+    REQUIRE(again.warnings.empty());
+    System b = again.system;
+    REQUIRE(a.wavelengths.size() == b.wavelengths.size());
+    for (std::size_t i = 0; i < a.wavelengths.size(); ++i) {
+      REQUIRE(rel(b.wavelengths[i].um, a.wavelengths[i].um) <= 1e-15);
+      b.wavelengths[i].um = a.wavelengths[i].um;
+    }
+    const auto sa = surfaces_of(a);
+    const auto sb = surfaces_of(b);
+    REQUIRE(sa.size() == sb.size());
+    for (std::size_t i = 0; i < sa.size(); ++i) {
+      if (b.aperture.stop && *b.aperture.stop == sb[i]->id) b.aperture.stop = sa[i]->id;
+      sb[i]->id = sa[i]->id;
+      Param* ra = radius_of(*sa[i]);
+      Param* rb = radius_of(*sb[i]);
+      if (ra != nullptr && rb != nullptr) {
+        REQUIRE(rel(rb->value, ra->value) <= 1e-15);
+        rb->value = ra->value;
+      }
+    }
+    // content guard: the term came back with its coefficients
+    REQUIRE(sb[1]->shape.terms.size() == 1);
+    INFO("a:\n" << rtt::io::to_json(a) << "\nb:\n" << rtt::io::to_json(b));
+    REQUIRE(a == b);
+    const auto da = rtt::analysis::spot(rtt::compile::compile(a, schott()), {0}, 1, std::nullopt);
+    const auto db = rtt::analysis::spot(rtt::compile::compile(b, schott()), {0}, 1, std::nullopt);
+    REQUIRE(da.rays_arrived > 0);
+    REQUIRE(db.rays_arrived == da.rays_arrived);
+  }
+}
+
+TEST_CASE("the extra data of an exported term are written as OpticStudio writes them",
+          "[zmx][export][430]") {
+  // XDAT 1 = number of terms, 2 = normalization radius (mm, UNIT MM), 2 + j = A_j
+  System s = rtt::io::load_system(kZmxDir + "export_singlet.rtt.json");
+  element(s, 1).surfaces[0].shape.base = rtt::model::Conic{Param(50.0), Param(-1.0)};
+  element(s, 1).surfaces[0].shape.terms.emplace_back(
+      rtt::model::XyPolynomial{Param(9.5), {Param(0.0), Param(0.0), Param(2e-3)}});
+  const std::string text = export_zmx(s, schott()).text;
+  const auto block = surface_block(text, 2);
+  REQUIRE(block_type(block) == "XPOLYNOM");
+  REQUIRE(block_value(block, "XDAT", "1") == 3.0);
+  REQUIRE(block_value(block, "XDAT", "2") == 9.5);
+  REQUIRE(block_value(block, "XDAT", "5") == 2e-3);
+  for (const auto& w : block) {
+    if (!w.empty() && w[0] == "XDAT") {
+      // the fields after the value as in the files of OpticStudio
+      REQUIRE(w.size() == 9);
+      REQUIRE(std::vector<std::string>(w.begin() + 3, w.end()) ==
+              std::vector<std::string>{"0", "0", "1", "0", "0", "\"\""});
+    }
+  }
+}
+
+TEST_CASE("terms without a lossless ZMX form are not exported", "[zmx][export][430]") {
+  const auto with_front = [](const std::function<void(Element&)>& change) {
+    System s = rtt::io::load_system(kZmxDir + "export_singlet.rtt.json");
+    change(element(s, 1));
+    return s;
+  };
+  const rtt::model::ShapeTerm noll =
+      rtt::model::ZernikeSag{Param(9.0), {Param(0.0), Param(0.0), Param(0.0), Param(1e-3)}};
+  // two terms
+  require_export_error(with_front([&](Element& e) { e.surfaces[0].shape.terms = {noll, noll}; }),
+                       "export.surface_unsupported");
+  // XPOLYNOM has no asphere terms in its base
+  require_export_error(with_front([](Element& e) {
+                         e.surfaces[0].shape.base =
+                             rtt::model::EvenAsphere{Param(40.0), Param(0.0), {Param(1e-6)}};
+                         e.surfaces[0].shape.terms.emplace_back(rtt::model::XyPolynomial{
+                             Param(9.0), {Param(0.0), Param(0.0), Param(1e-3)}});
+                       }),
+                       "export.surface_unsupported");
+  // a Zernike term on an odd asphere
+  require_export_error(with_front([&](Element& e) {
+                         e.surfaces[0].shape.base = odd(0.02, 0.0, {0.0, 0.0, 1e-5});
+                         e.surfaces[0].shape.terms = {noll};
+                       }),
+                       "export.surface_unsupported");
+  // a grid sag has no ZMX surface type here
+  require_export_error(with_front([](Element& e) {
+                         rtt::model::GridSag g;
+                         g.nx = 3;
+                         g.ny = 3;
+                         g.spacing_x = 5.0;
+                         g.spacing_y = 5.0;
+                         g.sag.assign(9, 0.0);
+                         e.surfaces[0].shape.terms.emplace_back(g);
+                       }),
+                       "export.surface_unsupported");
+  // the lens turned by 180 deg about x (the surface mirrored in its frame) and about z (x, y
+  // turned): the signs of the terms would change
+  require_export_error(with_front([&](Element& e) {
+                         e.pose.rotation_deg = {Param(0.0), Param(0.0), Param(180.0)};
+                         e.surfaces[0].shape.terms = {noll};
+                       }),
+                       "export.surface_unsupported");
+  System turned = with_front([&](Element& e) { e.surfaces[0].shape.terms = {noll}; });
+  {
+    Element& lens = element(turned, 1);
+    lens.pose.rotation_deg = {Param(180.0), Param(0.0), Param(0.0)};
+    lens.surfaces[1].pose.position[2] = Param(-lens.surfaces[1].pose.position[2].value);
+    element(turned, 2).pose.position[2] = Param(-element(turned, 2).pose.position[2].value);
+  }
+  require_export_error(turned, "export.surface_unsupported");
+  // guard: the plain singlet with the term exports
+  REQUIRE_NOTHROW(
+      export_zmx(with_front([&](Element& e) { e.surfaces[0].shape.terms = {noll}; }), schott()));
 }

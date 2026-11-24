@@ -163,12 +163,88 @@ double curvature(double radius, const std::string& surface) {
   return c;
 }
 
+/// A surface with one shape term (ADR 0045, addendum #430): zernike_sag as SZERNSAG,
+/// zernike_fringe_sag as FZERNSAG, both on a plane, conic or even asphere up to A16 (UG "Zernike
+/// Standard Sag", "Zernike Fringe Sag": the base of "Even Asphere", PARM 2 ... 8 = A4 ... A16);
+/// xy_polynomial as XPOLYNOM on a plane or conic (UG "Extended Polynomial"). Extrapolate = 1
+/// (PARM 0), since the model evaluates the terms everywhere (ADR 0051, point 1); the terms as
+/// extra data, XDAT 1 = number of terms, 2 = normalization radius, 2 + j = A_j (XDAT n =
+/// parameter 12 + n, ADR 0044, addendum #430), lengths in mm (UNIT MM). The ZMX frame must be
+/// that of the surface: a turned or mirrored frame would change the signs of the terms
+/// (mirror_shape rejects the mirrored one).
+void write_term_shape(Writer& w, const ExportRow& row) {
+  const std::string& id = row.surface.id.str();
+  const model::ShapeStack& shape = row.surface.shape;
+  if (shape.terms.size() != 1) {
+    export_fail("export.surface_unsupported", id, "more than one shape term has no mapping");
+  }
+  if (row.local_xy != std::array<double, 4>{1.0, 0.0, 0.0, 1.0}) {
+    export_fail("export.surface_unsupported", id,
+                "a shape term on a surface turned in its ZMX frame has no mapping");
+  }
+  const model::ShapeTerm& term = shape.terms.front();
+  const auto* noll = std::get_if<model::ZernikeSag>(&term);
+  const auto* fringe = std::get_if<model::ZernikeFringeSag>(&term);
+  const auto* xy = std::get_if<model::XyPolynomial>(&term);
+  if (noll == nullptr && fringe == nullptr && xy == nullptr) {
+    export_fail("export.surface_unsupported", id, "the shape term has no ZMX surface type");
+  }
+  double c = 0.0;
+  double k = 0.0;
+  std::array<double, 7> a{};  // A4 ... A16
+  if (const auto* conic = std::get_if<model::Conic>(&shape.base)) {
+    c = curvature(conic->radius.value, id);
+    k = conic->conic.value;
+  } else if (const auto* e = std::get_if<model::EvenAsphere>(&shape.base);
+             e != nullptr && xy == nullptr) {
+    c = curvature(e->radius.value, id);
+    k = e->conic.value;
+    for (std::size_t i = 0; i < e->coefficients.size(); ++i) {
+      if (i < a.size()) {
+        a[i] = e->coefficients[i].value;
+      } else if (e->coefficients[i].value != 0.0) {
+        export_fail("export.surface_unsupported", id,
+                    "the base of a Zernike surface holds the terms up to A16 only");
+      }
+    }
+  } else if (!std::holds_alternative<model::Plane>(shape.base)) {
+    export_fail("export.surface_unsupported", id,
+                xy != nullptr ? "XPOLYNOM has a plane or conic base only"
+                              : "the base of a Zernike surface is a plane, conic or even asphere");
+  }
+  const double radius = noll != nullptr     ? noll->normalization_radius.value
+                        : fringe != nullptr ? fringe->normalization_radius.value
+                                            : xy->normalization_radius.value;
+  const std::vector<model::Param>& coefficients = noll != nullptr     ? noll->coefficients
+                                                  : fringe != nullptr ? fringe->coefficients
+                                                                      : xy->coefficients;
+  w.sub(std::string("TYPE ") + (noll != nullptr     ? "SZERNSAG"
+                                : fringe != nullptr ? "FZERNSAG"
+                                                    : "XPOLYNOM"));
+  w.sub("CURV " + num(c));
+  w.sub("CONI " + num(k));
+  if (xy == nullptr) {
+    w.sub("PARM 0 1");
+    w.sub("PARM 1 0");
+    for (std::size_t i = 0; i < a.size(); ++i)
+      w.sub("PARM " + std::to_string(i + 2) + " " + num(a[i]));
+  }
+  // as OpticStudio writes extra data (ray-optics test file HoO-V2C18Ex46.zmx)
+  const auto xdat = [&](std::size_t n, double v) {
+    w.sub("XDAT " + std::to_string(n) + " " + num(v) + " 0 0 1 0 0 \"\"");
+  };
+  xdat(1, static_cast<double>(coefficients.size()));
+  xdat(2, radius);
+  for (std::size_t j = 0; j < coefficients.size(); ++j) xdat(j + 3, coefficients[j].value);
+}
+
 /// TYPE, CURV, CONI and PARM of a surface in the global frame (ADR 0045, point 4).
 void write_shape(Writer& w, const ExportRow& row) {
   const std::string& id = row.surface.id.str();
   const model::ShapeStack& shape = row.surface.shape;
   if (!shape.terms.empty()) {
-    export_fail("export.surface_unsupported", id, "shape terms have no mapping");
+    write_term_shape(w, row);
+    return;
   }
   if (const auto* lens = std::get_if<model::IdealLens>(&row.surface.interaction)) {
     // UG "Paraxial": PARM 1 focal length, PARM 2 OPD mode; 2 is the infinite conjugate
