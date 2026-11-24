@@ -139,7 +139,7 @@ void mirror_shape(model::ShapeStack& shape, const std::string& id) {
     // a term would need its own mirror image (z -> -z with a turn of x, y); not mapped
     // (ADR 0045, addendum #430)
     export_fail("export.surface_unsupported", id,
-                "a shape term on a surface mirrored in its ZMX frame has no mapping");
+                "a shape term on a surface mirrored in its export frame has no mapping");
   }
   const auto negate = [](model::Param& p) { p.value = -p.value + 0.0; };
   if (auto* c = std::get_if<model::Conic>(&shape.base)) {

@@ -425,43 +425,55 @@ TEST_CASE("terms without a lossless ZMX form are not exported", "[zmx][export][4
     change(element(s, 1));
     return s;
   };
+  // each rejection from its own branch: the code and a part of the message
+  const auto rejects = [](const System& s, const std::string& part) {
+    INFO(part);
+    try {
+      (void)export_zmx(s, schott());
+      FAIL("no ExportError");
+    } catch (const ExportError& e) {
+      INFO(e.what());
+      REQUIRE(e.code() == "export.surface_unsupported");
+      REQUIRE(std::string(e.what()).find(part) != std::string::npos);
+    }
+  };
   const rtt::model::ShapeTerm noll =
       rtt::model::ZernikeSag{Param(9.0), {Param(0.0), Param(0.0), Param(0.0), Param(1e-3)}};
   // two terms
-  require_export_error(with_front([&](Element& e) { e.surfaces[0].shape.terms = {noll, noll}; }),
-                       "export.surface_unsupported");
+  rejects(with_front([&](Element& e) { e.surfaces[0].shape.terms = {noll, noll}; }),
+          "more than one shape term");
   // XPOLYNOM has no asphere terms in its base
-  require_export_error(with_front([](Element& e) {
-                         e.surfaces[0].shape.base =
-                             rtt::model::EvenAsphere{Param(40.0), Param(0.0), {Param(1e-6)}};
-                         e.surfaces[0].shape.terms.emplace_back(rtt::model::XyPolynomial{
-                             Param(9.0), {Param(0.0), Param(0.0), Param(1e-3)}});
-                       }),
-                       "export.surface_unsupported");
+  rejects(with_front([](Element& e) {
+            e.surfaces[0].shape.base =
+                rtt::model::EvenAsphere{Param(40.0), Param(0.0), {Param(1e-6)}};
+            e.surfaces[0].shape.terms.emplace_back(
+                rtt::model::XyPolynomial{Param(9.0), {Param(0.0), Param(0.0), Param(1e-3)}});
+          }),
+          "XPOLYNOM has a plane or conic base only");
   // a Zernike term on an odd asphere
-  require_export_error(with_front([&](Element& e) {
-                         e.surfaces[0].shape.base = odd(0.02, 0.0, {0.0, 0.0, 1e-5});
-                         e.surfaces[0].shape.terms = {noll};
-                       }),
-                       "export.surface_unsupported");
+  rejects(with_front([&](Element& e) {
+            e.surfaces[0].shape.base = odd(0.02, 0.0, {0.0, 0.0, 1e-5});
+            e.surfaces[0].shape.terms = {noll};
+          }),
+          "the base of a Zernike surface is");
   // a grid sag has no ZMX surface type here
-  require_export_error(with_front([](Element& e) {
-                         rtt::model::GridSag g;
-                         g.nx = 3;
-                         g.ny = 3;
-                         g.spacing_x = 5.0;
-                         g.spacing_y = 5.0;
-                         g.sag.assign(9, 0.0);
-                         e.surfaces[0].shape.terms.emplace_back(g);
-                       }),
-                       "export.surface_unsupported");
-  // the lens turned by 180 deg about x (the surface mirrored in its frame) and about z (x, y
-  // turned): the signs of the terms would change
-  require_export_error(with_front([&](Element& e) {
-                         e.pose.rotation_deg = {Param(0.0), Param(0.0), Param(180.0)};
-                         e.surfaces[0].shape.terms = {noll};
-                       }),
-                       "export.surface_unsupported");
+  rejects(with_front([](Element& e) {
+            rtt::model::GridSag g;
+            g.nx = 3;
+            g.ny = 3;
+            g.spacing_x = 5.0;
+            g.spacing_y = 5.0;
+            g.sag.assign(9, 0.0);
+            e.surfaces[0].shape.terms.emplace_back(g);
+          }),
+          "the shape term has no ZMX surface type");
+  // the lens turned by 180 deg about z (x, y turned) and about x (the surface mirrored in its
+  // frame): the signs of the terms would change
+  rejects(with_front([&](Element& e) {
+            e.pose.rotation_deg = {Param(0.0), Param(0.0), Param(180.0)};
+            e.surfaces[0].shape.terms = {noll};
+          }),
+          "turned in its ZMX frame");
   System turned = with_front([&](Element& e) { e.surfaces[0].shape.terms = {noll}; });
   {
     Element& lens = element(turned, 1);
@@ -469,7 +481,7 @@ TEST_CASE("terms without a lossless ZMX form are not exported", "[zmx][export][4
     lens.surfaces[1].pose.position[2] = Param(-lens.surfaces[1].pose.position[2].value);
     element(turned, 2).pose.position[2] = Param(-element(turned, 2).pose.position[2].value);
   }
-  require_export_error(turned, "export.surface_unsupported");
+  rejects(turned, "mirrored in its export frame");
   // guard: the plain singlet with the term exports
   REQUIRE_NOTHROW(
       export_zmx(with_front([&](Element& e) { e.surfaces[0].shape.terms = {noll}; }), schott()));
