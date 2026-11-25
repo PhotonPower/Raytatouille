@@ -665,6 +665,7 @@ void Importer::read_configurations(std::size_t i) {
       continue;
     }
     std::vector<double> values;
+    values.reserve(r.cells.size());
     for (const Line* c : r.cells) values.push_back(number(*c, 3));
     const bool varying =
         std::any_of(values.begin(), values.end(), [&](double v) { return v != values.front(); });
@@ -874,6 +875,7 @@ model::System Importer::merge_configurations(const std::vector<model::System>& s
                operands);
     }
   }
+  out.configurations.reserve(configs_);
   for (std::size_t k = 0; k < configs_; ++k) {
     out.configurations.push_back(model::Configuration{"C" + std::to_string(k + 1)});
   }
