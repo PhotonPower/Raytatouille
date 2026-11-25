@@ -486,3 +486,92 @@ TEST_CASE("terms without a lossless ZMX form are not exported", "[zmx][export][4
   REQUIRE_NOTHROW(
       export_zmx(with_front([&](Element& e) { e.surfaces[0].shape.terms = {noll}; }), schott()));
 }
+
+// ------------------------------------------- #436: Zernike term on an odd asphere with c = 0
+
+TEST_CASE("a Zernike term on an odd asphere with c = 0 and even terms survives export and import",
+          "[zmx][export][436]") {
+  // ADR 0045, addendum #436: the base the import makes of SZERNSAG or FZERNSAG with CURV 0
+  // (odd_asphere, c = 0, A_{2i} = alpha_i; ADR 0044, point 6) is written with CURV 0, CONI 0 and
+  // PARM 2 ... 8 = A4 ... A16. k has no effect at c = 0 and comes back as 0.
+  // A4, A6, A8 and A16 (the last PARM) not 0
+  const std::vector<double> a{0.0, 0.0, 0.0, 2e-5, 0.0, -3e-8, 0.0, 4e-11,
+                              0.0, 0.0, 0.0, 0.0,  0.0, 0.0,   0.0, -5e-20};
+  for (const bool fringe : {false, true}) {
+    INFO((fringe ? "FZERNSAG" : "SZERNSAG"));
+    // defocus and primary spherical (Noll j = 4, 11; Fringe j = 4, 9): rotationally symmetric,
+    // so the import has a paraxial model; the last coefficient is not 0 (the import cuts zeros)
+    std::vector<Param> c(fringe ? 9 : 11, Param(0.0));
+    c[3] = Param(1e-3);
+    c.back() = Param(-2e-4);
+    const rtt::model::ShapeTerm term =
+        fringe ? rtt::model::ShapeTerm{rtt::model::ZernikeFringeSag{Param(9.0), c}}
+               : rtt::model::ShapeTerm{rtt::model::ZernikeSag{Param(9.0), c}};
+    System s = singlet_with(odd(0.0, -0.5, a));
+    element(s, 1).surfaces[1].shape.terms = {term};
+    const ZmxExport out = export_zmx(s, schott());
+    INFO(out.text);
+    REQUIRE(out.warnings.empty());
+    const auto block = surface_block(out.text, 3);
+    REQUIRE(block_type(block) == (fringe ? "FZERNSAG" : "SZERNSAG"));
+    REQUIRE(block_value(block, "CURV") == 0.0);
+    REQUIRE(block_value(block, "CONI") == 0.0);
+    REQUIRE(block_value(block, "PARM", "0") == 1.0);
+    REQUIRE(block_value(block, "PARM", "1") == 0.0);
+    REQUIRE(block_value(block, "PARM", "2") == 2e-5);
+    REQUIRE(block_value(block, "PARM", "3") == -3e-8);
+    REQUIRE(block_value(block, "PARM", "4") == 4e-11);
+    for (const int n : {5, 6, 7}) REQUIRE(block_value(block, "PARM", std::to_string(n)) == 0.0);
+    REQUIRE(block_value(block, "PARM", "8") == -5e-20);
+    REQUIRE(block_value(block, "XDAT", "1") == static_cast<double>(c.size()));
+
+    // back through the import: the same base with k = 0 and the same term, bitwise
+    const auto back = import_zmx(out.text, schott());
+    REQUIRE(back.warnings.empty());
+    const auto& lens = std::get<Element>(back.system.root.children.at(1).value);
+    REQUIRE(lens.surfaces.size() == 2);
+    REQUIRE(lens.surfaces[1].shape.base == rtt::model::BaseShape{odd(0.0, 0.0, a)});
+    REQUIRE(lens.surfaces[1].shape.terms == std::vector<rtt::model::ShapeTerm>{term});
+    // content guard: rays pass the surface in both systems, with the same spot (k has no
+    // effect at c = 0)
+    const auto da = rtt::analysis::spot(rtt::compile::compile(s, schott()), {0}, 1, std::nullopt);
+    const auto db =
+        rtt::analysis::spot(rtt::compile::compile(back.system, schott()), {0}, 1, std::nullopt);
+    REQUIRE(da.rays_arrived > 0);
+    REQUIRE(db.rays_arrived == da.rays_arrived);
+    REQUIRE(da.stats.rms_centroid > 0.0);
+    REQUIRE(rel(db.stats.rms_centroid, da.stats.rms_centroid) <= 1e-12);
+  }
+}
+
+TEST_CASE("an odd asphere base with c = 0 and other terms is not exported with a Zernike term",
+          "[zmx][export][436]") {
+  const rtt::model::ShapeTerm noll =
+      rtt::model::ZernikeSag{Param(9.0), {Param(0.0), Param(0.0), Param(0.0), Param(1e-3)}};
+  const rtt::model::ShapeTerm xy =
+      rtt::model::XyPolynomial{Param(9.0), {Param(0.0), Param(0.0), Param(2e-3)}};
+  const auto rejects = [](double c, const std::vector<double>& a, const rtt::model::ShapeTerm& term,
+                          const std::string& part) {
+    INFO(part);
+    System s = singlet_with(odd(c, 0.0, a));
+    element(s, 1).surfaces[1].shape.terms = {term};
+    try {
+      (void)export_zmx(s, schott());
+      FAIL("no ExportError");
+    } catch (const ExportError& e) {
+      INFO(e.what());
+      REQUIRE(e.code() == "export.surface_unsupported");
+      REQUIRE(std::string(e.what()).find(part) != std::string::npos);
+    }
+  };
+  const std::string base = "the base of a Zernike surface";
+  rejects(0.0, {0.0, 0.0, 1e-5}, noll, base);             // A3, odd
+  rejects(0.0, {0.0, 0.0, 0.0, 2e-5, 1e-7}, noll, base);  // A5, odd
+  rejects(0.0, {0.0, 1e-4}, noll, base);                  // A2, r^2
+  rejects(
+      0.0,
+      {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1e-20},
+      noll, base);                                                            // A18, beyond A16
+  rejects(0.02, {0.0, 0.0, 0.0, 2e-5}, noll, "odd asphere with c = 0 only");  // c != 0
+  rejects(0.0, {0.0, 0.0, 0.0, 2e-5}, xy, "XPOLYNOM has a plane or conic base only");
+}

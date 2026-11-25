@@ -165,7 +165,8 @@ double curvature(double radius, const std::string& surface) {
 
 /// A surface with one shape term (ADR 0045, addendum #430): zernike_sag as SZERNSAG,
 /// zernike_fringe_sag as FZERNSAG, both on a plane, conic or even asphere up to A16 (UG "Zernike
-/// Standard Sag", "Zernike Fringe Sag": the base of "Even Asphere", PARM 2 ... 8 = A4 ... A16);
+/// Standard Sag", "Zernike Fringe Sag": the base of "Even Asphere", PARM 2 ... 8 = A4 ... A16;
+/// an odd asphere with c = 0 and only these even terms as well, addendum #436);
 /// xy_polynomial as XPOLYNOM on a plane or conic (UG "Extended Polynomial"). Extrapolate = 1
 /// (PARM 0), since the model evaluates the terms everywhere (ADR 0051, point 1); the terms as
 /// extra data, XDAT 1 = number of terms, 2 = normalization radius, 2 + j = A_j (XDAT n =
@@ -207,10 +208,30 @@ void write_term_shape(Writer& w, const ExportRow& row) {
                     "the base of a Zernike surface holds the terms up to A16 only");
       }
     }
+  } else if (const auto* o = std::get_if<model::OddAsphere>(&shape.base);
+             o != nullptr && xy == nullptr) {
+    // the base the import makes of CURV 0 (ADR 0044, point 6; ADR 0045, addendum #436): c = 0
+    // and only the even terms A4 ... A16, as EVENASPH with c = 0 (addendum #368); k has no
+    // effect at c = 0 and is written as 0
+    if (o->curvature.value != 0.0) {
+      export_fail("export.surface_unsupported", id,
+                  "the base of a Zernike surface is an odd asphere with c = 0 only");
+    }
+    for (std::size_t i = 0; i < o->coefficients.size(); ++i) {
+      const std::size_t n = i + 1;  // A_n
+      const double v = o->coefficients[i].value;
+      if (n >= 4 && n <= 16 && n % 2 == 0) {
+        a[n / 2 - 2] = v;
+      } else if (v != 0.0) {
+        export_fail("export.surface_unsupported", id,
+                    "the base of a Zernike surface holds the even terms A4 to A16 only");
+      }
+    }
   } else if (!std::holds_alternative<model::Plane>(shape.base)) {
     export_fail("export.surface_unsupported", id,
                 xy != nullptr ? "XPOLYNOM has a plane or conic base only"
-                              : "the base of a Zernike surface is a plane, conic or even asphere");
+                              : "the base of a Zernike surface is a plane, conic, even asphere or "
+                                "odd asphere with c = 0");
   }
   const double radius = noll != nullptr     ? noll->normalization_radius.value
                         : fringe != nullptr ? fringe->normalization_radius.value
