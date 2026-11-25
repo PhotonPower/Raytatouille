@@ -5801,7 +5801,11 @@ rtt trace singlet.rtt.json --rays grid:21 --paths -o paths.json
 \code{FZERNSAG} (Zernike-Terme), \code{XPOLYNOM} (XY-Polynom), \code{TILTSURF} und
 \code{PARAXIAL} (ideale Linse), Koordinatensprünge (\code{COORDBRK}) als Posen, Linsen,
 Kittglieder, Spiegel auch gefaltet und außer Achse, die Blende, die Aperturen \code{CLAP},
-\code{FLAP}, \code{SQAP} und \code{ELAP}, dazu Wellenlängen, Felder und Systemapertur. Gläser werden in den angegebenen AGF-Katalogen gesucht. Was nicht abbildbar
+\code{FLAP}, \code{SQAP} und \code{ELAP}, dazu Wellenlängen, Felder und Systemapertur. Gläser werden in den angegebenen AGF-Katalogen gesucht.
+Mehrere Konfigurationen (\code{MNUM}) werden zu Konfigurationen \code{C1}, \code{C2}, \ldots{}
+mit einer Parametertabelle, sofern sie nur Dicken, Krümmungen, Koniken, Parameter der Flächen und
+die Systemapertur ändern (Operanden \code{THIC}, \code{CRVT}, \code{CONN}, \code{PRAM},
+\code{APER}); eine Zeile heißt nach dem Ort im Modell, etwa \code{image\_position\_z}. Was nicht abbildbar
 ist, meldet der Import mit einem Code \code{zmx.*} und der Zeile der Datei, statt es still zu
 übergehen.
 
