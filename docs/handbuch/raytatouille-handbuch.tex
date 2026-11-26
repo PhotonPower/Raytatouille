@@ -172,7 +172,7 @@
   \vfill
   \begin{tabular}{rl}
     Bibliothek: & \code{raytatouille} 1.0.0 (Git-Tag \code{v1.0.0}, PyPI)\\
-    Dateiformat: & Schema 0.11.0, Ergebnisformat 0.1.23\\
+    Dateiformat: & Schema 0.11.0, Ergebnisformat 0.1.24\\
     Python: & ab 3.10, NumPy ab 1.24, optional matplotlib ab 3.8\\
     Lizenz der Bibliothek: & MIT
   \end{tabular}
@@ -354,7 +354,7 @@ Formatieren als \code{rt.validate} und \code{System.to_json} zur Verfügung
 import raytatouille as rt
 print(rt.__version__)                      # 1.0.0
 print(rt.System().schema_version)          # 0.11.0 (Dateiformat, das geschrieben wird)
-print(rt.results.SCHEMA_VERSION)           # 0.1.23 (Ergebnisformat)
+print(rt.results.SCHEMA_VERSION)           # 0.1.24 (Ergebnisformat)
 \end{pycode}
 
 \section{Abhängigkeit im eigenen Projekt festlegen}
@@ -3826,7 +3826,7 @@ Raytrace-Bericht: 3 Strahlen × 6 Slots
 {'ray': '0', 'slot': '3', 'surface': '2', 'y': '-9.345426510658275', 'z': '9.736750040831627', 'opl': '13.870551478840959', 'status': 'ALIVE'}
 {'ray': '0', 'slot': '4', 'surface': '3', 'y': '-9.088142950175145', 'z': '13.698007517376261', 'opl': '20.303263079100336', 'status': 'ALIVE'}
 {'ray': '0', 'slot': '5', 'surface': '4', 'y': '5.289730175124824', 'z': '110.614', 'opl': '118.30665051306643', 'status': 'ALIVE'}
-Ergebnisformat: SpotDiagram 0.1.23 | Schlüssel: ['field', 'wavelength', 'image_surface', 'chief', 'stats', 'rays_launched']
+Ergebnisformat: SpotDiagram 0.1.24 | Schlüssel: ['field', 'wavelength', 'image_surface', 'chief', 'stats', 'rays_launched']
 bitgleich: True
 \end{ausgabe}
 
@@ -5181,7 +5181,7 @@ through_focus(result: ThroughFocus, ax: Axes | None = None) -> Axes
 \end{signatur}
 \code{rt.reports} enthält außerdem die Spaltenfolgen \code{RAYTRACE_COLUMNS} und
 \code{DIMENSION_COLUMNS}; \code{rt.results} die Konstanten \code{FORMAT}
-(\code{"raytatouille-result"}), \code{SCHEMA_VERSION} (\code{"0.1.23"}) und \code{TYPES}.
+(\code{"raytatouille-result"}), \code{SCHEMA_VERSION} (\code{"0.1.24"}) und \code{TYPES}.
 
 \section{\code{rt.edit} und \code{rt.Editor}}
 \begin{signatur}

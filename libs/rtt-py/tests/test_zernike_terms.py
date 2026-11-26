@@ -40,7 +40,7 @@ def test_result_format_carries_the_terms() -> None:
     surfaces = layout.surfaces(rt.compile(rt.load(MIRROR)))
     text = surfaces[1].to_json()
     doc = json.loads(text)
-    assert doc["schema_version"] == results.SCHEMA_VERSION == "0.1.23"
+    assert doc["schema_version"] == results.SCHEMA_VERSION == "0.1.24"
     assert doc["data"]["terms"][1] == ["zernike_fringe_sag",
                                       {"normalization_radius": 22.0, "terms": 4.0}]
     old = dict(doc)
