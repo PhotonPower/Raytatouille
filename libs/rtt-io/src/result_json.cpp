@@ -575,6 +575,20 @@ std::string to_result_json(const paraxial::FirstOrder& f) {
     pupil(w, f.entrance_pupil);
     w.key("exit_pupil");
     pupil(w, f.exit_pupil);
+    // 0.1.24 (ADR 0054, ADR 0023 addendum #357): folds and the unfolded frame of image space,
+    // linear float64 (3, 3) row-major and offset float64 (3,), as UnfoldedFrame in Python.
+    w.key("folds");
+    w.integer(f.folds);
+    w.key("image_space");
+    w.begin_object();
+    w.key("linear");
+    array(w, "float64", {3, 3}, 9, [&](std::size_t i) {
+      return f.image_space.linear(static_cast<Eigen::Index>(i / 3),
+                                  static_cast<Eigen::Index>(i % 3));
+    });
+    w.key("offset");
+    vec3(w, f.image_space.offset);
+    w.end_object();
     w.end_object();
   });
 }

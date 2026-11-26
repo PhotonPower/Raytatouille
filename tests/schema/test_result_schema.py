@@ -382,3 +382,34 @@ def test_tolerance_item_term_is_an_integer_or_null():
     item["term"] = "x"
     with pytest.raises(jsonschema.ValidationError):
         VALIDATOR.validate(doc)
+
+
+# FirstOrder gained folds and image_space in 0.1.24 (#357, ADR 0054; ADR 0023 addendum): older
+# files stay valid without them, from 0.1.24 on both are required.
+def _first_order(version: str, folds="absent", image_space="absent") -> dict:
+    doc = load(ROOT / "tests" / "reference" / "results" / "FirstOrder.result.json")
+    doc["schema_version"] = version
+    if folds != "absent":
+        doc["data"]["folds"] = folds
+    if image_space != "absent":
+        doc["data"]["image_space"] = image_space
+    return doc
+
+
+def _frame() -> dict:
+    return {"linear": {"dtype": "float64", "shape": [3, 3],
+                       "values": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]},
+            "offset": {"dtype": "float64", "shape": [3], "values": [0.0, 0.0, 0.0]}}
+
+
+def test_older_first_order_without_folds_is_valid():
+    VALIDATOR.validate(_first_order("0.1.23"))
+
+
+def test_first_order_from_0_1_24_needs_folds_and_image_space():
+    VALIDATOR.validate(_first_order("0.1.24", 1, _frame()))
+    for broken in (_first_order("0.1.24"), _first_order("0.1.24", 0),
+                   _first_order("0.1.24", -1, _frame()), _first_order("0.1.24", 0.5, _frame()),
+                   _first_order("0.1.24", 0, {"linear": _frame()["linear"]})):
+        with pytest.raises(jsonschema.ValidationError):
+            VALIDATOR.validate(broken)

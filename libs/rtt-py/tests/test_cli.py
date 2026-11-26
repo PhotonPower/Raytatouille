@@ -24,6 +24,7 @@ SCHOTT = CATALOG_DIR / "schott.agf"
 SINGLET = REFERENCE_DIR / "m1" / "singlet_const.rtt.json"
 ACHROMAT = REFERENCE_DIR / "m2" / "achromat.rtt.json"
 PARABOLOID = REFERENCE_DIR / "m2" / "paraboloid_stop.rtt.json"
+FOLDED = REFERENCE_DIR / "m6" / "singlet_fold45.rtt.json"
 
 
 def _compiled(path: Any, schott: bool = False) -> rt.CompiledSystem:
@@ -55,6 +56,10 @@ CASES: dict[str, Case] = {
     "first_order": (["analyze", "first-order", str(ACHROMAT), "--catalog", str(SCHOTT)],
                     lambda: rt.paraxial.first_order(_compiled(ACHROMAT, True)),
                     lambda d: d["efl"] > 0),
+    # behind a plane fold mirror, with folds and image_space (ADR 0054, result format 0.1.24)
+    "first_order_folded": (["analyze", "first-order", str(FOLDED)],
+                           lambda: rt.paraxial.first_order(_compiled(FOLDED)),
+                           lambda d: d["folds"] == 1 and d["efl"] > 0),
     "seidel": (["analyze", "seidel", str(ACHROMAT), "--catalog", str(SCHOTT)],
                lambda: rt.paraxial.seidel(_compiled(ACHROMAT, True)),
                lambda d: d["sum"]["s1"] != 0),

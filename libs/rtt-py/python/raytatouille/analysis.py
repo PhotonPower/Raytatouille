@@ -945,13 +945,14 @@ def jones_pupil(
 
     Two forms, as path_transmission():
 
-    - make_rays (convenience form; rotationally symmetric paths only): ``field`` (default 0)
-      at ``wavelength`` (None: reference) with the pupil sampling ``rays`` (default "grid:33")
+    - make_rays (convenience form; rotationally symmetric paths, also behind plane fold
+      mirrors, ADR 0054): ``field`` (default 0) at ``wavelength`` (None: reference) with the
+      pupil sampling ``rays`` (default "grid:33")
       and ``aiming`` (default REAL); the phase w is W of opd_points (reference sphere)::
 
           jp = rt.analysis.jones_pupil(compiled, field=1, rays="grid:17")
 
-    - Start rays (for folded and tilted paths): ``start`` is a RayBatch of one wavelength from a
+    - Start rays (for tilted, decentred and other folded paths): ``start`` is a RayBatch of one wavelength from a
       source (P = identity), ``chief`` the index of the chief ray in it, which gives both
       frames; the phase is the OPL difference up to the image surface without a reference
       sphere (sphere.radius NaN). ``field``, ``wavelength``, ``rays`` and ``aiming`` are not
@@ -1049,8 +1050,8 @@ def path_transmission(
 
     Two forms:
 
-    - Start rays (main form; also for folded and tilted paths such as interferometers, which
-      the paraxial aiming of make_rays does not accept): ``start`` is a RayBatch in global
+    - Start rays (main form; also for tilted paths and folded ones such as interferometers,
+      which the paraxial aiming of make_rays does not accept): ``start`` is a RayBatch in global
       coordinates; it is copied, not changed. Every ray counts as launched; a ray that is not
       ALIVE at the start counts as lost with its status. Start weight and start OPL are
       carried along, and each ray has its own wavelength index (``wl``). ``field``,
@@ -1059,9 +1060,9 @@ def path_transmission(
           start = rt.trace.RayBatch(1)  # one ray at the origin along +z
           t = rt.analysis.path_transmission(compiled, "test arm", start=start)
 
-    - make_rays (convenience form; rotationally symmetric paths only): ``field`` (default 0)
-      at ``wavelength`` (None: reference) with the pupil sampling ``rays`` (default
-      "hexapolar:6", shorthand as in spot()) and ``aiming`` (default REAL)::
+    - make_rays (convenience form; rotationally symmetric paths, also behind plane fold
+      mirrors, ADR 0054): ``field`` (default 0) at ``wavelength`` (None: reference) with the
+      pupil sampling ``rays`` (default "hexapolar:6", shorthand as in spot()) and ``aiming`` (default REAL)::
 
           t = rt.analysis.path_transmission(compiled, "main", field=1, rays="hexapolar:12")
 

@@ -24,6 +24,7 @@ from ._core import (
     Seidel,
     SeidelSurfaces,
     SeidelTerms,
+    UnfoldedFrame,
     is_anamorphic,
     trace_ray_section,
 )
@@ -41,6 +42,7 @@ __all__ = [
     "Seidel",
     "SeidelSurfaces",
     "SeidelTerms",
+    "UnfoldedFrame",
     "first_order",
     "first_order_section",
     "is_anamorphic",
@@ -62,10 +64,12 @@ def first_order(
     ``system`` is a System (compiled with ``materials``) or a CompiledSystem, as for the other
     functions of this module (#336); for several analyses compile once with rt.compile().
     ``path`` is an index or a name, ``wavelength`` an index (None: reference). Conventions in
-    rtt/paraxial/paraxial.hpp.
+    rtt/paraxial/paraxial.hpp. Behind plane fold mirrors (ADR 0054) the positions lie along the
+    unfolded axis; ``folds`` counts the folds and ``image_space`` (UnfoldedFrame) maps image
+    space to global coordinates.
 
-    Raises ParaxialError if the path is not rotationally symmetric or the path or wavelength
-    does not exist, ValueError for an unknown path name.
+    Raises ParaxialError if the path is not rotationally symmetric (after unfolding its plane
+    fold mirrors) or the path or wavelength does not exist, ValueError for an unknown path name.
     """
     return _core.first_order(compiled(system, materials), path, wavelength)
 
@@ -82,8 +86,8 @@ def first_order_section(
     the same quantities as first_order(), heights and pupil diameters along x or y. ``system``
     is a System (compiled with ``materials``) or a CompiledSystem (#336).
 
-    Raises ParaxialError if a surface is decentred or tilted, the principal axes of an
-    anamorphic surface or an ideal cylinder lens are not aligned with x and y, or the path or
+    Raises ParaxialError if a surface is decentred or tilted, for a path folded by plane
+    mirrors (ADR 0054, point 3), if the principal axes of an anamorphic surface or an ideal cylinder lens are not aligned with x and y, or the path or
     wavelength does not exist; ValueError for an unknown path name.
     """
     return _core.first_order_section(compiled(system, materials), section, path, wavelength)

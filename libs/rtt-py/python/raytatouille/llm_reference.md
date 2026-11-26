@@ -178,8 +178,10 @@ for all fields; `spot` without `wavelength` uses all wavelengths (`hexapolar:N` 
 and wavelength). `RayBatch` columns: `pos_x/y/z`, `dir_x/y/z`, `wl` (index), `opl`, `weight`, `field`,
 `pupil_x/y`, `status`, `last_surface`. Ray problems are status values (`MISSED`, `VIGNETTED`,
 `TIR`, `NO_CONVERGENCE`, `ABSORBED`, `EVENT_IMPOSSIBLE`, `EVANESCENT`), never exceptions. Own
-start rays: fill a `rt.trace.RayBatch(n)` and call `trace`; needed for tilted, decentred or
-folded paths and for an axicon, where automatic aiming raises `rt.ParaxialError`.
+start rays: fill a `rt.trace.RayBatch(n)` and call `trace`; needed for tilted or decentred
+paths and for an axicon, where automatic aiming raises `rt.ParaxialError`. Paths folded by plane
+mirrors aim automatically: their paraxial positions lie along the unfolded axis, and
+`first_order(...).image_space` (`to_global`, `to_unfolded`) maps image space to global.
 
 ### Read and change the model
 

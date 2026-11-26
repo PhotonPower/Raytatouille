@@ -76,15 +76,11 @@ struct UnfoldedFrame {
   math::Vec3 offset = math::Vec3::Zero();
 
   /// The global point of the unfolded point p, mm: linear * p + offset.
-  [[nodiscard]] math::Vec3 to_global(const math::Vec3& p) const { return linear * p + offset; }
+  [[nodiscard]] math::Vec3 to_global(const math::Vec3& p) const;
   /// The unfolded point of the global point g, mm: linear^T (g - offset) (linear is orthogonal).
-  [[nodiscard]] math::Vec3 to_unfolded(const math::Vec3& g) const {
-    return linear.transpose() * (g - offset);
-  }
+  [[nodiscard]] math::Vec3 to_unfolded(const math::Vec3& g) const;
   /// The unfolded direction of the global direction d: linear^T d.
-  [[nodiscard]] math::Vec3 to_unfolded_vector(const math::Vec3& d) const {
-    return linear.transpose() * d;
-  }
+  [[nodiscard]] math::Vec3 to_unfolded_vector(const math::Vec3& d) const;
 };
 
 /// Paraxial ray just after one event of a path.

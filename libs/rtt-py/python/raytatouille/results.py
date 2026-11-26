@@ -54,7 +54,7 @@ __all__ = [
 ]
 
 FORMAT = "raytatouille-result"
-SCHEMA_VERSION = "0.1.23"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
+SCHEMA_VERSION = "0.1.24"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
 # 0.1.3: status Evanescent, status arrays one entry longer (#127); 0.1.4: PathTransmission,
 # PathOplDifference, GhostRanking (#133); 0.1.5: RayBatch wave_x/y/z, mode_index (#134);
 # 0.1.6: RaytraceReport, SystemReport, DimensionReport (#177);
@@ -76,6 +76,7 @@ SCHEMA_VERSION = "0.1.23"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84)
 # 0.1.21: SurfaceLayout aperture_vertices; apertures regular_polygon, polygon (#320)
 # 0.1.22: SurfaceLayout obscurations (#320)
 # 0.1.23: SurfaceLayout terms; ToleranceItem term (#316)
+# 0.1.24: FirstOrder folds, image_space (UnfoldedFrame) (#357)
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a
@@ -101,6 +102,7 @@ _ADDED: dict[str, tuple[tuple[int, tuple[str, ...]], ...]] = {
                       (22, ("obscurations",)),  # 0.1.22 (#320)
                       (23, ("terms",))),  # 0.1.23 (#316)
     "CompiledElement": ((20, ("active",)),),  # 0.1.20 (#380)
+    "FirstOrder": ((24, ("folds", "image_space")),),  # 0.1.24 (#357)
 }
 _FIELDS: dict[str, tuple[str, ...]] = {
     # analysis
@@ -215,7 +217,8 @@ _FIELDS: dict[str, tuple[str, ...]] = {
                    "front_focal_length", "rear_focal_length", "ffl", "bfl", "front_focal_z",
                    "rear_focal_z", "front_principal_z", "rear_principal_z", "image_z",
                    "lateral_magnification", "angular_magnification", "entrance_pupil",
-                   "exit_pupil"),
+                   "exit_pupil", "folds", "image_space"),
+    "UnfoldedFrame": ("linear", "offset"),
     "SeidelTerms": ("s1", "s2", "s3", "s4", "s5", "c_l", "c_t"),
     "RayStart": ("z", "y", "u"),
     "SeidelSurfaces": ("surface", "y", "y_bar", "a", "a_bar", "lagrange", "s1", "s2", "s3",
@@ -520,14 +523,15 @@ def load_json(text: str) -> Result:
     and q from 0.1.9; SurfaceLayout: curvature_x and conic_constant_x from 0.1.17,
     normalization_radius and axicon_angle_deg from 0.1.18, active from 0.1.20,
     aperture_vertices from 0.1.21, obscurations from 0.1.22, terms from 0.1.23; CompiledElement
-    and the segments of DimensionReport: active from 0.1.20); the data then contain them as the
+    and the segments of DimensionReport: active from 0.1.20; FirstOrder: folds and image_space
+    from 0.1.24); the data then contain them as the
     type's reading rule says (RayBatch: wave = dir, mode_index 0, ADR 0026, point 3; no Q and no
     P per slot: q and prt None, polarization False, since Q cannot be recomputed without the
     normals, ADR 0034; SurfaceLayout: the x section equals the y section, ADR 0042, point 5, and
     no normalization radius and no axicon angle, ADR 0043, point 4; active is true, since an
     older file knows no inactive element, ADR 0049, point 7; no aperture vertices, since an
     older file has no polygon aperture, and empty lists of obscurations and terms, ADR 0050,
-    ADR 0051).
+    ADR 0051; no fold and image space as the global frame, ADR 0054).
     """
     envelope = json.loads(text, parse_constant=_no_constant, object_pairs_hook=_unique_keys)
     if not isinstance(envelope, dict):
@@ -598,5 +602,9 @@ def _upgrade(type_name: str, data: dict[str, Any], absent: list[str]) -> dict[st
                  "aperture_vertices": None, "obscurations": [], "terms": []}
     elif type_name == "CompiledElement":
         added = {"active": True}  # before 0.1.20 every element was active (ADR 0049, point 7)
+    elif type_name == "FirstOrder":
+        # Files before 0.1.24 know no folded path: no fold, image space is global (ADR 0054).
+        added = {"folds": 0, "image_space": {"linear": np.eye(3, dtype=np.float64),
+                                             "offset": np.zeros(3, dtype=np.float64)}}
     data = {**data, **{k: v for k, v in added.items() if k in absent and k not in data}}
     return {k: data[k] for k in _required(type_name)}

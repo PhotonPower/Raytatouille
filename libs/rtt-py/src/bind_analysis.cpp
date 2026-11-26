@@ -259,10 +259,11 @@ void bind_analysis(nb::module_& m) {
       "Wavelength index (copy).");
   column<double>(
       foci, "paraxial_z", [](const FocusPosition& f) { return f.paraxial_z; },
-      "Global z of the paraxial focus, mm (copy).");
+      "Global z of the paraxial focus, mm; behind a plane fold mirror along the unfolded axis "
+      "(ADR 0054) (copy).");
   column<double>(
       foci, "real_z", [](const FocusPosition& f) { return f.real_z; },
-      "Global z of the axis crossing of the real zone ray, mm (copy).");
+      "Global z of the axis crossing of the real zone ray, mm; unfolded as paraxial_z (copy).");
 
   nb::class_<LongitudinalColour>(
       m, "LongitudinalColour",
@@ -439,7 +440,8 @@ void bind_analysis(nb::module_& m) {
       "Index into surface_ids (copy).");
   column<double>(
       prescription_surfaces, "z", [](const PrescriptionSurface& q) { return q.z; },
-      "Global z of the surface vertex, mm (copy).");
+      "Global z of the surface vertex, mm; behind a plane fold mirror along the unfolded axis "
+      "(ADR 0054) (copy).");
   column<double>(
       prescription_surfaces, "n", [](const PrescriptionSurface& q) { return q.n; },
       "Signed index after the event, negative while light travels towards -z (copy).");

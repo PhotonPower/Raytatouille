@@ -57,7 +57,7 @@ TEST_CASE("strings, NaN and the envelope as json.dumps (ADR 0052, point 1)", "[i
   r.history = {it};
   const std::string text = rtt::io::to_result_json(r);
   CHECK(text.starts_with(
-      R"({"format": "raytatouille-result", "schema_version": "0.1.23", "type": "OptimResult", )"
+      R"({"format": "raytatouille-result", "schema_version": "0.1.24", "type": "OptimResult", )"
       // An ordinary literal: MSVC reads \u in a raw string literal as a universal character name.
       "\"data\": {\"status\": \"CANCELLED\", \"patch\": \"a\\\"b\\\\c\\n\\u0001"
       "\x7f\xc3\xa9\xe2\x80\xa8\""));

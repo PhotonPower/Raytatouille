@@ -627,6 +627,29 @@ FirstOrder first_order_section(const compile::CompiledSystem& system,
   return first_order_impl(system, path, wavelength, section);
 }
 
+// Written out element by element: inlined Eigen products with a transpose make GCC 13 with -O3
+// and Eigen 5 report -Wnull-dereference in callers (#366, the Python binding in #357).
+math::Vec3 UnfoldedFrame::to_global(const math::Vec3& p) const {
+  math::Vec3 g;
+  for (Eigen::Index i = 0; i < 3; ++i) {
+    g[i] = linear(i, 0) * p[0] + linear(i, 1) * p[1] + linear(i, 2) * p[2] + offset[i];
+  }
+  return g;
+}
+
+math::Vec3 UnfoldedFrame::to_unfolded_vector(const math::Vec3& d) const {
+  math::Vec3 u;
+  for (Eigen::Index i = 0; i < 3; ++i) {
+    u[i] = linear(0, i) * d[0] + linear(1, i) * d[1] + linear(2, i) * d[2];
+  }
+  return u;
+}
+
+math::Vec3 UnfoldedFrame::to_unfolded(const math::Vec3& g) const {
+  const math::Vec3 d(g[0] - offset[0], g[1] - offset[1], g[2] - offset[2]);
+  return to_unfolded_vector(d);
+}
+
 namespace detail {
 
 std::vector<double> axis_signs(const compile::CompiledSystem& system,
