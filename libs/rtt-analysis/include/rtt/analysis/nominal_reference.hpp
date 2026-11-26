@@ -38,7 +38,9 @@ class NominalReference {
   ///         trace::aim_reference() gave for this wavelength (same type), if it failed
   [[nodiscard]] const trace::AimReference& aim(std::uint16_t wavelength) const;
   /// Centre E of the paraxial exit pupil of the nominal system at its reference wavelength,
-  /// global, E = (0, 0, z_XP) mm; none for an exit pupil at infinity (image-space telecentric).
+  /// global, E = (0, 0, z_XP) mm, behind a plane fold mirror image_space.to_global((0, 0, z_XP))
+  /// with z_XP along the unfolded axis (ADR 0054); none for an exit pupil at infinity
+  /// (image-space telecentric).
   /// @throws the exception of the paraxial computation (rtt::compile::NoStopError,
   ///         rtt::paraxial::ParaxialError), if it failed
   [[nodiscard]] std::optional<math::Vec3> exit_pupil() const;

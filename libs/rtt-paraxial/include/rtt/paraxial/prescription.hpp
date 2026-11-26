@@ -8,7 +8,9 @@
 /// Conventions as in paraxial.hpp (decided for #7, docs/architecture.md, "Engine 1,
 /// paraxial"): lengths in mm, global z along the optical axis, y the ray height, u = dy/dz the
 /// slope in the global frame, n the signed index (negative while light travels towards -z), c
-/// the vertex curvature in global orientation.
+/// the vertex curvature in global orientation. Behind a plane fold mirror all of them refer to
+/// the unfolded frame (ADR 0054); the row of the fold has c = 0 and leaves the rays unchanged,
+/// so its angle of incidence is i = u against the unfolded axis, not the tilt of the mirror.
 ///
 /// Rays: the same marginal and chief rays as seidel() (seidel.hpp, both built by one internal
 /// function): the marginal ray from the axial object point to the rim of the paraxial entrance

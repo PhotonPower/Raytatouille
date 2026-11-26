@@ -160,8 +160,12 @@ TEST_CASE("image-space analyses behind a fold equal those of the unfolded single
   const auto e = rtt::analysis::nominal_reference(cs, PathId{0}).exit_pupil();
   REQUIRE(e);
   const auto fo = rtt::paraxial::first_order(cs, PathId{0}, cs.reference_wavelength());
-  CHECK((*e - fo.image_space.to_global(rtt::math::Vec3(0.0, 0.0, *fo.exit_pupil->z))).norm() ==
-        0.0);
+  // geometrically: the exit pupil of the unfolded singlet at z_XP, mirrored at the 45 deg
+  // mirror at z = 49 into -y (the mirror normal is (0, -sin 45, cos 45))
+  const double z_xp =
+      *rtt::paraxial::first_order(flat, PathId{0}, flat.reference_wavelength()).exit_pupil->z;
+  CHECK((*e - rtt::math::Vec3(0.0, -(49.0 - z_xp), 49.0)).norm() <= 1e-12);
+  CHECK(fo.folds == 1);
   // longitudinal colour
   const auto lf = rtt::analysis::longitudinal_colour(cs, PathId{0});
   const auto lu = rtt::analysis::longitudinal_colour(flat, PathId{0});
@@ -226,5 +230,42 @@ TEST_CASE("the fold mirror as the first surface bounds the start plane", "[analy
     const auto s = rtt::analysis::spot(cs, PathId{0}, 0, 0, options(aiming));
     CHECK(s.rays_launched == 127);
     CHECK(s.rays_arrived == 127);
+  }
+}
+
+TEST_CASE("a periscope over x and y with oblique fields", "[analysis][fold][357]") {
+  // m1/singlet_const with a mirror at z = 49 into +y and a second one 20 mm further into +x
+  // (two folds, even parity, a linear map that is not symmetric, so linear and its transpose
+  // differ), fields (0, 0), (3, 4), (5, 0), (0, 5) deg: distortion, field curvature and OPD equal
+  // those of the unfolded singlet with the same fields.
+  const CompiledSystem cs =
+      compiled(rtt::io::parse_system(
+          R"({"schema_version": "0.11.0", "name": "periscope x-y", "units": {"length": "mm", "wavelength": "um"}, "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": true}, {"um": 0.6563}], "aperture": {"type": "epd", "value": 20.0}, "fields": {"points": [{}, {"x": 3.0, "y": 4.0}, {"x": 5.0}, {"y": 5.0}]}, "root": {"type": "assembly", "name": "system", "children": [{"type": "stop", "name": "stop", "surfaces": [{"id": "STO", "aperture": {"type": "circular", "radius": 10.0}}]}, {"type": "lens", "name": "L1", "pose": {"position": [0.0, 0.0, 5.0]}, "material": "CONST:1.5168", "surfaces": [{"id": "L1.S1", "shape": {"base": {"type": "conic", "radius": 51.68}}, "aperture": {"type": "circular", "radius": 12.7}}, {"id": "L1.S2", "pose": {"position": [0.0, 0.0, 4.0]}, "aperture": {"type": "circular", "radius": 12.7}}]}, {"type": "mirror", "name": "M1", "pose": {"position": [0.0, 0.0, 49.0], "rotation_deg": [45.0, 0.0, 0.0]}, "surfaces": [{"id": "M1"}]}, {"type": "mirror", "name": "M2", "pose": {"position": [0.0, 20.0, 49.0], "rotation_deg": [90.0, 45.0, 0.0]}, "surfaces": [{"id": "M2"}]}, {"type": "detector", "name": "image", "pose": {"position": [37.363, 20.0, 49.0], "rotation_deg": [0.0, 90.0, 0.0]}, "surfaces": [{"id": "IMG"}]}]}, "paths": [{"name": "main", "events": [{"surface": "STO", "kind": "transmit"}, {"surface": "L1.S1", "kind": "refract"}, {"surface": "L1.S2", "kind": "refract"}, {"surface": "M1", "kind": "reflect"}, {"surface": "M2", "kind": "reflect"}, {"surface": "IMG", "kind": "transmit"}]}]})"));
+  const CompiledSystem flat = compiled(rtt::io::parse_system(
+      R"({"schema_version": "0.11.0", "name": "Plano-convex singlet f = 100 mm, constant index 1.5168", "units": {"length": "mm", "wavelength": "um"}, "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": true}, {"um": 0.6563}], "aperture": {"type": "epd", "value": 20.0}, "fields": {"points": [{}, {"x": 3.0, "y": 4.0}, {"x": 5.0}, {"y": 5.0}]}, "root": {"type": "assembly", "name": "system", "children": [{"type": "stop", "name": "stop", "surfaces": [{"id": "STO", "aperture": {"type": "circular", "radius": 10.0}}]}, {"type": "lens", "name": "L1", "pose": {"position": [0.0, 0.0, 5.0]}, "material": "CONST:1.5168", "surfaces": [{"id": "L1.S1", "shape": {"base": {"type": "conic", "radius": 51.68}}, "aperture": {"type": "circular", "radius": 12.7}}, {"id": "L1.S2", "pose": {"position": [0.0, 0.0, 4.0]}, "aperture": {"type": "circular", "radius": 12.7}}]}, {"type": "detector", "name": "image", "pose": {"position": [0.0, 0.0, 106.363]}, "surfaces": [{"id": "IMG"}]}]}, "paths": [{"name": "main", "events": "auto"}]})"));
+  const auto fo = rtt::paraxial::first_order(cs, PathId{0}, 1);
+  REQUIRE(fo.folds == 2);
+  CHECK((fo.image_space.linear - fo.image_space.linear.transpose()).cwiseAbs().maxCoeff() > 0.5);
+  // UnfoldedFrame: there and back, and the image vertex at the unfolded (0, 0, 106.363)
+  const rtt::math::Vec3 p(1.0, -2.0, 70.0);
+  CHECK((fo.image_space.to_unfolded(fo.image_space.to_global(p)) - p).norm() <= 1e-12);
+  CHECK((fo.image_space.to_unfolded(cs.surfaces().back().to_global.translation()) -
+         rtt::math::Vec3(0.0, 0.0, 106.363))
+            .norm() <= 1e-12);
+  for (std::uint16_t f = 1; f < 4; ++f) {
+    INFO("field " << f);
+    const auto& field = cs.fields().points[f];
+    const auto df = rtt::analysis::distortion_at(cs, PathId{0}, field, 1);
+    const auto du = rtt::analysis::distortion_at(flat, PathId{0}, field, 1);
+    CHECK(std::abs(df.real_height - du.real_height) <= 1e-12);
+    CHECK(std::abs(df.paraxial_height - du.paraxial_height) <= 1e-12);
+    const auto cf = rtt::analysis::field_curvature_at(cs, PathId{0}, field, 1);
+    const auto cu = rtt::analysis::field_curvature_at(flat, PathId{0}, field, 1);
+    CHECK(std::abs(cf.tangential - cu.tangential) <= 1e-7);
+    CHECK(std::abs(cf.sagittal - cu.sagittal) <= 1e-7);
+    const auto of = rtt::analysis::opd_map(cs, PathId{0}, f, 1);
+    const auto ou = rtt::analysis::opd_map(flat, PathId{0}, f, 1);
+    CHECK(std::abs(of.rms - ou.rms) <= 1e-9);
+    CHECK(std::abs(du.real_height) > 1.0);  // content guard: off axis
   }
 }

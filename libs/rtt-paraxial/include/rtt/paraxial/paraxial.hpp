@@ -115,7 +115,9 @@ struct RayAtEvent {
 
 /// Paraxial image of the aperture stop: position and diameter.
 struct Pupil {
-  std::optional<double> z;         ///< global z, mm; none if the pupil is at infinity
+  /// global z, mm (the exit pupil behind a fold: along the unfolded axis, ADR 0054); none if the
+  /// pupil is at infinity
+  std::optional<double> z;
   std::optional<double> diameter;  ///< mm; none if the system aperture does not define it
 };
 
