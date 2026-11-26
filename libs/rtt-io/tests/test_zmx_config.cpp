@@ -6,6 +6,7 @@
 // lines changed and a configuration block appended.
 
 #include <catch2/catch_test_macros.hpp>
+#include <cmath>
 #include <cstddef>
 #include <fstream>
 #include <optional>
@@ -116,6 +117,61 @@ std::vector<double> row_values(const System& s, std::string_view name) {
   const auto* v = std::get_if<std::vector<double>>(&s.parameters[*row].form);
   REQUIRE(v != nullptr);
   return *v;
+}
+
+/// A scan mirror as in the F-Theta files of the OISC corpus (#440), built from fold.zmx: a fixed
+/// break of 45 deg about x (SURF 2), the scan break `a` (SURF 3), the mirror (SURF 4), the break
+/// `b` (SURF 5, with `pickup` as its PPAR line if not empty) and the break `c` (45 deg in
+/// fold.zmx) with the thickness -32 (SURF 6), then the image (SURF 7); `pickup3` is a PPAR line of
+/// SURF 3. Angles in degrees as in the file.
+std::string scan(std::string_view a,
+                 std::string_view b,
+                 std::string_view pickup = {},
+                 std::string_view pickup3 = {},
+                 std::string_view c = "4.5E+001") {
+  const std::string f = read_file(kZmxDir + "fold.zmx");
+  const auto block = [&](int k) {
+    const std::size_t at = f.find("SURF " + std::to_string(k) + "\r\n");
+    REQUIRE(at != std::string::npos);
+    const std::size_t end = f.find(k == 5 ? "TOL " : "SURF " + std::to_string(k + 1) + "\r\n", at);
+    REQUIRE(end != std::string::npos);
+    return f.substr(at, end - at);
+  };
+  // the block of fold.zmx surface `from` as surface `to`
+  const auto numbered = [&](int from, int to) {
+    const std::string text = block(from);
+    return "SURF " + std::to_string(to) + text.substr(text.find("\r\n"));
+  };
+  // the break of fold.zmx surface 2 as surface `to` with the angle `angle` about x
+  const auto tilted = [&](int to, std::string_view angle, std::string_view extra) {
+    std::string text =
+        replace_line(numbered(2, to), 0, "  PARM 3", "  PARM 3 " + std::string(angle));
+    if (!extra.empty()) {
+      text = replace_line(text, 0, "  PARM 4", std::string(extra) + "\r\n  PARM 4 0");
+    }
+    return text;
+  };
+  const std::size_t s2 = f.find("SURF 2\r\n");
+  const std::size_t tail = f.find("TOL ");
+  const std::string last =
+      replace_line(numbered(4, 6), 0, "  PARM 3", "  PARM 3 " + std::string(c));
+  return f.substr(0, s2) + block(2) + tilted(3, a, pickup3) + numbered(3, 4) +
+         tilted(5, b, pickup) + last + numbered(5, 7) + f.substr(tail);
+}
+
+/// The frames of all surfaces of configuration k agree with those of `single` to 1e-14 in the
+/// rotation and 1e-13 mm in the translation (the decomposition of rule 3 is not bitwise).
+void same_frames(const System& multi, std::size_t k, const System& single) {
+  const auto a = rtt::compile::compile(multi, schott(), k);
+  const auto b = rtt::compile::compile(single, schott());
+  REQUIRE(a.surfaces().size() == b.surfaces().size());
+  for (std::size_t i = 0; i < a.surfaces().size(); ++i) {
+    INFO("surface " << i);
+    const auto& x = a.surfaces()[i].to_global;
+    const auto& y = b.surfaces()[i].to_global;
+    REQUIRE((x.rotation() - y.rotation()).cwiseAbs().maxCoeff() < 1e-14);
+    REQUIRE((x.translation() - y.translation()).cwiseAbs().maxCoeff() < 1e-13);
+  }
 }
 
 double rms(const System& s, std::size_t k) {
@@ -275,10 +331,6 @@ TEST_CASE("configurations that change more than parameter values are rejected",
                "zmx.config_unsupported", "YFIE 2 1");
   expect_error(two(z, {op("IGNR", 4, 1, "0"), op("IGNR", 4, 2, "1")}), "zmx.config_unsupported",
                "IGNR 4 1");
-  // a tilt of a coordinate break (decision 6 on #361, follow-up #440)
-  const std::string fold = read_file(kZmxDir + "fold.zmx");
-  expect_error(two(fold, {op("PRAM", 2, 1, "4.5E+001", 3), op("PRAM", 2, 2, "4.0E+001", 3)}),
-               "zmx.config_unsupported", "PRAM 2 1");
   // the thickness of the object at infinity
   expect_error(two(z, {op("THIC", 0, 1, "1.0E+010"), op("THIC", 0, 2, "1.0E+003")}),
                "zmx.config_unsupported", "THIC 0 1");
@@ -336,4 +388,175 @@ TEST_CASE("a configuration block that contradicts the surface data or is incompl
       "zmx.config_mismatch", "THIC 9 1");
   expect_error(with_block(z, {"MNUM 2", "THIC 4 1"}), "zmx.parse", "THIC 4 1");
   expect_error(with_block(z, {"MNUM 161"}), "zmx.multi_config", "MNUM 161");
+}
+
+TEST_CASE("a scan mirror tilted per configuration, with the break behind it as a pickup",
+          "[zmx][config][440]") {
+  // The F-Theta case of the OISC corpus (decisions 1 and 2 on #440): PRAM 3, 3 is the scan
+  // angle, the break SURF 5 takes -1 times it by PPAR (parameter 3 of surface 3, factor -1,
+  // offset 0). MNUM 3 without the active configuration; the surface data hold C2.
+  const std::vector<std::string> a{"0.0E+000", "2.5E+000", "-2.5E+000"};
+  const std::vector<std::string> b{"0.0E+000", "-2.5E+000", "2.5E+000"};
+  const std::string pickup = "  PPAR 3 3 -1.0E+000 0.0E+000 0";
+  std::vector<std::string> block{"MNUM 3"};
+  for (int k = 1; k <= 3; ++k) block.push_back(op("PAR3", 3, k, a[k - 1]));
+  const ZmxImport multi = import_zmx(with_block(scan(a[1], b[1], pickup), block), schott());
+  const System& s = multi.system;
+  REQUIRE(s.configurations.size() == 3);
+  for (std::size_t k = 1; k < 3; ++k) {
+    INFO("configuration " << k + 1);
+    const ZmxImport single = import_zmx(with_block(scan(a[k], b[k], pickup), {"MNUM 1"}), schott());
+    REQUIRE(configuration(s, k) == single.system);
+  }
+  // C1 has the angle 0: the single file drops both breaks of 0 (rule 1) and places the mirror by
+  // rule 2, the configurations keep them and multiply out (rule 3); the same frames
+  const ZmxImport zero = import_zmx(with_block(scan(a[0], b[0], pickup), {"MNUM 1"}), schott());
+  REQUIRE(configuration(s, 0) != zero.system);
+  same_frames(s, 0, zero.system);
+  // content guard: the mirror turns with the angle, the image behind it stays where it is
+  // rows: the turn of the mirror (rule 3 decomposes R = Rx(45) Rx(a) into 45 + a) and the pose
+  // of the image behind it, relative to the mirror
+  REQUIRE(s.parameters.size() == 4);
+  REQUIRE(row_values(s, "image_rotation_deg_x").size() == 3);
+  REQUIRE(row_values(s, "image_position_y").size() == 3);
+  REQUIRE(row_values(s, "image_position_z").size() == 3);
+  const std::vector<double> mirror = row_values(s, "M1_rotation_deg_x");
+  REQUIRE(std::abs(mirror[0] - 45.0) < 1e-12);
+  REQUIRE(std::abs(mirror[1] - 47.5) < 1e-12);
+  REQUIRE(std::abs(mirror[2] - 42.5) < 1e-12);
+  const auto image = [&](std::size_t k) {
+    return rtt::compile::compile(s, schott(), k).surfaces().back().to_global.translation();
+  };
+  REQUIRE((image(1) - image(0)).norm() < 1e-12);
+  const auto turned = [&](std::size_t k) {
+    return rtt::compile::compile(s, schott(), k).surfaces()[1].to_global.rotation();
+  };
+  REQUIRE((turned(1) - turned(2)).cwiseAbs().maxCoeff() > 0.05);
+
+  // the tilt of the only break before a fold mirror (fold.zmx, rule 2): rotate_first with the
+  // angle of the file as a row; rejected in #361 (decision 6 there), accepted since #440
+  const std::string fold = read_file(kZmxDir + "fold.zmx");
+  const auto folded = [&](std::string_view t) {
+    return in_surface(fold, 2, "  PARM 3", "  PARM 3 " + std::string(t));
+  };
+  const ZmxImport tilt = import_zmx(
+      with_block(folded("4.5E+001"),
+                 {"MNUM 2", op("PRAM", 2, 1, "4.5E+001", 3), op("PRAM", 2, 2, "4.0E+001", 3)}),
+      schott());
+  REQUIRE(row_values(tilt.system, "M1_rotation_deg_x") == std::vector<double>{45.0, 40.0});
+  REQUIRE(configuration(tilt.system, 0) ==
+          import_zmx(with_block(folded("4.5E+001"), {"MNUM 1"}), schott()).system);
+  REQUIRE(configuration(tilt.system, 1) ==
+          import_zmx(with_block(folded("4.0E+001"), {"MNUM 1"}), schott()).system);
+
+  // a decenter of the scan break per configuration lands in the position (rule 3)
+  const auto decentered = [&](std::string_view dx) {
+    return in_surface(scan(a[1], b[1], pickup), 3, "  PARM 1", "  PARM 1 " + std::string(dx));
+  };
+  const ZmxImport shifted = import_zmx(
+      with_block(decentered("1.0E+000"),
+                 {"MNUM 2", op("PRAM", 3, 1, "1.0E+000", 1), op("PRAM", 3, 2, "2.0E+000", 1)}),
+      schott());
+  // content guard: the decenter is the x of the mirror position (rule 3 multiplies out)
+  REQUIRE(shifted.system.parameters.size() == 1);
+  REQUIRE(row_values(shifted.system, "M1_position_x") == std::vector<double>{1.0, 2.0});
+  for (std::size_t k = 0; k < 2; ++k) {
+    INFO("decenter, configuration " << k + 1);
+    REQUIRE(
+        configuration(shifted.system, k) ==
+        import_zmx(with_block(decentered(k == 0 ? "1.0E+000" : "2.0E+000"), {"MNUM 1"}), schott())
+            .system);
+  }
+}
+
+TEST_CASE("pickups and breaks per configuration that the import rejects", "[zmx][config][440]") {
+  const auto two = [](const std::string& text, std::vector<std::string> rows) {
+    rows.insert(rows.begin(), "MNUM 2");
+    return with_block(text, rows);
+  };
+  const std::vector<std::string> angle{op("PAR3", 3, 1, "2.5E+000"), op("PAR3", 3, 2, "1.0E+000")};
+  // the surface data do not hold the pickup: -1 * 2.5 + 0 is not 2.0
+  expect_error(two(scan("2.5E+000", "2.0E+000", "  PPAR 3 3 -1.0E+000 0.0E+000 0"), angle),
+               "zmx.config_mismatch", "PPAR 3 3");
+  // a last field other than 0 (not documented)
+  expect_error(two(scan("2.5E+000", "-2.5E+000", "  PPAR 3 3 -1.0E+000 0.0E+000 1"), angle),
+               "zmx.config_unsupported", "PPAR 3 3");
+  // a pickup that is also an operand
+  std::vector<std::string> both = angle;
+  both.push_back(op("PAR3", 5, 1, "-2.5E+000"));
+  both.push_back(op("PAR3", 5, 2, "-3.0E+000"));
+  expect_error(two(scan("2.5E+000", "-2.5E+000", "  PPAR 3 3 -1.0E+000 0.0E+000 0"), both),
+               "zmx.config_unsupported", "PPAR 3 3");
+  // a thickness pickup whose source changes (PZUP source, factor, offset)
+  const std::string z = in_surface(scan("2.5E+000", "-2.5E+000"), 7, "  DISZ",
+                                   "  DISZ 0.0E+000\r\n  PZUP 6.0E+000 0.0E+000 0.0E+000 0");
+  expect_error(two(z, {op("THIC", 6, 1, "-3.2E+001"), op("THIC", 6, 2, "-3.0E+001")}),
+               "zmx.config_unsupported", "PZUP 6");
+  // a parameter of a coordinate break beyond 6
+  expect_error(
+      two(scan("2.5E+000", "-2.5E+000"), {op("PRAM", 3, 1, "0", 7), op("PRAM", 3, 2, "1", 7)}),
+      "zmx.config_unsupported", "PRAM 3 1");
+  // a pickup of a changing source on a COORDBRK parameter beyond 6 (the source is parameter 7 of
+  // the mirror SURF 4)
+  expect_error(two(scan("2.5E+000", "-2.5E+000", "  PPAR 7 4 1.0E+000 0.0E+000 0"),
+                   {op("PRAM", 4, 1, "0", 7), op("PRAM", 4, 2, "1.0E+000", 7)}),
+               "zmx.config_unsupported", "PPAR 7 4");
+  // a pickup of a changing source on a tilted plane (tilt_plate.zmx, SURF 2 from SURF 3)
+  const std::string plate = in_surface(read_file(kZmxDir + "tilt_plate.zmx"), 2, "  PARM 2",
+                                       "  PPAR 1 3 1.0E+000 5.0E-002 0\r\n  PARM 2 2.0E-001");
+  expect_error(
+      with_block(plate, {"MNUM 2 1", op("PRAM", 3, 1, "0", 1), op("PRAM", 3, 2, "1.0E+000", 1)}),
+      "zmx.config_unsupported", "PPAR 1 3");
+  // a break with the order flag whose number of tilts changes: rule 2 with one tilt, rule 3 with
+  // two (decision 3 on #440)
+  std::string flagged = in_surface(read_file(kZmxDir + "fold.zmx"), 2, "  PARM 6", "  PARM 6 1");
+  flagged = in_surface(flagged, 2, "  PARM 4", "  PARM 4 5.0E+000");
+  flagged = in_surface(flagged, 2, "  PARM 3", "  PARM 3 0");
+  expect_error(
+      with_block(flagged, {"MNUM 2 1", op("PRAM", 2, 1, "0", 3), op("PRAM", 2, 2, "1.0E+001", 3)}),
+      "zmx.config_unsupported", "PRAM 2 1");
+  // a decenter of the only break before the mirror goes into the pivot (rule 2), not a Param
+  // (decision 3 on #440)
+  const std::string fold = read_file(kZmxDir + "fold.zmx");
+  expect_error(two(fold, {op("PRAM", 2, 1, "0", 1), op("PRAM", 2, 2, "1.0E+000", 1)}),
+               "zmx.config_unsupported", "PRAM 2 1");
+}
+
+TEST_CASE("a chain of pickups backwards over the surfaces, with a factor and an offset",
+          "[zmx][config][440]") {
+  // PRAM 6, 3 is the operand (45 and 40 deg); SURF 5 takes 0.5 times it minus 21, SURF 3 takes -1
+  // times SURF 5: the import needs two passes, and no break is 0 in either configuration
+  // (rule 3 both in the configurations and in the single files).
+  const std::string p5 = "  PPAR 3 6 5.0E-001 -2.1E+001 0";
+  const std::string p3 = "  PPAR 3 5 -1.0E+000 0.0E+000 0";
+  const auto file = [&](std::string_view a, std::string_view b, std::string_view c) {
+    return scan(a, b, p5, p3, c);
+  };
+  const ZmxImport multi = import_zmx(
+      with_block(file("-1.5E+000", "1.5E+000", "4.5E+001"),
+                 {"MNUM 2 1", op("PRAM", 6, 1, "4.5E+001", 3), op("PRAM", 6, 2, "4.0E+001", 3)}),
+      schott());
+  const System& s = multi.system;
+  REQUIRE(configuration(s, 0) ==
+          import_zmx(with_block(file("-1.5E+000", "1.5E+000", "4.5E+001"), {"MNUM 1"}), schott())
+              .system);
+  REQUIRE(configuration(s, 1) ==
+          import_zmx(with_block(file("1.0E+000", "-1.0E+000", "4.0E+001"), {"MNUM 1"}), schott())
+              .system);
+  // content guard: the mirror turns by 45 + a, the image by b + c
+  const std::vector<double> mirror = row_values(s, "M1_rotation_deg_x");
+  REQUIRE(std::abs(mirror[0] - 43.5) < 1e-12);
+  REQUIRE(std::abs(mirror[1] - 46.0) < 1e-12);
+  const std::vector<double> image = row_values(s, "image_rotation_deg_x");
+  REQUIRE(std::abs(image[0] - 46.5) < 1e-12);
+  REQUIRE(std::abs(image[1] - 39.0) < 1e-12);
+
+  // the resolved value against f * source + o (0.5 * 45 - 21 = 1.5): within the 13 printed digits
+  // accepted, beyond them rejected
+  const std::vector<std::string> rows{"MNUM 2 1", op("PRAM", 6, 1, "4.5E+001", 3),
+                                      op("PRAM", 6, 2, "4.0E+001", 3)};
+  REQUIRE_NOTHROW(
+      import_zmx(with_block(scan("0.0E+000", "1.5000000000001E+000", p5), rows), schott()));
+  expect_error(with_block(scan("0.0E+000", "1.500000001E+000", p5), rows), "zmx.config_mismatch",
+               "PPAR 3 6");
 }

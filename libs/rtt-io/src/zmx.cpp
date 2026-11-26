@@ -299,6 +299,9 @@ struct ZSurface {
   std::size_t obdc_line = 0;
   bool stop = false;
   std::size_t stop_line = 0;
+  /// The pickup notes PPAR and PZUP of this surface; read only with several configurations
+  /// (ADR 0044, addendum #440).
+  std::vector<const Line*> pickups;
 };
 
 bool is_mirror(const ZSurface& s) {
@@ -349,6 +352,7 @@ class Importer {
   void read_surface_line(ZSurface& s, const Line& l);
   void read_trailer(std::size_t from);
   void read_configurations(std::size_t mnum);
+  void read_pickups();
   void apply_configuration(std::size_t k);
   model::System build_configurations();
   model::System merge_configurations(const std::vector<model::System>& systems) const;
@@ -469,6 +473,8 @@ void Importer::read_surface_line(ZSurface& s, const Line& l) {
     s.parm[integer(l, 1)] = {number(l, 2), l.number};
   } else if (k == "XDAT") {
     s.xdat[integer(l, 1)] = {number(l, 2), l.number};
+  } else if (k == "PPAR" || k == "PZUP") {
+    s.pickups.push_back(&l);  // silent with one configuration (addendum PR C)
   } else if (k == "DISZ") {
     if (l.words.size() > 1 && l.words[1] == "INFINITY") {
       s.infinite = true;
@@ -577,7 +583,8 @@ void Importer::read_trailer(std::size_t from) {
 /// MNUM n c with c the active configuration, whose values the surface data hold. Without c the
 /// surface data hold one of the configurations, not always the first (OISC corpus), so at least
 /// one must agree with them.
-/// The stored value is used, also for pickups and solves (decision 5 on #361).
+/// The stored value is used for solves (decision 5 on #361); pickups whose source changes see
+/// read_pickups (#440).
 void Importer::read_configurations(std::size_t i) {
   const Line& mnum = lines_[i];
   const int n = integer(mnum, 1);
@@ -681,10 +688,15 @@ void Importer::read_configurations(std::size_t i) {
         fail("zmx.config_unsupported", first,
              what + ": the thickness of a surface at infinity per configuration is not imported");
       }
-      if (r.type == "PRAM" && (s->type == "COORDBRK" || s->type == "TILTSURF")) {
+      if (r.type == "PRAM" && s->type == "TILTSURF") {
         fail("zmx.config_unsupported", first,
-             what + ": a parameter of a " + s->type +
-                 " per configuration is not imported (decision 6 on #361, #440)");
+             what +
+                 ": a parameter of a TILTSURF per configuration is not imported (decision 6 "
+                 "on #361)");
+      }
+      if (r.type == "PRAM" && s->type == "COORDBRK" && (r.int2 < 1 || r.int2 > 6)) {
+        fail("zmx.config_unsupported", first,
+             what + ": only the parameters 1 to 6 of a COORDBRK are imported per configuration");
       }
       if (r.type == "APER" && (!aperture_kind_ || *aperture_kind_ == "FLOA")) {
         fail("zmx.config_unsupported", first,
@@ -724,6 +736,87 @@ void Importer::read_configurations(std::size_t i) {
   }
   configs_ = count;
   mnum_line_ = mnum.number;
+  read_pickups();
+}
+
+/// Pickups whose source changes between the configurations (ADR 0044, addendum #440, decision 2
+/// on #440). Reading of the OISC corpus, checked against the resolved values there: PPAR p s f o
+/// x on a surface sets its parameter p to f times parameter p of surface s plus o (x = 0 in the
+/// corpus); PZUP s f o x sets its thickness from that of surface s. The surface data hold the
+/// resolved values of one configuration only. A PPAR whose source changes becomes an operand of
+/// its own with f v_k + o, also along a chain of pickups; a PZUP whose source changes is not
+/// imported. The resolved value must be f times the source plus o, to 1e-11 relative (the file
+/// prints 13 digits).
+void Importer::read_pickups() {
+  const auto find = [&](const std::string& type, int int1, int int2) {
+    return std::find_if(
+        config_operands_.begin(), config_operands_.end(),
+        [&](const ConfigOperand& o) { return o.type == type && o.int1 == int1 && o.int2 == int2; });
+  };
+  std::vector<const Line*> picked;
+  for (bool added = true; added;) {
+    added = false;
+    for (std::size_t t = 0; t < surfaces_.size(); ++t) {
+      const int target = static_cast<int>(t);
+      for (const Line* l : surfaces_[t].pickups) {
+        if (std::find(picked.begin(), picked.end(), l) != picked.end()) continue;
+        if (l->words[0] == "PZUP") {
+          const int src = integer(*l, 1);
+          if (find("THIC", src, 0) != config_operands_.end()) {
+            fail("zmx.config_unsupported", l->number,
+                 "the thickness of surface " + std::to_string(target) + " is a pickup of surface " +
+                     std::to_string(src) +
+                     ", whose thickness changes between the configurations; a thickness pickup "
+                     "per configuration is not imported");
+          }
+          continue;
+        }
+        const int p = integer(*l, 1);
+        const int src = integer(*l, 2);
+        const auto source = find("PRAM", src, p);
+        if (source == config_operands_.end()) continue;
+        const std::string what =
+            "parameter " + std::to_string(p) + " of surface " + std::to_string(target);
+        if (number(*l, 5) != 0.0) {
+          fail("zmx.config_unsupported", l->number,
+               what +
+                   " is a pickup with a last field other than 0, whose meaning is not "
+                   "documented");
+        }
+        if (find("PRAM", target, p) != config_operands_.end()) {
+          fail("zmx.config_unsupported", l->number,
+               what + " is both a pickup and an operand of the configurations");
+        }
+        const ZSurface& s = surfaces_[t];
+        if (s.type == "TILTSURF" || (s.type == "COORDBRK" && (p < 1 || p > 6))) {
+          fail("zmx.config_unsupported", l->number,
+               what + " (" + s.type +
+                   ") is a pickup of a parameter that changes between the "
+                   "configurations, which is not imported there");
+        }
+        const double f = number(*l, 3);
+        const double o = number(*l, 4);
+        const auto held = [&](int surface) {
+          const ZSurface& z = surfaces_[static_cast<std::size_t>(surface)];
+          return z.parm.contains(p) ? z.parm.at(p).value : 0.0;
+        };
+        const double expected = f * held(src) + o;
+        const double h = held(target);
+        if (std::abs(h - expected) >
+            1e-11 * std::max({std::abs(h), std::abs(f * held(src)), std::abs(o)})) {
+          fail("zmx.config_mismatch", l->number,
+               what + " differs from the pickup of surface " + std::to_string(src) +
+                   " in the surface data");
+        }
+        std::vector<double> values;
+        values.reserve(source->values.size());
+        for (const double v : source->values) values.push_back(f * v + o);
+        config_operands_.push_back(ConfigOperand{"PRAM", target, p, values, l->number});
+        picked.push_back(l);
+        added = true;
+      }
+    }
+  }
 }
 
 /// The surface data and the system aperture with the values of configuration k (0-based).
@@ -1661,7 +1754,14 @@ model::System Importer::build() {
                            length(parm(s, 2)),
                            {parm(s, 3), parm(s, 4), parm(s, 5)},
                            parm(s, 6) != 0.0};
-      if (step.dx != 0.0 || step.dy != 0.0 || step.tilt != std::array<double, 3>{0.0, 0.0, 0.0}) {
+      // A break that changes between the configurations stays a step in every one, so that
+      // the choice of the pose rule does not depend on the configuration (decision 1 on #440).
+      const bool varies = std::any_of(config_operands_.begin(), config_operands_.end(),
+                                      [&](const ConfigOperand& o) {
+                                        return o.type == "PRAM" && o.int1 == static_cast<int>(k);
+                                      });
+      if (varies || step.dx != 0.0 || step.dy != 0.0 ||
+          step.tilt != std::array<double, 3>{0.0, 0.0, 0.0}) {
         chain.steps.push_back(step);
       }
       chain.thickness(disz);
