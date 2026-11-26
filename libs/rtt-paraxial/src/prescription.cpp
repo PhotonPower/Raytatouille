@@ -42,6 +42,11 @@ Prescription prescription(const compile::CompiledSystem& system,
   // Validates path, wavelength and rotational symmetry (ParaxialError).
   out.first_order = first_order(system, path, wavelength);
   const FirstOrder& fo = out.first_order;
+  // The surface positions of a folded path are coordinates of the unfolded frame; the
+  // prescription with its global frames follows (ADR 0054, point 4).
+  if (fo.folds > 0) {
+    throw ParaxialError("paraxial: prescription: a folded path is not yet supported (ADR 0054)");
+  }
   const bool infinite = system.object().at_infinity;
   const double z_obj = infinite ? 0.0 : system.object_z();
 
@@ -91,8 +96,9 @@ Prescription prescription(const compile::CompiledSystem& system,
   double u = out.marginal_start ? out.marginal_start->u : 0.0;
   double u_bar = out.chief_start ? out.chief_start->u : 0.0;
   out.surfaces.reserve(events.size());
+  const std::vector<double> signs = detail::axis_signs(system, path, wavelength);
   for (std::size_t k = 0; k < events.size(); ++k) {
-    const double c = detail::shape_data(system.surfaces()[events[k].surface]).c;
+    const double c = detail::shape_data(system.surfaces()[events[k].surface], signs[k]).c;
     PrescriptionSurface s;
     s.surface = events[k].surface;
     s.z = axis[k].z;

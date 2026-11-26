@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/paraxial/paraxial.hpp"
@@ -26,10 +27,19 @@ struct ShapeData {
 };
 
 /// The paraxial trace (paraxial.cpp) uses c in global orientation: 1/R times the sign of the
-/// local z axis along global z. The fourth-order sag c^3 r^4 / 8 (K + 1) + A4 r^4 changes sign
-/// with the axis as well, so A4 flips with c while K, a ratio, stays.
+/// local z axis along the (unfolded, ADR 0054) z axis, `axis_sign` (+1 or -1, from
+/// axis_signs()). The fourth-order sag c^3 r^4 / 8 (K + 1) + A4 r^4 changes sign with the axis
+/// as well, so A4 flips with c while K, a ratio, stays. A fold mirror (axis_sign 0) has c = 0 and
+/// A4 = 0 (ADR 0054, point 1).
 /// @throws ParaxialError if the surface has no first-order model (first_order() rejects it first)
-[[nodiscard]] ShapeData shape_data(const compile::CompiledSurface& s);
+[[nodiscard]] ShapeData shape_data(const compile::CompiledSurface& s, double axis_sign);
+
+/// Per event of the path: the sign of the local z axis of its surface along the unfolded z axis
+/// (+1 or -1), 0 at a fold (ADR 0054, point 1). The checks of first_order() apply.
+/// @throws ParaxialError as first_order()
+[[nodiscard]] std::vector<double> axis_signs(const compile::CompiledSystem& system,
+                                             compile::PathId path,
+                                             std::uint16_t wavelength);
 
 /// Marginal ray in object space: from the axial object point to the rim of the entrance pupil
 /// at +y (object at infinity: parallel at height r_ep through the pupil plane).

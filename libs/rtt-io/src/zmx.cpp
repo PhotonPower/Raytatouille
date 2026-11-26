@@ -1931,8 +1931,9 @@ ZmxImport Importer::run() {
       for (std::size_t w = 0; w < resolved.wavelengths.size(); ++w) {
         if (resolved.wavelengths[w].reference) ref = static_cast<std::uint16_t>(w);
       }
-      // A folded, tilted or decentred path has no paraxial model (ADR 0030, addendum #256): the
-      // system is imported, analyses with paraxial aiming reject it (#357).
+      // A tilted or decentred path has no paraxial model (ADR 0030, addendum #256), a path
+      // folded by plane mirrors has one (ADR 0054): the system is imported either way, analyses
+      // with paraxial aiming reject the former.
       bool paraxial = true;
       try {
         (void)paraxial::first_order(cs, compile::PathId{0}, ref);

@@ -90,6 +90,15 @@ TEST_CASE("rtt analyze writes the result of the API call (ADR 0052, point 8)", "
          rtt::io::to_result_json(
              rtt::paraxial::first_order(achromat, path, achromat.reference_wavelength())));
   }
+  SECTION("first-order and seidel of a folded path (ADR 0054)") {
+    // z behind the fold along the unfolded axis, as rtt::paraxial::first_order gives them
+    const std::string file = kRef + "/m6/singlet_fold45.rtt.json";
+    const CompiledSystem folded = compiled(file);
+    same(run({"analyze", "first-order", file}), rtt::io::to_result_json(rtt::paraxial::first_order(
+                                                    folded, path, folded.reference_wavelength())));
+    same(run({"analyze", "seidel", file}), rtt::io::to_result_json(rtt::paraxial::seidel(
+                                               folded, path, folded.reference_wavelength())));
+  }
   SECTION("seidel with a pair") {
     same(run({"analyze", "seidel", kAchromat, "--catalog", kSchott, "--pair", "0,2"}),
          rtt::io::to_result_json(rtt::paraxial::seidel(

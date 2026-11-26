@@ -57,7 +57,8 @@ struct GhostEntry {
   /// rho = (P_g / P_b) (r_b^2 + r0^2) / (r_g^2 + r0^2): the rank value, dimensionless.
   double relative_irradiance = 0.0;
   /// Diagnostic (ADR 0027, addendum #124): global z of the paraxial focus of the ghost minus
-  /// the global z of the image surface vertex, mm, positive towards +z. The focus may be
+  /// the global z of the image surface vertex, mm, positive towards +z (behind a plane fold
+  /// mirror both along the unfolded axis, ADR 0054). The focus may be
   /// virtual (before the last surface). From the axial marginal ray of the base path,
   /// independent of `field`. None if the ghost leaves collimated or the base path has no
   /// finite entrance pupil (object-side telecentric).

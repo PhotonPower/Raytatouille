@@ -121,6 +121,7 @@ Seidel seidel(const compile::CompiledSystem& system,
   const auto chief = trace_ray(system, path, wavelength, out.chief.z, out.chief.y, out.chief.u);
 
   const auto& events = system.path(path).events;
+  const std::vector<double> signs = detail::axis_signs(system, path, wavelength);
   const auto dn_of = [&](std::uint32_t medium, double signed_n) {
     if (!chromatic) return 0.0;
     const auto& index = system.media()[medium].index;
@@ -134,7 +135,7 @@ Seidel seidel(const compile::CompiledSystem& system,
   out.surfaces.reserve(events.size());
   for (std::size_t i = 0; i < events.size(); ++i) {
     const compile::CompiledSurface& surface = system.surfaces()[events[i].surface];
-    const ShapeData shape = shape_data(surface);
+    const ShapeData shape = shape_data(surface, signs[i]);
     // ADR 0041, point 2: no Seidel sums without the fourth-order cap; the part that is missing is
     // named.
     if (shape.fourth_order_error) {

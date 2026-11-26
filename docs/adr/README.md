@@ -62,6 +62,7 @@ Präzisierungen und Ergänzungen einer angenommenen Entscheidung kommen als dati
 | [0051](0051.md) | Freiformterme (Zernike Noll und Fringe, XY-Polynom, Grid-Sag) und Zernike-Flächenfehler als Toleranzart | angenommen |
 | [0052](0052.md) | Kommandozeile komplett (rtt trace, analyze, optimize) und Ergebnisformat in C++ | angenommen |
 | [0053](0053.md) | Konstruktionshelfer singlet, doublet, triplet und Linsenkataloge als eigene JSON-Dateien | angenommen |
+| [0054](0054.md) | Paraxiales Modell für gefaltete, nach dem Ausfalten koaxiale Pfade | angenommen |
 
 ## Vorlage
 

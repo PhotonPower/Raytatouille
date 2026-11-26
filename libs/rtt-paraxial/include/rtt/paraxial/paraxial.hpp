@@ -18,6 +18,14 @@
 /// - n is the real part of the complex index at the chosen wavelength; kappa is ignored.
 /// - Focal lengths are positive for converging systems, for lenses and mirrors alike (a concave
 ///   mirror has R < 0 for light from -z and EFL = -R/2 = |R|/2).
+/// - Folded paths (ADR 0054): a reflection at a surface that is paraxially plane (c = 0, no
+///   second-order term, no ideal lens), whose vertex lies on the axis but whose axis is tilted
+///   against it, is a fold. The path behind it is unfolded by mirroring it at the mirror plane
+///   (J. E. Greivenkamp, OPTI-502 lecture notes (2019), Sec. 2, pp. 2-2 and 2-11; no equation
+///   numbers), so the y-nu trace runs on along a straight axis: all z, y and u behind a fold are
+///   coordinates of the unfolded frame (in object space and without folds: global, as before).
+///   A fold has no power and keeps the sign of n. FirstOrder::image_space maps the unfolded
+///   frame of image space to global coordinates.
 
 #include <cstdint>
 #include <optional>
@@ -27,11 +35,13 @@
 #include <vector>
 
 #include "rtt/compile/compiled_system.hpp"
+#include "rtt/math/types.hpp"
 
 namespace rtt::paraxial {
 
 /// Thrown when paraxial data are requested for a path that is not rotationally symmetric about
-/// the global z axis (decentred or tilted surface, a diffraction order other than 0 (ADR 0025;
+/// the global z axis after unfolding its plane fold mirrors (ADR 0054) (decentred or tilted
+/// surface, a diffraction order other than 0 (ADR 0025;
 /// order 0 at a phase surface is the surface without phase layer), birefringent events) or for an
 /// invalid path id or wavelength index. The message names the surface; where the place in the
 /// system file is known, surface() and location() give it (ADR 0022).
@@ -57,11 +67,20 @@ class ParaxialError : public std::runtime_error {
   std::optional<std::string> location_;
 };
 
+/// Map from the unfolded frame of a path section to global coordinates (ADR 0054, point 2):
+/// global = linear * p + offset, p in mm. `linear` is orthogonal with determinant -1 after an
+/// odd number of folds (the image changes parity at each plane mirror; Greivenkamp, OPTI-502,
+/// Sec. 2, pp. 2-3 and 2-4); identity and zero offset without folds.
+struct UnfoldedFrame {
+  math::Mat3 linear = math::Mat3::Identity();
+  math::Vec3 offset = math::Vec3::Zero();
+};
+
 /// Paraxial ray just after one event of a path.
 struct RayAtEvent {
-  double z = 0.0;  ///< global z of the surface vertex, mm
+  double z = 0.0;  ///< z of the surface vertex along the unfolded axis (ADR 0054), mm
   double y = 0.0;  ///< ray height at the vertex plane, mm
-  double u = 0.0;  ///< slope dy/dz after the event (global frame)
+  double u = 0.0;  ///< slope dy/dz after the event (global frame; unfolded behind a fold)
   double n = 1.0;  ///< signed index after the event (see file comment)
 };
 
@@ -94,8 +113,15 @@ struct Pupil {
 struct FirstOrder {
   double object_index = 1.0;  ///< |n| in object space
   double image_index = 1.0;   ///< |n| in image space
-  /// +1 if light leaves the system towards +z, -1 towards -z (odd number of reflections).
+  /// +1 if light leaves the system towards +z, -1 towards -z (odd number of reflections at
+  /// normal incidence), along the unfolded axis (ADR 0054).
   int image_direction = 1;
+  /// Number of folds on the path (ADR 0054, point 1); 0 for a path along the global z axis.
+  int folds = 0;
+  /// Unfolded frame of image space -> global coordinates (ADR 0054, point 2). Every z of this
+  /// struct behind the first fold is a coordinate of this frame; in object space (front focal
+  /// and principal point, entrance pupil) z stays global.
+  UnfoldedFrame image_space;
 
   /// Power Phi = -n'_K u'_K / y_1 for a ray from infinity, 1/mm, as computed; for an afocal
   /// system 0 up to rounding (below the afocal threshold of first_order()).

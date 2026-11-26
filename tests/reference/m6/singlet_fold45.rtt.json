@@ -1,0 +1,82 @@
+{
+  "schema_version": "0.11.0",
+  "name": "Plano-convex singlet of m1/singlet_const with a plane 45 deg fold mirror 40 mm behind the lens (paraxial model of folded paths, ADR 0054)",
+  "units": {"length": "mm", "wavelength": "um"},
+  "wavelengths": [
+    {"um": 0.4861},
+    {"um": 0.5876, "reference": true},
+    {"um": 0.6563}
+  ],
+  "aperture": {"type": "epd", "value": 20.0},
+  "fields": {
+    "points": [
+      {},
+      {"y": 3.5},
+      {"y": 5.0}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "system",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 10.0}
+          }
+        ]
+      },
+      {
+        "type": "lens",
+        "name": "L1",
+        "pose": {"position": [0.0, 0.0, 5.0]},
+        "material": "CONST:1.5168",
+        "surfaces": [
+          {
+            "id": "L1.S1",
+            "shape": {
+              "base": {"type": "conic", "radius": 51.68}
+            },
+            "aperture": {"type": "circular", "radius": 12.7}
+          },
+          {
+            "id": "L1.S2",
+            "pose": {"position": [0.0, 0.0, 4.0]},
+            "aperture": {"type": "circular", "radius": 12.7}
+          }
+        ]
+      },
+      {
+        "type": "mirror",
+        "name": "M",
+        "pose": {"position": [0.0, 0.0, 49.0], "rotation_deg": [45.0, 0.0, 0.0]},
+        "surfaces": [
+          {"id": "M"}
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 57.363, 49.0], "rotation_deg": [-90.0, 0.0, 0.0]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {
+      "name": "main",
+      "events": [
+        {"surface": "STO", "kind": "transmit"},
+        {"surface": "L1.S1"},
+        {"surface": "L1.S2"},
+        {"surface": "M", "kind": "reflect"},
+        {"surface": "IMG", "kind": "transmit"}
+      ]
+    }
+  ]
+}
