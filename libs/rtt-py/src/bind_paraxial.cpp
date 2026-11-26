@@ -104,11 +104,14 @@ void bind_paraxial(nb::module_& m) {
       .def_ro("ffl", &FirstOrder::ffl, "First vertex -> F in mm, positive if F lies upstream.")
       .def_ro("bfl", &FirstOrder::bfl, "Last vertex -> F' in mm, positive if F' lies downstream.")
       .def_ro("front_focal_z", &FirstOrder::front_focal_z, "Global z of F, mm.")
-      .def_ro("rear_focal_z", &FirstOrder::rear_focal_z, "Global z of F', mm.")
+      .def_ro("rear_focal_z", &FirstOrder::rear_focal_z,
+              "Global z of F', mm (unfolded behind a fold).")
       .def_ro("front_principal_z", &FirstOrder::front_principal_z, "Global z of H, mm.")
-      .def_ro("rear_principal_z", &FirstOrder::rear_principal_z, "Global z of H', mm.")
+      .def_ro("rear_principal_z", &FirstOrder::rear_principal_z,
+              "Global z of H', mm (unfolded behind a fold).")
       .def_ro("image_z", &FirstOrder::image_z,
-              "Global z of the paraxial image of the axial object point, mm.")
+              "Global z of the paraxial image of the axial object point, mm (unfolded behind a "
+              "fold).")
       .def_ro("lateral_magnification", &FirstOrder::lateral_magnification,
               "m = n u / (n' u') of the axial marginal ray; finite object only.")
       .def_ro("angular_magnification", &FirstOrder::angular_magnification,

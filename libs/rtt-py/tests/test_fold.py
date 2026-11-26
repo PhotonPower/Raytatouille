@@ -3,18 +3,22 @@ image_space (UnfoldedFrame), their place in the result format 0.1.24, and the an
 fold against the unfolded singlet (the C++ tests check the numbers to 1e-12, test_fold_*.cpp)."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
+import jsonschema  # type: ignore[import-untyped]  # no py.typed; test tool (ADR 0018)
 import numpy as np
 import pytest
 
-from conftest import REFERENCE_DIR
+from conftest import REFERENCE_DIR, REPO_ROOT
 
 import raytatouille as rt
 from raytatouille import results
 
 FOLDED = REFERENCE_DIR / "m6" / "singlet_fold45.rtt.json"
 FLAT = REFERENCE_DIR / "m1" / "singlet_const.rtt.json"
+RESULT_SCHEMA = json.loads(
+    (REPO_ROOT / "schema" / "raytatouille-result.schema.json").read_text(encoding="utf-8"))
 
 
 def _compiled(path: Path) -> rt.CompiledSystem:
@@ -32,7 +36,7 @@ def test_first_order_has_folds_and_the_image_space_frame() -> None:
     assert np.linalg.det(fo.image_space.linear) == pytest.approx(-1.0, abs=1e-14)
     assert fo.efl == pytest.approx(flat.efl, rel=1e-12)
     assert fo.image_z == pytest.approx(flat.image_z, rel=1e-12)
-    # the unfolded image point lies on the reflected axis: 49 + 57.363 along +y
+    # the unfolded image point lies on the reflected axis: image_z - 49 along +y from the mirror
     assert fo.image_z is not None
     image = fo.image_space.to_global((0.0, 0.0, fo.image_z))
     np.testing.assert_allclose(image, [0.0, fo.image_z - 49.0, 49.0], atol=1e-12)
@@ -44,6 +48,7 @@ def test_first_order_has_folds_and_the_image_space_frame() -> None:
 def test_the_result_format_carries_the_frame() -> None:
     fo = rt.paraxial.first_order(_compiled(FOLDED))
     text = results.to_json(fo)
+    jsonschema.Draft202012Validator(RESULT_SCHEMA).validate(json.loads(text))
     data = results.load_json(text).data
     assert data["folds"] == 1
     np.testing.assert_array_equal(data["image_space"]["linear"], fo.image_space.linear)
