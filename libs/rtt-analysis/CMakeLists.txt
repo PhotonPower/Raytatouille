@@ -35,6 +35,7 @@ if(RTT_BUILD_TESTS)
       tests/test_chromatic.cpp
       tests/test_error_context.cpp
       tests/test_fans.cpp
+      tests/test_fold_spot.cpp
       tests/test_fft.cpp
       tests/test_field.cpp
       tests/test_focus_shift.cpp

@@ -579,6 +579,10 @@ double lowest_z(const compile::CompiledSurface& surface,
 /// at the reference wavelength (#31).
 double unit_image_height(const Context& c) {
   const auto& fo = c.first_order_ref;
+  if (fo.folds > 0) {
+    throw std::invalid_argument(
+        "sources: paraxial image height on a folded path is not yet supported (ADR 0054)");
+  }
   if (!fo.image_z) {
     throw std::invalid_argument("sources: paraxial image height needs a finite paraxial image");
   }
@@ -752,6 +756,7 @@ FieldStart make_field(const Context& c, const model::Field& f) {
         detail::kBundleReserve * r_ep_max(c) + std::abs(c.z_ep_x - c.z_ep) * tan_field;
     double z_min = std::min(c.z_ep_x, c.z_ep);
     for (const auto& e : system.path(c.path).events) {
+      // anamorphic paths have no folds (first_order_section() rejects them, ADR 0054, point 3)
       const compile::CompiledSurface& surface = system.surfaces()[e.surface];
       z_min = std::min({z_min, lowest_z(surface, c.z_ep_x, r_bundle, tan_field),
                         lowest_z(surface, c.z_ep, r_bundle, tan_field)});
@@ -768,6 +773,16 @@ FieldStart make_field(const Context& c, const model::Field& f) {
   const double r_bundle = detail::kBundleReserve * c.r_ep;
   double z_min = c.z_ep;
   for (const auto& e : system.path(c.path).events) {
+    // Object space ends at the first fold (ADR 0054, point 1): first_order() has accepted the
+    // path, so the first reflection at a surface tilted against the z axis is that fold. The
+    // surfaces behind it are not in the frame of the bundle model of lowest_z().
+    if (c.first_order.folds > 0 && e.kind == model::EventKind::Reflect) {
+      const Vec3 axis = system.surfaces()[e.surface].to_global.apply_vector(Vec3::UnitZ());
+      constexpr double kSymmetryTolerance = 1e-12;  // as rtt-paraxial (vertex_rule.hpp)
+      if (std::abs(axis.x()) > kSymmetryTolerance || std::abs(axis.y()) > kSymmetryTolerance) {
+        break;
+      }
+    }
     z_min = std::min(z_min, lowest_z(system.surfaces()[e.surface], c.z_ep, r_bundle, d_xy / d.z()));
   }
   z_min -= 1.0;

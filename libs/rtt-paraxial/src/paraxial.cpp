@@ -5,7 +5,10 @@
 #include <limits>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "paraxial_rays.hpp"
 #include "vertex_rule.hpp"
 
 namespace rtt::paraxial {
@@ -27,6 +30,8 @@ struct Step {
   EventKind kind = EventKind::Transmit;
   bool stop = false;  ///< at the stop surface (CompiledSystem::stop_surface(), ADR 0039)
   std::uint32_t surface = 0;
+  /// Sign of the local z axis of the surface along the unfolded z axis; 0 at a fold (ADR 0054).
+  double axis_sign = 1.0;
   /// 1/f of an ideal lens (ADR 0031, point 6), 1/mm; 0 for every other surface. The power of the
   /// step is then phi = |n| / f with n the index of the surrounding medium.
   double inverse_focal_length = 0.0;
@@ -57,12 +62,27 @@ std::string surface_name(const CompiledSystem& cs, std::uint32_t surface) {
   return "'" + cs.surfaces()[surface].id.str() + "'";
 }
 
+/// The steps of a path and the unfolded frame of image space (ADR 0054).
+struct Prepared {
+  std::vector<Step> steps;
+  int folds = 0;
+  UnfoldedFrame image_space;
+};
+
+/// Affine map from global to unfolded coordinates, p_u = linear * p + offset (ADR 0054, point 1).
+struct Unfold {
+  math::Mat3 linear = math::Mat3::Identity();
+  math::Vec3 offset = math::Vec3::Zero();
+};
+
 /// The steps of a path: rotationally symmetric (first_order(), section empty) or in one section
-/// (first_order_section(), ADR 0042, point 2).
-std::vector<Step> prepare(const CompiledSystem& cs,
-                          PathId path,
-                          std::uint16_t wavelength,
-                          std::optional<Section> section) {
+/// (first_order_section(), ADR 0042, point 2). Plane fold mirrors are unfolded (ADR 0054,
+/// point 1): every vertex and axis is checked in the unfolded frame; without a fold that frame is
+/// the global one and the computation is the same, bit for bit.
+Prepared prepare(const CompiledSystem& cs,
+                 PathId path,
+                 std::uint16_t wavelength,
+                 std::optional<Section> section) {
   if (path.index >= cs.paths().size()) {
     throw ParaxialError("paraxial: path index " + std::to_string(path.index) + " does not exist");
   }
@@ -75,6 +95,8 @@ std::vector<Step> prepare(const CompiledSystem& cs,
 
   std::vector<Step> steps;
   steps.reserve(events.size());
+  int folds = 0;
+  Unfold unfold;
   for (const auto& event : events) {
     const compile::CompiledSurface& s = cs.surfaces()[event.surface];
     const auto fail = [&](const std::string& what) {
@@ -92,13 +114,60 @@ std::vector<Step> prepare(const CompiledSystem& cs,
     if (!section && s.ideal_lens && s.ideal_lens->power_axis) {
       fail("the ideal cylinder lens is not rotationally symmetric; no paraxial model (ADR 0031)");
     }
-    const math::Vec3 vertex = s.to_global.translation();
-    const math::Vec3 axis = s.to_global.apply_vector(math::Vec3::UnitZ());
+    math::Vec3 vertex = s.to_global.translation();
+    math::Vec3 axis = s.to_global.apply_vector(math::Vec3::UnitZ());
+    if (folds > 0) {
+      vertex = unfold.linear * vertex + unfold.offset;
+      axis = unfold.linear * axis;
+    }
     if (std::abs(vertex.x()) > kSymmetryTolerance || std::abs(vertex.y()) > kSymmetryTolerance) {
       fail("decentred from the z axis; the path is not rotationally symmetric");
     }
     if (std::abs(axis.x()) > kSymmetryTolerance || std::abs(axis.y()) > kSymmetryTolerance) {
-      fail("tilted against the z axis; the path is not rotationally symmetric");
+      // A plane fold mirror (ADR 0054, point 1): a reflection at a surface without power at its
+      // vertex, which lies on the axis. Greivenkamp, OPTI-502 lecture notes (2019), Sec. 2,
+      // p. 2-2: the image of a point at a plane mirror is its mirror image at the mirror plane
+      // (the line between them is normal to the mirror and bisected by it); p. 2-11: unfolded at
+      // each reflection, a ray runs straight on. So the rest of the path is mirrored at the
+      // plane through the vertex v with the normal m, in unfolded coordinates:
+      // S(p) = p - 2 ((p - v) . m) m = (I - 2 m m^T) p + 2 (v . m) m.
+      const detail::VertexRule rule = detail::vertex_rule(s);
+      // Plane to fourth order: no power and no Seidel contribution (A4 = 0), so the unfolded
+      // step without power is exact for the Seidel sums as well.
+      const bool plane =
+          !rule.first_order_error && rule.c == 0.0 && rule.a4 == 0.0 && !s.ideal_lens;
+      if (event.kind != EventKind::Reflect || !plane) {
+        fail("tilted against the z axis; the path is not rotationally symmetric");
+      }
+      if (section) fail("a folded path has no paraxial model per section (ADR 0054, point 3)");
+      if (event.surface == cs.stop_surface()) {
+        fail(
+            "a stop on a fold mirror has no paraxial pupil (its aperture is tilted against the "
+            "axis; ADR 0054)");
+      }
+      const math::Vec3 m = axis.normalized();
+      if (std::abs(m.z()) <= kSymmetryTolerance) {
+        fail("a fold mirror parallel to the axis (grazing incidence) has no paraxial model");
+      }
+      // The vertex of the shape, (0, 0, sag(0, 0)) in local coordinates (ADR 0041, point 6).
+      math::Vec3 v = s.to_global.apply_point(math::Vec3(0.0, 0.0, rule.value));
+      if (folds > 0) v = unfold.linear * v + unfold.offset;
+      if (std::abs(v.x()) > kSymmetryTolerance || std::abs(v.y()) > kSymmetryTolerance) {
+        fail("decentred from the z axis; the path is not rotationally symmetric");
+      }
+      const math::Mat3 mirror = math::Mat3::Identity() - 2.0 * m * m.transpose();
+      unfold.linear = mirror * unfold.linear;
+      unfold.offset = mirror * unfold.offset + 2.0 * v.dot(m) * m;
+      ++folds;
+      Step step;
+      step.z = v.z();
+      step.kind = EventKind::Transmit;  // no power, no change of the sign of n
+      step.axis_sign = 0.0;
+      step.n_after = cs.media()[event.medium_after].index[wavelength].real();
+      step.stop = event.surface == cs.stop_surface();
+      step.surface = event.surface;
+      steps.push_back(step);
+      continue;
     }
     // The paraxial curvature and the vertex position come from the vertex expansion of the
     // shape, checked in local coordinates (ADR 0041, point 2); the sign of c and of the vertex
@@ -112,6 +181,7 @@ std::vector<Step> prepare(const CompiledSystem& cs,
       step.z = detail::vertex_z(vertex.z(), axis.z(), rule.value);
       step.c = axis.z() > 0.0 ? rule.c : -rule.c;
       step.c_scale = step.c;
+      step.axis_sign = axis.z() > 0.0 ? 1.0 : -1.0;
     } else {
       const detail::SectionRule rule =
           detail::section_rule(detail::vertex_expansion(s), frame, *section);
@@ -138,7 +208,15 @@ std::vector<Step> prepare(const CompiledSystem& cs,
     }
     steps.push_back(step);
   }
-  return steps;
+  Prepared out;
+  out.steps = std::move(steps);
+  out.folds = folds;
+  if (folds > 0) {
+    // inverse of the unfolding: global = linear^T (p_u - offset)
+    out.image_space.linear = unfold.linear.transpose();
+    out.image_space.offset = -(unfold.linear.transpose() * unfold.offset);
+  }
+  return out;
 }
 
 /// |n| in object space: the medium before the first event.
@@ -312,7 +390,7 @@ std::vector<RayAtEvent> trace_ray_impl(const compile::CompiledSystem& system,
                                        double y0,
                                        double u0,
                                        std::optional<Section> section) {
-  const std::vector<Step> steps = prepare(system, path, wavelength, section);
+  const std::vector<Step> steps = prepare(system, path, wavelength, section).steps;
   const double n0 = object_index(system, path, wavelength);
   State st{z0, y0, n0 * u0, n0};
   std::vector<RayAtEvent> out;
@@ -328,13 +406,16 @@ FirstOrder first_order_impl(const compile::CompiledSystem& system,
                             compile::PathId path,
                             std::uint16_t wavelength,
                             std::optional<Section> section) {
-  const std::vector<Step> steps = prepare(system, path, wavelength, section);
+  const Prepared prepared = prepare(system, path, wavelength, section);
+  const std::vector<Step>& steps = prepared.steps;
   const double n1 = object_index(system, path, wavelength);
   const double z_first = steps.front().z;
   const double z_last = steps.back().z;
 
   FirstOrder fo;
   fo.object_index = n1;
+  fo.folds = prepared.folds;
+  fo.image_space = prepared.image_space;
 
   // Vertices: first and last events that change the ray.
   std::optional<std::size_t> v1;
@@ -545,6 +626,20 @@ FirstOrder first_order_section(const compile::CompiledSystem& system,
                                Section section) {
   return first_order_impl(system, path, wavelength, section);
 }
+
+namespace detail {
+
+std::vector<double> axis_signs(const compile::CompiledSystem& system,
+                               compile::PathId path,
+                               std::uint16_t wavelength) {
+  const std::vector<Step> steps = prepare(system, path, wavelength, std::nullopt).steps;
+  std::vector<double> out;
+  out.reserve(steps.size());
+  for (const Step& step : steps) out.push_back(step.axis_sign);
+  return out;
+}
+
+}  // namespace detail
 
 bool is_anamorphic(const compile::CompiledSystem& system, compile::PathId path) {
   if (path.index >= system.paths().size()) {

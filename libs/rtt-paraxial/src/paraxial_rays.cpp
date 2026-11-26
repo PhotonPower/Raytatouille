@@ -26,7 +26,7 @@ std::string field_error(std::string_view caller, const std::string& what) {
 /// local z axis along global z. The fourth-order sag c^3 r^4 / 8 (K + 1) + A4 r^4 changes sign
 /// with the axis as well, so A4 flips with c while K, a ratio, stays.
 /// The values come from the vertex expansion (ADR 0041, point 2), as in first_order().
-ShapeData shape_data(const compile::CompiledSurface& s) {
+ShapeData shape_data(const compile::CompiledSurface& s, double axis_sign) {
   const VertexRule rule = vertex_rule(s);
   // first_order() has checked every surface of the path before; this guards the invariant.
   if (rule.first_order_error) {
@@ -34,10 +34,9 @@ ShapeData shape_data(const compile::CompiledSurface& s) {
         "paraxial: surface '" + s.id.str() + "': " + *rule.first_order_error + " (ADR 0041)", s);
   }
   ShapeData d;
-  const double sign = s.to_global.apply_vector(math::Vec3::UnitZ()).z() > 0.0 ? 1.0 : -1.0;
-  d.c = sign * rule.c;
+  d.c = axis_sign * rule.c;
   d.conic = rule.conic;
-  d.a4 = sign * rule.a4;
+  d.a4 = axis_sign * rule.a4;
   d.fourth_order_error = rule.fourth_order_error;
   return d;
 }

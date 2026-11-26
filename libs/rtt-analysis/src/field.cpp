@@ -126,6 +126,10 @@ Point2 paraxial_chief(const CompiledSystem& system,
       break;
     case model::FieldType::ParaxialImageHeight: {
       const paraxial::FirstOrder fo_ref = paraxial::first_order(system, path, ref);
+      if (fo_ref.folds > 0) {
+        throw std::invalid_argument(
+            "analysis: paraxial image height on a folded path is not yet supported (ADR 0054)");
+      }
       if (!fo_ref.image_z) {
         throw std::invalid_argument("analysis: paraxial image height needs a finite image");
       }

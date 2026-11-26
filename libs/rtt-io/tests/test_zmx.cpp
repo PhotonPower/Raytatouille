@@ -569,7 +569,7 @@ TEST_CASE("every warning of the import has a case at its line", "[zmx]") {
       {"zmx.stop_radius_small", with(s, "ENPD", "ENPD 1.2E+001"), "DIAM 5.000000000000E+000",
        &schott()},
       // PR C.
-      {"zmx.paraxial_unavailable", read_file(kZmxDir + "fold.zmx"), "", &schott()},
+      {"zmx.paraxial_unavailable", read_file(kZmxDir + "oap.zmx"), "", &schott()},
       {"zmx.paraxial_opd",
        in_surface(read_file(kZmxDir + "paraxial.zmx"), 1, "PARM 2", "  PARM 2 3.0E+000"),
        "PARM 2 3.0E+000", &schott()},
@@ -816,7 +816,7 @@ TEST_CASE("every surface of a folded case lies in the frame of OpticStudio", "[z
   // Vertices to 1e-12 mm, axes (or the normal of a tilted plane) to 1e-14; the poses of a
   // decomposed transform round, so the frames are compared, not the poses.
   const std::map<std::string, std::vector<std::string>> expected_warnings{
-      {"fold", {"zmx.paraxial_unavailable"}},
+      {"fold", {}},  // a plane fold has a paraxial model (ADR 0054)
       {"oap", {"zmx.paraxial_unavailable"}},
       {"pivot", {"zmx.paraxial_unavailable"}},
       {"tilt_image", {"zmx.tilted_image", "zmx.paraxial_unavailable"}},

@@ -68,6 +68,12 @@ NominalReference nominal_reference(const compile::CompiledSystem& nominal, compi
         paraxial::first_order(nominal, path, nominal.reference_wavelength());
     // With a stop on the path first_order() always gives the exit pupil.
     if (!fo.exit_pupil) throw std::logic_error("analysis: no exit pupil despite a stop");
+    // The exit pupil of a folded path lies in the unfolded frame of image space; the reference
+    // sphere there follows (ADR 0054, point 4).
+    if (fo.folds > 0) {
+      throw std::invalid_argument(
+          "analysis: the reference sphere of a folded path is not yet supported (ADR 0054)");
+    }
     const std::optional<double>& z = fo.exit_pupil->z;
     if (z.has_value()) data->exit_pupil = math::Vec3(0.0, 0.0, z.value());
   } catch (...) {
