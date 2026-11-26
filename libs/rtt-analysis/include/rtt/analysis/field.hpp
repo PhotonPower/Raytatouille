@@ -12,6 +12,9 @@
 /// - Heights are signed: the offset from the image-surface vertex projected on the field
 ///   direction (x, y) / |(x, y)| in the global x-y plane (+y on axis), so an inverted image has
 ///   negative heights. The path is rotationally symmetric about z (required by the aiming).
+///   Behind plane fold mirrors (ADR 0054) "global" means the unfolded frame of image space
+///   (FirstOrder::image_space): the path is symmetric about the unfolded axis, and heights, the
+///   image vertex and the z of field curvature are measured there.
 /// - Distortion D = (h_real - h_par) / h_par * 100 %. h_real is the real chief ray (pupil centre)
 ///   on the image surface; h_par is the paraxial chief ray (rtt-paraxial) evaluated in the plane
 ///   of the image-surface vertex, NOT in the paraxial image plane (some programs use the

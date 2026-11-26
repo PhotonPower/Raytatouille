@@ -39,10 +39,6 @@ namespace rtt::optim {
 
 namespace {
 
-/// Why a folded path is not taken by the optimization yet (ADR 0054, point 4).
-constexpr const char* kFoldedPath =
-    "a folded path (plane fold mirror, ADR 0054) is not yet supported by the optimization";
-
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 
 model::Diagnostic diagnostic(diagnostics::DiagnosticCode code,
@@ -485,13 +481,7 @@ MeritFunction::MeritFunction(const model::System& system,
         continue;
       }
       try {
-        // A folded path (ADR 0054) has first-order data, but the optimization does not take it
-        // yet: the nominal basis of an overlay needs its prescription (ADR 0054, point 4).
-        if (paraxial::first_order(cs, path, wl).folds > 0) {
-          unsupported.push_back(
-              diagnostic("merit.operand_unsupported", operand_pointer(i),
-                         std::string("the path is not supported: ") + kFoldedPath));
-        }
+        static_cast<void>(paraxial::first_order(cs, path, wl));
       } catch (const paraxial::ParaxialError& e) {
         unsupported.push_back(diagnostic("merit.operand_unsupported", operand_pointer(i),
                                          std::string("the path is not supported: ") + e.what()));
@@ -546,12 +536,7 @@ MeritFunction::MeritFunction(const model::System& system,
           break;
         }
         try {
-          if (paraxial::first_order(cs, path, wl).folds > 0) {  // as for the operands above
-            unsupported.push_back(
-                diagnostic("merit.operand_unsupported", generator_pointer(g),
-                           std::string("the path is not supported: ") + kFoldedPath));
-            break;
-          }
+          static_cast<void>(paraxial::first_order(cs, path, wl));
         } catch (const paraxial::ParaxialError& e) {
           unsupported.push_back(diagnostic("merit.operand_unsupported", generator_pointer(g),
                                            std::string("the path is not supported: ") + e.what()));

@@ -80,14 +80,13 @@ Reference make_reference(const CompiledSystem& system,
     const paraxial::FirstOrder fo = paraxial::first_order(system, path, ref);
     // With a stop on the path (require_stop above) first_order() always gives the exit pupil.
     if (!fo.exit_pupil) throw std::logic_error("analysis: no exit pupil despite a stop");
-    // The exit pupil of a folded path lies in the unfolded frame of image space; the reference
-    // sphere there follows (ADR 0054, point 4).
-    if (fo.folds > 0) {
-      throw std::invalid_argument(
-          "analysis: the reference sphere of a folded path is not yet supported (ADR 0054)");
-    }
     const paraxial::Pupil& xp = *fo.exit_pupil;
-    if (xp.z) exit_pupil = math::Vec3(0.0, 0.0, *xp.z);
+    // On the axis of image space; behind a fold its z is unfolded (ADR 0054, point 5). Without a
+    // fold image_space is the identity and the point is (0, 0, z) as before, bit for bit.
+    if (xp.z) {
+      exit_pupil = fo.folds > 0 ? fo.image_space.to_global(math::Vec3(0.0, 0.0, *xp.z))
+                                : math::Vec3(0.0, 0.0, *xp.z);
+    }
   }
   return reference_at(global_pos(chief, 0), global_dir(chief, 0), exit_pupil, focus_shift,
                       system.wavelengths_um()[ref] * 1e-3);

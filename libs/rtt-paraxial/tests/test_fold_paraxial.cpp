@@ -270,14 +270,42 @@ TEST_CASE("what a fold does not cover stays a ParaxialError", "[paraxial][fold][
                              R"({"type": "epd", "value": 20.0, "stop": {"surface": "M"}})", false)),
             PathId{0}, 0);
       }).find("stop on a fold mirror") != std::string::npos);
-  // per section (ADR 0054, point 3) and the prescription (point 4)
+  // per section (ADR 0054, point 3)
   const CompiledSystem cs = one_fold(45.0);
   CHECK(paraxial_error([&] {
           (void)rtt::paraxial::first_order_section(cs, PathId{0}, 0, rtt::paraxial::Section::y);
         }).find("per section") != std::string::npos);
-  CHECK(paraxial_error([&] {
-          (void)rtt::paraxial::prescription(cs, PathId{0}, 0);
-        }).find("folded path") != std::string::npos);
+}
+
+TEST_CASE("the prescription of a folded path is that of the unfolded one",
+          "[paraxial][fold][357]") {
+  // PR B1 (ADR 0054, point 5): the rows are the unfolded ones plus the fold mirror, which leaves
+  // the rays unchanged; z along the unfolded axis.
+  const auto pf = rtt::paraxial::prescription(one_fold(45.0), PathId{0}, 0);
+  const auto pu = rtt::paraxial::prescription(unfolded(), PathId{0}, 0);
+  REQUIRE(pf.surfaces.size() == pu.surfaces.size() + 1);
+  CHECK(close(pf.total_track, pu.total_track));
+  CHECK(close(pf.paraxial_working_f_number, pu.paraxial_working_f_number));
+  const auto same_row = [](const rtt::paraxial::PrescriptionSurface& a,
+                           const rtt::paraxial::PrescriptionSurface& b) {
+    CHECK(close(a.z, b.z));
+    CHECK(a.n == b.n);
+    REQUIRE(a.marginal);
+    REQUIRE(b.marginal);
+    CHECK(close(a.marginal->y, b.marginal->y));
+    CHECK(close(a.marginal->u, b.marginal->u));
+    REQUIRE(a.chief);
+    REQUIRE(b.chief);
+    CHECK(close(a.chief->y, b.chief->y));
+    CHECK(close(a.chief->u, b.chief->u));
+  };
+  for (std::size_t k = 0; k < 3; ++k) same_row(pf.surfaces[k], pu.surfaces[k]);  // STO, L1
+  same_row(pf.surfaces[4], pu.surfaces[3]);                                      // IMG
+  // the fold row: at z = 49 on the unfolded axis, the marginal ray passes unchanged
+  CHECK(close(pf.surfaces[3].z, kMirrorZ));
+  REQUIRE(pf.surfaces[3].marginal);
+  CHECK(pf.surfaces[3].marginal->u == pf.surfaces[2].marginal->u);
+  REQUIRE(pf.surfaces[2].marginal->u != 0.0);  // content guard: a converging beam
 }
 
 TEST_CASE("a concave mirror at normal incidence behind a fold", "[paraxial][fold][357]") {

@@ -29,20 +29,28 @@ compile::CompiledSystem compile_one(const model::System& system,
 
 /// The last event of `path` that changes the ray at `wavelength`, by the rule of
 /// rtt::paraxial::first_order (paraxial.hpp, "Vertices"): a reflection, a change of index or an
-/// ideal lens; transmit events (stop, detector, thin elements without power) do not count.
+/// ideal lens; transmit events (stop, detector, thin elements without power) do not count, nor
+/// does a plane fold mirror (ADR 0054, point 1). A fold is the reflection that keeps the sign of
+/// the paraxial index (trace_ray of the axial ray); a reflection at normal incidence changes it.
 std::optional<std::size_t> last_vertex(const compile::CompiledSystem& cs,
                                        compile::PathId path,
                                        std::uint16_t wavelength) {
   std::optional<std::size_t> vertex;
   const std::vector<compile::CompiledEvent>& events = cs.path(path).events;
+  const std::vector<paraxial::RayAtEvent> axis =
+      paraxial::trace_ray(cs, path, wavelength, 0.0, 0.0, 0.0);
+  double n_before = 1.0;  // the paraxial index carries only its sign here; +z in object space
   for (std::size_t e = 0; e < events.size(); ++e) {
     const compile::CompiledEvent& event = events[e];
     const double before = cs.media()[event.medium_before].index[wavelength].real();
     const double after = cs.media()[event.medium_after].index[wavelength].real();
-    if (event.kind == model::EventKind::Reflect || after != before ||
+    const bool fold =
+        event.kind == model::EventKind::Reflect && (axis[e].n > 0.0) == (n_before > 0.0);
+    if ((event.kind == model::EventKind::Reflect && !fold) || after != before ||
         cs.surfaces()[event.surface].ideal_lens.has_value()) {
       vertex = e;
     }
+    n_before = axis[e].n;
   }
   return vertex;
 }

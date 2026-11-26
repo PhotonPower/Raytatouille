@@ -8,7 +8,9 @@
 /// Conventions as in paraxial.hpp (decided for #7, docs/architecture.md, "Engine 1,
 /// paraxial"): lengths in mm, global z along the optical axis, y the ray height, u = dy/dz the
 /// slope in the global frame, n the signed index (negative while light travels towards -z), c
-/// the vertex curvature in global orientation.
+/// the vertex curvature in global orientation. Behind a plane fold mirror all of them refer to
+/// the unfolded frame (ADR 0054); the row of the fold has c = 0 and leaves the rays unchanged,
+/// so its angle of incidence is i = u against the unfolded axis, not the tilt of the mirror.
 ///
 /// Rays: the same marginal and chief rays as seidel() (seidel.hpp, both built by one internal
 /// function): the marginal ray from the axial object point to the rim of the paraxial entrance
@@ -49,9 +51,9 @@ struct PrescriptionRay {
 
 /// Data at one event of the path.
 struct PrescriptionSurface {
-  std::uint32_t surface = 0;                ///< index into CompiledSystem::surfaces()
-  double z = 0.0;                           ///< global z of the surface vertex, mm
-  double n = 1.0;                           ///< signed index after the event (see paraxial.hpp)
+  std::uint32_t surface = 0;  ///< index into CompiledSystem::surfaces()
+  double z = 0.0;  ///< global z of the vertex, mm; behind a fold along the unfolded axis (ADR 0054)
+  double n = 1.0;  ///< signed index after the event (see paraxial.hpp)
   std::optional<PrescriptionRay> marginal;  ///< none if the marginal ray is not defined
   std::optional<PrescriptionRay> chief;     ///< none if the chief ray is not defined
   /// Lagrange invariant n' (u_bar' y - u' y_bar) after the event, mm (Greivenkamp p. 9-41,
