@@ -1,6 +1,7 @@
 #include "rtt/analysis/chromatic.hpp"
 
 #include <cmath>
+#include <stdexcept>
 #include <string>
 
 #include "common.hpp"
@@ -50,6 +51,12 @@ LongitudinalColour longitudinal_colour(const compile::CompiledSystem& system,
     // Paraxial focus: rear focal point (object at infinity) or paraxial image of the axial
     // object point.
     const paraxial::FirstOrder fo = paraxial::first_order(system, path, wl);
+    // The real focus below is an axis crossing in global coordinates; behind a fold the axis
+    // is the unfolded one (ADR 0054, point 4).
+    if (fo.folds > 0) {
+      throw std::invalid_argument(
+          "analysis: longitudinal colour of a folded path is not yet supported (ADR 0054)");
+    }
     const std::optional<double> z = system.object().at_infinity ? fo.rear_focal_z : fo.image_z;
     if (!z) throw AnalysisError("analysis: no paraxial focus (afocal system)");
     f.paraxial_z = *z;

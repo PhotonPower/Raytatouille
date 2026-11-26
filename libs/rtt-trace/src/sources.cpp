@@ -775,11 +775,17 @@ FieldStart make_field(const Context& c, const model::Field& f) {
   for (const auto& e : system.path(c.path).events) {
     // Object space ends at the first fold (ADR 0054, point 1): first_order() has accepted the
     // path, so the first reflection at a surface tilted against the z axis is that fold. The
-    // surfaces behind it are not in the frame of the bundle model of lowest_z().
+    // surfaces behind it are not in the frame of the bundle model of lowest_z(). The fold mirror
+    // itself still bounds the start plane: a point of the bundle at the distance rho from the
+    // axis lies on the tilted plane at most rho / |m_z| from its vertex (m its normal), so the
+    // disk of lowest_z() is stretched by that factor; its lower half reaches upstream.
     if (c.first_order.folds > 0 && e.kind == model::EventKind::Reflect) {
       const Vec3 axis = system.surfaces()[e.surface].to_global.apply_vector(Vec3::UnitZ());
       constexpr double kSymmetryTolerance = 1e-12;  // as rtt-paraxial (vertex_rule.hpp)
       if (std::abs(axis.x()) > kSymmetryTolerance || std::abs(axis.y()) > kSymmetryTolerance) {
+        const double stretch = 1.0 / std::abs(axis.z());
+        z_min = std::min(z_min, lowest_z(system.surfaces()[e.surface], c.z_ep, r_bundle * stretch,
+                                         d_xy / d.z() * stretch));
         break;
       }
     }

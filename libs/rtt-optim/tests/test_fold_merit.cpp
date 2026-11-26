@@ -1,7 +1,8 @@
 // The optimization does not take folded paths yet (#357, ADR 0054, point 4): first_order has
 // data for a plane fold mirror since PR A, but the nominal basis of an overlay needs the
 // prescription of the path, which follows in PR B. Every operand and generator on such a path is
-// merit.operand_unsupported, with and without overlay alike (test_trial_overlay.cpp).
+// merit.operand_unsupported without overlay; with an overlay the nominal basis marks the path
+// unsupported (test_trial_overlay.cpp compares both on the folded reference systems).
 
 #include <catch2/catch_test_macros.hpp>
 #include <fstream>

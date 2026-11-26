@@ -4,6 +4,7 @@
 #include <cmath>
 #include <numbers>
 #include <optional>
+#include <stdexcept>
 #include <string>
 
 #include "common.hpp"
@@ -182,6 +183,18 @@ math::Vec3 closest_point(const math::Vec3& p1,
   return 0.5 * (p1 + s * d1 + p2 + t * d2);
 }
 
+/// Distortion and field curvature measure in the global frame of the image vertex along the
+/// global z axis; behind a fold that is not the image-space axis (ADR 0054, point 4).
+void require_unfolded(const compile::CompiledSystem& system,
+                      compile::PathId path,
+                      std::uint16_t wavelength,
+                      const std::string& what) {
+  if (paraxial::first_order(system, path, wavelength).folds > 0) {
+    throw std::invalid_argument("analysis: " + what +
+                                " of a folded path is not yet supported (ADR 0054)");
+  }
+}
+
 }  // namespace
 
 DistortionPoint distortion_at(const compile::CompiledSystem& system,
@@ -191,6 +204,7 @@ DistortionPoint distortion_at(const compile::CompiledSystem& system,
                               trace::Aiming aiming) {
   check_path(system, path);
   check_wavelength(system, wavelength);
+  require_unfolded(system, path, wavelength, "distortion");
   DistortionPoint p;
   p.field = field;
   p.fraction = fraction(system, field);
@@ -252,6 +266,7 @@ FieldCurvaturePoint field_curvature_at(const compile::CompiledSystem& system,
   if (!(delta > 0.0 && delta < 1.0)) {
     throw std::invalid_argument("analysis: delta must lie in (0, 1)");
   }
+  require_unfolded(system, path, wavelength, "field curvature");
   FieldCurvaturePoint p;
   p.field = field;
   p.fraction = fraction(system, field);

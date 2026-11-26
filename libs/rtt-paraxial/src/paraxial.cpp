@@ -24,7 +24,7 @@ constexpr double kAfocalFactor = 16.0;
 
 /// One event of the path reduced to what the y-nu trace needs.
 struct Step {
-  double z = 0.0;        ///< global z of the vertex, mm
+  double z = 0.0;        ///< z of the vertex along the unfolded axis (ADR 0054), mm
   double c = 0.0;        ///< vertex curvature in global orientation, 1/mm
   double n_after = 1.0;  ///< |n| of the medium after the event
   EventKind kind = EventKind::Transmit;

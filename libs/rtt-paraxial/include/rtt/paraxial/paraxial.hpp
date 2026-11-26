@@ -80,7 +80,7 @@ struct UnfoldedFrame {
 struct RayAtEvent {
   double z = 0.0;  ///< z of the surface vertex along the unfolded axis (ADR 0054), mm
   double y = 0.0;  ///< ray height at the vertex plane, mm
-  double u = 0.0;  ///< slope dy/dz after the event (global frame)
+  double u = 0.0;  ///< slope dy/dz after the event (global frame; unfolded behind a fold)
   double n = 1.0;  ///< signed index after the event (see file comment)
 };
 

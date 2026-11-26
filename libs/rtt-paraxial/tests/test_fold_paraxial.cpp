@@ -6,6 +6,7 @@
 // image. Acceptance (decision 3 on #357): EFL, BFL, positions and diameters of the pupils to
 // 1e-12 relative against the unfolded system; unfolded paths stay bitwise.
 
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <iomanip>
@@ -202,7 +203,7 @@ TEST_CASE("a plane fold mirror unfolds to the singlet", "[paraxial][fold][357]")
     const Vec3 d(0.0, std::sin(2.0 * t), -std::cos(2.0 * t));
     const Vec3 expected = Vec3(0.0, 0.0, kMirrorZ) + (*f.image_z - kMirrorZ) * d;
     CHECK((global_on_axis(f, *f.image_z) - expected).norm() <= 1e-12);
-    // the paraxial image lies 0.0... mm from the detector of the unfolded file: on its axis
+    // the detector of the file lies on the unfolded axis at its unfolded distance
     CHECK((global_on_axis(f, kImageZ) - cs.surfaces().back().to_global.translation()).norm() <=
           1e-12);
     // Seidel sums: the plane mirror adds nothing
@@ -277,4 +278,28 @@ TEST_CASE("what a fold does not cover stays a ParaxialError", "[paraxial][fold][
   CHECK(paraxial_error([&] {
           (void)rtt::paraxial::prescription(cs, PathId{0}, 0);
         }).find("folded path") != std::string::npos);
+}
+
+TEST_CASE("a concave mirror at normal incidence behind a fold", "[paraxial][fold][357]") {
+  // A plane fold at z = 20 to +y, then a concave mirror R = -100 mm 30 mm further at normal
+  // incidence, which sends the light back (n changes sign, ADR 0054, point 1); unfolded it is the
+  // same mirror 50 mm behind the stop with the image at z = 2.
+  const std::string folded =
+      R"({"schema_version": "0.11.0", "name": "x", "units": {"length": "mm", "wavelength": "um"}, "wavelengths": [{"um": 0.5876, "reference": true}], "aperture": {"type": "epd", "value": 10.0}, "fields": {"points": [{}, {"y": 1.0}]}, "root": {"type": "assembly", "name": "system", "children": [{"type": "stop", "name": "stop", "surfaces": [{"id": "STO", "aperture": {"type": "circular", "radius": 5.0}}]}, {"type": "mirror", "name": "M1", "pose": {"position": [0.0, 0.0, 20.0], "rotation_deg": [45.0, 0.0, 0.0]}, "surfaces": [{"id": "M1", "aperture": {"type": "circular", "radius": 10.0}}]}, {"type": "mirror", "name": "M2", "pose": {"position": [0.0, 30.0, 20.0], "rotation_deg": [-90.0, 0.0, 0.0]}, "surfaces": [{"id": "M2", "shape": {"base": {"type": "conic", "radius": -100.0}}, "aperture": {"type": "circular", "radius": 8.0}}]}, {"type": "detector", "name": "image", "pose": {"position": [0.0, -18.0, 20.0], "rotation_deg": [90.0, 0.0, 0.0]}, "surfaces": [{"id": "IMG"}]}]}, "paths": [{"name": "main", "events": [{"surface": "STO", "kind": "transmit"}, {"surface": "M1", "kind": "reflect"}, {"surface": "M2", "kind": "reflect"}, {"surface": "IMG", "kind": "transmit"}]}]})";
+  const std::string flat =
+      R"({"schema_version": "0.11.0", "name": "x", "units": {"length": "mm", "wavelength": "um"}, "wavelengths": [{"um": 0.5876, "reference": true}], "aperture": {"type": "epd", "value": 10.0}, "fields": {"points": [{}, {"y": 1.0}]}, "root": {"type": "assembly", "name": "system", "children": [{"type": "stop", "name": "stop", "surfaces": [{"id": "STO", "aperture": {"type": "circular", "radius": 5.0}}]}, {"type": "mirror", "name": "M2", "pose": {"position": [0.0, 0.0, 50.0]}, "surfaces": [{"id": "M2", "shape": {"base": {"type": "conic", "radius": -100.0}}, "aperture": {"type": "circular", "radius": 8.0}}]}, {"type": "detector", "name": "image", "pose": {"position": [0.0, 0.0, 2.0], "rotation_deg": [180.0, 0.0, 0.0]}, "surfaces": [{"id": "IMG"}]}]}, "paths": [{"name": "main", "events": [{"surface": "STO", "kind": "transmit"}, {"surface": "M2", "kind": "reflect"}, {"surface": "IMG", "kind": "transmit"}]}]})";
+  const CompiledSystem cf = compiled(folded);
+  const CompiledSystem cu = compiled(flat);
+  const FirstOrder f = rtt::paraxial::first_order(cf, PathId{0}, 0);
+  const FirstOrder u = rtt::paraxial::first_order(cu, PathId{0}, 0);
+  REQUIRE(f.folds == 1);
+  REQUIRE(u.image_direction == -1);  // content guard: light leaves towards -z
+  same_first_order(f, u);
+  REQUIRE(f.efl);
+  CHECK(std::abs(*f.efl - 50.0) < 0.1);  // |R| / 2, times n of AIR (absolute indices)
+  const auto sf = rtt::paraxial::seidel(cf, PathId{0}, 0);
+  const auto su = rtt::paraxial::seidel(cu, PathId{0}, 0);
+  CHECK(close(sf.sum.s1, su.sum.s1));
+  CHECK(close(sf.sum.s3, su.sum.s3));
+  CHECK(std::abs(su.sum.s3) > 1e-9);  // content guard: off-axis field, astigmatism
 }

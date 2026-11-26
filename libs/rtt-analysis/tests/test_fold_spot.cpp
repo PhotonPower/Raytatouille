@@ -13,6 +13,9 @@
 #include <stdexcept>
 #include <string>
 
+#include "rtt/analysis/chromatic.hpp"
+#include "rtt/analysis/field.hpp"
+#include "rtt/analysis/nominal_reference.hpp"
 #include "rtt/analysis/opd.hpp"
 #include "rtt/analysis/spot.hpp"
 #include "rtt/compile/compiled_system.hpp"
@@ -143,6 +146,20 @@ TEST_CASE("image-space analyses of folded paths wait for PR B", "[analysis][fold
   } catch (const std::invalid_argument& e) {
     CHECK(std::string(e.what()).find("folded path") != std::string::npos);
   }
+  // longitudinal colour, distortion and field curvature measure along the global z axis
+  const auto folded_error = [](auto&& f) {
+    try {
+      f();
+      FAIL("no exception");
+    } catch (const std::invalid_argument& e) {
+      CHECK(std::string(e.what()).find("folded path") != std::string::npos);
+    }
+  };
+  folded_error([&] { (void)rtt::analysis::longitudinal_colour(cs, PathId{0}); });
+  folded_error([&] { (void)rtt::analysis::distortion(cs, PathId{0}, 1); });
+  folded_error([&] { (void)rtt::analysis::field_curvature(cs, PathId{0}, 1); });
+  // the exit pupil of a nominal reference (tolerance trials)
+  folded_error([&] { (void)rtt::analysis::nominal_reference(cs, PathId{0}).exit_pupil(); });
   // fields as paraxial image height
   rtt::model::System h = s;
   h.fields.type = rtt::model::FieldType::ParaxialImageHeight;
@@ -152,5 +169,26 @@ TEST_CASE("image-space analyses of folded paths wait for PR B", "[analysis][fold
     FAIL("no exception");
   } catch (const std::invalid_argument& e) {
     CHECK(std::string(e.what()).find("folded path") != std::string::npos);
+  }
+}
+
+TEST_CASE("the fold mirror as the first surface bounds the start plane", "[analysis][fold][357]") {
+  // The mirror at z = 5, tilted by 45 deg, is the first surface; the stop lies 15 mm behind it
+  // along +y (not 10 mm: the top ray would meet the mirror in the stop plane, at distance 0), so
+  // the entrance pupil is at the unfolded z = 20. The lower half of the mirror
+  // reaches z = -5 for the bundle of radius 10 mm; the start plane must lie before it, else the
+  // rays start behind the mirror and miss it.
+  const CompiledSystem cs = compiled(rtt::io::parse_system(
+      R"({"schema_version": "0.11.0", "name": "fold before the stop", "units": {"length": "mm", "wavelength": "um"}, "wavelengths": [{"um": 0.5876, "reference": true}], "aperture": {"type": "epd", "value": 20.0}, "fields": {"points": [{}]}, "root": {"type": "assembly", "name": "system", "children": [{"type": "mirror", "name": "M", "pose": {"position": [0.0, 0.0, 5.0], "rotation_deg": [45.0, 0.0, 0.0]}, "surfaces": [{"id": "M", "aperture": {"type": "circular", "radius": 20.0}}]}, {"type": "stop", "name": "stop", "pose": {"position": [0.0, 15.0, 5.0], "rotation_deg": [-90.0, 0.0, 0.0]}, "surfaces": [{"id": "STO", "aperture": {"type": "circular", "radius": 10.0}}]}, {"type": "detector", "name": "image", "pose": {"position": [0.0, 50.0, 5.0], "rotation_deg": [-90.0, 0.0, 0.0]}, "surfaces": [{"id": "IMG"}]}]}, "paths": [{"name": "main", "events": [{"surface": "M", "kind": "reflect"}, {"surface": "STO", "kind": "transmit"}, {"surface": "IMG", "kind": "transmit"}]}]})"));
+  const auto fo = rtt::paraxial::first_order(cs, PathId{0}, 0);
+  REQUIRE(fo.folds == 1);
+  REQUIRE(fo.entrance_pupil);
+  REQUIRE(fo.entrance_pupil->z);
+  CHECK(std::abs(*fo.entrance_pupil->z - 20.0) <= 1e-12);
+  for (const auto aiming : {rtt::trace::Aiming::Paraxial, rtt::trace::Aiming::Real}) {
+    INFO("aiming " << static_cast<int>(aiming));
+    const auto s = rtt::analysis::spot(cs, PathId{0}, 0, 0, options(aiming));
+    CHECK(s.rays_launched == 127);
+    CHECK(s.rays_arrived == 127);
   }
 }
