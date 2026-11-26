@@ -51,7 +51,7 @@ if(RTT_BUILD_TESTS)
     SOURCES tests/test_zmx.cpp tests/test_zmx_export.cpp tests/test_surface_table.cpp
             tests/test_zmx_surfaces.cpp tests/test_zmx_export_surfaces.cpp
             tests/test_export_inactive.cpp
-            tests/test_zmx_export_folded.cpp
+            tests/test_zmx_export_folded.cpp tests/test_zmx_config.cpp
     LIBS rtt::io rtt::material rtt::compile rtt::paraxial rtt::analysis rtt::trace
          rtt::diagnostics rtt::coating rtt::model_test_support
          nlohmann_json::nlohmann_json)

@@ -60,7 +60,9 @@ class ZmxError : public std::runtime_error {
 /// Glass names are resolved through the GCAT catalogues in `materials` (ADR 0044, point 7).
 /// The result has passed model::validate and compile::compile; it is written with a single
 /// automatic path, AIR at 20 degC and 1 atm, and element and surface names after ADR 0044,
-/// point 5.
+/// point 5. A file with n > 1 configurations (MNUM n) gives the configurations C1 ... Cn and one
+/// row of the parameter table per Param that differs between them (ADR 0044, addendum #361);
+/// every configuration has passed compile.
 /// @throws ZmxError for every rule of ADR 0044 that rejects the file, and with
 ///         zmx.invalid_result if validate or compile reject the result
 [[nodiscard]] ZmxImport import_zmx(std::string_view bytes,

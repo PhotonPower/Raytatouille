@@ -27,6 +27,7 @@
 #include "rtt/math/isometry.hpp"
 #include "rtt/math/units.hpp"
 #include "rtt/model/element.hpp"
+#include "rtt/model/parameters.hpp"
 #include "rtt/model/surface.hpp"
 #include "rtt/paraxial/paraxial.hpp"
 #include "rtt/trace/sources.hpp"
@@ -347,6 +348,10 @@ class Importer {
   void read_header(const Line& l);
   void read_surface_line(ZSurface& s, const Line& l);
   void read_trailer(std::size_t from);
+  void read_configurations(std::size_t mnum);
+  void apply_configuration(std::size_t k);
+  model::System build_configurations();
+  model::System merge_configurations(const std::vector<model::System>& systems) const;
   [[nodiscard]] double length(double v) const { return v * scale_; }
   std::string resolve_glass(const ZSurface& s);
   struct TermData {
@@ -379,6 +384,19 @@ class Importer {
   std::map<std::string, std::size_t> glass_first_line_;
   bool stop_from_diam_rule_ = false;  ///< the stop radius is 1.1 v (rule 3 of point 8)
   std::size_t stop_diam_line_ = 0;
+
+  /// An operand of the configuration editor whose value changes between the configurations
+  /// (ADR 0044, addendum #361): THIC, CRVT, CONN, PRAM (also PAR1 ... PAR8) or APER.
+  struct ConfigOperand {
+    std::string type;
+    int int1 = 0;                ///< surface (0 for APER)
+    int int2 = 0;                ///< parameter of PRAM
+    std::vector<double> values;  ///< per configuration, in lens units as in the surface data
+    std::size_t line = 0;        ///< first line of the operand
+  };
+  std::size_t configs_ = 1;    ///< MNUM n
+  std::size_t mnum_line_ = 0;  ///< line of MNUM
+  std::vector<ConfigOperand> config_operands_;
 };
 
 void Importer::read_header(const Line& l) {
@@ -529,7 +547,8 @@ void Importer::read_trailer(std::size_t from) {
   if (i == lines_.size()) return;
   const Line& mnum = lines_[i];
   if (integer(mnum, 1) != 1) {
-    fail("zmx.multi_config", mnum.number, "more than one configuration is not supported");
+    read_configurations(i);
+    return;
   }
   for (++i; i < lines_.size(); ++i) {
     const Line& l = lines_[i];
@@ -550,6 +569,332 @@ void Importer::read_trailer(std::size_t from) {
     }
     ignored_.add(l);
   }
+}
+
+/// The configuration editor with n > 1 configurations (ADR 0044, addendum #361). Field order, a
+/// reading of files under MIT licence and of the OISC corpus (docs/quellen.md): type, Int1
+/// (surface), configuration (1 ... n), value, a solve code, Int2 (the parameter of PRAM), ...;
+/// MNUM n c with c the active configuration, whose values the surface data hold. Without c the
+/// surface data hold one of the configurations, not always the first (OISC corpus), so at least
+/// one must agree with them.
+/// The stored value is used, also for pickups and solves (decision 5 on #361).
+void Importer::read_configurations(std::size_t i) {
+  const Line& mnum = lines_[i];
+  const int n = integer(mnum, 1);
+  // UG "Defining the Number of Configurations": at most 160
+  if (n < 1 || n > 160) {
+    fail("zmx.multi_config", mnum.number, "the number of configurations must be 1 to 160");
+  }
+  const bool given = mnum.words.size() > 2;
+  const int active = given ? integer(mnum, 2) : 1;
+  if (active < 1 || active > n) {
+    fail("zmx.multi_config", mnum.number,
+         "the active configuration " + std::to_string(active) + " is not one of 1 to " +
+             std::to_string(n));
+  }
+  const auto count = static_cast<std::size_t>(n);
+  struct Row {
+    std::string type;
+    int int1 = 0;
+    int int2 = 0;
+    std::vector<const Line*> cells;  ///< per configuration
+  };
+  std::vector<Row> rows;
+  for (++i; i < lines_.size(); ++i) {
+    const Line& l = lines_[i];
+    std::string type = l.words[0];
+    // UG "Multi-Configuration Operands": MOFF unused, HOLD without effect, MCOM a comment
+    if (type == "MOFF" || type == "HOLD" || type == "MCOM") continue;
+    if (l.words.size() < 4) {
+      fail("zmx.parse", l.number, "an operand needs a number, a configuration and a value");
+    }
+    const int int1 = integer(l, 1);
+    const int config = integer(l, 2);
+    if (config < 1 || config > n) {
+      fail("zmx.multi_config", l.number,
+           "configuration " + std::to_string(config) + " is not one of 1 to " + std::to_string(n));
+    }
+    int int2 = 0;
+    if (type.size() == 4 && type.starts_with("PAR") && type[3] >= '1' && type[3] <= '8') {
+      int2 = type[3] - '0';  // PAR1 ... PAR8: "Obsolete, use PRAM instead" (UG)
+      type = "PRAM";
+    } else if (type == "PRAM") {
+      int2 = integer(l, 5);
+    }
+    auto it = std::find_if(rows.begin(), rows.end(), [&](const Row& r) {
+      return r.type == type && r.int1 == int1 && r.int2 == int2;
+    });
+    if (it == rows.end()) {
+      rows.push_back(Row{type, int1, int2, std::vector<const Line*>(count, nullptr)});
+      it = std::prev(rows.end());
+    }
+    const Line*& cell = it->cells[static_cast<std::size_t>(config - 1)];
+    if (cell != nullptr && cell->words[3] != l.words[3]) {
+      fail("zmx.multi_config", l.number,
+           type + " " + std::to_string(int1) + (type == "PRAM" ? ", " + std::to_string(int2) : "") +
+               " has two values for configuration " + std::to_string(config));
+    }
+    cell = &l;
+  }
+  const auto a = static_cast<std::size_t>(active - 1);
+  std::vector<bool> agrees(count, true);  ///< without c: configurations that match the surfaces
+  for (const Row& r : rows) {
+    const std::string what = r.type + " " + std::to_string(r.int1) +
+                             (r.type == "PRAM" ? ", " + std::to_string(r.int2) : "");
+    for (std::size_t k = 0; k < count; ++k) {
+      if (r.cells[k] == nullptr) {
+        fail("zmx.multi_config", mnum.number,
+             what + " has no value for configuration " + std::to_string(k + 1));
+      }
+    }
+    const std::size_t first = r.cells.front()->number;
+    const bool mappable = r.type == "THIC" || r.type == "CRVT" || r.type == "CONN" ||
+                          r.type == "PRAM" || r.type == "APER";
+    if (!mappable) {
+      // the same in every configuration: no effect on the model (decision 1 on #361)
+      const bool varying = std::any_of(r.cells.begin(), r.cells.end(), [&](const Line* c) {
+        return c->words[3] != r.cells.front()->words[3];
+      });
+      if (varying) {
+        fail("zmx.config_unsupported", first,
+             what +
+                 " changes between the configurations; only THIC, CRVT, CONN, PRAM and APER "
+                 "are imported (ADR 0029: wavelengths, fields and materials are the same in "
+                 "every configuration)");
+      }
+      continue;
+    }
+    std::vector<double> values;
+    values.reserve(r.cells.size());
+    for (const Line* c : r.cells) values.push_back(number(*c, 3));
+    const bool varying =
+        std::any_of(values.begin(), values.end(), [&](double v) { return v != values.front(); });
+    ZSurface* s = nullptr;
+    if (r.type != "APER") {
+      if (r.int1 < 0 || static_cast<std::size_t>(r.int1) >= surfaces_.size()) {
+        fail("zmx.config_mismatch", first, what + ": no such surface");
+      }
+      s = &surfaces_[static_cast<std::size_t>(r.int1)];
+    }
+    if (varying) {
+      if (r.type == "THIC" && s->infinite) {
+        fail("zmx.config_unsupported", first,
+             what + ": the thickness of a surface at infinity per configuration is not imported");
+      }
+      if (r.type == "PRAM" && (s->type == "COORDBRK" || s->type == "TILTSURF")) {
+        fail("zmx.config_unsupported", first,
+             what + ": a parameter of a " + s->type +
+                 " per configuration is not imported (decision 6 on #361, #440)");
+      }
+      if (r.type == "APER" && (!aperture_kind_ || *aperture_kind_ == "FLOA")) {
+        fail("zmx.config_unsupported", first,
+             "APER with the system aperture floating by stop size is not imported");
+      }
+    }
+    // the surface data hold the active configuration
+    double held = aperture_value_;
+    bool known = true;
+    if (r.type == "THIC") {
+      known = !s->infinite;
+      held = s->disz.value;
+    } else if (r.type == "CRVT") {
+      held = s->curv.value;
+    } else if (r.type == "CONN") {
+      held = s->coni.value;
+    } else if (r.type == "PRAM") {
+      held = s->parm.contains(r.int2) ? s->parm.at(r.int2).value : 0.0;
+    } else {
+      known = aperture_kind_.has_value() && *aperture_kind_ != "FLOA";
+    }
+    if (r.type != "APER" || known) {
+      if (given && (!known || held != values[a])) {
+        fail("zmx.config_mismatch", r.cells[a]->number,
+             what + " of the active configuration " + std::to_string(active) +
+                 " differs from the surface data");
+      }
+      for (std::size_t k = 0; k < count; ++k) {
+        if (!known || held != values[k]) agrees[k] = false;
+      }
+    }
+    if (varying) config_operands_.push_back(ConfigOperand{r.type, r.int1, r.int2, values, first});
+  }
+  if (!given && std::none_of(agrees.begin(), agrees.end(), [](bool b) { return b; })) {
+    fail("zmx.config_mismatch", mnum.number,
+         "no configuration agrees with the surface data in THIC, CRVT, CONN, PRAM and APER");
+  }
+  configs_ = count;
+  mnum_line_ = mnum.number;
+}
+
+/// The surface data and the system aperture with the values of configuration k (0-based).
+void Importer::apply_configuration(std::size_t k) {
+  for (const ConfigOperand& o : config_operands_) {
+    const double v = o.values[k];
+    if (o.type == "APER") {
+      aperture_value_ = v;
+      continue;
+    }
+    ZSurface& s = surfaces_[static_cast<std::size_t>(o.int1)];
+    if (o.type == "THIC") {
+      s.disz.value = v;
+    } else if (o.type == "CRVT") {
+      s.curv.value = v;
+    } else if (o.type == "CONN") {
+      s.coni.value = v;
+    } else {
+      Located& p = s.parm[o.int2];
+      p.value = v;
+      if (p.line == 0) p.line = o.line;
+    }
+  }
+}
+
+/// Builds the system once per configuration (ADR 0044, addendum #361, way B on #361); warnings
+/// of all configurations, each once.
+model::System Importer::build_configurations() {
+  const std::vector<ZSurface> surfaces = surfaces_;
+  const double aperture = aperture_value_;
+  const std::vector<Diagnostic> before = warnings_;
+  std::vector<Diagnostic> merged = before;
+  std::vector<model::System> systems;
+  for (std::size_t k = 0; k < configs_; ++k) {
+    surfaces_ = surfaces;
+    aperture_value_ = aperture;
+    warnings_ = before;
+    apply_configuration(k);
+    try {
+      systems.push_back(build());
+    } catch (const ZmxError& e) {
+      // the message without "line n: " and " [code]", with the configuration
+      std::string m = e.what();
+      const std::size_t colon = m.find(": ");
+      if (colon != std::string::npos) m.erase(0, colon + 2);
+      const std::string tail = " [" + e.code() + "]";
+      if (m.ends_with(tail)) m.erase(m.size() - tail.size());
+      throw ZmxError(e.code(), e.line(), m + " (configuration " + std::to_string(k + 1) + ")");
+    }
+    for (const Diagnostic& d : warnings_) {
+      const bool seen = std::any_of(merged.begin(), merged.end(), [&](const Diagnostic& m) {
+        return m.code == d.code && m.location == d.location && m.message == d.message;
+      });
+      if (!seen) merged.push_back(d);
+    }
+  }
+  surfaces_ = surfaces;
+  aperture_value_ = aperture;
+  warnings_ = std::move(merged);
+  return merge_configurations(systems);
+}
+
+/// Name of the row for the Param at `pointer` (edit form, model::for_each_param): the element,
+/// or the surface ID inside an element, then the rest of the pointer without "pose", "shape"
+/// and "base", position and rotation indices as x, y, z; e.g. "image_position_z", "S2_radius",
+/// "aperture_value" (ADR 0044, addendum #361).
+std::string row_name(const model::System& s, std::string_view pointer) {
+  std::vector<std::string> seg;
+  for (std::size_t at = 1; at <= pointer.size();) {
+    const std::size_t end = std::min(pointer.find('/', at), pointer.size());
+    seg.emplace_back(pointer.substr(at, end - at));
+    at = end + 1;
+  }
+  std::size_t i = 0;
+  std::string owner;
+  if (!seg.empty() && seg[0] == "root") {
+    owner = s.root.name;
+    const model::Assembly* a = &s.root;
+    i = 1;
+    while (i + 1 < seg.size() && seg[i] == "children") {
+      const model::Node& node = a->children.at(std::stoul(seg[i + 1]));
+      i += 2;
+      if (const auto* as = std::get_if<model::Assembly>(&node.value)) {
+        a = as;
+        owner = as->name;
+        continue;
+      }
+      const auto& e = std::get<model::Element>(node.value);
+      owner = e.name;
+      if (i + 1 < seg.size() && seg[i] == "surfaces") {
+        owner = e.surfaces.at(std::stoul(seg[i + 1])).id.str();
+        i += 2;
+      }
+      break;
+    }
+  }
+  std::string name = owner;
+  for (std::size_t k = i; k < seg.size(); ++k) {
+    const std::string& w = seg[k];
+    if (w == "pose" || w == "shape" || w == "base") continue;
+    std::string part = w;
+    if (k > 0 && (seg[k - 1] == "position" || seg[k - 1] == "rotation_deg") && w.size() == 1 &&
+        w[0] >= '0' && w[0] <= '2') {
+      part = std::string(1, static_cast<char>('x' + (w[0] - '0')));
+    }
+    if (!name.empty()) name += '_';
+    name += part;
+  }
+  for (char& c : name) {
+    if (std::isalnum(static_cast<unsigned char>(c)) == 0) c = '_';
+  }
+  if (name.empty() || std::isdigit(static_cast<unsigned char>(name[0])) != 0) name.insert(0, "_");
+  return name;
+}
+
+/// One system with the configurations C1 ... Cn and a row per Param whose value differs between
+/// them (ADR 0029). Configurations that differ in more than Param values are rejected.
+model::System Importer::merge_configurations(const std::vector<model::System>& systems) const {
+  model::System out = systems.front();
+  std::vector<std::string> pointers;
+  std::vector<std::vector<double>> values;
+  model::for_each_param(out, [&](std::string_view p, model::Param& param) {
+    pointers.emplace_back(p);
+    values.push_back({param.value});
+  });
+  std::string operands;
+  for (const ConfigOperand& o : config_operands_) {
+    operands += (operands.empty() ? "" : ", ") + o.type + " " + std::to_string(o.int1);
+  }
+  for (std::size_t k = 1; k < systems.size(); ++k) {
+    model::System copy = systems[k];
+    std::size_t i = 0;
+    bool same = true;
+    model::for_each_param(copy, [&](std::string_view p, model::Param& param) {
+      if (i < pointers.size() && p == pointers[i]) {
+        values[i].push_back(param.value);
+        param.value = values[i].front();
+      } else {
+        same = false;
+      }
+      ++i;
+    });
+    if (!same || i != pointers.size() || !(copy == out)) {
+      fail("zmx.config_unsupported",
+           config_operands_.empty() ? mnum_line_ : config_operands_.front().line,
+           "configuration " + std::to_string(k + 1) +
+               " changes more than parameter values (e.g. a surface type, the grouping into "
+               "elements, an aperture or a coordinate break); operands that change: " +
+               operands);
+    }
+  }
+  out.configurations.reserve(configs_);
+  for (std::size_t k = 0; k < configs_; ++k) {
+    out.configurations.push_back(model::Configuration{"C" + std::to_string(k + 1)});
+  }
+  const model::System names = out;
+  std::set<std::string> used;
+  std::size_t i = 0;
+  model::for_each_param(out, [&](std::string_view p, model::Param& param) {
+    const std::vector<double>& v = values[i++];
+    if (std::all_of(v.begin(), v.end(), [&](double x) { return x == v.front(); })) return;
+    std::string name = row_name(names, p);
+    for (int n = 2; used.contains(name); ++n) name = row_name(names, p) + "_" + std::to_string(n);
+    used.insert(name);
+    model::ParameterRow row;
+    row.name = name;
+    row.form = v;
+    out.parameters.push_back(std::move(row));
+    param = model::Param::bound(name);
+  });
+  return out;
 }
 
 std::string Importer::resolve_glass(const ZSurface& s) {
@@ -1462,54 +1807,70 @@ ZmxImport Importer::run() {
     }
   }
 
-  model::System sys = build();
+  model::System sys = configs_ > 1 ? build_configurations() : build();
   ZmxImport out;
   ignored_.report(out.warnings);
   out.warnings.insert(out.warnings.end(), warnings_.begin(), warnings_.end());
+  const std::size_t first_check = out.warnings.size();
+  const auto warn = [&](const Diagnostic& d) {
+    // each warning once over all configurations (ADR 0044, addendum #361)
+    const bool seen =
+        std::any_of(out.warnings.begin() + static_cast<std::ptrdiff_t>(first_check),
+                    out.warnings.end(), [&](const Diagnostic& m) {
+                      return m.code == d.code && m.location == d.location && m.message == d.message;
+                    });
+    if (!seen) out.warnings.push_back(d);
+  };
 
   try {
-    const compile::CompiledSystem cs = compile::compile(sys, lib_);
-    for (const Diagnostic& d : cs.diagnostics()) out.warnings.push_back(d);
-    std::uint16_t ref = 0;
-    for (std::size_t w = 0; w < sys.wavelengths.size(); ++w) {
-      if (sys.wavelengths[w].reference) ref = static_cast<std::uint16_t>(w);
-    }
-    // A folded, tilted or decentred path has no paraxial model (ADR 0030, addendum #256): the
-    // system is imported, analyses with paraxial aiming reject it (#357).
-    bool paraxial = true;
-    try {
-      (void)paraxial::first_order(cs, compile::PathId{0}, ref);
-    } catch (const paraxial::ParaxialError& e) {
-      paraxial = false;
-      out.warnings.push_back(Ignored::warning(
-          "zmx.paraxial_unavailable", 0,
-          std::string("no paraxial model, analyses with paraxial aiming need given start rays: ") +
-              e.what()));
-    }
-    if (stop_from_diam_rule_ && paraxial) {
-      const double r_s = trace::paraxial_stop_radius(cs, compile::PathId{0}, ref);
-      double radius = 0.0;
-      const auto visit = [&](const auto& self, const model::Assembly& a) -> void {
-        for (const model::Node& n : a.children) {
-          if (const auto* e = std::get_if<model::Element>(&n.value)) {
-            for (const model::Surface& s : e->surfaces) {
-              const bool is_stop = sys.aperture.stop ? s.id == *sys.aperture.stop
-                                                     : e->kind == model::ElementKind::Stop;
-              if (is_stop && s.aperture) {
-                radius = std::get<model::CircularAperture>(*s.aperture).radius.value;
+    for (std::size_t k = 0; k < configs_; ++k) {
+      const compile::CompiledSystem cs = compile::compile(sys, lib_, k);
+      const model::System resolved = configs_ > 1 ? model::resolve_parameters(sys, k) : sys;
+      for (const Diagnostic& d : cs.diagnostics()) warn(d);
+      std::uint16_t ref = 0;
+      for (std::size_t w = 0; w < resolved.wavelengths.size(); ++w) {
+        if (resolved.wavelengths[w].reference) ref = static_cast<std::uint16_t>(w);
+      }
+      // A folded, tilted or decentred path has no paraxial model (ADR 0030, addendum #256): the
+      // system is imported, analyses with paraxial aiming reject it (#357).
+      bool paraxial = true;
+      try {
+        (void)paraxial::first_order(cs, compile::PathId{0}, ref);
+      } catch (const paraxial::ParaxialError& e) {
+        paraxial = false;
+        warn(Ignored::warning(
+            "zmx.paraxial_unavailable", 0,
+            std::string("no paraxial model, analyses with paraxial aiming need given start "
+                        "rays: ") +
+                e.what()));
+      }
+      if (stop_from_diam_rule_ && paraxial) {
+        const double r_s = trace::paraxial_stop_radius(cs, compile::PathId{0}, ref);
+        double radius = 0.0;
+        const auto visit = [&](const auto& self, const model::Assembly& a) -> void {
+          for (const model::Node& n : a.children) {
+            if (const auto* e = std::get_if<model::Element>(&n.value)) {
+              for (const model::Surface& s : e->surfaces) {
+                const bool is_stop = resolved.aperture.stop ? s.id == *resolved.aperture.stop
+                                                            : e->kind == model::ElementKind::Stop;
+                if (is_stop && s.aperture) {
+                  radius = std::get<model::CircularAperture>(*s.aperture).radius.value;
+                }
               }
+            } else {
+              self(self, std::get<model::Assembly>(n.value));
             }
-          } else {
-            self(self, std::get<model::Assembly>(n.value));
           }
+        };
+        visit(visit, resolved.root);
+        if (r_s > radius) {
+          warn(Ignored::warning("zmx.stop_radius_small", stop_diam_line_,
+                                "paraxial stop radius " + std::to_string(r_s) +
+                                    " mm exceeds 1.1 DIAM = " + std::to_string(radius) +
+                                    " mm; real marginal rays are vignetted at the stop" +
+                                    (configs_ > 1 ? " (configuration " + std::to_string(k + 1) + ")"
+                                                  : std::string())));
         }
-      };
-      visit(visit, sys.root);
-      if (r_s > radius) {
-        out.warnings.push_back(Ignored::warning(
-            "zmx.stop_radius_small", stop_diam_line_,
-            "paraxial stop radius " + std::to_string(r_s) + " mm exceeds 1.1 DIAM = " +
-                std::to_string(radius) + " mm; real marginal rays are vignetted at the stop"));
       }
     }
   } catch (const ZmxError&) {
