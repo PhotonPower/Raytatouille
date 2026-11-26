@@ -121,9 +121,14 @@ std::vector<double> row_values(const System& s, std::string_view name) {
 
 /// A scan mirror as in the F-Theta files of the OISC corpus (#440), built from fold.zmx: a fixed
 /// break of 45 deg about x (SURF 2), the scan break `a` (SURF 3), the mirror (SURF 4), the break
-/// `b` (SURF 5, with `pickup` as its PPAR line if not empty) and the fixed break of 45 deg with
-/// the thickness -32 (SURF 6), then the image (SURF 7). Angles in degrees as in the file.
-std::string scan(std::string_view a, std::string_view b, std::string_view pickup = {}) {
+/// `b` (SURF 5, with `pickup` as its PPAR line if not empty) and the break `c` (45 deg in
+/// fold.zmx) with the thickness -32 (SURF 6), then the image (SURF 7); `pickup3` is a PPAR line of
+/// SURF 3. Angles in degrees as in the file.
+std::string scan(std::string_view a,
+                 std::string_view b,
+                 std::string_view pickup = {},
+                 std::string_view pickup3 = {},
+                 std::string_view c = "4.5E+001") {
   const std::string f = read_file(kZmxDir + "fold.zmx");
   const auto block = [&](int k) {
     const std::size_t at = f.find("SURF " + std::to_string(k) + "\r\n");
@@ -148,8 +153,10 @@ std::string scan(std::string_view a, std::string_view b, std::string_view pickup
   };
   const std::size_t s2 = f.find("SURF 2\r\n");
   const std::size_t tail = f.find("TOL ");
-  return f.substr(0, s2) + block(2) + tilted(3, a, {}) + numbered(3, 4) + tilted(5, b, pickup) +
-         numbered(4, 6) + numbered(5, 7) + f.substr(tail);
+  const std::string last =
+      replace_line(numbered(4, 6), 0, "  PARM 3", "  PARM 3 " + std::string(c));
+  return f.substr(0, s2) + block(2) + tilted(3, a, pickup3) + numbered(3, 4) +
+         tilted(5, b, pickup) + last + numbered(5, 7) + f.substr(tail);
 }
 
 /// The frames of all surfaces of configuration k agree with those of `single` to 1e-14 in the
@@ -450,6 +457,9 @@ TEST_CASE("a scan mirror tilted per configuration, with the break behind it as a
       with_block(decentered("1.0E+000"),
                  {"MNUM 2", op("PRAM", 3, 1, "1.0E+000", 1), op("PRAM", 3, 2, "2.0E+000", 1)}),
       schott());
+  // content guard: the decenter is the x of the mirror position (rule 3 multiplies out)
+  REQUIRE(shifted.system.parameters.size() == 1);
+  REQUIRE(row_values(shifted.system, "M1_position_x") == std::vector<double>{1.0, 2.0});
   for (std::size_t k = 0; k < 2; ++k) {
     INFO("decenter, configuration " << k + 1);
     REQUIRE(
@@ -486,9 +496,67 @@ TEST_CASE("pickups and breaks per configuration that the import rejects", "[zmx]
   expect_error(
       two(scan("2.5E+000", "-2.5E+000"), {op("PRAM", 3, 1, "0", 7), op("PRAM", 3, 2, "1", 7)}),
       "zmx.config_unsupported", "PRAM 3 1");
+  // a pickup of a changing source on a COORDBRK parameter beyond 6 (the source is parameter 7 of
+  // the mirror SURF 4)
+  expect_error(two(scan("2.5E+000", "-2.5E+000", "  PPAR 7 4 1.0E+000 0.0E+000 0"),
+                   {op("PRAM", 4, 1, "0", 7), op("PRAM", 4, 2, "1.0E+000", 7)}),
+               "zmx.config_unsupported", "PPAR 7 4");
+  // a pickup of a changing source on a tilted plane (tilt_plate.zmx, SURF 2 from SURF 3)
+  const std::string plate = in_surface(read_file(kZmxDir + "tilt_plate.zmx"), 2, "  PARM 2",
+                                       "  PPAR 1 3 1.0E+000 5.0E-002 0\r\n  PARM 2 2.0E-001");
+  expect_error(
+      with_block(plate, {"MNUM 2 1", op("PRAM", 3, 1, "0", 1), op("PRAM", 3, 2, "1.0E+000", 1)}),
+      "zmx.config_unsupported", "PPAR 1 3");
+  // a break with the order flag whose number of tilts changes: rule 2 with one tilt, rule 3 with
+  // two (decision 3 on #440)
+  std::string flagged = in_surface(read_file(kZmxDir + "fold.zmx"), 2, "  PARM 6", "  PARM 6 1");
+  flagged = in_surface(flagged, 2, "  PARM 4", "  PARM 4 5.0E+000");
+  flagged = in_surface(flagged, 2, "  PARM 3", "  PARM 3 0");
+  expect_error(
+      with_block(flagged, {"MNUM 2 1", op("PRAM", 2, 1, "0", 3), op("PRAM", 2, 2, "1.0E+001", 3)}),
+      "zmx.config_unsupported", "PRAM 2 1");
   // a decenter of the only break before the mirror goes into the pivot (rule 2), not a Param
   // (decision 3 on #440)
   const std::string fold = read_file(kZmxDir + "fold.zmx");
   expect_error(two(fold, {op("PRAM", 2, 1, "0", 1), op("PRAM", 2, 2, "1.0E+000", 1)}),
                "zmx.config_unsupported", "PRAM 2 1");
+}
+
+TEST_CASE("a chain of pickups backwards over the surfaces, with a factor and an offset",
+          "[zmx][config][440]") {
+  // PRAM 6, 3 is the operand (45 and 40 deg); SURF 5 takes 0.5 times it minus 21, SURF 3 takes -1
+  // times SURF 5: the import needs two passes, and no break is 0 in either configuration
+  // (rule 3 both in the configurations and in the single files).
+  const std::string p5 = "  PPAR 3 6 5.0E-001 -2.1E+001 0";
+  const std::string p3 = "  PPAR 3 5 -1.0E+000 0.0E+000 0";
+  const auto file = [&](std::string_view a, std::string_view b, std::string_view c) {
+    return scan(a, b, p5, p3, c);
+  };
+  const ZmxImport multi = import_zmx(
+      with_block(file("-1.5E+000", "1.5E+000", "4.5E+001"),
+                 {"MNUM 2 1", op("PRAM", 6, 1, "4.5E+001", 3), op("PRAM", 6, 2, "4.0E+001", 3)}),
+      schott());
+  const System& s = multi.system;
+  REQUIRE(configuration(s, 0) ==
+          import_zmx(with_block(file("-1.5E+000", "1.5E+000", "4.5E+001"), {"MNUM 1"}), schott())
+              .system);
+  REQUIRE(configuration(s, 1) ==
+          import_zmx(with_block(file("1.0E+000", "-1.0E+000", "4.0E+001"), {"MNUM 1"}), schott())
+              .system);
+  // content guard: the mirror turns by 45 + a, the image by b + c
+  const std::vector<double> mirror = row_values(s, "M1_rotation_deg_x");
+  REQUIRE(std::abs(mirror[0] - 43.5) < 1e-12);
+  REQUIRE(std::abs(mirror[1] - 46.0) < 1e-12);
+  const std::vector<double> image = row_values(s, "image_rotation_deg_x");
+  REQUIRE(std::abs(image[0] - 46.5) < 1e-12);
+  REQUIRE(std::abs(image[1] - 39.0) < 1e-12);
+
+  // the resolved value against f * source + o (0.5 * 45 - 21 = 1.5): within the 13 printed digits
+  // accepted, beyond them rejected
+  const std::vector<std::string> rows{"MNUM 2 1", op("PRAM", 6, 1, "4.5E+001", 3),
+                                      op("PRAM", 6, 2, "4.0E+001", 3)};
+  REQUIRE_NOTHROW(
+      import_zmx(with_block(scan("0.0E+000", "1.5000000000001E+000", p5), rows), schott()));
+  expect_error(with_block(scan("0.0E+000", "1.500000001E+000", p5), rows), "zmx.config_mismatch",
+               "PPAR 3 6");
 }
