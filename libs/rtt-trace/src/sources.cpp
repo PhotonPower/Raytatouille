@@ -578,11 +578,9 @@ double lowest_z(const compile::CompiledSurface& surface,
 /// unit slope through the EP centre (object at infinity) or unit object height (finite object),
 /// at the reference wavelength (#31).
 double unit_image_height(const Context& c) {
+  // Behind a fold image_z and the traced heights are unfolded (ADR 0054, point 5): the field is
+  // given in the image plane of the unfolded path.
   const auto& fo = c.first_order_ref;
-  if (fo.folds > 0) {
-    throw std::invalid_argument(
-        "sources: paraxial image height on a folded path is not yet supported (ADR 0054)");
-  }
   if (!fo.image_z) {
     throw std::invalid_argument("sources: paraxial image height needs a finite paraxial image");
   }

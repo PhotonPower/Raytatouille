@@ -136,40 +136,76 @@ TEST_CASE("the spot behind a fold equals that of the unfolded singlet", "[analys
   }
 }
 
-TEST_CASE("image-space analyses of folded paths wait for PR B", "[analysis][fold][357]") {
+TEST_CASE("image-space analyses behind a fold equal those of the unfolded singlet",
+          "[analysis][fold][357]") {
+  // PR B1 (ADR 0054, point 5): the reference sphere about the exit pupil mapped by image_space,
+  // fields as paraxial image height in the unfolded image plane, and longitudinal colour,
+  // distortion and field curvature measured along the unfolded axis. m6/singlet_fold45 against
+  // m1/singlet_const (decision 3 on #357: 1e-12).
   const rtt::model::System s = load("m6/singlet_fold45.rtt.json");
   const CompiledSystem cs = compiled(s);
-  // the reference sphere about the exit pupil (OPD, PSF, MTF)
-  try {
-    (void)rtt::analysis::opd_map(cs, PathId{0}, 0, 1);
-    FAIL("no exception");
-  } catch (const std::invalid_argument& e) {
-    CHECK(std::string(e.what()).find("folded path") != std::string::npos);
-  }
-  // longitudinal colour, distortion and field curvature measure along the global z axis
-  const auto folded_error = [](auto&& f) {
-    try {
-      f();
-      FAIL("no exception");
-    } catch (const std::invalid_argument& e) {
-      CHECK(std::string(e.what()).find("folded path") != std::string::npos);
-    }
+  const CompiledSystem flat = compiled(load("m1/singlet_const.rtt.json"));
+  const auto near = [](double a, double b) {
+    return std::abs(a - b) <= 1e-12 * std::max(1.0, std::abs(b));
   };
-  folded_error([&] { (void)rtt::analysis::longitudinal_colour(cs, PathId{0}); });
-  folded_error([&] { (void)rtt::analysis::distortion(cs, PathId{0}, 1); });
-  folded_error([&] { (void)rtt::analysis::field_curvature(cs, PathId{0}, 1); });
-  // the exit pupil of a nominal reference (tolerance trials)
-  folded_error([&] { (void)rtt::analysis::nominal_reference(cs, PathId{0}).exit_pupil(); });
-  // fields as paraxial image height
+  // OPD on the reference sphere, field 2
+  const auto of = rtt::analysis::opd_map(cs, PathId{0}, 2, 1);
+  const auto ou = rtt::analysis::opd_map(flat, PathId{0}, 2, 1);
+  REQUIRE(of.arrived == ou.arrived);
+  CHECK(std::abs(of.rms - ou.rms) <= 1e-9);  // waves
+  CHECK(std::abs(of.pv - ou.pv) <= 1e-9);
+  CHECK(near(of.sphere.radius, ou.sphere.radius));
+  CHECK(ou.rms > 0.01);  // content guard: the singlet has aberrations
+  // the exit pupil of a nominal reference: the same point as make_reference takes
+  const auto e = rtt::analysis::nominal_reference(cs, PathId{0}).exit_pupil();
+  REQUIRE(e);
+  const auto fo = rtt::paraxial::first_order(cs, PathId{0}, cs.reference_wavelength());
+  CHECK((*e - fo.image_space.to_global(rtt::math::Vec3(0.0, 0.0, *fo.exit_pupil->z))).norm() ==
+        0.0);
+  // longitudinal colour
+  const auto lf = rtt::analysis::longitudinal_colour(cs, PathId{0});
+  const auto lu = rtt::analysis::longitudinal_colour(flat, PathId{0});
+  REQUIRE(lf.foci.size() == lu.foci.size());
+  for (std::size_t k = 0; k < lf.foci.size(); ++k) {
+    CHECK(near(lf.foci[k].paraxial_z, lu.foci[k].paraxial_z));
+    CHECK(near(lf.foci[k].real_z, lu.foci[k].real_z));
+  }
+  CHECK(std::abs(lu.foci[1].real_z - lu.foci[1].paraxial_z) > 1e-3);  // spherical aberration
+  // distortion and field curvature
+  const auto df = rtt::analysis::distortion(cs, PathId{0}, 1);
+  const auto du = rtt::analysis::distortion(flat, PathId{0}, 1);
+  REQUIRE(df.size() == du.size());
+  for (std::size_t k = 0; k < df.size(); ++k) {
+    INFO("distortion point " << k);
+    CHECK(near(df[k].real_height, du[k].real_height));
+    CHECK(near(df[k].paraxial_height, du[k].paraxial_height));
+    CHECK(std::abs(df[k].percent - du[k].percent) <= 1e-10);
+  }
+  CHECK(std::abs(du.back().percent) > 1e-3);  // content guard
+  const auto cf = rtt::analysis::field_curvature(cs, PathId{0}, 1);
+  const auto cu = rtt::analysis::field_curvature(flat, PathId{0}, 1);
+  REQUIRE(cf.size() == cu.size());
+  for (std::size_t k = 0; k < cf.size(); ++k) {
+    INFO("field curvature point " << k);
+    // field curvature intersects two neighbouring rays (ADR 0032): the rounding of their
+    // positions (about 1e-14 mm, a few ulp more behind the fold) grows by the inverse of their
+    // small angle; measured up to 1.2e-8 mm at the field edge
+    CHECK(std::abs(cf[k].tangential - cu[k].tangential) <= 1e-7);
+    CHECK(std::abs(cf[k].sagittal - cu[k].sagittal) <= 1e-7);
+  }
+  CHECK(std::abs(cu.back().astigmatism) > 1e-3);  // content guard
+  // fields as paraxial image height (in the unfolded image plane)
   rtt::model::System h = s;
   h.fields.type = rtt::model::FieldType::ParaxialImageHeight;
-  const CompiledSystem ch = compiled(h);
-  try {
-    (void)rtt::analysis::spot(ch, PathId{0}, 1, 1, options(rtt::trace::Aiming::Paraxial));
-    FAIL("no exception");
-  } catch (const std::invalid_argument& e) {
-    CHECK(std::string(e.what()).find("folded path") != std::string::npos);
-  }
+  rtt::model::System hu = load("m1/singlet_const.rtt.json");
+  hu.fields.type = rtt::model::FieldType::ParaxialImageHeight;
+  const auto sh =
+      rtt::analysis::spot(compiled(h), PathId{0}, 1, 1, options(rtt::trace::Aiming::Paraxial));
+  const auto su =
+      rtt::analysis::spot(compiled(hu), PathId{0}, 1, 1, options(rtt::trace::Aiming::Paraxial));
+  REQUIRE(sh.rays_arrived == su.rays_arrived);
+  CHECK(std::abs(sh.stats.rms_centroid - su.stats.rms_centroid) <= 1e-12);
+  CHECK(su.stats.rms_centroid > 1e-3);
 }
 
 TEST_CASE("the fold mirror as the first surface bounds the start plane", "[analysis][fold][357]") {

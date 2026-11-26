@@ -51,12 +51,6 @@ LongitudinalColour longitudinal_colour(const compile::CompiledSystem& system,
     // Paraxial focus: rear focal point (object at infinity) or paraxial image of the axial
     // object point.
     const paraxial::FirstOrder fo = paraxial::first_order(system, path, wl);
-    // The real focus below is an axis crossing in global coordinates; behind a fold the axis
-    // is the unfolded one (ADR 0054, point 4).
-    if (fo.folds > 0) {
-      throw std::invalid_argument(
-          "analysis: longitudinal colour of a folded path is not yet supported (ADR 0054)");
-    }
     const std::optional<double> z = system.object().at_infinity ? fo.rear_focal_z : fo.image_z;
     if (!z) throw AnalysisError("analysis: no paraxial focus (afocal system)");
     f.paraxial_z = *z;
@@ -70,9 +64,17 @@ LongitudinalColour longitudinal_colour(const compile::CompiledSystem& system,
                          "analysis: the zone ray at wavelength " + std::to_string(wl) +
                              " does not reach the image surface");
     }
-    const double dy = rays.dir_y()[0];
+    // The axis crossing in the frame of the paraxial z: behind a fold the unfolded one (ADR 0054,
+    // point 5); without a fold the global coordinates as they are.
+    math::Vec3 pos(rays.pos_x()[0], rays.pos_y()[0], rays.pos_z()[0]);
+    math::Vec3 dir(rays.dir_x()[0], rays.dir_y()[0], rays.dir_z()[0]);
+    if (fo.folds > 0) {
+      pos = fo.image_space.to_unfolded(pos);
+      dir = fo.image_space.to_unfolded_vector(dir);
+    }
+    const double dy = dir.y();
     if (dy == 0.0) throw AnalysisError("analysis: the zone ray does not cross the axis");
-    f.real_z = rays.pos_z()[0] - rays.pos_y()[0] * rays.dir_z()[0] / dy;
+    f.real_z = pos.z() - pos.y() * dir.z() / dy;
     lc.foci.push_back(f);
     monitor.add(1);
   }

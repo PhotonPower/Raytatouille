@@ -126,11 +126,9 @@ Point2 paraxial_chief(const CompiledSystem& system,
       sy = field.y;
       break;
     case model::FieldType::ParaxialImageHeight: {
+      // Behind a fold image_z and the heights are those of the unfolded frame (ADR 0054,
+      // point 5), so the field is given in the image plane of the unfolded path.
       const paraxial::FirstOrder fo_ref = paraxial::first_order(system, path, ref);
-      if (fo_ref.folds > 0) {
-        throw std::invalid_argument(
-            "analysis: paraxial image height on a folded path is not yet supported (ADR 0054)");
-      }
       if (!fo_ref.image_z) {
         throw std::invalid_argument("analysis: paraxial image height needs a finite image");
       }
@@ -183,16 +181,19 @@ math::Vec3 closest_point(const math::Vec3& p1,
   return 0.5 * (p1 + s * d1 + p2 + t * d2);
 }
 
-/// Distortion and field curvature measure in the global frame of the image vertex along the
-/// global z axis; behind a fold that is not the image-space axis (ADR 0054, point 4).
-void require_unfolded(const compile::CompiledSystem& system,
-                      compile::PathId path,
-                      std::uint16_t wavelength,
-                      const std::string& what) {
-  if (paraxial::first_order(system, path, wavelength).folds > 0) {
-    throw std::invalid_argument("analysis: " + what +
-                                " of a folded path is not yet supported (ADR 0054)");
-  }
+/// Distortion and field curvature measure along the axis of image space: the global z axis, or
+/// behind a fold the unfolded one (ADR 0054, point 5). The frame to measure in: none (global,
+/// the computation as before, bit for bit) or the unfolded frame of image space.
+std::optional<paraxial::UnfoldedFrame> image_frame(const compile::CompiledSystem& system,
+                                                   compile::PathId path,
+                                                   std::uint16_t wavelength) {
+  const paraxial::FirstOrder fo = paraxial::first_order(system, path, wavelength);
+  if (fo.folds == 0) return std::nullopt;
+  return fo.image_space;
+}
+
+math::Vec3 in_frame(const std::optional<paraxial::UnfoldedFrame>& frame, const math::Vec3& p) {
+  return frame ? frame->to_unfolded(p) : p;
 }
 
 }  // namespace
@@ -204,12 +205,14 @@ DistortionPoint distortion_at(const compile::CompiledSystem& system,
                               trace::Aiming aiming) {
   check_path(system, path);
   check_wavelength(system, wavelength);
-  require_unfolded(system, path, wavelength, "distortion");
+  const std::optional<paraxial::UnfoldedFrame> frame = image_frame(system, path, wavelength);
   DistortionPoint p;
   p.field = field;
   p.fraction = fraction(system, field);
-  const auto [pos, dir] = trace_to_image(system, path, field, wavelength, 0.0, 0.0, aiming);
-  const math::Vec3 vertex = system.surfaces()[image_surface(system, path)].to_global.translation();
+  const auto [real_pos, dir] = trace_to_image(system, path, field, wavelength, 0.0, 0.0, aiming);
+  const math::Vec3 pos = in_frame(frame, real_pos);
+  const math::Vec3 vertex =
+      in_frame(frame, system.surfaces()[image_surface(system, path)].to_global.translation());
   const Point2 par = paraxial_chief(system, path, wavelength, field, vertex.z());
   // Heights along the field direction in the global x-y plane through the image vertex.
   const double r = std::hypot(field.x, field.y);
@@ -266,7 +269,7 @@ FieldCurvaturePoint field_curvature_at(const compile::CompiledSystem& system,
   if (!(delta > 0.0 && delta < 1.0)) {
     throw std::invalid_argument("analysis: delta must lie in (0, 1)");
   }
-  require_unfolded(system, path, wavelength, "field curvature");
+  const std::optional<paraxial::UnfoldedFrame> frame = image_frame(system, path, wavelength);
   FieldCurvaturePoint p;
   p.field = field;
   p.fraction = fraction(system, field);
@@ -276,14 +279,16 @@ FieldCurvaturePoint field_curvature_at(const compile::CompiledSystem& system,
   const double ty = r > 0.0 ? field.y / r : 1.0;
   const auto [chief_pos, chief_dir] =
       trace_to_image(system, path, field, wavelength, 0.0, 0.0, options.aiming);
-  const double sign = chief_dir.z() >= 0.0 ? 1.0 : -1.0;  // image-space propagation along z
-  const math::Vec3 vertex = system.surfaces()[image_surface(system, path)].to_global.translation();
+  const double dir_z = frame ? frame->to_unfolded_vector(chief_dir).z() : chief_dir.z();
+  const double sign = dir_z >= 0.0 ? 1.0 : -1.0;  // image-space propagation along z
+  const math::Vec3 vertex =
+      in_frame(frame, system.surfaces()[image_surface(system, path)].to_global.translation());
   const auto focus = [&](double ux, double uy) {
     const auto [p1, d1] =
         trace_to_image(system, path, field, wavelength, delta * ux, delta * uy, options.aiming);
     const auto [p2, d2] =
         trace_to_image(system, path, field, wavelength, -delta * ux, -delta * uy, options.aiming);
-    return (closest_point(p1, d1, p2, d2).z() - vertex.z()) * sign;
+    return (in_frame(frame, closest_point(p1, d1, p2, d2)).z() - vertex.z()) * sign;
   };
   p.tangential = focus(tx, ty);
   p.sagittal = focus(-ty, tx);

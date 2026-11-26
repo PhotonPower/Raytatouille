@@ -37,8 +37,11 @@ struct ChromaticOptions {
 /// Focus positions of one wavelength.
 struct FocusPosition {
   std::uint16_t wavelength = 0;  ///< index into CompiledSystem::wavelengths_um()
-  double paraxial_z = 0.0;       ///< global z of the paraxial focus, mm
-  double real_z = 0.0;           ///< global z of the axis crossing of the real zone ray, mm
+  /// global z of the paraxial focus, mm; behind a plane fold mirror along the unfolded axis
+  /// (ADR 0054)
+  double paraxial_z = 0.0;
+  /// global z of the axis crossing of the real zone ray, mm; unfolded as paraxial_z
+  double real_z = 0.0;
 };
 
 /// Longitudinal colour of a path.

@@ -42,11 +42,8 @@ Prescription prescription(const compile::CompiledSystem& system,
   // Validates path, wavelength and rotational symmetry (ParaxialError).
   out.first_order = first_order(system, path, wavelength);
   const FirstOrder& fo = out.first_order;
-  // The surface positions of a folded path are coordinates of the unfolded frame; the
-  // prescription with its global frames follows (ADR 0054, point 4).
-  if (fo.folds > 0) {
-    throw ParaxialError("paraxial: prescription: a folded path is not yet supported (ADR 0054)");
-  }
+  // The surface positions of a folded path are coordinates of the unfolded frame, like every z
+  // of FirstOrder; first_order.image_space maps image space to global (ADR 0054, point 5).
   const bool infinite = system.object().at_infinity;
   const double z_obj = infinite ? 0.0 : system.object_z();
 

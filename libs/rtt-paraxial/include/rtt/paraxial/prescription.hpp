@@ -49,9 +49,9 @@ struct PrescriptionRay {
 
 /// Data at one event of the path.
 struct PrescriptionSurface {
-  std::uint32_t surface = 0;                ///< index into CompiledSystem::surfaces()
-  double z = 0.0;                           ///< global z of the surface vertex, mm
-  double n = 1.0;                           ///< signed index after the event (see paraxial.hpp)
+  std::uint32_t surface = 0;  ///< index into CompiledSystem::surfaces()
+  double z = 0.0;  ///< global z of the vertex, mm; behind a fold along the unfolded axis (ADR 0054)
+  double n = 1.0;  ///< signed index after the event (see paraxial.hpp)
   std::optional<PrescriptionRay> marginal;  ///< none if the marginal ray is not defined
   std::optional<PrescriptionRay> chief;     ///< none if the chief ray is not defined
   /// Lagrange invariant n' (u_bar' y - u' y_bar) after the event, mm (Greivenkamp p. 9-41,
