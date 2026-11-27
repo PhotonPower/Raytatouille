@@ -88,7 +88,8 @@ struct MeritEvaluation {
 /// - spot_rms: analysis::spot with HexapolarPupil{rings} and the aiming of the constructor;
 ///   stats.rms_centroid or
 ///   stats.rms_chief, mm. Polychromatic: all system wavelengths with their weights.
-/// - opd_rms: analysis::opd_map with OpdOptions{grid} and the aiming of the constructor; rms, waves at the reference wavelength.
+/// - opd_rms: analysis::opd_map with OpdOptions{grid} and the aiming of the constructor; rms, waves
+/// at the reference wavelength.
 /// - param_value: the value of the table row in the configuration (model::evaluate_parameters).
 /// The wavelength of an operand is an index into System::wavelengths; none: the reference.
 /// Generators rms_spot and rms_wavefront (ADR 0030, point 4; generators.hpp), each in
