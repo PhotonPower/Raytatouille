@@ -65,6 +65,7 @@ Präzisierungen und Ergänzungen einer angenommenen Entscheidung kommen als dati
 | [0054](0054.md) | Paraxiales Modell für gefaltete, nach dem Ausfalten koaxiale Pfade | angenommen |
 | [0055](0055.md) | Gekippte Objektebene bei endlichem Objekt (`object.slope`, Schema 0.12.0) | angenommen |
 | [0056](0056.md) | Exakte Gleichheitsbedingungen in der Optimierung (KKT-Schritt mit Rückprojektion) | angenommen |
+| [0057](0057.md) | Nichtsequenzielles Raytracing, Stufe 1 (`rtt-nonseq`, Körper, BVH, Monte-Carlo- und volles Splitting, Quellen, Detektoren, Schema 0.14.0) | angenommen |
 
 ## Vorlage
 

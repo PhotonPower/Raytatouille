@@ -187,6 +187,20 @@ struct SurfaceHit {
 [[nodiscard]] SurfaceHit intersect_surface(const RayState& ray,
                                            const compile::CompiledSurface& surface) noexcept;
 
+/// intersect_surface() with the smallest accepted ray parameter `t_min` in mm (ADR 0057,
+/// point 1): the nearest hit with t > t_min on the surface, passed on to rtt::geom::intersect.
+/// The non-sequential tracer uses it to find the next crossing after a hit outside the aperture
+/// and to exclude a self-hit at the surface it starts from. The overload above is this one with
+/// t_min = rtt::geom::kDefaultTMin (1e-9 mm), bitwise.
+/// @param ray     ray in global coordinates, |dir| = 1
+/// @param surface compiled surface (pose and shape are used)
+/// @param t_min   smallest accepted geometric path from ray.pos, mm
+/// @pre t_min >= 0 and finite (not checked)
+/// @return the nearest hit with t > t_min, otherwise status Missed or NoConvergence
+[[nodiscard]] SurfaceHit intersect_surface(const RayState& ray,
+                                           const compile::CompiledSurface& surface,
+                                           double t_min) noexcept;
+
 /// Tolerance of the aperture check, mm: a hit counts as inside if it lies about this far outside
 /// a rim (outer and inner rims; exact for circles and rectangle edges, see inside_aperture()).
 /// Equal to the convergence limit of ray aiming (rtt::trace::kAimTolerance), so rays aimed exactly
