@@ -1684,6 +1684,7 @@ CompiledSystem with_object_at_infinity(const CompiledSystem& system) {
   CompiledSystem v = system;
   v.object_.at_infinity = true;
   v.object_.reference.reset();
+  v.object_.slope = {};  // a tilt needs a finite object (ADR 0055)
   v.object_reference_z_.reset();
   v.fields_ = {model::FieldType::AngleDeg, {{0.0, 0.0, 1.0}}};
   // Type and value only: a stop on a surface stays the stop (ADR 0039, #400); the reading belongs

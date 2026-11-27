@@ -9,6 +9,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <cstdint>
+#include <numbers>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -80,7 +81,7 @@ TEST_CASE("field points lie on the tilted object plane", "[analysis][object][358
     const double y = r.pos_y()[0];
     const double z = r.pos_z()[0];
     CHECK(std::abs(z - (-100.0 - y)) <= 1e-12);  // on the plane
-    const double deg = 3.14159265358979323846 / 180.0;
+    const double deg = std::numbers::pi / 180.0;
     CHECK(std::abs(x / (z - z_ep) - std::tan(a.fields.points[f].x * deg)) <= 1e-14);
     CHECK(std::abs(y / (z - z_ep) - std::tan(a.fields.points[f].y * deg)) <= 1e-14);
     CHECK(std::abs(z + 100.0) > 1.0);  // content guard: off the plane z = -100
@@ -138,9 +139,9 @@ TEST_CASE("first order ignores the tilt, Seidel and prescription reject it",
     INFO((seidel ? "seidel" : "prescription"));
     try {
       if (seidel) {
-        (void)rtt::paraxial::seidel(cs, PathId{0}, 0);
+        static_cast<void>(rtt::paraxial::seidel(cs, PathId{0}, 0));
       } else {
-        (void)rtt::paraxial::prescription(cs, PathId{0}, 0);
+        static_cast<void>(rtt::paraxial::prescription(cs, PathId{0}, 0));
       }
       FAIL("no ParaxialError");
     } catch (const rtt::paraxial::ParaxialError& e) {
@@ -149,4 +150,95 @@ TEST_CASE("first order ignores the tilt, Seidel and prescription reject it",
     }
   }
   CHECK_NOTHROW(rtt::paraxial::seidel(compiled(plane), PathId{0}, 0));
+}
+
+TEST_CASE("an object point on or beyond the entrance pupil plane is an error",
+          "[analysis][object][358]") {
+  // review of #358: the direction of the rays and the pupil labels follow the side of z_obj
+  System s = tilted();
+  s.fields.points = {{}, {0.0, -99.0, 1.0}, {0.0, -120.0, 1.0}};  // P.z = -1 = z_EP, beyond
+  const CompiledSystem cs = compiled(s);
+  for (std::uint16_t f = 1; f < 3; ++f) {
+    INFO("field " << f);
+    CHECK_THROWS_AS(chief(cs, f), std::invalid_argument);
+    CHECK_THROWS_AS(rtt::analysis::distortion_at(cs, PathId{0}, cs.fields().points[f], 0),
+                    std::invalid_argument);
+  }
+  // a field angle whose chief ray meets the plane behind the EP: k = sy tan(theta) > 1
+  System a = s;
+  a.fields.type = rtt::model::FieldType::AngleDeg;
+  a.fields.points = {{}, {0.0, -50.0, 1.0}};
+  CHECK_THROWS_AS(chief(compiled(a), 1), std::invalid_argument);
+}
+
+TEST_CASE("a field angle on an anamorphic path meets the tilted plane per section",
+          "[analysis][object][358]") {
+  // examples/anamorphic/crossed_cylinders with the stop between the lenses (z = 20), so the
+  // entrance pupils of the sections differ, and a tilted object 200 mm in front: the chief ray
+  // x = (z - z_EP,x) tan(theta_x), y = (z - z_EP,y) tan(theta_y) meets z = z_obj + sx x + sy y
+  // (ADR 0055, point 3).
+  const CompiledSystem cs = compiled(rtt::io::parse_system(
+      R"({"schema_version": "0.12.0", "name": "Crossed plano-convex cylinder lenses, n = 1.5168, t = 4 mm: L1 R = 51.68 mm (f_y = 100 mm) at z = 5, L2 R = 38.76 mm (f = 75 mm) at z = 30 rotated by 90 degree about z (power in x); x focus at z = 106.363, y focus at z = 107.726 (L2 acts as a plate in y); VACUUM", "units": {"length": "mm", "wavelength": "um"}, "environment": {"medium": "VACUUM"}, "wavelengths": [{"um": 0.5876, "reference": true}], "aperture": {"type": "epd", "value": 10.0}, "fields": {"type": "angle_deg", "points": [{}, {"x": 2.0, "y": 3.0}]}, "root": {"type": "assembly", "name": "system", "children": [{"type": "lens", "name": "L1", "pose": {"position": [0.0, 0.0, 5.0]}, "material": "CONST:1.5168", "surfaces": [{"id": "L1.S1", "shape": {"base": {"type": "cylinder", "radius": 51.68}}, "aperture": {"type": "rectangular", "half_width_x": 12.7, "half_width_y": 12.7}}, {"id": "L1.S2", "pose": {"position": [0.0, 0.0, 4.0]}, "aperture": {"type": "rectangular", "half_width_x": 12.7, "half_width_y": 12.7}}]}, {"type": "stop", "name": "stop", "surfaces": [{"id": "STO", "aperture": {"type": "circular", "radius": 10.0}}], "pose": {"position": [0.0, 0.0, 20.0]}}, {"type": "lens", "name": "L2", "pose": {"position": [0.0, 0.0, 30.0], "rotation_deg": [0.0, 0.0, 90.0]}, "material": "CONST:1.5168", "surfaces": [{"id": "L2.S1", "shape": {"base": {"type": "cylinder", "radius": 38.76}}, "aperture": {"type": "rectangular", "half_width_x": 12.7, "half_width_y": 12.7}}, {"id": "L2.S2", "pose": {"position": [0.0, 0.0, 4.0]}, "aperture": {"type": "rectangular", "half_width_x": 12.7, "half_width_y": 12.7}}]}, {"type": "detector", "name": "image", "pose": {"position": [0.0, 0.0, 106.36286919831225]}, "surfaces": [{"id": "IMG"}]}]}, "paths": [{"name": "main", "events": "auto"}], "object": {"at_infinity": false, "distance": 200.0, "slope": [0.3, -0.5]}})"));
+  const auto zx = rtt::paraxial::first_order_section(cs, PathId{0}, cs.reference_wavelength(),
+                                                     rtt::paraxial::Section::x)
+                      .entrance_pupil->z;
+  const auto zy = rtt::paraxial::first_order_section(cs, PathId{0}, cs.reference_wavelength(),
+                                                     rtt::paraxial::Section::y)
+                      .entrance_pupil->z;
+  REQUIRE(zx);
+  REQUIRE(zy);
+  CHECK(std::abs(*zx - *zy) > 1.0);  // content guard: two pupils
+  const std::uint16_t field = 1;
+  const auto r = rtt::trace::make_rays(cs, PathId{0}, std::span<const std::uint16_t>(&field, 1),
+                                       cs.reference_wavelength(), rtt::trace::SinglePupilPoint{},
+                                       rtt::trace::Aiming::Paraxial);
+  const double x = r.pos_x()[0];
+  const double y = r.pos_y()[0];
+  const double z = r.pos_z()[0];
+  const double deg = std::numbers::pi / 180.0;
+  CHECK(std::abs(z - (-200.0 + 0.3 * x - 0.5 * y)) <= 1e-12);
+  CHECK(std::abs(x - (z - *zx) * std::tan(2.0 * deg)) <= 1e-12);
+  CHECK(std::abs(y - (z - *zy) * std::tan(3.0 * deg)) <= 1e-12);
+}
+
+TEST_CASE("distortion with field angles and the place of the Scheimpflug image",
+          "[analysis][object][358]") {
+  // field angles on the tilted plane through the ideal lens: no distortion (paraxial_chief,
+  // branch AngleDeg)
+  System a = tilted();
+  a.fields.type = rtt::model::FieldType::AngleDeg;
+  a.fields.points = {{}, {0.0, 2.0, 1.0}, {1.5, -2.0, 1.0}};
+  const CompiledSystem ca = compiled(a);
+  for (std::uint16_t f = 1; f < 3; ++f) {
+    const auto d = rtt::analysis::distortion_at(ca, PathId{0}, ca.fields().points[f], 0);
+    CHECK(std::abs(d.real_height - d.paraxial_height) <= 1e-12);
+    CHECK(std::abs(d.real_height) > 1.0);
+  }
+  // the chief ray of the object height h on the 45 deg detector: the collinear image point
+  // (0, y', 100 + y') with y' = -50 h / (50 + h), at the local y = sqrt(2) |y'| from the vertex
+  const System nominal = tilted();
+  System scheimpflug = nominal;
+  std::get<rtt::model::Element>(scheimpflug.root.children[2].value).pose.rotation_deg[0] =
+      rtt::model::Param(45.0);
+  rtt::analysis::SpotOptions o = real_aiming();
+  o.reference = rtt::analysis::nominal_reference(compiled(nominal), PathId{0});
+  const CompiledSystem cs = compiled(scheimpflug);
+  for (std::uint16_t f = 1; f < 4; ++f) {
+    const double h = nominal.fields.points[f].y;
+    const double y_img = -50.0 * h / (50.0 + h);
+    const auto s = rtt::analysis::spot(cs, PathId{0}, f, 0, o);
+    CHECK(std::abs(s.chief.x) <= 1e-9);
+    CHECK(std::abs(std::abs(s.chief.y) - std::sqrt(2.0) * std::abs(y_img)) <= 1e-9);
+  }
+}
+
+TEST_CASE("the paraxial working F-number ignores the tilt", "[analysis][object][358]") {
+  // decision on #358 after the review: it needs only the axial marginal ray
+  System plane = tilted();
+  plane.object.slope = {};
+  const auto a = rtt::paraxial::paraxial_working_f_number(compiled(tilted()), PathId{0}, 0);
+  const auto b = rtt::paraxial::prescription(compiled(plane), PathId{0}, 0);
+  REQUIRE(a);
+  CHECK(a == b.paraxial_working_f_number);
+  CHECK(*a > 1.0);
 }

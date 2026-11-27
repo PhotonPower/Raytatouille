@@ -119,9 +119,18 @@ struct Prescription {
 ///         circular, a path id or wavelength index does not exist, or, only when the chief
 ///         ray is constructed (stop and usable entrance pupil), the field definition is invalid
 ///         for it (field angle not in (-90, 90) degree, object height for an object at
-///         infinity, paraxial image height without a finite paraxial image)
+///         infinity, paraxial image height without a finite paraxial image), or for a tilted
+///         object plane (object.slope, ADR 0055; location /object/slope)
 [[nodiscard]] Prescription prescription(const compile::CompiledSystem& system,
                                         compile::PathId path,
                                         std::uint16_t wavelength);
+
+/// Prescription::paraxial_working_f_number alone, bit for bit: it needs only the marginal ray
+/// from the axial object point, so it is also defined for a tilted object plane (decision on
+/// #358 after the review, ADR 0055), which prescription() rejects.
+/// @throws ParaxialError as prescription(), except for a tilted object plane
+[[nodiscard]] std::optional<double> paraxial_working_f_number(const compile::CompiledSystem& system,
+                                                              compile::PathId path,
+                                                              std::uint16_t wavelength);
 
 }  // namespace rtt::paraxial

@@ -152,7 +152,8 @@ struct Seidel {
 ///         given for an object at infinity, a field angle is not in (-90, 90) degree, a paraxial
 ///         image height is given without a finite paraxial image, the field conversion needs
 ///         the entrance pupil at the reference wavelength and it lies at infinity or in the
-///         object plane, or a path id or wavelength index does not exist
+///         object plane, a path id or wavelength index does not exist, or the object plane is
+///         tilted (object.slope, ADR 0055; location /object/slope)
 [[nodiscard]] Seidel seidel(const compile::CompiledSystem& system,
                             compile::PathId path,
                             std::uint16_t wavelength,

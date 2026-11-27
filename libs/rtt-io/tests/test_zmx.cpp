@@ -1091,5 +1091,10 @@ TEST_CASE("a TILTSURF object surface is the tilt of the object plane", "[zmx][35
   // an object at infinity cannot be tilted
   const std::string infinite =
       in_surface(in_surface(tilted, 0, "DISZ", "  DISZ INFINITY"), 0, "TYPE", "  TYPE TILTSURF");
-  CHECK_THROWS_AS(import_zmx(infinite, schott()), ZmxError);
+  try {
+    static_cast<void>(import_zmx(infinite, schott()));
+    FAIL("no ZmxError");
+  } catch (const ZmxError& error) {
+    CHECK(error.code() == "zmx.surface_unsupported");
+  }
 }

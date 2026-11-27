@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/PhotonPower/Raytatouille/schema/raytatouille.schema.json",
   "title": "Raytatouille system file (.rtt.json), schema 0.12",
-  "description": "Units: lengths mm, wavelengths um, angles in degree where the key ends in _deg. Parsing in rtt-io is the reference; this schema must accept exactly what rtt-io accepts structurally for the current schema version. rtt-io migrates older files (0.1 to 0.10); run rtt format before checking them against this schema. Semantic rules (names of parameter rows, one value per configuration, bounds, the targets and limits of tolerances) are checked by validate, not here.",
+  "description": "Units: lengths mm, wavelengths um, angles in degree where the key ends in _deg. Parsing in rtt-io is the reference; this schema must accept exactly what rtt-io accepts structurally for the current schema version. rtt-io migrates older files (0.1 to 0.11); run rtt format before checking them against this schema. Semantic rules (names of parameter rows, one value per configuration, bounds, the targets and limits of tolerances) are checked by validate, not here.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "units", "wavelengths", "aperture", "fields", "root", "paths"],

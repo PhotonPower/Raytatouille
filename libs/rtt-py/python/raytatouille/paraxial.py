@@ -115,7 +115,8 @@ def prescription(
     (None: reference). Conventions in rtt/paraxial/prescription.hpp.
 
     Raises ParaxialError if the path is not rotationally symmetric, the path or wavelength
-    does not exist, or the field definition is invalid for the chief ray.
+    does not exist, the field definition is invalid for the chief ray, or the object plane is
+    tilted (object.slope, ADR 0055).
     """
     return _core.prescription(compiled(system, materials), path, wavelength)
 
@@ -137,9 +138,9 @@ def seidel(
     (marginal ray at the paraxial entrance pupil, chief ray of the largest field, signs) in
     rtt/paraxial/seidel.hpp.
 
-    Raises ParaxialError if the path is not rotationally symmetric (``surface`` and
-    ``location`` name the place where known), NoStopError (also a ParaxialError) if it has no
-    stop.
+    Raises ParaxialError if the path is not rotationally symmetric or the object plane is
+    tilted (object.slope, ADR 0055; ``surface`` and ``location`` name the place where known),
+    NoStopError (also a ParaxialError) if it has no stop.
     """
     return _core.seidel(
         compiled(system, materials), path, wavelength, chromatic_pair(pair)

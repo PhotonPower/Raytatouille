@@ -35,14 +35,18 @@ std::optional<double> radius_without_stop(const compile::CompiledSystem& system,
 /// invariant H = n (u_bar y - u y_bar) from Sasian, OPTI 517 L4, p. 24 (the same expressions
 /// as in seidel(), so that both agree bit for bit); NA ~ n' |u'| and F/#_W = 1 / (2 n' |u'|)
 /// from Greivenkamp, OPTI-502 Sec. 9, p. 9-34 to 9-37.
-Prescription prescription(const compile::CompiledSystem& system,
-                          compile::PathId path,
-                          std::uint16_t wavelength) {
+namespace {
+
+/// prescription() with the chief ray (`chief`) or only the marginal ray, which starts at the
+/// axial object point and so does not depend on a tilt of the object plane (ADR 0055).
+Prescription prescription_impl(const compile::CompiledSystem& system,
+                               compile::PathId path,
+                               std::uint16_t wavelength,
+                               bool chief_ray) {
   Prescription out;
   // Validates path, wavelength and rotational symmetry (ParaxialError).
   out.first_order = first_order(system, path, wavelength);
   const FirstOrder& fo = out.first_order;
-  detail::require_plane_object(system, "prescription");  // ADR 0055, as seidel()
   // The surface positions of a folded path are coordinates of the unfolded frame, like every z
   // of FirstOrder; first_order.image_space maps image space to global (ADR 0054, point 5).
   const bool infinite = system.object().at_infinity;
@@ -72,7 +76,7 @@ Prescription prescription(const compile::CompiledSystem& system,
   }
   // The field conversion at the reference wavelength (#35) needs a usable pupil there as well;
   // without one the chief ray is none, as for an unusable pupil at `wavelength`.
-  if (fo.entrance_pupil && ep_usable &&
+  if (chief_ray && fo.entrance_pupil && ep_usable &&
       detail::reference_pupil_usable(system, path, wavelength, z_obj)) {
     out.chief_start =
         detail::chief_start(system, path, wavelength, fo, *z_ep, z_obj, "prescription");
@@ -128,6 +132,23 @@ Prescription prescription(const compile::CompiledSystem& system,
     if (nu != 0.0) out.paraxial_working_f_number = 1.0 / (2.0 * nu);
   }
   return out;
+}
+
+}  // namespace
+
+Prescription prescription(const compile::CompiledSystem& system,
+                          compile::PathId path,
+                          std::uint16_t wavelength) {
+  // Validates path, wavelength and rotational symmetry first, as before (ADR 0022).
+  static_cast<void>(first_order(system, path, wavelength));
+  detail::require_plane_object(system, "prescription");  // ADR 0055, as seidel()
+  return prescription_impl(system, path, wavelength, true);
+}
+
+std::optional<double> paraxial_working_f_number(const compile::CompiledSystem& system,
+                                                compile::PathId path,
+                                                std::uint16_t wavelength) {
+  return prescription_impl(system, path, wavelength, false).paraxial_working_f_number;
 }
 
 }  // namespace rtt::paraxial

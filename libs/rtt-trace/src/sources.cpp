@@ -757,6 +757,18 @@ FieldStart make_field(const Context& c, const model::Field& f) {
       } else {
         start.object = Vec3(hx, hy, z_obj + sx * hx + sy * hy);
       }
+      // The point must lie on the side of the EP plane where z_obj lies, in each section: the
+      // direction of the rays and the pupil labels follow that side (ADR 0007, addendum #35 B).
+      if (!c.telecentric) {
+        const double pz = start.object.z();
+        for (const double z_ep : {c.z_ep, section_x_z_ep(c)}) {
+          if (pz == z_ep || (z_ep < pz) != (z_ep < z_obj)) {
+            throw std::invalid_argument(
+                "sources: the object point of the field lies on or beyond the plane of the "
+                "entrance pupil (tilted object plane, ADR 0055)");
+          }
+        }
+      }
     }
     return start;
   }
@@ -867,9 +879,10 @@ RayState ray_through(const Context& c, const FieldStart& f, double a, double b) 
     // (light starts towards +z in object space, rtt/paraxial/paraxial.hpp). With a virtual EP
     // on the far side of the object (z_ep < z_obj, e.g. a stop behind the rear focal point of
     // the group before it) that is away from Q (#93). The line is unchanged, so Q still maps to
-    // the conjugate stop point stop_scale * (a, b). P and all Q lie on the planes z_obj and
-    // z_ep, so the sign is the same for every ray of every field (paths are rotationally
-    // symmetric about z, make_context).
+    // the conjugate stop point stop_scale * (a, b). All Q lie on the plane z_ep and P on the
+    // object plane; on a tilted plane (ADR 0055) make_field() rejects a P on or beyond the EP
+    // plane, so P lies on the same side as z_obj and the sign is the same for every ray of
+    // every field (paths are rotationally symmetric about z, make_context).
     ray.pos = f.object;
     ray.dir = c.z_ep < f.object.z() ? (f.object - q).normalized() : (q - f.object).normalized();
   }
@@ -1114,7 +1127,9 @@ void check_gauss(const GaussPupil& g) {
 /// What a system aimed with an AimReference must share with the reference system (ADR 0007,
 /// addendum #252, precision #255): the path, the wavelengths, the field values and, because
 /// make_field() reads them from the aimed system, the object and the system aperture. Values
-/// only: bounds, bindings and the variable flag of the Params do not matter for aiming.
+/// only: bounds, bindings and the variable flag of the Params do not matter for aiming. The tilt
+/// of the object plane (object.slope, ADR 0055) is not part of it: the context does not depend
+/// on it, and make_field() reads it from the aimed system (a trial may tilt its object).
 struct Signature {
   std::string path_name;
   std::vector<std::tuple<std::string, model::EventKind, int>> events;  ///< surface id, kind, order

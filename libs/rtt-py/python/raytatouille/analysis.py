@@ -1338,7 +1338,8 @@ def system_report(
     events, stop surface or None) and the paraxial prescription (as
     raytatouille.paraxial.prescription, with the first-order data). If the prescription
     rejects the path (not rotationally symmetric, a crystal, a diffraction order != 0, a stop
-    aperture that is not circular, ...), ``prescription`` is None and ``warnings`` has
+    aperture that is not circular, a tilted object plane, ADR 0055, ...), ``prescription`` is
+    None and ``warnings`` has
     report.paraxial_unavailable with the reason; the warning is also issued as
     RaytatouilleWarning.
 

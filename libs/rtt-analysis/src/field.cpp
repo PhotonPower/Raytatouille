@@ -131,8 +131,11 @@ Point2 paraxial_chief(const CompiledSystem& system,
     const double r = std::hypot(point.x(), point.y());
     if (r == 0.0) return {0.0, 0.0};
     const std::optional<double> z_ep = entrance_pupil_z(system, path, wavelength);
-    if (z_ep && *z_ep == point.z()) {
-      throw std::invalid_argument("analysis: the entrance pupil lies in the object point");
+    // as rtt-trace: the point on the side of the EP plane where z_obj lies
+    if (z_ep && (*z_ep == point.z() || (*z_ep < point.z()) != (*z_ep < z_obj))) {
+      throw std::invalid_argument(
+          "analysis: the object point of the field lies on or beyond the plane of the entrance "
+          "pupil (tilted object plane, ADR 0055)");
     }
     const double u = z_ep ? -r / (*z_ep - point.z()) : 0.0;
     const double h = height_at(paraxial::trace_ray(system, path, wavelength, point.z(), r, u), z);
