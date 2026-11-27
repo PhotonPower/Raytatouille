@@ -21,8 +21,9 @@
 // Squares Problems", 2nd ed., IMM DTU 2004 (MNT); H. B. Nielsen, "Damping Parameter in Marquardt's
 // Method", IMM-REP-1999-05 (1999); J. J. Moré, B. S. Garbow, K. E. Hillstrom, "User Guide for
 // MINPACK-1", ANL-80-74 (1980); for the equality constraints S. Boyd, L. Vandenberghe,
-// "Introduction to Applied Linear Algebra" (VMLS), Cambridge 2018, section 16.2. Decisions: ADR
-// 0030 and ADR 0056.
+// "Introduction to Applied Linear Algebra" (VMLS), Cambridge 2018, sections 16.1-16.3, eqs.
+// (16.1), (16.4), (16.5), (16.12). Decisions: ADR 0030 and ADR 0056. In comments, g alone means the
+// constraints; the member g_ is J^T f (as without constraints).
 
 namespace rtt::optim {
 
@@ -40,7 +41,11 @@ constexpr int kMaxProjection = 10;
 // Smallest pivot of the Cholesky factorization of the p x p constraint matrices, relative to the
 // diagonal element: below it the rows of C count as linearly dependent (ADR 0056, point 2). Two
 // equal rows leave a pivot of the order of the rounding, eps_M a_kk; 64 eps_M separates that from
-// constraints whose gradients still differ by an angle of about 1e-7 rad.
+// constraints whose gradients still differ by an angle of about 1e-7 rad. It covers rounding only:
+// two constraints that are dependent analytically but computed differently differ in their
+// central differences by the truncation error O(h^2) (h = 1e-3 max(|theta|, 1) with the
+// function_precision of optimize), which may exceed it; the dependence then shows only when the
+// steps have made the differences agree (review of #196).
 constexpr double kRankTolerance = 64.0 * 2.220446049250313e-16;
 
 bool same_bits(double a, double b) noexcept {
@@ -737,7 +742,7 @@ Run::Projection Run::project(std::vector<double>& theta, std::vector<double>& f)
       return Projection::Invalid;
     }
     const double v = violation(f);
-    if (!(v < last)) return v <= 1.0 ? Projection::Feasible : Projection::Infeasible;
+    if (!(v < last)) return Projection::Infeasible;  // v >= last > 1: no convergence
     last = v;
   }
   return last <= 1.0 ? Projection::Feasible : Projection::Infeasible;
@@ -778,7 +783,7 @@ Run::Projection Run::project_start() {
       return reset(Projection::Invalid);
     }
     const double v = violation(f_);
-    if (!(v < last)) return v <= 1.0 ? Projection::Feasible : reset(Projection::Infeasible);
+    if (!(v < last)) return reset(Projection::Infeasible);  // v >= last > 1: no convergence
     last = v;
   }
   return last <= 1.0 ? Projection::Feasible : reset(Projection::Infeasible);
@@ -930,6 +935,8 @@ LmResult Run::run_constrained() {
       case Projection::Feasible:
         break;
       case Projection::Cancelled:
+        it.F = merit_;
+        it.evaluations = evaluations_;  // the trial and corrections so far (cumulative)
         history_.push_back(it);
         return finish(LmStatus::Cancelled);
       case Projection::Dependent:
@@ -957,14 +964,17 @@ LmResult Run::run_constrained() {
     // -h^T J^T f = ||J h||^2 + mu ||D h||^2 + (C h)^T w = ||J h||^2 + mu ||D h||^2 - g^T w, so
     //   predicted = L(0) - L(h) + w^T g = -h^T J^T f - 1/2 ||J h||^2 + w^T g
     //             = 1/2 ||J h||^2 + mu ||D h||^2,
-    // positive and without cancellation (as 1/2 h^T (mu D^T D h - g) without constraints, MNT
-    // p. 25), and
+    // positive and without cancellation (as 1/2 h^T (mu D^T D h - J^T f) without constraints,
+    // MNT p. 25), and
     //   actual    = F - F_new + w^T (g - g_new)
     // without the difference of the large values F and F_new (F changes near the solution only to
     // second order, below the rounding of F): by a^2 - b^2 = (a - b)(a + b),
-    // F - F_new = 1/2 sum_i (f_i - f_new_i)(f_i + f_new_i), with a rounding of the order
-    // eps_M |f - f_new| |f| instead of eps_M F. A non-positive predicted value (rounding) counts
-    // as no predicted gain.
+    // F - F_new = 1/2 sum_i (f_i - f_new_i)(f_i + f_new_i). That removes the rounding of the
+    // subtraction F - F_new (eps_M F), not the error of the evaluations themselves: residuals
+    // known to delta_i leave an error of about sum_i |f_i| |delta_i - delta_new_i| (with the
+    // function_precision of optimize about 1e-9 F); the essential gain is the cancellation of
+    // the normal part in l. A non-positive predicted value (rounding) counts as no predicted
+    // gain.
     double predicted = 0.0;
     for (std::size_t i = 0; i < mf_; ++i) {
       double r = 0.0;

@@ -98,7 +98,9 @@ struct LmResult {
   /// the start. The state is the start.
   std::optional<std::size_t> infeasible_constraint;
   /// Status Failed (ADR 0056, point 2): the rows of the constraint Jacobian C are linearly
-  /// dependent at the last accepted state, so the KKT matrix is singular.
+  /// dependent (rank test on C H^-1 C^T in the KKT step, or on C D^-2 C^T in a projection) at
+  /// the Jacobian in use: that of the last accepted state, or during the projection of the start
+  /// one at an intermediate point, after which the state is reset to the start.
   bool dependent_constraints = false;
   std::vector<LmIteration> history;  ///< one entry per solve, accepted or not
 };
@@ -131,7 +133,8 @@ using LmAcceptedCallback = std::function<void(const LmIteration& iteration,
 /// constraints of LmOptions::constraint_tolerances (ADR 0056): every solve takes the damped KKT
 /// step with the linearized constraints, and every trial is projected back onto g = 0 before the
 /// gain ratio; F, LmIteration::F and LmResult::F are then 1/2 of the sum of squares of the first
-/// m - p residuals only.
+/// m - p residuals only. A projected start is not reported to on_accepted (it is no accepted
+/// solve); LmResult::changed shows it if the run ends before the first accepted step.
 ///
 /// @param residuals the residual function, see Residuals
 /// @param m         number of residuals (>= 1, and > p), fixed for the run; with constraints the
