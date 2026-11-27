@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.11.0",
+  "schema_version": "0.12.0",
   "name": "Singlet with Zernike surface errors as tolerances (ADR 0051, point 7): defocus, astigmatism and coma on L1.S1",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [

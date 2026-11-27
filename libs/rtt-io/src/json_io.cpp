@@ -276,6 +276,13 @@ std::array<Param, 3> read_param3(const Json& j, const Ctx& c) {
   return {read_param(a[0], c.at(0)), read_param(a[1], c.at(1)), read_param(a[2], c.at(2))};
 }
 
+std::array<Param, 2> read_param2(const Json& j, const Ctx& c) {
+  expect_array(j, c);
+  const Json& a = j;
+  if (a.size() != 2) c.fail("expected exactly 2 values");
+  return {read_param(a[0], c.at(0)), read_param(a[1], c.at(1))};
+}
+
 std::array<double, 3> read_vec3(const Json& j, const Ctx& c) {
   expect_array(j, c);
   const Json& a = j;
@@ -806,6 +813,7 @@ struct Migration {
   bool before_0_9 = false;   ///< no anamorphic base shapes (ADR 0042), no odd asphere, no axicon
   bool before_0_10 = false;  ///< no flag "active" of assemblies and elements (ADR 0049)
   bool before_0_11 = false;  ///< aperture dimensions only as numbers (ADR 0050)
+  bool before_0_12 = false;  ///< no tilted object plane (ADR 0055)
 };
 
 /// Checks the schema version of `j` and tells which migrations to the current version it needs.
@@ -831,6 +839,7 @@ struct Migration {
 /// - 0.10 -> 0.11 (ADR 0050, ADR 0051): content unchanged, aperture dimensions may now be Param
 ///   objects (a number reads as before); the aperture types regular_polygon and polygon, the
 ///   surface obscurations and the shape terms besides zernike_sag are new.
+/// - 0.11 -> 0.12 (ADR 0055): content unchanged, only "object.slope" is new.
 Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
   const std::string ours(kSchemaVersion);
   const std::string mm = major_minor(version);
@@ -839,18 +848,19 @@ Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
     if (const Json* root = find(j, "root")) {
       check_material_forms(*root, Ctx().at("root"), mm == "0.2");
     }
-    return {true, true, true, true, true, true, true, true, true};
+    return {true, true, true, true, true, true, true, true, true, true};
   }
-  if (mm == "0.3") return {false, true, true, true, true, true, true, true, true};
-  if (mm == "0.4") return {false, false, true, true, true, true, true, true, true};
-  if (mm == "0.5") return {false, false, false, true, true, true, true, true, true};
-  if (mm == "0.6") return {false, false, false, false, true, true, true, true, true};
-  if (mm == "0.7") return {false, false, false, false, false, true, true, true, true};
-  if (mm == "0.8") return {false, false, false, false, false, false, true, true, true};
-  if (mm == "0.9") return {false, false, false, false, false, false, false, true, true};
-  if (mm == "0.10") return {false, false, false, false, false, false, false, false, true};
+  if (mm == "0.3") return {false, true, true, true, true, true, true, true, true, true};
+  if (mm == "0.4") return {false, false, true, true, true, true, true, true, true, true};
+  if (mm == "0.5") return {false, false, false, true, true, true, true, true, true, true};
+  if (mm == "0.6") return {false, false, false, false, true, true, true, true, true, true};
+  if (mm == "0.7") return {false, false, false, false, false, true, true, true, true, true};
+  if (mm == "0.8") return {false, false, false, false, false, false, true, true, true, true};
+  if (mm == "0.9") return {false, false, false, false, false, false, false, true, true, true};
+  if (mm == "0.10") return {false, false, false, false, false, false, false, false, true, true};
+  if (mm == "0.11") return {false, false, false, false, false, false, false, false, false, true};
   c.fail("incompatible schema_version '" + version + "', this build reads " + ours +
-         " and migrates 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9 and 0.10");
+         " and migrates 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.10 and 0.11");
 }
 
 /// Files before 0.9 (ADR 0042, ADR 0043, point 4): a biconic, toroid, cylinder, odd_asphere,
@@ -1524,6 +1534,14 @@ System read_system_tree(const Json& j, std::vector<Diagnostic>* warnings) {
     if (const Json* root = find(j, "root")) check_0_11_forms(*root, c.at("root"));
     check_0_11_tolerances(j, c);
   }
+  // Files before 0.12 (ADR 0055): a tilted object plane is an error at its pointer.
+  if (m.before_0_12) {
+    const Json* object = find(j, "object");
+    if (object != nullptr && object->is_object() && find(*object, "slope") != nullptr) {
+      c.at("object").at("slope").fail(
+          "a tilted object plane needs schema_version 0.12 or later (ADR 0055)");
+    }
+  }
   if (!m.before_0_4) return read_migrated(j, m);
   Json current = j;
   migrate_0_4(current, c, warnings, true);
@@ -1564,13 +1582,14 @@ System read_migrated(const Json& j, const Migration& m) {
 
   if (const Json* o = find(j, "object")) {
     const Ctx oc = c.at("object");
-    expect_object(*o, oc, {"at_infinity", "distance", "medium", "reference"});
+    expect_object(*o, oc, {"at_infinity", "distance", "medium", "reference", "slope"});
     s.object.at_infinity = read_bool(require(*o, "at_infinity", oc), oc.at("at_infinity"));
     read_opt(*o, "distance", oc, s.object.distance, read_param);
     read_opt(*o, "medium", oc, s.object.medium, read_string);
     if (const Json* r = find(*o, "reference")) {
       s.object.reference = read_object_reference(*r, oc.at("reference"));
     }
+    read_opt(*o, "slope", oc, s.object.slope, read_param2);  // ADR 0055
   }
 
   {
@@ -1707,6 +1726,11 @@ class Writer {
       ob["at_infinity"] = s.object.at_infinity;
       if (edit_ || s.object.distance != Param{}) ob["distance"] = param(s.object.distance);
       if (s.object.medium) ob["medium"] = *s.object.medium;
+      // ADR 0055: the slopes of a tilted object plane when set; in the edit form always, like the
+      // distance, since both are Params (model::for_each_param visits /object/slope/0 and /1).
+      if (edit_ || s.object.slope != std::array<Param, 2>{}) {
+        ob["slope"] = OJson::array({param(s.object.slope[0]), param(s.object.slope[1])});
+      }
       // ADR 0038, point 8: the origin is the default and is not written (also not in the edit
       // form, like the medium: a patch adds /object/reference).
       if (s.object.reference) {

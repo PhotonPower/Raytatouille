@@ -1,0 +1,58 @@
+{
+  "schema_version": "0.12.0",
+  "name": "Tilted object plane: ideal lens f = 50 mm, object plane 100 mm in front tilted by 45 deg (slope dz/dy = -1, ADR 0055), detector normal to the axis at the paraxial image of the axial point; the sharp image plane is tilted by 45 deg (Scheimpflug, collinear map of ADR 0031, point 2), VACUUM",
+  "units": {"length": "mm", "wavelength": "um"},
+  "environment": {"medium": "VACUUM"},
+  "object": {"at_infinity": false, "distance": 100.0, "slope": [0.0, -1.0]},
+  "wavelengths": [
+    {"um": 0.55, "reference": true}
+  ],
+  "aperture": {"type": "epd", "value": 10.0},
+  "fields": {
+    "type": "object_height",
+    "points": [
+      {},
+      {"y": 3.0},
+      {"y": 5.0},
+      {"y": -5.0}
+    ]
+  },
+  "root": {
+    "type": "assembly",
+    "name": "root",
+    "children": [
+      {
+        "type": "stop",
+        "name": "stop",
+        "pose": {"position": [0.0, 0.0, -1.0]},
+        "surfaces": [
+          {
+            "id": "STO",
+            "aperture": {"type": "circular", "radius": 5.0}
+          }
+        ]
+      },
+      {
+        "type": "thin_element",
+        "name": "IL",
+        "surfaces": [
+          {
+            "id": "IL",
+            "interaction": {"type": "ideal_lens", "focal_length": 50.0}
+          }
+        ]
+      },
+      {
+        "type": "detector",
+        "name": "image",
+        "pose": {"position": [0.0, 0.0, 100.0]},
+        "surfaces": [
+          {"id": "IMG"}
+        ]
+      }
+    ]
+  },
+  "paths": [
+    {"name": "main", "events": "auto"}
+  ]
+}

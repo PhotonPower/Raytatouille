@@ -64,6 +64,8 @@ class ParamWalker {
 
   void run(S& s) {
     visit_("/object/distance", s.object.distance);
+    visit_("/object/slope/0", s.object.slope[0]);  // ADR 0055
+    visit_("/object/slope/1", s.object.slope[1]);
     visit_("/aperture/value", s.aperture.value);
     assembly(s.root, "/root");
   }

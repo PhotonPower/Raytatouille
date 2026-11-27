@@ -3,6 +3,7 @@
 /// @file system.hpp
 /// Root of the optical model. Pure data, no tracing logic.
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -28,7 +29,7 @@ namespace rtt::model {
 /// 0.9: the base shapes biconic, toroid and cylinder, ADR 0042, and odd_asphere, axicon, qcon
 /// and qbfs, ADR 0043; 0.10: the flag active of assemblies and elements, ADR 0049; 0.11: aperture
 /// dimensions as Param, ADR 0050).
-inline constexpr std::string_view kSchemaVersion = "0.11.0";
+inline constexpr std::string_view kSchemaVersion = "0.12.0";
 
 struct Wavelength {
   double um = 0.0;  ///< vacuum wavelength in micrometre
@@ -106,6 +107,11 @@ struct ObjectSpace {
   /// the object lies `distance` in front of the nominal vertex of that surface along -z (only
   /// the vertex z counts). Only for a finite object (validate: object.reference_at_infinity).
   std::optional<SurfaceId> reference = std::nullopt;
+  /// Tilt of the object plane (schema 0.12, ADR 0055): slopes sx = dz/dx and sy = dz/dy,
+  /// dimensionless. The object plane is z = z_obj + sx x + sy y through the axial object point, as
+  /// the surface type "Tilted" of OpticStudio (z = x tan(theta_x) + y tan(theta_y)); an object
+  /// height (x, y) lies at that z. Only for a finite object (validate: object.slope_infinite).
+  std::array<Param, 2> slope{};
   bool operator==(const ObjectSpace&) const = default;
 };
 

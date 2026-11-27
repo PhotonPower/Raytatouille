@@ -229,6 +229,14 @@ std::vector<Case> cases() {
        }},
       {"object.medium_infinite", "/object/medium",
        [](System& s) { s.object.medium = "CONST:1.5"; }},
+      {"object.slope_infinite", "/object/slope",
+       [](System& s) { s.object.slope[1] = Param(-1.0); }},
+      {"fields.image_height_tilted_object", "/fields/type",
+       [](System& s) {
+         s.object = {false, Param(100.0)};
+         s.object.slope[1] = Param(-1.0);
+         s.fields.type = rtt::model::FieldType::ParaxialImageHeight;
+       }},
       {"object.reference_at_infinity", "/object/reference",
        [](System& s) { s.object.reference = SurfaceId("L1.S1"); }},
       {"object.reference_surface_unknown", "/object/reference",

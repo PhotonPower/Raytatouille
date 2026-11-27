@@ -214,6 +214,23 @@ class Validator {
       report("object.medium_infinite", "/object/medium",
              "a medium of the object space needs a finite object");
     }
+    // ADR 0055: the slopes of a tilted object plane, finite object only; with them the
+    // conversion of a paraxial image height (which assumes a plane object normal to the axis)
+    // is not defined.
+    const std::array<Param, 2>& slope = system_.object.slope;
+    for (std::size_t i = 0; i < 2; ++i) {
+      check_param(slope[i], "/object/slope/" + std::to_string(i), false);  // finite value
+    }
+    const bool tilted = slope[0] != Param{} || slope[1] != Param{};
+    if (system_.object.at_infinity && tilted) {
+      report("object.slope_infinite", "/object/slope",
+             "a tilted object plane needs a finite object");
+    }
+    if (!system_.object.at_infinity && tilted &&
+        system_.fields.type == FieldType::ParaxialImageHeight) {
+      report("fields.image_height_tilted_object", "/fields/type",
+             "paraxial image heights need an object plane normal to the axis (ADR 0055)");
+    }
     const Environment& e = system_.environment;
     if (!std::isfinite(e.temperature_c) || e.temperature_c <= -273.15) {
       report("environment.temperature_invalid", "/environment/temperature_c",

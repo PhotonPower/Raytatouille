@@ -41,6 +41,11 @@ struct ShapeData {
                                              compile::PathId path,
                                              std::uint16_t wavelength);
 
+/// Seidel and prescription need an object plane normal to the axis (decision 3 on #358,
+/// ADR 0055): a ParaxialError for a finite object with a tilted plane (object.slope).
+/// @param caller name for the message ("paraxial: <caller>: ...")
+void require_plane_object(const compile::CompiledSystem& system, std::string_view caller);
+
 /// Marginal ray in object space: from the axial object point to the rim of the entrance pupil
 /// at +y (object at infinity: parallel at height r_ep through the pupil plane).
 [[nodiscard]] RayStart marginal_start(bool object_at_infinity,

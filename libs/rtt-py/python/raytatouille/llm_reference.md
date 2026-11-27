@@ -41,14 +41,14 @@ analyses parallelise internally (`threads=`). `import raytatouille as rt`.
 | Indices of lists | `field`, `wavelength` are 0-based indices; `path` is an index or a name |
 | Determinism | bitwise equal for any thread count; randomness only with a seed |
 
-## Minimal system file (schema 0.11.0)
+## Minimal system file (schema 0.12.0)
 
 ```python
 import json
 import raytatouille as rt
 
 SINGLET = {
-    "schema_version": "0.11.0",
+    "schema_version": "0.12.0",
     "name": "Singlet",
     "units": {"length": "mm", "wavelength": "um"},
     "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": True}, {"um": 0.6563}],
@@ -76,7 +76,9 @@ cs = rt.compile(s)                      # CONST:, AIR, VACUUM need no catalog
 Format essentials (`rt.schema("system")` returns the full JSON schema as a dict):
 - Top level: `schema_version`, `name`, `units`, `environment` (`temperature_c`, `pressure_atm`,
   `medium`), `object` (`{"at_infinity": true}` default, or `{"at_infinity": false, "distance": d,
-  "reference": {"surface": id}, "medium": m}`), `wavelengths` (exactly one `reference`),
+  "reference": {"surface": id}, "medium": m, "slope": [sx, sy]}`; `slope` tilts the object
+  plane to z = z_obj + sx x + sy y, not with paraxial image heights, Seidel or prescription),
+  `wavelengths` (exactly one `reference`),
   `aperture` (`type`: `epd` | `image_fnumber` | `object_na` | `stop_size`; optional
   `"stop": {"surface": id}`, `"reading": "real"` for `object_na`), `fields`, `configurations`,
   `parameters`, `root`, `paths`, `optimization`, `tolerances`.

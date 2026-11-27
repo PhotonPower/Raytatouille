@@ -172,7 +172,7 @@
   \vfill
   \begin{tabular}{rl}
     Bibliothek: & \code{raytatouille} 1.0.0 (Git-Tag \code{v1.0.0}, PyPI)\\
-    Dateiformat: & Schema 0.11.0, Ergebnisformat 0.1.24\\
+    Dateiformat: & Schema 0.12.0, Ergebnisformat 0.1.24\\
     Python: & ab 3.10, NumPy ab 1.24, optional matplotlib ab 3.8\\
     Lizenz der Bibliothek: & MIT
   \end{tabular}
@@ -353,7 +353,7 @@ Formatieren als \code{rt.validate} und \code{System.to_json} zur Verfügung
 \begin{pycode}
 import raytatouille as rt
 print(rt.__version__)                      # 1.0.0
-print(rt.System().schema_version)          # 0.11.0 (Dateiformat, das geschrieben wird)
+print(rt.System().schema_version)          # 0.12.0 (Dateiformat, das geschrieben wird)
 print(rt.results.SCHEMA_VERSION)           # 0.1.24 (Ergebnisformat)
 \end{pycode}
 
@@ -636,7 +636,7 @@ hat (etwa wenn der Hauptstrahl die Bildfläche nicht erreicht).
 
 Ein optisches System ist eine JSON-Datei mit der Endung \code{.rtt.json}. Dasselbe Format
 verarbeitet \code{rt.System.from_json} als Text. Dieses Kapitel beschreibt es vollständig für
-Schema~0.11.0, die Version, die Raytatouille~1.0 schreibt. Maßgeblich ist der strenge
+Schema~0.12.0, die Version, die Raytatouille schreibt. Maßgeblich ist der strenge
 C++-Parser der Bibliothek; das JSON-Schema (\code{rt.schema("system")},
 Abschnitt~\ref{sec:schemas}) dient externen Werkzeugen.
 
@@ -663,7 +663,7 @@ Abschnitt~\ref{sec:schemas}) dient externen Werkzeugen.
 \begin{longtable}{@{}L{3.1cm}L{1.2cm}L{10.4cm}@{}}
 \toprule
 Schlüssel & Pflicht & Inhalt \\ \midrule \endhead
-\code{schema_version} & ja & \code{"0.11.0"} (Muster \code{0.11.x}; ältere Versionen werden
+\code{schema_version} & ja & \code{"0.12.0"} (Muster \code{0.12.x}; ältere Versionen werden
   migriert, Abschnitt~\ref{sec:migration}) \\
 \code{name} & nein & Anzeigename \\
 \code{units} & ja & genau \code{{"length": "mm", "wavelength": "um"}} \\
@@ -701,6 +701,14 @@ Bei endlichem Objekt gibt es zwei optionale Ergänzungen:
         Punktquelle in Glas oder ein Immersionsobjektiv: \code{"medium": "CONST:1.53"}. Fehlt
         es, ist der Objektraum die Umgebung. Bei einem Objekt im Unendlichen ist es ein Fehler
         (\code{object.medium_infinite}).
+  \item[\code{slope}] (ab Schema~0.12, ADR~0055) kippt die Objektebene:
+        \code{"slope": [sx, sy]} (zwei Params, dimensionslos) legt sie auf
+        $z = z_\text{obj} + s_x x + s_y y$ durch den axialen Objektpunkt, wie die Fläche
+        „Tilted“ in OpticStudio ($s_x = \tan\theta_x$). Eine Objekthöhe $(x, y)$ liegt bei diesem
+        $z$, ein Feldwinkel auf dem Schnitt seines Hauptstrahls durch die EP-Mitte mit der Ebene.
+        Bildhöhen als Felder, Seidel und Prescription setzen eine senkrechte Objektebene voraus
+        und lehnen eine gekippte ab. Ein Beispiel (Scheimpflug) ist
+        \code{tests/reference/m1/tilted_object_ideal_lens.rtt.json}.
 \end{description}
 \begin{jsoncode}
 "object": {"at_infinity": false, "distance": 0.5, "medium": "CONST:1.53"}
@@ -1100,7 +1108,7 @@ Das Plankonvex-Singlet des Schnellstarts in kanonischer Form (so schreibt es
 \code{rt.save}):
 \begin{jsoncode}
 {
-  "schema_version": "0.11.0",
+  "schema_version": "0.12.0",
   "name": "Singlet",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [
@@ -1170,8 +1178,8 @@ Das Plankonvex-Singlet des Schnellstarts in kanonischer Form (so schreibt es
 \label{sec:migration}
 
 Vor Version~1.0 müssen Major- und Minor-Version passen oder zu einer älteren Version gehören,
-die migriert wird. Raytatouille~1.0 liest Dateien mit Schema 0.1 bis 0.11 und schreibt immer
-0.11.0. Bei der Migration
+die migriert wird. Raytatouille liest Dateien mit Schema 0.1 bis 0.12 und schreibt immer
+0.12.0. Bei der Migration
 \begin{itemize}
   \item wird die Ereignisart \code{diffract} (bis 0.2) zu \code{transmit} mit derselben Ordnung,
   \item fällt ein \code{pickup} aus einer Datei vor 0.4 weg; der Wert bleibt, und
@@ -1183,7 +1191,8 @@ unter anderem: \code{tolerances} braucht 0.6, \code{object.medium} 0.7, \code{ob
 \code{aperture.stop} und \code{aperture.reading} 0.8, die Flächentypen aus
 Kapitel~\ref{chap:flaechen} 0.9, \code{active} 0.10 sowie \code{zernike_fringe_sag},
 \code{xy_polynomial}, \code{grid_sag}, die Aperturen \code{regular_polygon} und \code{polygon},
-\code{obscurations}, Aperturmaße als Param-Objekt und die Toleranzart \code{zernike} 0.11. Eine
+\code{obscurations}, Aperturmaße als Param-Objekt und die Toleranzart \code{zernike} 0.11,
+\code{object.slope} 0.12. Eine
 Datei einer \emph{neueren} Version (z.\,B. 0.12) liest 1.0 nicht.
 
 % -----------------------------------------------------------------------------
@@ -1289,7 +1298,7 @@ from typing import Any
 
 import raytatouille as rt
 
-SCHEMA = "0.11.0"
+SCHEMA = "0.12.0"
 FRAUNHOFER_FDC = [{"um": 0.4861}, {"um": 0.5876, "reference": True}, {"um": 0.6563}]
 
 
@@ -1437,13 +1446,13 @@ print("schema_version:", system.schema_version)
 \end{pycode}
 \begin{ausgabe}
 gleich nach Laden: True
-Datei beginnt mit: ['{', '  "schema_version": "0.11.0",', '  "name": "Mein Singlet",']
+Datei beginnt mit: ['{', '  "schema_version": "0.12.0",', '  "name": "Mein Singlet",']
 kanonisch, Zeichen: 1460 | identisch nach Roundtrip: True
 Schlüssel oben: ['schema_version', 'name', 'units', 'environment', 'object', 'wavelengths'] ...
 Radius L1.S1 in der Bearbeitungsform: {'value': 51.68, 'variable': False}
 Pointer von L1.S1: /root/children/1/surfaces/0
 json_at: {'type': 'circular', 'radius': {'value': 12.7, 'variable': False}, 'inner_radius': {'value': 0.0, 'variable': False}}
-schema_version: 0.11.0
+schema_version: 0.12.0
 \end{ausgabe}
 
 \begin{longtable}{@{}L{5.2cm}L{9.5cm}@{}}
@@ -1455,7 +1464,7 @@ schema_version: 0.11.0
 \code{name} & Anzeigename (les- und schreibbar) \\
 \code{environment} & \code{Environment} mit \code{temperature_c}, \code{pressure_atm},
   \code{medium} (les- und schreibbar, wirkt auf dieses System) \\
-\code{schema_version} & Formatversion, z.\,B. \code{"0.11.0"} \\
+\code{schema_version} & Formatversion, z.\,B. \code{"0.12.0"} \\
 \code{wavelengths}, \code{fields}, \code{aperture}, \code{object_space}, \code{root},
   \code{paths}, \code{configurations}, \code{parameters}, \code{optimization} &
   Lesekopien des Modells (Kapitel~\ref{chap:lesen}); \code{root} kopiert bei jedem Zugriff
@@ -5546,6 +5555,7 @@ Code & S & Quelle & Kurztext \\ \midrule \endhead
 \texttt{export.surface\_unsupported} & F & export & shape without a ZMX mapping \\
 \texttt{fields.coordinate\_invalid} & F & validate & field coordinate not finite \\
 \texttt{fields.empty} & F & validate & no field point \\
+\texttt{fields.image\_height\_tilted\_object} & F & validate & paraxial image heights with a tilted object plane \\
 \texttt{fields.weight\_invalid} & F & validate & field weight not finite or < 0 \\
 \texttt{interaction.axis\_invalid} & F & validate & polarizer or retarder axis zero or not finite \\
 \texttt{interaction.coating\_name\_empty} & F & validate & empty coating reference \\
@@ -5578,6 +5588,7 @@ Code & S & Quelle & Kurztext \\ \midrule \endhead
 \texttt{object.medium\_infinite} & F & validate & a medium of the object space for an object at infinity \\
 \texttt{object.reference\_at\_infinity} & F & validate & a reference of the object distance for an object at infinity \\
 \texttt{object.reference\_surface\_unknown} & F & validate & the reference of the object distance names no surface \\
+\texttt{object.slope\_infinite} & F & validate & a tilted object plane for an object at infinity \\
 \texttt{optim.evaluation\_failed} & W & optim & merit evaluations failed during the run; those trials were rejected \\
 \texttt{optim.jacobian\_failed} & F & optim & no valid evaluation for a Jacobian column; the run ended with status failed \\
 \texttt{optim.no\_operands} & F & optim & optimization without operands or generators \\

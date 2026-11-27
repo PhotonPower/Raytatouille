@@ -1000,7 +1000,12 @@ void bind_model_tree(nb::module_& m) {
           },
           "The surface whose nominal vertex the distance is measured from, as in the file "
           "(SurfaceReference, schema 0.8, ADR 0038); None for the global origin. Only for a "
-          "finite object.");
+          "finite object.")
+      .def_ro("slope", &model::ObjectSpace::slope,
+              "Tilt of the object plane (schema 0.12, ADR 0055): [sx, sy] = [dz/dx, dz/dy], "
+              "dimensionless (Params); the object plane is z = z_obj + sx x + sy y through the "
+              "axial object point, as the surface type Tilted of OpticStudio. Only for a finite "
+              "object.");
 
   bind_optimization(m);
   bind_tolerances(m);

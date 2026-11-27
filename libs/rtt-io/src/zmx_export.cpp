@@ -569,8 +569,17 @@ ZmxExport export_zmx(const model::System& system,
   };
 
   w.line("SURF 0");
-  w.sub("TYPE STANDARD");
+  // A tilted object plane (ADR 0055): TILTSURF with PARM 1 = sx, PARM 2 = sy (UG "Tilted",
+  // z = x tan(theta_x) + y tan(theta_y)), as the import reads it.
+  const double slope_x = s.object.slope[0].value;
+  const double slope_y = s.object.slope[1].value;
+  const bool tilted_object = !s.object.at_infinity && (slope_x != 0.0 || slope_y != 0.0);
+  w.sub(tilted_object ? "TYPE TILTSURF" : "TYPE STANDARD");
   w.sub("CURV 0");
+  if (tilted_object) {
+    w.sub("PARM 1 " + num(slope_x));
+    w.sub("PARM 2 " + num(slope_y));
+  }
   w.sub(s.object.at_infinity ? std::string("DISZ INFINITY") : "DISZ " + num(path.object_distance));
   if (object_glass) w.sub("GLAS " + object_glass->name + " 0");
   w.sub("DIAM 0 0");

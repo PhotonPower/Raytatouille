@@ -738,6 +738,26 @@ FieldStart make_field(const Context& c, const model::Field& f) {
       throw std::invalid_argument("sources: entrance pupil in the object");
     }
     start.object = Vec3(hx, hy, z_obj);
+    // Tilted object plane z = z_obj + sx x + sy y (ADR 0055). An object height keeps its x, y.
+    // A field angle gives the chief ray x = (z - z_ep,x) tx, y = (z - z_ep) ty through the EP
+    // centre (per section on an anamorphic path), which meets the plane at
+    // z (1 - sx tx - sy ty) = z_obj - sx tx z_ep,x - sy ty z_ep.
+    const double sx = system.object().slope[0].value;
+    const double sy = system.object().slope[1].value;
+    if (sx != 0.0 || sy != 0.0) {
+      if (system.fields().type == model::FieldType::AngleDeg) {
+        const double z_ep_x = c.anamorphic ? c.z_ep_ref_x : c.z_ep_ref;
+        const double k = sx * tx + sy * ty;
+        if (!(std::abs(1.0 - k) > 0.0)) {
+          throw std::invalid_argument(
+              "sources: the chief ray of the field angle is parallel to the tilted object plane");
+        }
+        const double z = (z_obj - sx * tx * z_ep_x - sy * ty * c.z_ep_ref) / (1.0 - k);
+        start.object = Vec3((z - z_ep_x) * tx, (z - c.z_ep_ref) * ty, z);
+      } else {
+        start.object = Vec3(hx, hy, z_obj + sx * hx + sy * hy);
+      }
+    }
     return start;
   }
   start.direction = Vec3(tx, ty, 1.0).normalized();

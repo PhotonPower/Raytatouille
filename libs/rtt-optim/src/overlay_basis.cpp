@@ -109,7 +109,14 @@ NominalBasis nominal_basis(const model::System& nominal,
           wd.efl = fo.efl;
           wd.magnification = fo.lateral_magnification;
           wd.last_vertex = last_vertex(cs, path, wl);
-          wd.f_number = paraxial::prescription(cs, path, wl).paraxial_working_f_number.has_value();
+          // prescription rejects a tilted object plane (ADR 0055): then only the F-number of a
+          // trial is undefined, as for an image_fnumber operand without overlay.
+          try {
+            wd.f_number =
+                paraxial::prescription(cs, path, wl).paraxial_working_f_number.has_value();
+          } catch (const paraxial::ParaxialError&) {
+            wd.f_number = false;
+          }
         } catch (...) {
           wd.unsupported = message_of(std::current_exception());
         }

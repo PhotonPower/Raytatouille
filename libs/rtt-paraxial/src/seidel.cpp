@@ -90,6 +90,9 @@ Seidel seidel(const compile::CompiledSystem& system,
               std::optional<ChromaticPair> chromatic) {
   // Validates path, wavelength and rotational symmetry (ParaxialError).
   const FirstOrder fo = first_order(system, path, wavelength);
+  // The chief ray starts at the rim of the object plane, which must be normal to the axis
+  // (decision 3 on #358, ADR 0055).
+  detail::require_plane_object(system, "seidel");
   const std::size_t n_wl = system.wavelengths_um().size();
   if (chromatic && (chromatic->first >= n_wl || chromatic->second >= n_wl)) {
     throw ParaxialError(field_error("wavelength index of the chromatic pair does not exist"));
