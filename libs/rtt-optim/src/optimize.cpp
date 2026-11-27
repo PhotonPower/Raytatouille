@@ -177,8 +177,13 @@ OptimResult run(const model::System& system,
     };
   }
 
-  const LmOptions lm_options{options.max_iterations, options.ftol, options.xtol,
-                             options.gtol,           options.tau,  options.function_precision};
+  LmOptions lm_options;
+  lm_options.max_iterations = options.max_iterations;
+  lm_options.ftol = options.ftol;
+  lm_options.xtol = options.xtol;
+  lm_options.gtol = options.gtol;
+  lm_options.tau = options.tau;
+  lm_options.function_precision = options.function_precision;
   const LmResult lm = levenberg_marquardt(
       [&merit, &start_arrived, &start_operand_arrived, &changed_sets](std::span<const double> p,
                                                                       std::span<double> f) {
