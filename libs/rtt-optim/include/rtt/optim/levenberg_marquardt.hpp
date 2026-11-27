@@ -1,9 +1,11 @@
 #pragma once
 
 /// @file levenberg_marquardt.hpp
-/// Damped Levenberg-Marquardt for nonlinear least squares (ADR 0030, points 1 and 5-11).
+/// Damped Levenberg-Marquardt for nonlinear least squares (ADR 0030, points 1 and 5-11), with
+/// optional exact equality constraints (ADR 0056).
 ///
-/// Minimizes F = 1/2 f^T f over n variables with optional bounds. The solver is Algorithm 3.16
+/// Minimizes F = 1/2 f^T f over n variables with optional bounds, subject to g = 0 if the last p
+/// residuals are constraints (LmOptions::constraint_tolerances). The solver is Algorithm 3.16
 /// of K. Madsen, H. B. Nielsen, O. Tingleff, "Methods for Non-Linear Least Squares Problems",
 /// 2nd ed., IMM DTU 2004 (MNT), applied to the scaled internal variables z = D theta, with the
 /// damping update of H. B. Nielsen, IMM-REP-1999-05, eq. (2.5), the column scaling and the
@@ -44,6 +46,11 @@ struct LmOptions {
   /// eps_f: absolute noise of the residuals relative to the fixed scale ||f(theta_0)||_inf;
   /// sets the central-difference step h_j = eps_f^(1/3) max(|theta_j|, 1). Default eps_M.
   double function_precision = 2.220446049250313e-16;
+  /// Equality constraints (ADR 0056): one absolute tolerance per constraint (> 0, finite, in the
+  /// unit of its residual). With p entries the last p residuals are the constraints g, the first
+  /// m - p (at least one) the residuals f of F. A state counts as feasible if |g_i| <= tolerance_i
+  /// for every i. Empty (the default): no constraints, the run is bitwise as without them.
+  std::vector<double> constraint_tolerances;
 };
 
 /// How the run ended (ADR 0030, point 8).
@@ -53,7 +60,9 @@ enum class LmStatus : std::uint8_t {
   ConvergedMerit,     ///< small relative actual and predicted decrease of F
   MaxIterations,      ///< k >= k_max
   Cancelled,          ///< cancellation through the RunControl; last accepted state
-  Failed,             ///< both sides of a Jacobian column invalid; last accepted state
+  /// Both sides of a Jacobian column invalid, constraints that cannot be satisfied at the start or
+  /// that are linearly dependent (ADR 0056); last accepted state
+  Failed,
 };
 
 /// One solve of the damped normal equations.
@@ -84,6 +93,15 @@ struct LmResult {
   /// Status Failed: the smallest variable index whose Jacobian column had no valid evaluation on
   /// either side.
   std::optional<std::size_t> failed_variable;
+  /// Status Failed at the start (ADR 0056, point 5): the projection onto g = 0 did not reach the
+  /// tolerances; the index (0-based among the constraints) of the largest |g_i| / tolerance_i at
+  /// the start. The state is the start.
+  std::optional<std::size_t> infeasible_constraint;
+  /// Status Failed (ADR 0056, point 2): the rows of the constraint Jacobian C are linearly
+  /// dependent (rank test on C H^-1 C^T in the KKT step, or on C D^-2 C^T in a projection) at
+  /// the Jacobian in use: that of the last accepted state, or during the projection of the start
+  /// one at an intermediate point, after which the state is reset to the start.
+  bool dependent_constraints = false;
   std::vector<LmIteration> history;  ///< one entry per solve, accepted or not
 };
 
@@ -111,10 +129,16 @@ using LmAcceptedCallback = std::function<void(const LmIteration& iteration,
                                               std::span<const double> p,
                                               std::span<const std::uint8_t> changed)>;
 
-/// Minimizes 1/2 f(p)^T f(p) from p0 within the bounds (ADR 0030).
+/// Minimizes 1/2 f(p)^T f(p) from p0 within the bounds (ADR 0030), subject to the equality
+/// constraints of LmOptions::constraint_tolerances (ADR 0056): every solve takes the damped KKT
+/// step with the linearized constraints, and every trial is projected back onto g = 0 before the
+/// gain ratio; F, LmIteration::F and LmResult::F are then 1/2 of the sum of squares of the first
+/// m - p residuals only. A projected start is not reported to on_accepted (it is no accepted
+/// solve); LmResult::changed shows it if the run ends before the first accepted step.
 ///
 /// @param residuals the residual function, see Residuals
-/// @param m         number of residuals (>= 1), fixed for the run
+/// @param m         number of residuals (>= 1, and > p), fixed for the run; with constraints the
+///                  last p of them are g
 /// @param p0        start values (n >= 1), finite and within the bounds
 /// @param bounds    one entry per variable
 /// @param options   tolerances and steps, see LmOptions

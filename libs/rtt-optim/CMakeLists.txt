@@ -17,6 +17,7 @@ if(RTT_BUILD_TESTS)
   # systems, read the edit form and apply the result patch in the tests only.
   rtt_add_test(rtt_optim_tests
     SOURCES tests/test_bounds.cpp tests/test_generators.cpp tests/test_levenberg_marquardt.cpp
+            tests/test_lm_constraints.cpp
       tests/test_m5_acceptance.cpp tests/test_merit_noise.cpp tests/test_optimize.cpp
       tests/test_parabasal.cpp tests/test_parabasal_real_na.cpp tests/test_trial_overlay.cpp
       tests/test_variables.cpp

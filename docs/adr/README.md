@@ -64,6 +64,7 @@ Präzisierungen und Ergänzungen einer angenommenen Entscheidung kommen als dati
 | [0053](0053.md) | Konstruktionshelfer singlet, doublet, triplet und Linsenkataloge als eigene JSON-Dateien | angenommen |
 | [0054](0054.md) | Paraxiales Modell für gefaltete, nach dem Ausfalten koaxiale Pfade | angenommen |
 | [0055](0055.md) | Gekippte Objektebene bei endlichem Objekt (`object.slope`, Schema 0.12.0) | angenommen |
+| [0056](0056.md) | Exakte Gleichheitsbedingungen in der Optimierung (KKT-Schritt mit Rückprojektion) | angenommen |
 
 ## Vorlage
 
