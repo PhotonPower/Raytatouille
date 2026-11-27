@@ -398,7 +398,9 @@ TEST_CASE("intersect_surface with t_min finds the further crossing of a sphere (
 
   CHECK(rtt::trace::intersect_surface(in, sphere, second.t).status == rtt::geom::HitStatus::Missed);
 
-  // The overload without t_min is the default of geom::intersect, bitwise.
+  // The overload without t_min calls this one with the default of geom::intersect; the check
+  // only pins that delegation. That the sequential results stay bitwise is shown by the
+  // unchanged tests of the sequential tracer.
   const rtt::trace::SurfaceHit plain = rtt::trace::intersect_surface(in, sphere);
   const rtt::trace::SurfaceHit with_default =
       rtt::trace::intersect_surface(in, sphere, rtt::geom::kDefaultTMin);

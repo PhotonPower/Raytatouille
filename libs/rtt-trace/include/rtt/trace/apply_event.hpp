@@ -194,7 +194,9 @@ struct SurfaceHit {
 /// t_min = rtt::geom::kDefaultTMin (1e-9 mm), bitwise.
 /// @param ray     ray in global coordinates, |dir| = 1
 /// @param surface compiled surface (pose and shape are used)
-/// @param t_min   smallest accepted geometric path from ray.pos, mm (>= 0)
+/// @param t_min   smallest accepted geometric path from ray.pos, mm
+/// @pre t_min >= 0 and finite (not checked)
+/// @return the nearest hit with t > t_min, otherwise status Missed or NoConvergence
 [[nodiscard]] SurfaceHit intersect_surface(const RayState& ray,
                                            const compile::CompiledSurface& surface,
                                            double t_min) noexcept;

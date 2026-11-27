@@ -9,7 +9,7 @@ target_include_directories(rtt_tolerance PUBLIC
 # function and optimize with the trial overlay, #256) and rtt-trace (RunControl) in its header,
 # rtt-diagnostics for the warning codes. The sensitivity (#258) and the Monte Carlo (#259) run
 # their trials in parallel with TBB.
-target_link_libraries(rtt_tolerance PUBLIC rtt::model rtt::compile rtt::optim rtt::trace
+target_link_libraries(rtt_tolerance PUBLIC rtt::math rtt::model rtt::compile rtt::optim rtt::trace
   PRIVATE rtt::diagnostics TBB::tbb)
 rtt_target_defaults(rtt_tolerance LIBRARY)
 
