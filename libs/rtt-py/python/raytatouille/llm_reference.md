@@ -41,14 +41,14 @@ analyses parallelise internally (`threads=`). `import raytatouille as rt`.
 | Indices of lists | `field`, `wavelength` are 0-based indices; `path` is an index or a name |
 | Determinism | bitwise equal for any thread count; randomness only with a seed |
 
-## Minimal system file (schema 0.12.0)
+## Minimal system file (schema 0.13.0)
 
 ```python
 import json
 import raytatouille as rt
 
 SINGLET = {
-    "schema_version": "0.12.0",
+    "schema_version": "0.13.0",
     "name": "Singlet",
     "units": {"length": "mm", "wavelength": "um"},
     "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": True}, {"um": 0.6563}],
@@ -251,7 +251,8 @@ lens = d["root"]["children"][1]
 lens["surfaces"][0]["shape"]["base"]["radius"] = {"value": 51.68, "variable": True}
 d["root"]["children"][2]["pose"]["position"][2] = {"value": 106.442, "variable": True}
 d["optimization"] = {
-    "operands": [{"type": "efl", "path": "main", "target": 100.0, "weight": 100.0}],
+    # an exact constraint (ADR 0056); a weighted operand would be {"target": 100.0, "weight": 100.0}
+    "operands": [{"type": "efl", "path": "main", "target": 100.0, "constraint": "equal"}],
     "generators": [{"type": "rms_spot", "path": "main"}]}
 res = rt.optim.optimize(rt.System.from_json(json.dumps(d)),
                         options=rt.optim.OptimizeOptions(max_iterations=30))
@@ -436,8 +437,8 @@ Classes: `GeneratorStats`, `GeneratorValue`, `IterationState`, `MeritEvaluation`
 abbe_share(tolerance_class: ToleranceClass) -> float
 class_limit(tolerance_class: ToleranceClass, kind: ToleranceKind, level: ToleranceLevel) -> float
 expand(system: System, *, …) -> ToleranceItems
-monte_carlo(system: System, *, trials: int | None = None, seed: int | None = None, percentiles: Sequence[float] = (0.5, 0.9, 0.95, 0.99), z: float = 1.959963984540054, keep_trials: bool = True, compensators: OptimizeOptions | None = None, aiming: Aiming = Aiming.REAL, …) -> MonteCarloResult
-sensitivity(system: System, *, confirm: bool = True, compensators: OptimizeOptions | None = None, aiming: Aiming = Aiming.REAL, …) -> ToleranceSensitivity
+monte_carlo(system: System, *, trials: int | None = None, seed: int | None = None, percentiles: Sequence[float] = (0.5, 0.9, 0.95, 0.99), z: float = 1.959963984540054, keep_trials: bool = True, compensators: OptimizeOptions | None = None, aiming: Aiming | None = None, …) -> MonteCarloResult
+sensitivity(system: System, *, confirm: bool = True, compensators: OptimizeOptions | None = None, aiming: Aiming | None = None, …) -> ToleranceSensitivity
 sigma_ratio(distribution: ToleranceDistribution) -> float
 ```
 Classes: `ClassTolerance`, `ClassTolerances`, `CompensatorValue`, `Confirmation`, `CriterionSensitivity`, `CriterionStatistics`, `CriterionValue`, `InverseSensitivity`, `ItemContribution`, `ItemOrigin`, `ItemTrials`, `MonteCarloResult`, `OverrideStatus`, `Percentile`, `ToleranceItems`, `ToleranceSensitivity`, `TrialResult`, `TrialTable`, `Yield`.
@@ -527,5 +528,5 @@ glass(reference: str) -> GlassInfo
 glass_map(catalogs: Sequence[str] | None = None) -> GlassMap
 ```
 
-Model classes (`rt.model`, read-only views of `System`): `Absorber`, `ApertureReading`, `Assembly`, `Axicon`, `Biconic`, `CircularAperture`, `CircularObscuration`, `Compensator`, `Configuration`, `CoatingRef`, `Conic`, `Criterion`, `CrystalMaterial`, `Cylinder`, `DiffractionEfficiency`, `Element`, `ElementKind`, `EllipticalAperture`, `EllipticalObscuration`, `EvenAsphere`, `Event`, `EventKind`, `FieldSet`, `FieldType`, `FirstOrderOperand`, `FirstOrderQuantity`, `Fresnel`, `GridSag`, `IdealAntiReflection`, `IdealBeamSplitter`, `IdealCylinderLens`, `IdealLens`, `IdealMirror`, `IdealPolarizer`, `IdealRetarder`, `LinearGrating`, `MonteCarloDefaults`, `ObjectSpace`, `OddAsphere`, `OpdRmsOperand`, `Optimization`, `Param`, `ParamValueOperand`, `ParameterRow`, `Path`, `Plane`, `PolygonAperture`, `Pose`, `PoseOrder`, `PoseReference`, `QBfs`, `QCon`, `RadialPhase`, `RayCoordinate`, `RayOperand`, `RectangularAperture`, `RectangularObscuration`, `RegularPolygonAperture`, `ShapeStack`, `SpotGenerator`, `SpotReference`, `SpotRmsOperand`, `Surface`, `SurfaceReference`, `SystemAperture`, `SystemApertureType`, `ToleranceClass`, `ToleranceClassOverride`, `ToleranceDistribution`, `ToleranceItem`, `ToleranceKind`, `TolerancePivotOverride`, `ToleranceSet`, `ToleranceValueOverride`, `Toroid`, `WavefrontGenerator`, `XyPolynomial`, `ZernikeFringeSag`, `ZernikeSag`.
+Model classes (`rt.model`, read-only views of `System`): `Absorber`, `ApertureReading`, `Assembly`, `Axicon`, `Biconic`, `CircularAperture`, `CircularObscuration`, `Compensator`, `Configuration`, `CoatingRef`, `Conic`, `ConstraintKind`, `Criterion`, `CrystalMaterial`, `Cylinder`, `DiffractionEfficiency`, `Element`, `ElementKind`, `EllipticalAperture`, `EllipticalObscuration`, `EvenAsphere`, `Event`, `EventKind`, `FieldSet`, `FieldType`, `FirstOrderOperand`, `FirstOrderQuantity`, `Fresnel`, `GridSag`, `IdealAntiReflection`, `IdealBeamSplitter`, `IdealCylinderLens`, `IdealLens`, `IdealMirror`, `IdealPolarizer`, `IdealRetarder`, `LinearGrating`, `MonteCarloDefaults`, `ObjectSpace`, `OddAsphere`, `OpdRmsOperand`, `Optimization`, `Param`, `ParamValueOperand`, `ParameterRow`, `Path`, `Plane`, `PolygonAperture`, `Pose`, `PoseOrder`, `PoseReference`, `QBfs`, `QCon`, `RadialPhase`, `RayCoordinate`, `RayOperand`, `RectangularAperture`, `RectangularObscuration`, `RegularPolygonAperture`, `ShapeStack`, `SpotGenerator`, `SpotReference`, `SpotRmsOperand`, `Surface`, `SurfaceReference`, `SystemAperture`, `SystemApertureType`, `ToleranceClass`, `ToleranceClassOverride`, `ToleranceDistribution`, `ToleranceItem`, `ToleranceKind`, `TolerancePivotOverride`, `ToleranceSet`, `ToleranceValueOverride`, `Toroid`, `WavefrontGenerator`, `XyPolynomial`, `ZernikeFringeSag`, `ZernikeSag`.
 <!-- END GENERATED -->

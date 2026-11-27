@@ -899,6 +899,9 @@ std::string to_result_json(const optim::OptimResult& r) {
       w.number(o.weight);
       w.key("contribution");
       w.number(o.contribution);
+      // 0.1.25 (ADR 0056, #196): an exact constraint (weight and contribution 0).
+      w.key("constraint");
+      w.boolean(o.constraint);
       w.end_object();
     }
     w.end_array();

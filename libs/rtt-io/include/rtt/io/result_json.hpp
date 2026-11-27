@@ -27,7 +27,7 @@
 namespace rtt::io {
 
 /// The schema version written, the same as raytatouille.results.SCHEMA_VERSION.
-inline constexpr std::string_view kResultSchemaVersion = "0.1.24";
+inline constexpr std::string_view kResultSchemaVersion = "0.1.25";
 
 /// A double as Python's repr: the shortest digits that give the same double, in fixed notation
 /// for a decimal exponent d with -4 < d <= 16 (value = 0.digits * 10^d), with ".0" for an

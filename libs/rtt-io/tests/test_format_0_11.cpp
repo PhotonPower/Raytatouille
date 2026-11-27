@@ -51,8 +51,8 @@ constexpr std::string_view kStop = "/root/children/0/surfaces/0/aperture";
 
 }  // namespace
 
-TEST_CASE("schema version is 0.12.0", "[io][0.11]") {
-  REQUIRE(rtt::model::kSchemaVersion == "0.12.0");
+TEST_CASE("schema version is 0.13.0", "[io][0.11]") {
+  REQUIRE(rtt::model::kSchemaVersion == "0.13.0");
 }
 
 TEST_CASE("aperture dimensions: plain Params stay numbers in the canonical form", "[io][0.11]") {
@@ -146,12 +146,12 @@ TEST_CASE("validate: aperture dimensions are checked as Params; bound ones after
                                        std::string(kStop) + "/inner_radius"));
 }
 
-TEST_CASE("migration 0.10 -> 0.11: content unchanged, the version becomes 0.12.0", "[io][0.11]") {
+TEST_CASE("migration 0.10 -> 0.11: content unchanged, the version becomes 0.13.0", "[io][0.11]") {
   const System s = rtt::model::test::make_singlet();
   const System read = rtt::io::parse_system(with_version(s, "0.10.0"));
   CHECK(read == s);
-  CHECK(read.schema_version == "0.12.0");
-  CHECK(json::parse(rtt::io::to_json(read))["schema_version"] == "0.12.0");
+  CHECK(read.schema_version == "0.13.0");
+  CHECK(json::parse(rtt::io::to_json(read))["schema_version"] == "0.13.0");
 }
 
 TEST_CASE("migration: a Param object at an aperture dimension before 0.11 is an error there",

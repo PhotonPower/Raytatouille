@@ -39,8 +39,8 @@ System tilted() {
 
 }  // namespace
 
-TEST_CASE("schema version is 0.12.0", "[io][0.12]") {
-  REQUIRE(rtt::model::kSchemaVersion == "0.12.0");
+TEST_CASE("schema version is 0.13.0", "[io][0.12]") {
+  REQUIRE(rtt::model::kSchemaVersion == "0.13.0");
 }
 
 TEST_CASE("object.slope round-trips; default slopes are not written", "[io][0.12]") {
@@ -71,7 +71,7 @@ TEST_CASE("migration 0.11 -> 0.12: content unchanged, a slope needs 0.12", "[io]
   json j = json::parse(rtt::io::to_json(plane));
   j["schema_version"] = "0.11.0";
   const System read = rtt::io::parse_system(j.dump());
-  CHECK(read.schema_version == "0.12.0");
+  CHECK(read.schema_version == "0.13.0");
   CHECK(read == plane);
   json old = json::parse(rtt::io::to_json(tilted()));
   old["schema_version"] = "0.11.0";

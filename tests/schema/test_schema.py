@@ -861,3 +861,34 @@ def test_0_12_object_slope_errors_are_rejected(mutate):
     mutate(doc["object"])
     with pytest.raises(jsonschema.ValidationError):
         VALIDATOR.validate(doc)
+
+
+def test_0_13_constraint_is_accepted():
+    # m5/singlet_constraint (#196, ADR 0056): the efl as an exact constraint, without a weight
+    doc = load(ROOT / "tests" / "reference" / "m5" / "singlet_constraint.rtt.json")
+    assert doc["optimization"]["operands"][0]["constraint"] == "equal"
+    VALIDATOR.validate(doc)
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda o: o.__setitem__("weight", 1.0),        # a constraint has no weight
+    lambda o: o.__setitem__("constraint", "less"),  # only "equal" (ADR 0056, point 6)
+])
+def test_0_13_constraint_rejects(mutate):
+    doc = load(ROOT / "tests" / "reference" / "m5" / "singlet_constraint.rtt.json")
+    mutate(doc["optimization"]["operands"][0])
+    assert not VALIDATOR.is_valid(doc)
+
+
+def test_0_13_criterion_has_no_constraint():
+    doc = load(ROOT / "tests" / "reference" / "m5" / "singlet_constraint.rtt.json")
+    doc["tolerances"] = {"criteria": [{"id": "efl", "max": 101.0, "operand": {
+        "type": "efl", "path": "main", "constraint": "equal"}}]}
+    assert not VALIDATOR.is_valid(doc)
+
+
+def test_0_13_constraint_in_the_compensator_merit_is_accepted():
+    doc = load(ROOT / "tests" / "reference" / "m5" / "singlet_constraint.rtt.json")
+    doc["tolerances"] = {"compensator_merit": {"operands": [
+        {"type": "efl", "path": "main", "target": 100.0, "constraint": "equal"}]}}
+    VALIDATOR.validate(doc)

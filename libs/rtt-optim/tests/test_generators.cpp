@@ -519,7 +519,7 @@ TEST_CASE("merit H1: generator residuals follow the operands", "[optim][generato
   const MaterialLibrary lib;
   System s = load("m5/zoom.rtt.json");
   rtt::model::FirstOrderOperand efl;
-  efl.common = {50.0, 1.0, std::string("wide")};
+  efl.common = {50.0, 1.0, std::string("wide"), std::nullopt};
   efl.quantity = rtt::model::FirstOrderQuantity::Efl;
   efl.path = "main";
   WavefrontGenerator wave = wavefront_generator();
@@ -559,7 +559,7 @@ TEST_CASE("optimize H2: generator table, merit phi and the start check", "[optim
   System s = singlet();
   std::get<rtt::model::Conic>(element(s, 1).surfaces[0].shape.base).radius.variable = true;
   rtt::model::FirstOrderOperand efl;
-  efl.common = {100.0, 1.0, std::nullopt};
+  efl.common = {100.0, 1.0, std::nullopt, std::nullopt};
   efl.quantity = rtt::model::FirstOrderQuantity::Efl;
   efl.path = "main";
   SpotGenerator spot = spot_generator();
@@ -614,7 +614,7 @@ TEST_CASE("optimize H3: lost rays in the final state give optim.rays_lost", "[op
   System s = singlet(rtt::model::CircularAperture{5.0, 0.0});
   std::get<rtt::model::Conic>(element(s, 1).surfaces[0].shape.base).radius.variable = true;
   rtt::model::FirstOrderOperand efl;
-  efl.common = {100.0, 1.0, std::nullopt};
+  efl.common = {100.0, 1.0, std::nullopt, std::nullopt};
   efl.quantity = rtt::model::FirstOrderQuantity::Efl;
   efl.path = "main";
   WavefrontGenerator wave = wavefront_generator();

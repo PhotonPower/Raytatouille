@@ -154,7 +154,9 @@ class TrialContext {
 ///         shorthand takes none, a list needs one below its size, a list of equal entries only
 ///         0; ADR 0035, point 2)
 /// @throws optim::OptimError with merit.operand_unsupported for a criterion or an operand of
-///         the compensator merit that the nominal system does not support
+///         the compensator merit that the nominal system does not support, or with
+///         optim.no_operands / optim.constraints_too_many if the compensator merit has only
+///         exact constraints or more of them than compensators (ADR 0056)
 [[nodiscard]] TrialContext prepare(const model::System& nominal,
                                    const material::MaterialLibrary& materials,
                                    const coating::CoatingLibrary* coatings,

@@ -59,8 +59,8 @@ std::vector<std::variant<model::Assembly, model::Element>> children(const model:
   return out;
 }
 
-/// target, weight and configuration of an operand as attributes of its own (file keys of the
-/// same names, ADR 0030 point 2).
+/// target, weight, configuration and constraint of an operand as attributes of its own (file
+/// keys of the same names, ADR 0030 point 2, ADR 0056 point 6).
 template <typename T>
 void common_attributes(nb::class_<T>& cls) {
   cls.def_prop_ro(
@@ -71,12 +71,19 @@ void common_attributes(nb::class_<T>& cls) {
           "Weight w >= 0 of the residual sqrt(w) (value - target).")
       .def_prop_ro(
           "configuration", [](const T& o) { return o.common.configuration; },
-          "Name of a configuration; None: configuration 0.");
+          "Name of a configuration; None: configuration 0.")
+      .def_prop_ro(
+          "constraint", [](const T& o) { return o.common.constraint; },
+          "ConstraintKind of an exact constraint (value = target, ADR 0056; then weight is 1 "
+          "and unused); None: an ordinary weighted operand.");
 }
 
 /// The merit function (ADR 0030, points 2-4; #162 part B). The defaults are those of
 /// rtt/model/optimization.hpp.
 void bind_optimization(nb::module_& m) {
+  nb::enum_<model::ConstraintKind>(m, "ConstraintKind",
+                                   "Kind of an exact constraint (ADR 0056; file key constraint).")
+      .value("EQUAL", model::ConstraintKind::Equal, "value = target exactly (file: equal).");
   nb::enum_<model::FirstOrderQuantity>(m, "FirstOrderQuantity",
                                        "Paraxial quantity of a first-order operand.")
       .value("EFL", model::FirstOrderQuantity::Efl, "effective focal length, mm (file: \"efl\")")

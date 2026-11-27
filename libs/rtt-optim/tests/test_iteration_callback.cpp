@@ -57,7 +57,7 @@ System zoom_singlet() {
   std::get<rtt::model::Element>(s.root.children[2].value).pose.position[2].variable = true;
   const auto efl = [](double target, const char* configuration) {
     rtt::model::FirstOrderOperand op;
-    op.common = {target, 1.0, std::string(configuration)};
+    op.common = {target, 1.0, std::string(configuration), std::nullopt};
     op.quantity = rtt::model::FirstOrderQuantity::Efl;
     op.path = "main";
     return op;

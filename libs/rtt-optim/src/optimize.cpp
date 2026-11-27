@@ -100,13 +100,45 @@ OptimResult run(const model::System& system,
   }
   // ADR 0049, point 4: operands left out because their surface is inactive do not count.
   const std::vector<bool>& inactive = merit.inactive_operands();
-  if (system.optimization.generators.empty() &&
-      std::all_of(inactive.begin(), inactive.end(), [](bool b) { return b; })) {
+  // Exact constraints (ADR 0056): the active operands with a constraint, in file order. An
+  // inactive one is left out like any operand (its residual stays 0).
+  const std::size_t n_operands = system.optimization.operands.size();
+  std::vector<std::size_t> constraints;
+  for (std::size_t i = 0; i < n_operands; ++i) {
+    const bool constrained =
+        std::visit([](const auto& o) { return o.common.constraint.has_value(); },
+                   system.optimization.operands[i]);
+    if (constrained && !inactive[i]) constraints.push_back(i);
+  }
+  const auto is_constraint = [&constraints](std::size_t i) {
+    return std::find(constraints.begin(), constraints.end(), i) != constraints.end();
+  };
+  // Declared as a constraint in the file, active or not: such an operand is never part of F, so
+  // it counts neither in the weights of phi nor in the table with its weight (ADR 0056, point 7;
+  // review of #196). Only the active ones go to the solver.
+  const auto declared_constraint = [&system, n_operands](std::size_t i) {
+    return i < n_operands &&
+           std::visit([](const auto& o) { return o.common.constraint.has_value(); },
+                      system.optimization.operands[i]);
+  };
+  std::size_t objective_operands = 0;
+  for (std::size_t i = 0; i < n_operands; ++i) {
+    if (!inactive[i] && !is_constraint(i)) ++objective_operands;
+  }
+  if (system.optimization.generators.empty() && objective_operands == 0) {
     errors.push_back(diagnostic(
         "optim.no_operands", "",
         system.optimization.empty()
             ? "the system has no operand and no generator (section optimization)"
-            : "every operand is at a surface of an inactive node and no generator is left"));
+        : constraints.empty()
+            ? "every operand is at a surface of an inactive node and no generator is left"
+            : "only exact constraints and no operand or generator to minimize (ADR 0056)"));
+  }
+  if (!variables.empty() && constraints.size() > variables.size()) {
+    errors.push_back(diagnostic("optim.constraints_too_many", "/optimization",
+                                std::to_string(constraints.size()) + " exact constraints for " +
+                                    std::to_string(variables.size()) +
+                                    " variables; at most one per variable (ADR 0056, point 2)"));
   }
   if (!errors.empty()) {
     // Why there may be no variable: the variable Params of inactive nodes (ADR 0049, point 4).
@@ -124,7 +156,6 @@ OptimResult run(const model::System& system,
   // Start (ADR 0030, point 10): the exception of an analysis comes through unchanged; an
   // undefined value is an input error naming the operand.
   const MeritEvaluation start = merit.evaluate(p0);
-  const std::size_t n_operands = system.optimization.operands.size();
   for (std::size_t i = 0; i < n_operands; ++i) {
     if (!std::isfinite(start.residuals[i])) {
       const std::string& why = start.undefined[i];
@@ -161,8 +192,10 @@ OptimResult run(const model::System& system,
   // Sum of the weights for phi = 2 F / weights (ADR 0030, point 12), in the history and the live
   // state alike.
   double weights = 0.0;
-  for (const model::Operand& op : system.optimization.operands) {
-    weights += std::visit([](const auto& o) { return o.common.weight; }, op);
+  for (std::size_t i = 0; i < n_operands; ++i) {
+    if (declared_constraint(i)) continue;  // not part of F (ADR 0056, point 7)
+    weights +=
+        std::visit([](const auto& o) { return o.common.weight; }, system.optimization.operands[i]);
   }
   for (const model::Generator& g : system.optimization.generators) {
     weights += std::visit([](const auto& o) { return o.weight; }, g);
@@ -184,9 +217,26 @@ OptimResult run(const model::System& system,
   lm_options.gtol = options.gtol;
   lm_options.tau = options.tau;
   lm_options.function_precision = options.function_precision;
+  // The solver takes the constraints as the last residuals (ADR 0056, point 8): `order` lists the
+  // merit residuals in the solver's order, the others first in their order, then the
+  // constraints; each with the tolerance eps_c max(|t|, 1).
+  std::vector<std::size_t> order;
+  order.reserve(merit.size());
+  for (std::size_t i = 0; i < merit.size(); ++i) {
+    if (!is_constraint(i)) order.push_back(i);
+  }
+  std::vector<double> tolerances;
+  tolerances.reserve(constraints.size());
+  for (const std::size_t i : constraints) {
+    order.push_back(i);
+    const double t =
+        std::visit([](const auto& o) { return o.common.target; }, system.optimization.operands[i]);
+    tolerances.push_back(options.constraint_tolerance * std::max(std::abs(t), 1.0));
+  }
+  lm_options.constraint_tolerances = tolerances;
   const LmResult lm = levenberg_marquardt(
-      [&merit, &start_arrived, &start_operand_arrived, &changed_sets](std::span<const double> p,
-                                                                      std::span<double> f) {
+      [&merit, &start_arrived, &start_operand_arrived, &changed_sets, &order](
+          std::span<const double> p, std::span<double> f) {
         // Exceptions and non-finite residuals are invalid evaluations of the solver.
         const MeritEvaluation e = merit.evaluate(p);
         if (e.operand_arrived != start_operand_arrived) {
@@ -199,10 +249,21 @@ OptimResult run(const model::System& system,
             return false;
           }
         }
-        std::copy(e.residuals.begin(), e.residuals.end(), f.begin());
+        for (std::size_t k = 0; k < order.size(); ++k) f[k] = e.residuals[order[k]];
         return true;
       },
       merit.size(), p0, bounds, lm_options, control, accepted);
+
+  // ADR 0056, point 5: a start that cannot be projected onto the constraints is an input error at
+  // the constraint with the largest relative violation.
+  if (lm.status == LmStatus::Failed && lm.infeasible_constraint) {
+    const std::size_t i = constraints[*lm.infeasible_constraint];
+    throw OptimError({diagnostic(
+        "optim.constraint_infeasible", "/optimization/operands/" + std::to_string(i),
+        "the start cannot be projected onto the exact constraints; this one has the largest "
+        "relative violation (value " +
+            number(start.values[i]) + ")")});
+  }
 
   OptimResult result;
   result.status = lm.status;
@@ -220,8 +281,10 @@ OptimResult run(const model::System& system,
     ++result.evaluations;
   }
 
-  double squares = 0.0;
-  for (const double r : end.residuals) squares += r * r;
+  double squares = 0.0;  // of F: without the constraints
+  for (std::size_t i = 0; i < end.residuals.size(); ++i) {
+    if (!is_constraint(i)) squares += end.residuals[i] * end.residuals[i];
+  }
   for (const LmIteration& it : lm.history) {
     result.history.push_back(
         {it.k, phi_of(it.F), it.mu, it.rho, it.step_norm, it.accepted, it.evaluations});
@@ -229,10 +292,13 @@ OptimResult run(const model::System& system,
   for (std::size_t i = 0; i < end.values.size(); ++i) {
     const model::Operand& op = system.optimization.operands[i];
     const double target = std::visit([](const auto& o) { return o.common.target; }, op);
-    const double weight = std::visit([](const auto& o) { return o.common.weight; }, op);
+    const bool constraint = declared_constraint(i);
+    const double weight =
+        constraint ? 0.0 : std::visit([](const auto& o) { return o.common.weight; }, op);
     const double r = end.residuals[i];
     result.operands.push_back({"/optimization/operands/" + std::to_string(i), end.values[i], target,
-                               weight, squares > 0.0 ? 100.0 * r * r / squares : 0.0});
+                               weight, !constraint && squares > 0.0 ? 100.0 * r * r / squares : 0.0,
+                               constraint});
   }
   // Generators (ADR 0030, addendum #168): only with an evaluated final state.
   for (std::size_t g = 0, offset = end.values.size(); g < end.generators.size(); ++g) {
@@ -270,6 +336,26 @@ OptimResult run(const model::System& system,
                                "spot_rms/opd_rms operand differed from the start (ADR 0030, "
                                "addenda #289 and #299)"
                          : std::string())));
+  }
+  if (lm.status == LmStatus::Failed && lm.dependent_constraints) {
+    result.diagnostics.push_back(diagnostic(
+        "optim.constraints_dependent", "/optimization",
+        "the exact constraints are linearly dependent at the last accepted state (ADR 0056, "
+        "point 2)"));
+  }
+  // ADR 0056, point 7: a constraint that misses its tolerance in the final state. Every accepted
+  // state and the projected start are feasible, so this happens only after status Failed before
+  // the start was projected (a failed Jacobian column at the start).
+  for (std::size_t k = 0; k < constraints.size() && !end.values.empty(); ++k) {
+    const std::size_t i = constraints[k];
+    const double target =
+        std::visit([](const auto& o) { return o.common.target; }, system.optimization.operands[i]);
+    if (!(std::abs(end.values[i] - target) <= tolerances[k])) {
+      result.diagnostics.push_back(
+          diagnostic("optim.constraint_violated", "/optimization/operands/" + std::to_string(i),
+                     "the exact constraint is not met in the final state: value " +
+                         number(end.values[i]) + ", target " + number(target)));
+    }
   }
   if (lm.status == LmStatus::Failed && lm.failed_variable) {
     result.diagnostics.push_back(

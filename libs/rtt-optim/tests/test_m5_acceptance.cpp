@@ -596,22 +596,102 @@ TEST_CASE("M5 acceptance, case 1: singlet bent for minimal RMS spot at EFL 100 m
   INFO("R1 result " << table.at(5, 0) << ", R2 result " << table.at(6, 0));
 }
 
-TEST_CASE("M5 acceptance, case 1 with the EFL as a penalty weight (known limit, #196)",
-          "[.][optim][m5]") {
-  // Hidden: m5/singlet_optim states the EFL as an operand with weight 1e4 and R1, R2 and the
-  // detector free. Levenberg-Marquardt (and MINPACK lmdif, trf, BFGS and the MNT hybrid of
-  // Sec. 3.4, measured for #170) crawls along the narrow, curved valley that the penalty makes
-  // and stops far from the bending optimum: ADR 0030, addendum #170 "Bekannte Grenze:
-  // Gleichheitsbedingungen als Strafgewicht". This test states the real goal (the reference
-  // optimum R1*) and is enabled by the solution of #196 (exact equality constraints).
-  const System s = load("m5/singlet_optim.rtt.json");
+TEST_CASE("M5 acceptance, case 1 with the EFL as an exact constraint (#196)", "[optim][m5]") {
+  // m5/singlet_constraint: the lens of m5/singlet_optim with R1, R2 and the detector free, the
+  // EFL = 100 mm as an exact constraint (ADR 0056) instead of a penalty weight (with which the
+  // solver crawls, ADR 0030, addendum #170; the former hidden test of #170, decision of the
+  // maintainer on #196) and the rms_spot generator. The constrained optimum is the 1-D bending
+  // reference (R2 from the EFL condition, best image plane, golden section over R1).
+  // Tolerance of R1, derived from the reference before the run (as for case 1 above, along the
+  // curve of the constraint): with t = dp/dR1 the tangent of that curve (R2 and the detector
+  // from the reference at R1 +- 1e-3 mm) and F = 1/2 s the merit (s the generator's sum of
+  // squares), H = 1/2 d2s/dR1^2 is the curvature along it;
+  // - the reference: the golden-section bracket of 1e-6 mm;
+  // - flat minimum: the merit is known to sigma_F = ||f|| sigma_f with sigma_f = kMeritPrecision
+  //   ||f(p0)||inf (ADR 0030, point 9), so the run cannot place R1 better than sqrt(2 sigma_F / H);
+  // - the solver's difference step h = eps_f^(1/3) max(|p|, 1): its fixed point satisfies
+  //   J~^T f + C~^T w = 0 with C t = 0 along the curve, so the reduced gradient is off by
+  //   t^T (J~ - J)^T f + w (C~ - C) t, the fixed point by that over H; w = -(C J^T f) / (C C^T)
+  //   is the multiplier at the reference (review of #196);
+  // - the step test (ftol = 0, default xtol: with a residual left the gradient noise gives steps
+  //   along the flat direction that a smaller xtol would never accept): at most twice the last
+  //   step ||D h|| / d_R1, a posteriori from the last solve (as the step-test bounds of #166).
+  // The sum, doubled for the estimate character of the flat term.
+  const System s = load("m5/singlet_constraint.rtt.json");
   const MaterialLibrary lib;
-  const Bending ref = bending_reference(s, lib);
-  const double w_efl =
-      std::get<rtt::model::FirstOrderOperand>(s.optimization.operands[0]).common.weight;
-  REQUIRE(w_efl == 1e4);
-  const OptimResult r = check_against_prediction(s, lib, Vec{ref.r1, ref.r2, ref.z_image}, w_efl);
-  CHECK(std::abs(efl_of(r.system, lib) - 100.0) <= 1e-10 * 100.0);
+  REQUIRE(std::get<rtt::model::FirstOrderOperand>(s.optimization.operands[0]).common.constraint);
+  const Bending ref = bending_reference(load("m5/singlet_optim.rtt.json"), lib);
+  INFO("reference R1 " << ref.r1 << " R2 " << ref.r2 << " z " << ref.z_image);
+  const double dr = 1e-3;
+  const Bending plus = bending(s, lib, ref.r1 + dr);
+  const Bending minus = bending(s, lib, ref.r1 - dr);
+  const Vec t{1.0, (plus.r2 - minus.r2) / (2.0 * dr), (plus.z_image - minus.z_image) / (2.0 * dr)};
+  const double wide = 0.5;  // a step for the curvature well above the noise of s
+  const double s_pp =
+      (bending(s, lib, ref.r1 + wide).s - 2.0 * ref.s + bending(s, lib, ref.r1 - wide).s) /
+      (wide * wide);
+  const double h_f = 0.5 * s_pp;
+  REQUIRE(h_f > 0.0);
+  const rtt::optim::MeritFunction merit(s, lib, nullptr);
+  REQUIRE(merit.variables().size() == 3);
+  const Vec p_ref{ref.r1, ref.r2, ref.z_image};
+  // Residuals of F: all but row 0 (the constraint).
+  const Vec f_ref = residuals_at(merit, p_ref);
+  const Vec f0 = residuals_at(merit, merit.start());
+  double f_inf0 = 0.0;
+  double f_norm = 0.0;
+  for (std::size_t i = 1; i < f0.size(); ++i) f_inf0 = std::max(f_inf0, std::abs(f0[i]));
+  for (std::size_t i = 1; i < f_ref.size(); ++i) f_norm += f_ref[i] * f_ref[i];
+  const double sigma_f_merit = std::sqrt(f_norm) * rtt::optim::kMeritPrecision * f_inf0;
+  const double flat = std::sqrt(2.0 * sigma_f_merit / h_f);
+  const Mat j_acc = jacobian_at(merit, p_ref, steps(p_ref, 1e-6));
+  const Mat j_solver =
+      jacobian_at(merit, p_ref, steps(p_ref, std::cbrt(rtt::optim::kMeritPrecision)));
+  double bias = 0.0;
+  for (std::size_t i = 1; i < f_ref.size(); ++i) {
+    for (std::size_t c = 0; c < 3; ++c) bias += (j_solver[i][c] - j_acc[i][c]) * t[c] * f_ref[i];
+  }
+  // The multiplier w = -(C J^T f) / (C C^T) with C = row 0 of the accurate Jacobian, and the
+  // bias of row 0 along t times w.
+  double cjf = 0.0;
+  double cc = 0.0;
+  for (std::size_t c = 0; c < 3; ++c) {
+    double jf = 0.0;
+    for (std::size_t i = 1; i < f_ref.size(); ++i) jf += j_acc[i][c] * f_ref[i];
+    cjf += j_acc[0][c] * jf;
+    cc += j_acc[0][c] * j_acc[0][c];
+  }
+  const double w = -cjf / cc;
+  for (std::size_t c = 0; c < 3; ++c) bias += w * (j_solver[0][c] - j_acc[0][c]) * t[c];
+  const double shift_fd = std::abs(bias) / h_f;
+  // D of the solver: column norms of the start Jacobian, all rows (ADR 0030, point 6).
+  const Mat j_start = jacobian_at(merit, merit.start(),
+                                  steps(merit.start(), std::cbrt(rtt::optim::kMeritPrecision)));
+  double d_r1 = 0.0;
+  for (const Vec& row : j_start) d_r1 += row[0] * row[0];
+  d_r1 = std::sqrt(d_r1);
+
+  OptimizeOptions options;
+  options.ftol = 0.0;
+  const OptimResult r = rtt::optim::optimize(s, lib, nullptr, options);
+  INFO("status " << static_cast<int>(r.status) << ", iterations " << r.iterations);
+  // The step term below is a posteriori and assumes the end by the step test (ftol = 0).
+  REQUIRE(r.status == rtt::optim::LmStatus::ConvergedStep);
+  REQUIRE(!r.history.empty());
+  const double step = 2.0 * r.history.back().step_norm / d_r1;
+  const double tol = 2.0 * (1e-6 + flat + shift_fd + step);
+  INFO("R1 result " << r.variables[0].end << "; tolerance " << tol << " = 2 (1e-6 + flat " << flat
+                    << " + FD " << shift_fd << " + step " << step << ")");
+  CHECK(std::abs(r.variables[0].end - ref.r1) <= tol);
+  CHECK(tol < 0.01);  // content guard: far closer than the penalty run (R1 = 102.6, #170)
+  // The EFL: relative 1e-10 (the issue), the constraint tolerance eps_c = 1e-12 max(|t|, 1).
+  const double efl = efl_of(r.system, lib);
+  CHECK(std::abs(efl - 100.0) <= 1e-10 * 100.0);
+  REQUIRE(r.operands.size() == 1);
+  CHECK(r.operands[0].constraint);
+  CHECK(r.operands[0].weight == 0.0);
+  CHECK(r.operands[0].contribution == 0.0);
+  CHECK(r.operands[0].value == efl);
 }
 
 TEST_CASE("M5 acceptance, case 2: air gap D from Gullstrand's equation", "[optim][m5]") {
@@ -782,4 +862,37 @@ TEST_CASE("M5 acceptance, case 2: bitwise for 1, 4 and all threads, with RunCont
       }
     }
   }
+}
+
+TEST_CASE("M5 acceptance, case 2 with the EFL as an exact constraint (#196)", "[optim][m5]") {
+  // m5/two_lens_gap has a zero residual at the solution (EFL 55 and the marginal ray on the axis
+  // in the image plane), so the penalty form already converges (case 2 above). With the EFL as an
+  // exact constraint the run must not get worse (ADR 0056, Umfang B): the same solution, the
+  // EFL to the constraint tolerance eps_c max(|t|, 1) = 5.5e-11 mm, the ray residual zero to the
+  // step test, and not more solves. The values: case 2 bounds the penalty result against the
+  // exact D* by its step test (xtol = 1e-12, ADR 0030, point 8: about 1e-11 relative), and the
+  // constrained run ends by the same test at the same zero-residual solution; 1e-8 relative
+  // leaves room for the scaling of D, which differs between the two runs.
+  System s = load("m5/two_lens_gap.rtt.json");
+  const MaterialLibrary lib;
+  const OptimizeOptions options = acceptance_options();
+  const OptimResult penalty = rtt::optim::optimize(s, lib, nullptr, options);
+  REQUIRE(penalty.status != rtt::optim::LmStatus::Failed);
+  std::get<rtt::model::FirstOrderOperand>(s.optimization.operands[0]).common.constraint =
+      rtt::model::ConstraintKind::Equal;
+  const OptimResult r = rtt::optim::optimize(s, lib, nullptr, options);
+  INFO("status " << static_cast<int>(r.status) << ", iterations " << r.iterations << " (penalty "
+                 << penalty.iterations << ")");
+  REQUIRE(r.status != rtt::optim::LmStatus::Failed);
+  CHECK(r.iterations <= penalty.iterations);
+  CHECK(std::abs(r.operands[0].value - 55.0) <= 1e-12 * 55.0);
+  CHECK(r.operands[0].constraint);
+  REQUIRE(r.variables.size() == penalty.variables.size());
+  for (std::size_t j = 0; j < r.variables.size(); ++j) {
+    INFO("variable " << j << ": " << r.variables[j].end << " (penalty " << penalty.variables[j].end
+                     << ")");
+    CHECK(std::abs(r.variables[j].end - penalty.variables[j].end) <=
+          1e-8 * std::max(std::abs(penalty.variables[j].end), 1.0));
+  }
+  CHECK(std::abs(r.operands[1].value) <= std::abs(penalty.operands[1].value) + 1e-12);
 }

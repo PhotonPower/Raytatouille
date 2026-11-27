@@ -1263,6 +1263,9 @@ class Validator {
   void check_common(const OperandCommon& c, const std::string& loc) {
     if (!std::isfinite(c.target)) report("value.not_finite", loc + "/target", "must be finite");
     check_weight(c.weight, loc);
+    if (c.constraint && c.weight != 1.0) {
+      report("merit.constraint_weight", loc + "/weight", "a constraint has no weight");
+    }
     check_configuration(c.configuration, loc);
   }
 
@@ -2024,6 +2027,10 @@ class Validator {
       }
       if (common.weight != 1.0) {
         report("tolerances.criterion_bounds", op + "/weight", "a criterion has no weight");
+      }
+      if (common.constraint) {
+        report("tolerances.criterion_bounds", op + "/constraint",
+               "a criterion is not a constraint (ADR 0056, point 6)");
       }
       if (!c.min && !c.max && !c.max_change) {
         report("tolerances.criterion_bounds", loc, "a criterion needs min, max or max_change");

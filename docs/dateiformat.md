@@ -1,8 +1,8 @@
 # Systemdateien `.rtt.json` erzeugen
 
 Kurzanleitung für das Dateiformat, das die Engine, die CLI (`rtt`) und der Raytatouille Explorer
-laden. Alle Beispiele hier wurden gegen Schema `0.11.x` geprüft (Stand Bibliothek 1.0.0, Schema 0.11). Dateien mit
-Schema 0.1 bis 0.10 liest `rtt` weiter und schreibt sie mit `rtt format` als 0.11; ein `pickup` aus
+laden. Alle Beispiele hier wurden gegen Schema `0.13.x` geprüft (Schema 0.13). Dateien mit
+Schema 0.1 bis 0.12 liest `rtt` weiter und schreibt sie mit `rtt format` als 0.13; ein `pickup` aus
 einer Datei vor 0.4 fällt dabei weg, mit der Warnung `io.pickup_dropped` (siehe
 „Parametertabelle“).
 Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/architecture.md`.
@@ -32,7 +32,7 @@ Die maßgebliche Beschreibung sind `schema/raytatouille.schema.json` und `docs/a
 
 | Feld | Pflicht | Inhalt |
 | --- | --- | --- |
-| `schema_version` | ja | `"0.12.0"` (Muster `0.12.x`) |
+| `schema_version` | ja | `"0.13.0"` (Muster `0.13.x`) |
 | `name` | nein | Anzeigename |
 | `units` | ja | genau `{"length": "mm", "wavelength": "um"}` |
 | `environment` | nein | `temperature_c`, `pressure_atm`, `medium` (Standard: Luft nach Ciddor, 20 °C, 1 atm) |
@@ -344,6 +344,13 @@ Gemeinsame Schlüssel:
 
 - `target` (Pflicht bei Operanden, Einheit des Werts; Generatoren haben kein `target`);
 - `weight` (Standard 1, ≥ 0);
+- `constraint` (ab Schema 0.13, ADR 0056): `"equal"` macht den Operanden zur **exakten Bedingung**
+  v = t. Der Löser hält sie in jedem angenommenen Schritt ein (KKT-Schritt mit Rückprojektion), statt
+  ein gewichtetes Residuum zu minimieren; sie zählt nicht zur Merit-Funktion φ. Eine Bedingung hat
+  kein `weight` (Lesefehler; über die API `merit.constraint_weight`). Erlaubt in `optimization` und
+  im `compensator_merit` der Toleranzierung, nicht im Operanden eines Kriteriums. Die Toleranz ist ein
+  Laufparameter (`OptimizeOptions.constraint_tolerance`, Standard 10⁻¹² relativ). Höchstens so viele
+  Bedingungen wie Variablen, und es muss etwas zu minimieren bleiben (Operand oder Generator);
 - `configuration` (Name einer Konfiguration; fehlt: Konfiguration 0, also die erste bzw. die
   Nominalkonfiguration);
 - `path` (Name eines Pfads; nicht bei `param_value`).
@@ -374,7 +381,7 @@ Die Namen, Indexbereiche, Gewichte und Abtastungen prüft `rtt validate` (Codes 
 ```json
 "optimization": {
   "operands": [
-    {"type": "efl", "path": "main", "target": 100.0},
+    {"type": "efl", "path": "main", "target": 100.0, "constraint": "equal"},
     {"type": "ray_y", "path": "main", "surface": "IMG", "field": 1, "py": 1.0, "target": 0.0},
     {"type": "param_value", "parameter": "G", "configuration": "tele", "target": 5.0, "weight": 0.1}
   ],
@@ -505,7 +512,7 @@ dahinter, der Detektor im paraxialen Fokus bei z = 106,442 mm.
 
 ```json
 {
-  "schema_version": "0.12.0",
+  "schema_version": "0.13.0",
   "name": "Plankonvex-Singlet",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": true}, {"um": 0.6563}],
@@ -586,7 +593,7 @@ def singlet(r1, r2, dicke, glas="CONST:1.5168", epd=20.0, bild_abstand=95.0, hal
 
     z_linse = 5.0
     return {
-        "schema_version": "0.12.0", "name": f"Singlet R1={r1} R2={r2}",
+        "schema_version": "0.13.0", "name": f"Singlet R1={r1} R2={r2}",
         "units": {"length": "mm", "wavelength": "um"},
         "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": True}, {"um": 0.6563}],
         "aperture": {"type": "epd", "value": epd},

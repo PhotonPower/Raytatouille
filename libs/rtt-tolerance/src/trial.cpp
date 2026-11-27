@@ -910,7 +910,32 @@ TrialContext prepare(const model::System& nominal,
     }
     if (!d->compensators.empty()) {
       s.optimization = d->compensator_merit;
-      static_cast<void>(optim::MeritFunction(s, materials, coatings, &overlay, options.aiming));
+      const optim::MeritFunction merit(s, materials, coatings, &overlay, options.aiming);
+      // Exact constraints of the compensator merit (ADR 0056; review of #196): the checks of
+      // optimize at its start, once here instead of an invalid result in every trial. The
+      // compensators are the variables of the run.
+      const std::vector<bool>& inactive = merit.inactive_operands();
+      std::size_t constraints = 0;
+      std::size_t objective = 0;
+      for (std::size_t i = 0; i < s.optimization.operands.size(); ++i) {
+        if (inactive[i]) continue;
+        const bool c = std::visit([](const auto& o) { return o.common.constraint.has_value(); },
+                                  s.optimization.operands[i]);
+        ++(c ? constraints : objective);
+      }
+      std::vector<model::Diagnostic> constraint_errors;
+      if (constraints > 0 && objective == 0 && s.optimization.generators.empty()) {
+        constraint_errors.push_back(diagnostic(
+            "optim.no_operands", "/tolerances/compensator_merit",
+            "only exact constraints and no operand or generator to minimize (ADR 0056)"));
+      }
+      if (constraints > d->compensators.size()) {
+        constraint_errors.push_back(diagnostic(
+            "optim.constraints_too_many", "/tolerances/compensator_merit",
+            std::to_string(constraints) + " exact constraints for " +
+                std::to_string(d->compensators.size()) + " compensators (ADR 0056, point 2)"));
+      }
+      if (!constraint_errors.empty()) throw optim::OptimError(std::move(constraint_errors));
     }
   }
   // Phi_0 (ADR 0036, points 2 and 6): the trial at zero, compensators included.

@@ -112,15 +112,18 @@ void bind_optim(nb::module_& m) {
       .def(
           "__init__",
           [](OptimizeOptions* o, int max_iterations, double ftol, double xtol, double gtol,
-             double tau, double function_precision, trace::Aiming aiming) {
-            new (o)
-                OptimizeOptions{max_iterations, ftol, xtol, gtol, tau, function_precision, aiming};
+             double tau, double function_precision, trace::Aiming aiming,
+             double constraint_tolerance) {
+            new (o) OptimizeOptions{
+                max_iterations,      ftol, xtol, gtol, tau, function_precision, aiming,
+                constraint_tolerance};
           },
           nb::kw_only(), "max_iterations"_a = OptimizeOptions{}.max_iterations,
           "ftol"_a = OptimizeOptions{}.ftol, "xtol"_a = OptimizeOptions{}.xtol,
           "gtol"_a = OptimizeOptions{}.gtol, "tau"_a = OptimizeOptions{}.tau,
           "function_precision"_a = OptimizeOptions{}.function_precision,
-          "aiming"_a = OptimizeOptions{}.aiming)
+          "aiming"_a = OptimizeOptions{}.aiming,
+          "constraint_tolerance"_a = OptimizeOptions{}.constraint_tolerance)
       .def_rw("max_iterations", &OptimizeOptions::max_iterations,
               "k_max, the number of solves (ADR 0030, point 8).")
       .def_rw("ftol", &OptimizeOptions::ftol, "Merit test, default sqrt(eps_M).")
@@ -132,7 +135,10 @@ void bind_optim(nb::module_& m) {
               "(point 9); default MERIT_PRECISION.")
       .def_rw("aiming", &OptimizeOptions::aiming,
               "Aiming of every ray of the merit function, also of the parabasal rays of a "
-              "tolerance trial (ADR 0030, addendum #291); default REAL, as before.");
+              "tolerance trial (ADR 0030, addendum #291); default REAL, as before.")
+      .def_rw("constraint_tolerance", &OptimizeOptions::constraint_tolerance,
+              "eps_c of the exact constraints (ADR 0056, point 3): a constraint is met if "
+              "|value - target| <= eps_c max(|target|, 1); default 1e-12.");
   m.attr("MERIT_PRECISION") = kMeritPrecision;
 
   nb::class_<Variable>(m, "Variable", "One unknown of the optimizer (ADR 0030, point 5).")
@@ -171,7 +177,8 @@ void bind_optim(nb::module_& m) {
           "residuals", [](const MeritEvaluation& e) { return doubles(e.residuals); },
           nb::rv_policy::reference,
           "sqrt(weight) (value - target) per operand, then the residuals of the generators in "
-          "file order (read-only copy).")
+          "file order (read-only copy). For an exact constraint (ADR 0056) the entry is "
+          "value - target and not part of the merit F.")
       .def_ro("undefined", &MeritEvaluation::undefined,
               "Why an operand has no value (empty string if it has one), operand order.")
       .def_ro("warnings", &MeritEvaluation::warnings,
@@ -254,8 +261,11 @@ void bind_optim(nb::module_& m) {
       .def_ro("pointer", &OperandValue::pointer, "/optimization/operands/i")
       .def_ro("value", &OperandValue::value, "Value, unit of the operand.")
       .def_ro("target", &OperandValue::target, "Target, unit of the operand.")
-      .def_ro("weight", &OperandValue::weight, "Weight >= 0.")
-      .def_ro("contribution", &OperandValue::contribution, "Share of the merit, percent.");
+      .def_ro("weight", &OperandValue::weight, "Weight >= 0; 0 for a constraint.")
+      .def_ro("contribution", &OperandValue::contribution,
+              "Share of the merit, percent; 0 for a constraint.")
+      .def_ro("constraint", &OperandValue::constraint,
+              "An exact constraint (ADR 0056), held to OptimizeOptions.constraint_tolerance.");
 
   nb::class_<GeneratorValue>(m, "GeneratorValue", "One generator in the final state.")
       .def_ro("pointer", &GeneratorValue::pointer, "/optimization/generators/g")

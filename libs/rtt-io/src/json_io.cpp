@@ -91,6 +91,10 @@ const EnumTable<FirstOrderQuantity> kFirstOrderTypes = {
     {"magnification", FirstOrderQuantity::Magnification},
 };
 
+const EnumTable<ConstraintKind> kConstraintKinds = {
+    {"equal", ConstraintKind::Equal},
+};
+
 const EnumTable<SpotReference> kSpotReferences = {
     {"centroid", SpotReference::Centroid},
     {"chief", SpotReference::Chief},
@@ -814,6 +818,7 @@ struct Migration {
   bool before_0_10 = false;  ///< no flag "active" of assemblies and elements (ADR 0049)
   bool before_0_11 = false;  ///< aperture dimensions only as numbers (ADR 0050)
   bool before_0_12 = false;  ///< no tilted object plane (ADR 0055)
+  bool before_0_13 = false;  ///< no exact constraints in the merit function (ADR 0056)
 };
 
 /// Checks the schema version of `j` and tells which migrations to the current version it needs.
@@ -840,6 +845,7 @@ struct Migration {
 ///   objects (a number reads as before); the aperture types regular_polygon and polygon, the
 ///   surface obscurations and the shape terms besides zernike_sag are new.
 /// - 0.11 -> 0.12 (ADR 0055): content unchanged, only "object.slope" is new.
+/// - 0.12 -> 0.13 (ADR 0056): content unchanged, only the key "constraint" of an operand is new.
 Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
   const std::string ours(kSchemaVersion);
   const std::string mm = major_minor(version);
@@ -848,19 +854,68 @@ Migration migrate(const Json& j, const std::string& version, const Ctx& c) {
     if (const Json* root = find(j, "root")) {
       check_material_forms(*root, Ctx().at("root"), mm == "0.2");
     }
-    return {true, true, true, true, true, true, true, true, true, true};
+    return {true, true, true, true, true, true, true, true, true, true, true};
   }
-  if (mm == "0.3") return {false, true, true, true, true, true, true, true, true, true};
-  if (mm == "0.4") return {false, false, true, true, true, true, true, true, true, true};
-  if (mm == "0.5") return {false, false, false, true, true, true, true, true, true, true};
-  if (mm == "0.6") return {false, false, false, false, true, true, true, true, true, true};
-  if (mm == "0.7") return {false, false, false, false, false, true, true, true, true, true};
-  if (mm == "0.8") return {false, false, false, false, false, false, true, true, true, true};
-  if (mm == "0.9") return {false, false, false, false, false, false, false, true, true, true};
-  if (mm == "0.10") return {false, false, false, false, false, false, false, false, true, true};
-  if (mm == "0.11") return {false, false, false, false, false, false, false, false, false, true};
+  if (mm == "0.3") return {false, true, true, true, true, true, true, true, true, true, true};
+  if (mm == "0.4") return {false, false, true, true, true, true, true, true, true, true, true};
+  if (mm == "0.5") return {false, false, false, true, true, true, true, true, true, true, true};
+  if (mm == "0.6") return {false, false, false, false, true, true, true, true, true, true, true};
+  if (mm == "0.7") return {false, false, false, false, false, true, true, true, true, true, true};
+  if (mm == "0.8") {
+    return {false, false, false, false, false, false, true, true, true, true, true};
+  }
+  if (mm == "0.9") {
+    return {false, false, false, false, false, false, false, true, true, true, true};
+  }
+  if (mm == "0.10") {
+    return {false, false, false, false, false, false, false, false, true, true, true};
+  }
+  if (mm == "0.11") {
+    return {false, false, false, false, false, false, false, false, false, true, true};
+  }
+  if (mm == "0.12") {
+    return {false, false, false, false, false, false, false, false, false, false, true};
+  }
   c.fail("incompatible schema_version '" + version + "', this build reads " + ours +
-         " and migrates 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.10 and 0.11");
+         " and migrates 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.10, 0.11 and 0.12");
+}
+
+/// Files before 0.13 (ADR 0056): the key "constraint" of an operand (of the merit function, the
+/// compensator merit or a criterion) is an error at its pointer.
+void check_0_13_constraints(const Json& j, const Ctx& c) {
+  const auto check = [](const Json* operands, const Ctx& oc) {
+    if (operands == nullptr || !operands->is_array()) return;
+    for (std::size_t i = 0; i < operands->size(); ++i) {
+      const Json& op = (*operands)[i];
+      if (op.is_object() && find(op, "constraint") != nullptr) {
+        oc.at(i)
+            .at("constraint")
+            .fail("an exact constraint needs schema_version 0.13 or later (ADR 0056)");
+      }
+    }
+  };
+  if (const Json* o = find(j, "optimization"); o != nullptr && o->is_object()) {
+    check(find(*o, "operands"), c.at("optimization").at("operands"));
+  }
+  const Json* t = find(j, "tolerances");
+  if (t == nullptr || !t->is_object()) return;
+  const Ctx tc = c.at("tolerances");
+  if (const Json* m = find(*t, "compensator_merit"); m != nullptr && m->is_object()) {
+    check(find(*m, "operands"), tc.at("compensator_merit").at("operands"));
+  }
+  if (const Json* k = find(*t, "criteria"); k != nullptr && k->is_array()) {
+    for (std::size_t i = 0; i < k->size(); ++i) {
+      const Json& crit = (*k)[i];
+      const Json* op = crit.is_object() ? find(crit, "operand") : nullptr;
+      if (op != nullptr && op->is_object() && find(*op, "constraint") != nullptr) {
+        tc.at("criteria")
+            .at(i)
+            .at("operand")
+            .at("constraint")
+            .fail("an exact constraint needs schema_version 0.13 or later (ADR 0056)");
+      }
+    }
+  }
 }
 
 /// Files before 0.9 (ADR 0042, ADR 0043, point 4): a biconic, toroid, cylinder, odd_asphere,
@@ -1141,10 +1196,15 @@ std::optional<std::string> read_configuration(const Json& j, const Ctx& c) {
   return std::nullopt;
 }
 
-/// target (required), weight and configuration of an operand (ADR 0030, point 2).
+/// target (required), weight, constraint and configuration of an operand (ADR 0030, point 2;
+/// ADR 0056, point 6: a constraint has no weight).
 OperandCommon read_common(const Json& j, const Ctx& c) {
   OperandCommon o;
   o.target = read_number(require(j, "target", c), c.at("target"));
+  if (const Json* v = find(j, "constraint")) {
+    o.constraint = read_enum(*v, c.at("constraint"), kConstraintKinds);
+    if (find(j, "weight") != nullptr) c.at("weight").fail("a constraint has no weight");
+  }
   read_opt(j, "weight", c, o.weight, read_number);
   o.configuration = read_configuration(j, c);
   return o;
@@ -1159,7 +1219,8 @@ Operand read_operand(const Json& j, const Ctx& c) {
   const std::string type = read_type(j, c);
   for (const auto& [name, quantity] : kFirstOrderTypes) {
     if (type != name) continue;
-    expect_object(j, c, {"type", "path", "configuration", "wavelength", "target", "weight"});
+    expect_object(
+        j, c, {"type", "path", "configuration", "wavelength", "target", "weight", "constraint"});
     FirstOrderOperand o;
     o.common = read_common(j, c);
     o.quantity = quantity;
@@ -1170,7 +1231,7 @@ Operand read_operand(const Json& j, const Ctx& c) {
   if (type == "ray_x" || type == "ray_y") {
     expect_object(j, c,
                   {"type", "path", "configuration", "surface", "occurrence", "field", "px", "py",
-                   "wavelength", "target", "weight"});
+                   "wavelength", "target", "weight", "constraint"});
     RayOperand o;
     o.common = read_common(j, c);
     o.coordinate = type == "ray_x" ? RayCoordinate::X : RayCoordinate::Y;
@@ -1190,7 +1251,7 @@ Operand read_operand(const Json& j, const Ctx& c) {
   if (type == "spot_rms") {
     expect_object(j, c,
                   {"type", "path", "configuration", "field", "wavelength", "polychromatic",
-                   "reference", "rings", "target", "weight"});
+                   "reference", "rings", "target", "weight", "constraint"});
     SpotRmsOperand o;
     o.common = read_common(j, c);
     o.path = read_path_name(j, c);
@@ -1207,8 +1268,9 @@ Operand read_operand(const Json& j, const Ctx& c) {
     return o;
   }
   if (type == "opd_rms") {
-    expect_object(
-        j, c, {"type", "path", "configuration", "field", "wavelength", "grid", "target", "weight"});
+    expect_object(j, c,
+                  {"type", "path", "configuration", "field", "wavelength", "grid", "target",
+                   "weight", "constraint"});
     OpdRmsOperand o;
     o.common = read_common(j, c);
     o.path = read_path_name(j, c);
@@ -1218,7 +1280,7 @@ Operand read_operand(const Json& j, const Ctx& c) {
     return o;
   }
   if (type == "param_value") {
-    expect_object(j, c, {"type", "parameter", "configuration", "target", "weight"});
+    expect_object(j, c, {"type", "parameter", "configuration", "target", "weight", "constraint"});
     ParamValueOperand o;
     o.common = read_common(j, c);
     o.parameter = read_string(require(j, "parameter", c), c.at("parameter"));
@@ -1401,8 +1463,8 @@ Compensator read_compensator(const Json& j, const Ctx& c) {
 /// The operand of a criterion: an operand of ADR 0030 without target and weight (ADR 0035,
 /// point 7); the model keeps target 0 and weight 1.
 Operand read_criterion_operand(const Json& j, const Ctx& c) {
-  if (!j.is_object()) return read_operand(j, c);  // reports the structural error
-  for (const char* key : {"target", "weight"}) {
+  if (!j.is_object()) return read_operand(j, c);                // reports the structural error
+  for (const char* key : {"target", "weight", "constraint"}) {  // constraint: ADR 0056
     if (find(j, key) != nullptr) {
       c.at(key).fail("the operand of a criterion has no " + std::string(key));
     }
@@ -1542,6 +1604,8 @@ System read_system_tree(const Json& j, std::vector<Diagnostic>* warnings) {
           "a tilted object plane needs schema_version 0.12 or later (ADR 0055)");
     }
   }
+  // Files before 0.13 (ADR 0056): an exact constraint is an error at its pointer.
+  if (m.before_0_13) check_0_13_constraints(j, c);
   if (!m.before_0_4) return read_migrated(j, m);
   Json current = j;
   migrate_0_4(current, c, warnings, true);
@@ -2221,8 +2285,14 @@ class Writer {
     if (configuration) o["configuration"] = *configuration;
   }
 
+  /// target, then weight, or for a constraint the key "constraint" and no weight (ADR 0056,
+  /// point 6; validate rejects a constraint whose weight is not 1, the writer drops it).
   void put_target_weight(OJson& o, const OperandCommon& c) const {
     o["target"] = num(c.target);
+    if (c.constraint) {
+      o["constraint"] = std::string(enum_name(*c.constraint, kConstraintKinds));
+      return;
+    }
     if (edit_ || c.weight != OperandCommon{}.weight) o["weight"] = num(c.weight);
   }
 
@@ -2430,15 +2500,16 @@ class Writer {
     return o;
   }
 
-  /// A criterion: its operand without target and weight (ADR 0035, point 7). Values other than
-  /// target 0 and weight 1 can only come from the API; validate rejects them
-  /// (tolerances.criterion_bounds), the writer drops them.
+  /// A criterion: its operand without target, weight and constraint (ADR 0035, point 7; ADR
+  /// 0056). Values other than target 0, weight 1 and no constraint can only come from the API;
+  /// validate rejects them (tolerances.criterion_bounds), the writer drops them.
   OJson criterion(const Criterion& k) const {
     OJson o;
     o["id"] = k.id;
     OJson op = std::visit([this](const auto& x) { return operand(x); }, k.operand);
     op.erase("target");
     op.erase("weight");
+    op.erase("constraint");  // ADR 0056: validate rejects it there (tolerances.criterion_bounds)
     o["operand"] = std::move(op);
     if (k.min) o["min"] = num(*k.min);
     if (k.max) o["max"] = num(*k.max);
