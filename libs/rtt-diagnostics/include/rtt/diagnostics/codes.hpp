@@ -25,7 +25,7 @@ struct CodeInfo {
   std::string_view code;  ///< dotted name, e.g. "material.unknown"
   Severity severity;      ///< the severity every diagnostic with this code has
   /// "validate", "compile", "analysis", "agf", "edit", "export", "io", "optim", "table",
-  /// "tolerance", "trace" or "zmx" (docs/diagnostics.md)
+  /// "nonseq", "tolerance", "trace" or "zmx" (docs/diagnostics.md)
   std::string_view producer;
   std::string_view summary;  ///< one-line meaning, as in docs/diagnostics.md
 };
@@ -221,6 +221,14 @@ inline constexpr std::array kCodes = std::to_array<CodeInfo>({
     {"node.name_empty", Severity::Error, "validate", "empty assembly or element name"},
     {"node.root_inactive", Severity::Error, "validate",
      "the root assembly cannot be taken out of the computation (active false)"},
+    {"nonseq.aperture_missing", Severity::Error, "nonseq",
+     "a surface of a body in the non-sequential scene has no aperture"},
+    {"nonseq.plate_not_convex", Severity::Error, "nonseq",
+     "a plate of one material with more than two surfaces is not convex"},
+    {"nonseq.rim_unsupported", Severity::Error, "nonseq",
+     "no mantle can be generated between the two surfaces of a segment"},
+    {"nonseq.segment_thickness", Severity::Error, "nonseq",
+     "a segment of a body has centre thickness 0, or two segments overlap"},
     {"object.distance_invalid", Severity::Error, "validate",
      "finite object distance not finite or <= 0 mm"},
     {"object.medium_infinite", Severity::Error, "validate",
