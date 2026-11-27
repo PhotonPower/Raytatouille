@@ -367,3 +367,44 @@ TEST_CASE("apply_event does not check the aperture (reuse in non-sequential trac
   REQUIRE(rtt::trace::sequential_step(in, s, 0, EventKind::Transmit, 1.0, 1.0).status ==
           RayStatus::Vignetted);
 }
+
+TEST_CASE("intersect_surface with t_min finds the further crossing of a sphere (ADR 0057)",
+          "[apply_event][nonseq]") {
+  // ADR 0057, point 3: the non-sequential tracer asks again with t_min = t when a hit lies
+  // outside the aperture. Sphere R = 10 mm (c = 0.1), vertex at the origin, sag
+  // z = R - sqrt(R^2 - x^2) on the sheet through the vertex (Forbes 2011, Eq. (2.1) with k = 0).
+  // A ray along +x at height z = 1 from x = -20 crosses that sheet twice, at
+  // x = -+sqrt(R^2 - (R - 1)^2) = -+sqrt(19), i.e. at t = 20 -+ sqrt(19).
+  CompiledSurface sphere;
+  sphere.shape = rtt::geom::Conic<double>(0.1, 0.0);
+  RayState in;
+  in.pos = Vec3(-20.0, 0.0, 1.0);
+  in.dir = Vec3(1.0, 0.0, 0.0);
+  const double t1 = 20.0 - std::sqrt(19.0);
+  const double t2 = 20.0 + std::sqrt(19.0);
+  // Rounding of the quadratic roots (Numerical Recipes 5.6.4-5.6.5): a few ulp of t ~ 24 mm.
+  constexpr double kTol = 1e-12;
+
+  const rtt::trace::SurfaceHit first = rtt::trace::intersect_surface(in, sphere, 0.0);
+  REQUIRE(first.status == rtt::geom::HitStatus::Hit);
+  CHECK(std::abs(first.t - t1) <= kTol);
+  CHECK(std::abs(first.point.x() + std::sqrt(19.0)) <= kTol);
+
+  const rtt::trace::SurfaceHit second = rtt::trace::intersect_surface(in, sphere, first.t);
+  REQUIRE(second.status == rtt::geom::HitStatus::Hit);
+  CHECK(std::abs(second.t - t2) <= kTol);
+  CHECK(std::abs(second.point.x() - std::sqrt(19.0)) <= kTol);
+  CHECK(std::abs(second.point.z() - 1.0) <= kTol);
+
+  CHECK(rtt::trace::intersect_surface(in, sphere, second.t).status == rtt::geom::HitStatus::Missed);
+
+  // The overload without t_min is the default of geom::intersect, bitwise.
+  const rtt::trace::SurfaceHit plain = rtt::trace::intersect_surface(in, sphere);
+  const rtt::trace::SurfaceHit with_default =
+      rtt::trace::intersect_surface(in, sphere, rtt::geom::kDefaultTMin);
+  CHECK(plain.status == with_default.status);
+  CHECK(plain.t == with_default.t);
+  CHECK(plain.point == with_default.point);
+  CHECK(plain.normal == with_default.normal);
+  CHECK(plain.direction == with_default.direction);
+}

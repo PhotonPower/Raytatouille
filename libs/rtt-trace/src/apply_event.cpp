@@ -471,11 +471,18 @@ math::Vec3 reflect(const math::Vec3& d, const math::Vec3& normal) noexcept {
 
 SurfaceHit intersect_surface(const RayState& ray,
                              const compile::CompiledSurface& surface) noexcept {
+  return intersect_surface(ray, surface, geom::kDefaultTMin);
+}
+
+SurfaceHit intersect_surface(const RayState& ray,
+                             const compile::CompiledSurface& surface,
+                             double t_min) noexcept {
   // Local coordinates of the surface (docs/architecture.md, Engine 2).
   const math::Vec3 origin = surface.to_local.apply_point(ray.pos);
   const math::Vec3 direction = surface.to_local.apply_vector(ray.dir);
   const geom::Intersection<double> hit = std::visit(
-      [&](const auto& shape) { return geom::intersect(shape, origin, direction); }, surface.shape);
+      [&](const auto& shape) { return geom::intersect(shape, origin, direction, t_min); },
+      surface.shape);
   return {hit.status, hit.t, hit.point, hit.normal, direction};
 }
 
