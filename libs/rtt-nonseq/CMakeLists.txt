@@ -10,6 +10,6 @@ rtt_target_defaults(rtt_nonseq LIBRARY)
 
 if(RTT_BUILD_TESTS)
   rtt_add_test(rtt_nonseq_tests
-    SOURCES tests/test_bvh.cpp tests/test_scene.cpp tests/test_source.cpp tests/test_trace.cpp
-    LIBS rtt::nonseq rtt::model_test_support TBB::tbb)
+    SOURCES tests/test_bvh.cpp tests/test_detector.cpp tests/test_scene.cpp tests/test_source.cpp tests/test_trace.cpp
+    LIBS rtt::nonseq rtt::trace rtt::model_test_support TBB::tbb)
 endif()

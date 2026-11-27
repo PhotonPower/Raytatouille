@@ -76,10 +76,11 @@ SourceRay source_ray(const Source& source,
   if (source.sampling == Sampling::Random) {
     const math::PhiloxKey key{static_cast<std::uint32_t>(seed),
                               static_cast<std::uint32_t>(seed >> 32)};
-    const std::uint32_t draws = std::holds_alternative<LambertEmitter>(source.emitter) ? 2 : 1;
-    for (std::uint32_t j = 0; j < draws; ++j) {
+    const std::size_t draws = std::holds_alternative<LambertEmitter>(source.emitter) ? 2 : 1;
+    for (std::size_t j = 0; j < draws; ++j) {
       const math::PhiloxCounter counter{source_number << 16, static_cast<std::uint32_t>(index),
-                                        static_cast<std::uint32_t>(index >> 32), j};
+                                        static_cast<std::uint32_t>(index >> 32),
+                                        static_cast<std::uint32_t>(j)};
       const auto w = math::philox4x32_10(counter, key);
       xi[2 * j] = math::uniform53(w[0], w[1]);
       xi[2 * j + 1] = math::uniform53(w[2], w[3]);
@@ -89,8 +90,10 @@ SourceRay source_ray(const Source& source,
     const std::uint64_t n = ceil_root(source.rays, four ? 4 : 2);
     const double dn = static_cast<double>(n);
     const auto cell = [&](std::uint64_t c, std::size_t at) {
-      xi[at] = (static_cast<double>(c % n) + 0.5) / dn;
-      xi[at + 1] = (static_cast<double>(c / n) + 0.5) / dn;
+      const std::uint64_t column = c % n;
+      const std::uint64_t row = c / n;
+      xi[at] = (static_cast<double>(column) + 0.5) / dn;
+      xi[at + 1] = (static_cast<double>(row) + 0.5) / dn;
     };
     if (four) {
       cell(index / (n * n), 0);  // position cell p
