@@ -13,7 +13,9 @@
 
 #include <cstdint>
 #include <numbers>
+#include <optional>
 #include <span>
+#include <string>
 #include <variant>
 #include <vector>
 
@@ -80,7 +82,8 @@ struct IrradianceDetector {
 /// that hit no face any more (status Missed) by their direction, theta in [0, max_angle] from
 /// the local +z axis of `pose` and phi = atan2(y, x) in [0, 2 pi) from its local +x axis.
 struct IntensityDetector {
-  math::Isometry3 pose;                       ///< rotation local -> global (translation unused)
+  /// Rotation local -> global, orthonormal (its transpose is the inverse); translation unused.
+  math::Isometry3 pose;
   double max_angle = std::numbers::pi / 2.0;  ///< rad, in (0, pi]
   std::uint32_t n_theta = 1;                  ///< cells in theta, > 0
   std::uint32_t n_phi = 1;                    ///< cells in phi, > 0
@@ -111,8 +114,8 @@ struct DetectorField {
 struct DetectorHit {
   std::uint32_t detector = 0;  ///< index into the detectors passed to trace()
   std::uint32_t source = 0;
-  std::uint64_t index = 0;  ///< ray index within the source
-  std::uint16_t wavelength = 0;
+  std::uint64_t index = 0;                     ///< ray index within the source
+  std::uint16_t wavelength = 0;                ///< index into CompiledSystem::wavelengths_um()
   math::Vec3 point = math::Vec3::Zero();       ///< global, mm
   math::Vec3 direction = math::Vec3::UnitZ();  ///< global, unit
   double power = 0.0;                          ///< W
@@ -131,7 +134,7 @@ enum class PathEnd : std::uint8_t {
 struct PathStep {
   std::uint32_t face = kNoFace;  ///< index into Scene::faces()
   model::EventKind kind = model::EventKind::Refract;
-  int order = 0;
+  int order = 0;  ///< diffraction order (ADR 0025); 0 without diffraction
   bool operator==(const PathStep&) const = default;
 };
 
@@ -157,7 +160,9 @@ struct PathEndpoint {
 /// Ray path report of one source (Nachtrag PR 4, d): end points by power descending. Volume
 /// absorption and event losses on the way belong to no path.
 struct PathReport {
-  double source = 0.0;  ///< W, power of the source over its wavelengths
+  /// W, power of the source over its wavelengths: the power of the start rays traced, so after
+  /// a cancellation only that of the finished blocks; RayPath::share refers to it.
+  double source = 0.0;
   std::vector<PathEndpoint> endpoints;
 };
 
@@ -262,6 +267,19 @@ inline constexpr std::size_t kNonseqBlockSize = 4096;
                                  std::span<const Detector> detectors,
                                  const TraceOptions& options,
                                  const trace::RunControl& control = {});
+
+/// A path of the report as an explicit sequential path (ADR 0027; ADR 0057, point 8), e.g. for a
+/// stray-light ghost: one event per step at the model surface of its face, with kind and order,
+/// and for a path that ends at a detector a Transmit event at the detector surface.
+/// @param end  the end point the path belongs to
+/// @return none if a step lies on a generated face (mantle or ring shoulder), which has no
+///         surface in the model
+/// @throws std::out_of_range for a face index outside Scene::faces()
+[[nodiscard]] std::optional<model::Path> to_sequential_path(const compile::CompiledSystem& system,
+                                                            const Scene& scene,
+                                                            const PathEndpoint& end,
+                                                            const RayPath& path,
+                                                            std::string name);
 
 /// Explicit start rays without detectors (PR 3).
 [[nodiscard]] NonseqResult trace(const compile::CompiledSystem& system,

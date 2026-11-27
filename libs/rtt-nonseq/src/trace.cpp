@@ -672,8 +672,14 @@ NonseqResult run_trace(const compile::CompiledSystem& system,
   NonseqResult result;
   result.detectors = prepare_detectors(system, scene, detectors, wls);
 
+  // At most 2^62 start rays in total, so that the offsets cannot overflow.
+  constexpr std::uint64_t kMaxTotal = std::uint64_t{1} << 62;
   std::vector<std::uint64_t> offsets{0};
-  for (const Input& in : inputs) offsets.push_back(offsets.back() + in.count);
+  for (const Input& in : inputs) {
+    if (in.count > kMaxTotal - offsets.back())
+      throw std::invalid_argument("nonseq::trace: more than 2^62 start rays in total");
+    offsets.push_back(offsets.back() + in.count);
+  }
   const std::uint64_t total = offsets.back();
 
   Run run{system, scene, options, wls, {}, {}, {}, {}, detectors, {}};
@@ -791,6 +797,7 @@ NonseqResult run_trace(const compile::CompiledSystem& system,
         }
       }
     }
+    if (monitor.stop()) break;  // cancelled: no later block starts
   }
   try {
     monitor.finish();
@@ -879,6 +886,31 @@ NonseqResult trace(const compile::CompiledSystem& system,
     inputs.push_back(std::move(in));
   }
   return run_trace(system, scene, std::move(inputs), detectors, options, control);
+}
+
+std::optional<model::Path> to_sequential_path(const compile::CompiledSystem& system,
+                                              const Scene& scene,
+                                              const PathEndpoint& end,
+                                              const RayPath& path,
+                                              std::string name) {
+  model::Path out;
+  out.name = std::move(name);
+  const auto surface_of = [&](std::uint32_t f) -> std::optional<model::SurfaceId> {
+    const Face& face = scene.faces().at(f);
+    if (face.kind == FaceKind::Mantle || face.kind == FaceKind::Shoulder) return std::nullopt;
+    return system.surfaces()[face.system_surface].id;
+  };
+  for (const PathStep& st : path.steps) {
+    const auto id = surface_of(st.face);
+    if (!id) return std::nullopt;
+    out.events.push_back({*id, st.kind, st.order});
+  }
+  if (end.end == PathEnd::Detected) {
+    const auto id = surface_of(end.face);
+    if (!id) return std::nullopt;
+    out.events.push_back({*id, model::EventKind::Transmit, 0});
+  }
+  return out;
 }
 
 NonseqResult trace(const compile::CompiledSystem& system,

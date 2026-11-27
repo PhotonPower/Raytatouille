@@ -9,6 +9,7 @@
 /// Conventions: positions in mm, directions as unit vectors; local source coordinates with the
 /// axis +z, mapped to global coordinates by Source::pose; angles in rad; power in W.
 
+#include <cstddef>
 #include <cstdint>
 #include <numbers>
 #include <variant>

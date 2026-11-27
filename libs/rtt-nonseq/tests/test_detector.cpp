@@ -186,6 +186,11 @@ TEST_CASE("Irradiance detectors need a plane with a rectangular aperture", "[non
   const auto c2 = codes(curved);
   REQUIRE(c2.size() == 1);
   CHECK(c2[0] == "nonseq.detector_shape /root/children/0/surfaces/0/shape");
+  System none = detector_only(50.0, 2.0, 2.0);
+  std::get<Element>(none.root.children[0].value).surfaces[0].aperture.reset();
+  const auto c3 = codes(none);
+  REQUIRE(c3.size() == 1);
+  CHECK(c3[0] == "nonseq.detector_aperture /root/children/0/surfaces/0/aperture");
   CHECK(codes(detector_only(50.0, 2.0, 2.0)).empty());
 }
 
@@ -303,10 +308,9 @@ TEST_CASE("case 3: Lambert source before a parallel detector, E = E0 cos^4 theta
   CHECK(std::abs(r.balance[0].detected[det] + r.balance[0].escaped - phi) < 1e-12);
 }
 
-TEST_CASE("Lambert grid: n^4 rays, Phi / M each, all power on a large detector (NBS (A2-14))",
-          "[nonseq][detector]") {
+TEST_CASE("Lambert grid: n^4 rays, Phi / M each", "[nonseq][detector]") {
   // max_angle 30 deg: every ray reaches a detector of half width 50 mm at d = 50 mm
-  // (tan 30 deg * 50 + 1 < 50), so the detected power is Phi = pi L A sin^2 theta_max.
+  // (tan 30 deg * 50 + 1 < 50), so the detected power is the source power.
   const CompiledSystem system = compiled(detector_only(50.0, 50.0, 50.0));
   const Scene scene = Scene::build(system);
   const std::uint32_t det = face_of(scene, FaceKind::Detector);
@@ -321,6 +325,33 @@ TEST_CASE("Lambert grid: n^4 rays, Phi / M each, all power on a large detector (
   CHECK(r.detectors[0].hits[0] == 81);
   CHECK(std::abs(r.balance[0].detected[det] - 0.3) < 1e-15);
   CHECK(r.balance[0].escaped == 0.0);
+}
+
+TEST_CASE("Lambert grid: power in a cone after NBS (A2-14)", "[nonseq][detector]") {
+  // NBS TN 910-1, Eq. (A2-14): a plane Lambert emitter sends pi L A sin^2 theta into the cone
+  // theta, so the cone theta_d of a source limited to theta_max carries
+  // Phi sin^2 theta_d / sin^2 theta_max = Phi / 3 for 30 and 60 deg. Grid with n = 32: the
+  // direction rows have sin^2 theta = sin^2 theta_max xi_3 (Malley), so the cone holds the rows
+  // with (k + 1/2)/32 <= 1/3, k <= 10: 11 of 32 rows, i.e. 11/32 Phi exactly, within one row
+  // (Phi/32) of Phi / 3. All rays escape (the detector is behind the source).
+  const CompiledSystem system = compiled(detector_only(-10.0, 5.0, 5.0));
+  const Scene scene = Scene::build(system);
+  Source s;
+  s.emitter = LambertEmitter{Disc{0.01}, kPi / 3};
+  s.power = 1.0;
+  s.rays = 32ULL * 32 * 32 * 32;
+  s.sampling = Sampling::Grid;
+  TraceOptions o;
+  o.path_report = false;
+  const NonseqResult r =
+      trace(system, scene, std::vector<Source>{s},
+            std::vector<Detector>{IntensityDetector{Isometry3(), kPi / 6, 1, 1}}, o);
+  REQUIRE(r.rays == s.rays);
+  const DetectorField& f = r.detectors[0];
+  const double cone = f.value[0] * f.cell_size[0];  // power in the cone, W
+  CHECK(std::abs(cone - 11.0 / 32.0) < 1e-12);
+  CHECK(std::abs(cone - 1.0 / 3.0) <= 1.0 / 32.0);
+  CHECK(f.hits[0] == 11ULL * 32 * 32 * 32);
 }
 
 TEST_CASE("case 6: polar intensity of a point source, I = Phi / (2 pi (1 - cos theta_max))",
@@ -536,6 +567,39 @@ TEST_CASE("Ray path report of a Fresnel plate", "[nonseq][report]") {
   CHECK(e1.rays > 2);  // the unlisted paths still count
 }
 
+TEST_CASE("A report path becomes an explicit sequential path", "[nonseq][report]") {
+  const CompiledSystem system = compiled(plate_system());
+  const Scene scene = Scene::build(system);
+  TraceOptions o;
+  o.splitting = Splitting::Full;
+  const NonseqResult r =
+      trace(system, scene, std::vector<Source>{collimated_rect(1.0, 1.0, 1, -1.0)},
+            std::vector<Detector>{}, o);
+  const PathEndpoint& e0 = r.paths[0].endpoints[0];
+  REQUIRE(e0.end == PathEnd::Detected);
+  const auto maybe = to_sequential_path(system, scene, e0, e0.paths[0], "ghost");
+  REQUIRE(maybe.has_value());
+  const rtt::model::Path path = maybe.value_or(rtt::model::Path{});
+  using rtt::model::Event;
+  using rtt::model::EventKind;
+  CHECK(path.name == "ghost");
+  CHECK_FALSE(path.automatic);
+  CHECK(path.events == std::vector<Event>{{SurfaceId("P.S1"), EventKind::Refract, 0},
+                                          {SurfaceId("P.S2"), EventKind::Refract, 0},
+                                          {SurfaceId("IMG"), EventKind::Transmit, 0}});
+  // Escaped: no detector event.
+  const PathEndpoint& e1 = r.paths[0].endpoints[1];
+  REQUIRE(e1.end == PathEnd::Escaped);
+  const auto maybe_refl = to_sequential_path(system, scene, e1, e1.paths[0], "r");
+  REQUIRE(maybe_refl.has_value());
+  const rtt::model::Path refl = maybe_refl.value_or(rtt::model::Path{});
+  CHECK(refl.events == std::vector<Event>{{SurfaceId("P.S1"), EventKind::Reflect, 0}});
+  // A step on the generated mantle has no model surface.
+  RayPath mantle;
+  mantle.steps = {{face_of(scene, FaceKind::Mantle), EventKind::Reflect, 0}};
+  CHECK_FALSE(to_sequential_path(system, scene, e1, mantle, "m").has_value());
+}
+
 TEST_CASE("Monte Carlo path report: every start ray ends on one path", "[nonseq][report]") {
   const CompiledSystem system = compiled(plate_system());
   const Scene scene = Scene::build(system);
@@ -661,4 +725,36 @@ TEST_CASE("case 5 with a source outside: every ray through the entry face reache
   // Content guard: the steeper rays are reflected at the mantle on the way.
   CHECK(r.events > 3 * 400);
   check_closed(r);
+}
+
+TEST_CASE("More than one wave of blocks is bitwise the same for 1 and 8 threads",
+          "[nonseq][detector]") {
+  // 300000 start rays = 74 blocks of 4096, more than one wave of 64 blocks.
+  const CompiledSystem system = compiled(plate_system());
+  const Scene scene = Scene::build(system);
+  Source pt;
+  pt.emitter = PointEmitter{0.3};
+  pt.power = 1.0;
+  pt.rays = 300000;
+  const std::vector<Detector> dets{IntensityDetector{Isometry3(), kPi, 4, 4},
+                                   IrradianceDetector{face_of(scene, FaceKind::Detector), 4, 4}};
+  TraceOptions o;
+  o.seed = 5;
+  const auto run = [&](int threads) {
+    tbb::task_arena arena(threads);
+    return arena.execute([&] { return trace(system, scene, std::vector<Source>{pt}, dets, o); });
+  };
+  const NonseqResult a = run(1);
+  const NonseqResult b = run(8);
+  REQUIRE(a.rays == 300000);
+  CHECK(a.detectors[0].value == b.detectors[0].value);
+  CHECK(a.detectors[1].value == b.detectors[1].value);
+  CHECK(a.detectors[1].hits == b.detectors[1].hits);
+  CHECK(a.balance[0].escaped == b.balance[0].escaped);
+  CHECK(a.balance[0].detected == b.balance[0].detected);
+  REQUIRE(a.paths[0].endpoints.size() == b.paths[0].endpoints.size());
+  for (std::size_t e = 0; e < a.paths[0].endpoints.size(); ++e) {
+    CHECK(a.paths[0].endpoints[e].power == b.paths[0].endpoints[e].power);
+  }
+  check_closed(a);
 }
