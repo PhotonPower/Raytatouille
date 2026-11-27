@@ -69,7 +69,7 @@ from ._core import (
     Yield,
 )
 from .errors import RaytatouilleWarning
-from .trace import CancelToken, ProgressCallback
+from .trace import Aiming, CancelToken, ProgressCallback
 
 __all__ = [
     "ClassSkip",
@@ -152,6 +152,7 @@ def sensitivity(
     coatings: CoatingLibrary | None = None,
     confirm: bool = True,
     compensators: OptimizeOptions | None = None,
+    aiming: Aiming = Aiming.REAL,
     threads: int | None = None,
     cancel: CancelToken | None = None,
     progress: ProgressCallback | None = None,
@@ -161,7 +162,8 @@ def sensitivity(
     The items are those of ``expand(system, materials=materials)`` (kept as ``expansion``).
     Each item runs at +T_i and -T_i, all others at 0, after the compensator run (Levenberg-
     Marquardt with ``compensators``, None: the defaults of OptimizeOptions), with the nominal
-    reference. Per criterion the result has Phi(+-T_i), the contributions (linear: ``delta``
+    reference. ``aiming`` aims the rays of the criteria and of the compensator run of every trial
+    (ADR 0030, addendum #291; default REAL); it replaces ``compensators.aiming``. Per criterion the result has Phi(+-T_i), the contributions (linear: ``delta``
     and ``shift``; spot_rms and opd_rms quadratic: ``q``), the RSS, the predicted spread and
     the inverse sensitivity; ``limits`` has the smallest T'_i over the criteria per item. With
     ``confirm`` every item runs again at +-T'_i (``confirmation``). Values are in the unit of
@@ -186,7 +188,8 @@ def sensitivity(
     """
     result = _core.tolerance_sensitivity(
         system, materials, coatings, confirm,
-        OptimizeOptions() if compensators is None else compensators, threads, cancel, progress)
+        OptimizeOptions() if compensators is None else compensators, aiming, threads, cancel,
+        progress)
     for d in result.warnings:
         if d.severity == Severity.WARNING:
             warnings.warn(RaytatouilleWarning(d.message, d.code, d.location), stacklevel=2)
@@ -222,6 +225,7 @@ def monte_carlo(
     z: float = 1.959963984540054,
     keep_trials: bool = True,
     compensators: OptimizeOptions | None = None,
+    aiming: Aiming = Aiming.REAL,
     threads: int | None = None,
     cancel: CancelToken | None = None,
     progress: ProgressCallback | None = None,
@@ -231,7 +235,7 @@ def monte_carlo(
     The items are those of ``expand(system, materials=materials)`` (kept as ``expansion``).
     Trial n (0-based) perturbs every item with the draws of ``seed`` and n (ADR 0036, point 5)
     and evaluates the criteria after the compensator run (``compensators``, None: the defaults
-    of OptimizeOptions). ``trials`` and ``seed`` default to tolerances.monte_carlo of the file
+    of OptimizeOptions). ``aiming`` as in ``sensitivity``. ``trials`` and ``seed`` default to tolerances.monte_carlo of the file
     (the seed else 0; without a number of trials it is an error). ``percentiles`` are p in
     (0, 1] (nearest rank, r = ceil(p n)); ``z`` sets the Wilson interval of the yields (default
     95 %). With ``keep_trials`` every trial is kept in ``trials`` (a TrialTable of NumPy
@@ -258,7 +262,8 @@ def monte_carlo(
     result = _core.tolerance_monte_carlo(
         system, materials, coatings, _uint64("trials", trials), _uint64("seed", seed),
         [float(p) for p in percentiles], z, keep_trials,
-        OptimizeOptions() if compensators is None else compensators, threads, cancel, progress)
+        OptimizeOptions() if compensators is None else compensators, aiming, threads, cancel,
+        progress)
     for d in result.warnings:
         if d.severity == Severity.WARNING:
             warnings.warn(RaytatouilleWarning(d.message, d.code, d.location), stacklevel=2)

@@ -11,6 +11,7 @@
 #include "overlay_basis.hpp"
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/model/optimization.hpp"
+#include "rtt/trace/sources.hpp"
 
 namespace rtt::optim::detail {
 
@@ -30,6 +31,7 @@ struct ParabasalValue {
 /// @param nominal        the nominal data of the operand's path and wavelength
 /// @param reference      the nominal aiming data of the path (analysis::NominalReference)
 /// @param object_at_infinity whether the system's object is at infinity
+/// @param aiming         aiming of the chief and parabasal rays (ADR 0030, addendum #291)
 /// @throws as trace::aim_ray() with a reference (input errors, a reference that does not fit)
 [[nodiscard]] ParabasalValue parabasal_value(const model::FirstOrderOperand& op,
                                              const compile::CompiledSystem& trial,
@@ -39,6 +41,7 @@ struct ParabasalValue {
                                              bool object_at_infinity,
                                              compile::PathId path,
                                              std::uint16_t wavelength,
-                                             double delta);
+                                             double delta,
+                                             trace::Aiming aiming);
 
 }  // namespace rtt::optim::detail

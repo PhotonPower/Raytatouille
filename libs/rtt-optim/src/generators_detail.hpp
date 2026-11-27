@@ -10,15 +10,17 @@
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/model/optimization.hpp"
 #include "rtt/optim/generators.hpp"
+#include "rtt/trace/sources.hpp"
 
 namespace rtt::optim::detail {
 
 /// generator_residuals() (generators.hpp); with `nominal` the rays and the reference rays are
 /// aimed with its aiming data and the wavefront has its reference sphere (#255, #265). Null:
-/// exactly generator_residuals().
+/// exactly generator_residuals(). `aiming` as there (ADR 0030, addendum #291).
 void generator_residuals(const model::Generator& generator,
                          const compile::CompiledSystem& system,
                          const analysis::NominalReference* nominal,
+                         trace::Aiming aiming,
                          std::span<double> out,
                          GeneratorStats& stats);
 

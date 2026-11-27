@@ -358,7 +358,7 @@ prescription(system: SystemLike, path: int | str = 0, wavelength: int | None = N
 seidel(system: SystemLike, path: int | str = 0, wavelength: int | None = None, *, pair: ChromaticPair | tuple[int, int] | None = None, …) -> Seidel
 trace_ray_section(system: CompiledSystem, section: Section, z0: float, h0: float, u0: float, path: int | str = 0, wavelength: int | None = None) -> list[RayAtEvent]
 ```
-Classes: `ChromaticPair`, `FirstOrder`, `Prescription`, `PrescriptionSurfaces`, `Pupil`, `RayAtEvent`, `RayStart`, `Seidel`, `SeidelSurfaces`, `SeidelTerms`.
+Classes: `ChromaticPair`, `FirstOrder`, `Prescription`, `PrescriptionSurfaces`, `Pupil`, `RayAtEvent`, `RayStart`, `Seidel`, `SeidelSurfaces`, `SeidelTerms`, `UnfoldedFrame`.
 
 ### rt.trace
 ```text
@@ -426,7 +426,7 @@ Classes: `Diattenuation`, `Diattenuations`, `Retardance`, `Retardances`.
 
 ### rt.optim
 ```text
-optimize(system: System, *, options: OptimizeOptions | None = None, on_iteration: IterationCallback | None = None, …) -> OptimResult
+optimize(system: System, *, options: OptimizeOptions | None = None, aiming: Aiming | None = None, on_iteration: IterationCallback | None = None, …) -> OptimResult
 variables(system: System) -> list[Variable]
 ```
 Classes: `GeneratorStats`, `GeneratorValue`, `IterationState`, `MeritEvaluation`, `MeritFunction`, `OperandValue`, `OptimIterations`, `OptimResult`, `OptimizeOptions`, `Variable`, `VariableValue`.
@@ -436,8 +436,8 @@ Classes: `GeneratorStats`, `GeneratorValue`, `IterationState`, `MeritEvaluation`
 abbe_share(tolerance_class: ToleranceClass) -> float
 class_limit(tolerance_class: ToleranceClass, kind: ToleranceKind, level: ToleranceLevel) -> float
 expand(system: System, *, …) -> ToleranceItems
-monte_carlo(system: System, *, trials: int | None = None, seed: int | None = None, percentiles: Sequence[float] = (0.5, 0.9, 0.95, 0.99), z: float = 1.959963984540054, keep_trials: bool = True, compensators: OptimizeOptions | None = None, …) -> MonteCarloResult
-sensitivity(system: System, *, confirm: bool = True, compensators: OptimizeOptions | None = None, …) -> ToleranceSensitivity
+monte_carlo(system: System, *, trials: int | None = None, seed: int | None = None, percentiles: Sequence[float] = (0.5, 0.9, 0.95, 0.99), z: float = 1.959963984540054, keep_trials: bool = True, compensators: OptimizeOptions | None = None, aiming: Aiming = Aiming.REAL, …) -> MonteCarloResult
+sensitivity(system: System, *, confirm: bool = True, compensators: OptimizeOptions | None = None, aiming: Aiming = Aiming.REAL, …) -> ToleranceSensitivity
 sigma_ratio(distribution: ToleranceDistribution) -> float
 ```
 Classes: `ClassTolerance`, `ClassTolerances`, `CompensatorValue`, `Confirmation`, `CriterionSensitivity`, `CriterionStatistics`, `CriterionValue`, `InverseSensitivity`, `ItemContribution`, `ItemOrigin`, `ItemTrials`, `MonteCarloResult`, `OverrideStatus`, `Percentile`, `ToleranceItems`, `ToleranceSensitivity`, `TrialResult`, `TrialTable`, `Yield`.

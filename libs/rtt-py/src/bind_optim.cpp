@@ -67,12 +67,17 @@ class Merit {
  public:
   Merit(const model::System& system,
         const material::MaterialLibrary* materials,
-        const coating::CoatingLibrary* coatings)
+        const coating::CoatingLibrary* coatings,
+        trace::Aiming aiming)
       : system_(std::make_unique<model::System>(system)),
         own_materials_(materials != nullptr ? nullptr
                                             : std::make_unique<material::MaterialLibrary>()),
         merit_(std::make_unique<optim::MeritFunction>(
-            *system_, materials != nullptr ? *materials : *own_materials_, coatings)) {}
+            *system_,
+            materials != nullptr ? *materials : *own_materials_,
+            coatings,
+            nullptr,
+            aiming)) {}
 
   [[nodiscard]] const optim::MeritFunction& get() const noexcept { return *merit_; }
 
@@ -107,13 +112,15 @@ void bind_optim(nb::module_& m) {
       .def(
           "__init__",
           [](OptimizeOptions* o, int max_iterations, double ftol, double xtol, double gtol,
-             double tau, double function_precision) {
-            new (o) OptimizeOptions{max_iterations, ftol, xtol, gtol, tau, function_precision};
+             double tau, double function_precision, trace::Aiming aiming) {
+            new (o)
+                OptimizeOptions{max_iterations, ftol, xtol, gtol, tau, function_precision, aiming};
           },
           nb::kw_only(), "max_iterations"_a = OptimizeOptions{}.max_iterations,
           "ftol"_a = OptimizeOptions{}.ftol, "xtol"_a = OptimizeOptions{}.xtol,
           "gtol"_a = OptimizeOptions{}.gtol, "tau"_a = OptimizeOptions{}.tau,
-          "function_precision"_a = OptimizeOptions{}.function_precision)
+          "function_precision"_a = OptimizeOptions{}.function_precision,
+          "aiming"_a = OptimizeOptions{}.aiming)
       .def_rw("max_iterations", &OptimizeOptions::max_iterations,
               "k_max, the number of solves (ADR 0030, point 8).")
       .def_rw("ftol", &OptimizeOptions::ftol, "Merit test, default sqrt(eps_M).")
@@ -122,7 +129,10 @@ void bind_optim(nb::module_& m) {
       .def_rw("tau", &OptimizeOptions::tau, "mu_0 = tau max diag(J^T J) (point 7).")
       .def_rw("function_precision", &OptimizeOptions::function_precision,
               "Relative precision eps_f of a merit evaluation for the difference step "
-              "(point 9); default MERIT_PRECISION.");
+              "(point 9); default MERIT_PRECISION.")
+      .def_rw("aiming", &OptimizeOptions::aiming,
+              "Aiming of every ray of the merit function, also of the parabasal rays of a "
+              "tolerance trial (ADR 0030, addendum #291); default REAL, as before.");
   m.attr("MERIT_PRECISION") = kMeritPrecision;
 
   nb::class_<Variable>(m, "Variable", "One unknown of the optimizer (ADR 0030, point 5).")
@@ -173,12 +183,17 @@ void bind_optim(nb::module_& m) {
                     "The merit function of a system (ADR 0030): its variables and its operands and "
                     "generators. Keeps a copy of the system.")
       .def(nb::init<const model::System&, const material::MaterialLibrary*,
-                    const coating::CoatingLibrary*>(),
+                    const coating::CoatingLibrary*, trace::Aiming>(),
            "system"_a, "materials"_a.none() = nb::none(), "coatings"_a.none() = nb::none(),
-           nb::keep_alive<1, 3>(), nb::keep_alive<1, 4>(),
+           nb::kw_only(), "aiming"_a = trace::Aiming::Real, nb::keep_alive<1, 3>(),
+           nb::keep_alive<1, 4>(),
            "Prepares the evaluation and checks the operands (ADR 0030, point 10). Without "
-           "`materials` only VACUUM, AIR and CONST: resolve. The system is copied; `materials` "
-           "and `coatings` are kept by reference and must not change while the object is used.")
+           "`materials` only VACUUM, AIR and CONST: resolve. `aiming` aims every ray (ADR 0030, "
+           "addendum #291; default REAL). The system is copied; `materials` and `coatings` are "
+           "kept by reference and must not change while the object is used.")
+      .def_prop_ro(
+          "aiming", [](const Merit& f) { return f.get().aiming(); },
+          "The aiming of the rays (constructor).")
       .def_prop_ro(
           "variables", [](const Merit& f) { return f.get().variables(); },
           "The variables, in the order of ADR 0030, point 5.")

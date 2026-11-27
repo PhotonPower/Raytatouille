@@ -496,3 +496,19 @@ TEST_CASE("progress lines on stderr with the option progress", "[cli]") {
   CHECK(r.code == 0);
   CHECK(r.err.find("progress trace ") != std::string::npos);
 }
+
+TEST_CASE("rtt optimize --aiming reaches OptimizeOptions (#291)", "[cli][291]") {
+  const std::string file = kRef + "/m5/singlet_optim.rtt.json";
+  const rtt::material::MaterialLibrary lib;
+  rtt::optim::OptimizeOptions paraxial;
+  paraxial.aiming = rtt::trace::Aiming::Paraxial;
+  const rtt::optim::OptimResult r =
+      rtt::optim::optimize(rtt::io::load_system(file), lib, nullptr, paraxial);
+  const Run run_ = run({"optimize", file, "--aiming", "paraxial"});
+  INFO(run_.err);
+  REQUIRE(run_.code == 0);
+  CHECK(run_.out == rtt::io::to_json(r.system));
+  CHECK(r.iterations > 0);  // content guard
+  CHECK(run({"optimize", file, "--aiming", "sideways"}).code == 2);
+  CHECK(run({"optimize", file, "--help"}).out.find("--aiming") != std::string::npos);
+}

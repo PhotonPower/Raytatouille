@@ -754,6 +754,8 @@ const std::vector<OptionSpec>& optimize_options() {
       {"--tau", "value", false, "initial damping mu_0 = tau max diag(J^T J) (default 1e-3)"},
       {"--function-precision", "value", false,
        "relative precision of the merit for the finite differences (default 1e-9)"},
+      {"--aiming", "real|paraxial", false,
+       "aiming of every ray of the merit function (default real; ADR 0030, addendum #291)"},
   };
   return specs;
 }
@@ -800,6 +802,7 @@ int optimize_command(const std::vector<std::string>& args,
   o.gtol = real("--gtol", o.gtol);
   o.tau = real("--tau", o.tau);
   o.function_precision = real("--function-precision", o.function_precision);
+  o.aiming = aiming(a);
   Prepared p;
   prepare(p, a.operands[0], a, err, false);
   optim::OptimResult r;

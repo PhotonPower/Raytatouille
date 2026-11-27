@@ -27,13 +27,18 @@
 #include "rtt/optim/levenberg_marquardt.hpp"
 #include "rtt/optim/optimize.hpp"
 #include "rtt/trace/run_control.hpp"
+#include "rtt/trace/sources.hpp"
 
 namespace rtt::tolerance {
 
 /// Options of the trials of a context.
 struct TrialOptions {
-  /// The Levenberg-Marquardt run of the compensators (ADR 0036, point 3; ADR 0030, point 8).
+  /// The Levenberg-Marquardt run of the compensators (ADR 0036, point 3; ADR 0030, point 8). Its
+  /// `aiming` is replaced by `aiming` below.
   optim::OptimizeOptions compensators;
+  /// Aiming of the rays of the criteria and of the compensator run of every trial, one choice for
+  /// both (ADR 0030, addendum #291, decision 3 on #291); real by default, bit for bit as before.
+  trace::Aiming aiming = trace::Aiming::Real;
 };
 
 /// How a trial ended.
