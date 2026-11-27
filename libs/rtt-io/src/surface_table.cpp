@@ -415,6 +415,12 @@ TableExport write_surface_table(const model::System& system,
                   "obscurations have no column in the surface table (ADR 0050)");
     }
   }
+  // Nor for the tilt of the object plane (ADR 0055): refused, not dropped.
+  const model::ObjectSpace& object = path.system.object;
+  if (!object.at_infinity && (object.slope[0].value != 0.0 || object.slope[1].value != 0.0)) {
+    export_fail("export.surface_unsupported", "object",
+                "a tilted object plane has no column in the surface table (ADR 0055)");
+  }
   TableExport out;
   out.warnings = std::move(path.warnings);
 

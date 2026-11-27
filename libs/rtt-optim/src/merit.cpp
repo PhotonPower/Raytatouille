@@ -208,7 +208,7 @@ Value first_order_value(const compile::CompiledSystem& cs, const model::FirstOrd
       return defined_or(paraxial::first_order(cs, path, wl).lateral_magnification,
                         "no paraxial magnification");
     case model::FirstOrderQuantity::ImageFNumber:
-      return defined_or(paraxial::prescription(cs, path, wl).paraxial_working_f_number,
+      return defined_or(paraxial::paraxial_working_f_number(cs, path, wl),
                         "no paraxial working F-number (no marginal ray, or collimated output)");
   }
   throw std::invalid_argument("optimize: invalid first-order quantity");

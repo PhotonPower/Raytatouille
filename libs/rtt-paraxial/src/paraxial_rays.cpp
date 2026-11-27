@@ -41,6 +41,17 @@ ShapeData shape_data(const compile::CompiledSurface& s, double axis_sign) {
   return d;
 }
 
+void require_plane_object(const compile::CompiledSystem& system, std::string_view caller) {
+  const model::ObjectSpace& o = system.object();
+  if (!o.at_infinity && (o.slope[0].value != 0.0 || o.slope[1].value != 0.0)) {
+    throw ParaxialError(field_error(caller,
+                                    "the object plane is tilted (object.slope); the "
+                                    "paraxial rays need a plane normal to the axis "
+                                    "(ADR 0055)"),
+                        "/object/slope");
+  }
+}
+
 RayStart marginal_start(bool object_at_infinity, double z_obj, double z_ep, double r_ep) {
   // Axial object point to the rim of the entrance pupil at +y (as in seidel() before #84).
   return object_at_infinity ? RayStart{z_ep, r_ep, 0.0}

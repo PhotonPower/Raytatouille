@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.11.0",
+  "schema_version": "0.12.0",
   "name": "Paraboloid mirror R = -200 mm behind a stop with a central obscuration and a four-armed spider, and a mounting clip on the mirror (ADR 0050)",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [

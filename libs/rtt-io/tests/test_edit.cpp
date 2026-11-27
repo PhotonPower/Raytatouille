@@ -285,7 +285,7 @@ void edit_form_keys(const json& e) {
   }
   has_keys(e["environment"], {"temperature_c", "pressure_atm", "medium"}, {}, "/environment");
   // medium: ADR 0037, reference: ADR 0038
-  has_keys(e["object"], {"at_infinity", "distance"}, {"medium", "reference"}, "/object");
+  has_keys(e["object"], {"at_infinity", "distance", "slope"}, {"medium", "reference"}, "/object");
   param(e["object"]["distance"], "/object/distance");
   for (const json& w : e["wavelengths"]) {
     has_keys(w, {"um", "weight", "reference"}, {}, "/wavelengths");

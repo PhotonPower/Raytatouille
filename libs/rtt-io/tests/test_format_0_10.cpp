@@ -49,8 +49,8 @@ System grouped_singlet() {
 
 }  // namespace
 
-TEST_CASE("schema version is 0.11.0", "[io][0.10]") {
-  REQUIRE(rtt::model::kSchemaVersion == "0.11.0");
+TEST_CASE("schema version is 0.12.0", "[io][0.10]") {
+  REQUIRE(rtt::model::kSchemaVersion == "0.12.0");
 }
 
 TEST_CASE("active: the canonical form writes it only if false, after the name", "[io][0.10]") {
@@ -110,12 +110,12 @@ TEST_CASE("active: a wrong type is a read error at the key", "[io][0.10]") {
   CHECK(error_pointer(j.dump()) == "/root/children/1/active");
 }
 
-TEST_CASE("migration 0.9 -> 0.10: content unchanged, the version becomes 0.11.0", "[io][0.10]") {
+TEST_CASE("migration 0.9 -> 0.10: content unchanged, the version becomes 0.12.0", "[io][0.10]") {
   const System s = rtt::model::test::make_singlet();
   const System read = rtt::io::parse_system(with_version(s, "0.9.0"));
   CHECK(read == s);
-  CHECK(read.schema_version == "0.11.0");
-  CHECK(json::parse(rtt::io::to_json(read))["schema_version"] == "0.11.0");
+  CHECK(read.schema_version == "0.12.0");
+  CHECK(json::parse(rtt::io::to_json(read))["schema_version"] == "0.12.0");
 }
 
 TEST_CASE("migration: the key active in a file before 0.10 is an error at the key", "[io][0.10]") {

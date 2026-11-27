@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.11.0",
+  "schema_version": "0.12.0",
   "name": "Export: coaxial double pass, ideal lens f = 80 mm, plane mirror at z = 50, image at z = -10 (ADR 0045, addendum #366)",
   "units": {
     "length": "mm",

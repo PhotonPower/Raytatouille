@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.11.0",
+  "schema_version": "0.12.0",
   "name": "Spherical mirror R = -200 mm with rotationally symmetric Zernike terms (Noll and Fringe) behind a stop (ADR 0051)",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [

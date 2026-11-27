@@ -214,6 +214,23 @@ class Validator {
       report("object.medium_infinite", "/object/medium",
              "a medium of the object space needs a finite object");
     }
+    // ADR 0055: the slopes of a tilted object plane, finite object only; with them the
+    // conversion of a paraxial image height (which assumes a plane object normal to the axis)
+    // is not defined.
+    const std::array<Param, 2>& slope = system_.object.slope;
+    for (std::size_t i = 0; i < 2; ++i) {
+      check_param(slope[i], "/object/slope/" + std::to_string(i), false);  // finite value
+    }
+    const bool tilted = slope[0] != Param{} || slope[1] != Param{};
+    if (system_.object.at_infinity && tilted) {
+      report("object.slope_infinite", "/object/slope",
+             "a tilted object plane needs a finite object");
+    }
+    if (!system_.object.at_infinity && tilted &&
+        system_.fields.type == FieldType::ParaxialImageHeight) {
+      report("fields.image_height_tilted_object", "/fields/type",
+             "paraxial image heights need an object plane normal to the axis (ADR 0055)");
+    }
     const Environment& e = system_.environment;
     if (!std::isfinite(e.temperature_c) || e.temperature_c <= -273.15) {
       report("environment.temperature_invalid", "/environment/temperature_c",
@@ -1431,12 +1448,14 @@ class Validator {
     }
   }
 
-  /// The rows that the object distance or the system aperture depend on: bound directly, or
-  /// read by an expression row they depend on (ADR 0029, point 2), for every configuration.
-  /// Such a row is no tolerance or compensator target (ADR 0035, addendum #253; #255).
+  /// The rows that the object distance, the object slopes (ADR 0055, decision on #358) or the
+  /// system aperture depend on: bound directly, or read by an expression row they depend on
+  /// (ADR 0029, point 2), for every configuration. Such a row is no tolerance or compensator
+  /// target (ADR 0035, addendum #253; #255).
   std::unordered_set<std::string> system_level_rows() const {
     std::unordered_set<std::string> rows;
-    for (const Param* p : {&system_.object.distance, &system_.aperture.value}) {
+    for (const Param* p : {&system_.object.distance, &system_.object.slope[0],
+                           &system_.object.slope[1], &system_.aperture.value}) {
       if (p->param) rows.insert(*p->param);
     }
     return with_expression_sources(std::move(rows));
@@ -1742,7 +1761,8 @@ class Validator {
                  "row '" + t.name + "' is an expression");
         } else if (system_rows_.contains(t.name)) {
           report("tolerances.target_invalid", loc + "/parameter",
-                 "the object distance or the system aperture depend on row '" + t.name + "'");
+                 "the object distance, the object slopes or the system aperture depend on row '" +
+                     t.name + "'");
         } else if (aperture_rows_.contains(t.name)) {
           report("tolerances.target_invalid", loc + "/parameter",
                  "an aperture dimension depends on row '" + t.name +
@@ -1928,9 +1948,9 @@ class Validator {
           continue;
         }
         if (system_rows_.contains(k.target.name)) {
-          report(
-              "tolerances.compensator_target", loc + "/parameter",
-              "the object distance or the system aperture depend on row '" + k.target.name + "'");
+          report("tolerances.compensator_target", loc + "/parameter",
+                 "the object distance, the object slopes or the system aperture depend on row '" +
+                     k.target.name + "'");
           continue;
         }
         if (aperture_rows_.contains(k.target.name)) {

@@ -251,15 +251,18 @@ TEST_CASE("for_each_param: every Param of the singlet in edit-form order", "[par
   std::vector<std::string> pointers;
   for_each_param(static_cast<const System&>(s),
                  [&](std::string_view p, const Param&) { pointers.emplace_back(p); });
-  // object distance, aperture, then 8 poses (root, 3 elements, 4 surfaces) with 6 Params each,
-  // radius and conic of L1.S1, and radius and inner radius of the 3 circular apertures (ADR 0050).
-  REQUIRE(pointers.size() == 2 + 8 * 6 + 2 + 3 * 2);
+  // object distance and slopes (ADR 0055), aperture, then 8 poses (root, 3 elements, 4 surfaces)
+  // with 6 Params each, radius and conic of L1.S1, and radius and inner radius of the 3 circular
+  // apertures (ADR 0050).
+  REQUIRE(pointers.size() == 4 + 8 * 6 + 2 + 3 * 2);
   CHECK(pointers[0] == "/object/distance");
-  CHECK(pointers[1] == "/aperture/value");
-  CHECK(pointers[2] == "/root/pose/position/0");
-  CHECK(pointers[5] == "/root/pose/rotation_deg/0");
-  CHECK(pointers[8] == "/root/children/0/pose/position/0");
-  CHECK(pointers[14] == "/root/children/0/surfaces/0/pose/position/0");
+  CHECK(pointers[1] == "/object/slope/0");
+  CHECK(pointers[2] == "/object/slope/1");
+  CHECK(pointers[3] == "/aperture/value");
+  CHECK(pointers[4] == "/root/pose/position/0");
+  CHECK(pointers[7] == "/root/pose/rotation_deg/0");
+  CHECK(pointers[10] == "/root/children/0/pose/position/0");
+  CHECK(pointers[16] == "/root/children/0/surfaces/0/pose/position/0");
   CHECK(std::find(pointers.begin(), pointers.end(),
                   "/root/children/1/surfaces/0/shape/base/radius") != pointers.end());
   CHECK(pointers.back() == "/root/children/2/surfaces/0/pose/rotation_deg/2");

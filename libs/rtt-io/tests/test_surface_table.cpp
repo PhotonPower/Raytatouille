@@ -572,3 +572,15 @@ TEST_CASE("every reference system writes a table that reads back, or fails with 
   }
   REQUIRE(ok >= 8);
 }
+
+TEST_CASE("the surface table refuses a tilted object plane", "[io][table][358]") {
+  // no column for object.slope (ADR 0055): refused, not dropped
+  const rtt::model::System s = rtt::io::load_system(std::string(RTT_REFERENCE_DIR) +
+                                                    "/m1/tilted_object_ideal_lens.rtt.json");
+  try {
+    static_cast<void>(rtt::io::write_surface_table(s, rtt::material::MaterialLibrary()));
+    FAIL("no ExportError");
+  } catch (const rtt::io::ExportError& e) {
+    CHECK(e.code() == "export.surface_unsupported");
+  }
+}

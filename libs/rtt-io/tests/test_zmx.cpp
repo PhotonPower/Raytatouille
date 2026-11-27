@@ -1067,3 +1067,34 @@ TEST_CASE("OBSC, SQOB and ELOB with OBDC import as decentred obscurations (ADR 0
   CHECK(out.status()[2] == RayStatus::Vignetted);
   CHECK(out.status()[3] == RayStatus::Alive);
 }
+
+TEST_CASE("a TILTSURF object surface is the tilt of the object plane", "[zmx][358]") {
+  // UG "Tilted": z = x tan(theta_x) + y tan(theta_y), PARM 1 and 2; ADR 0055: object.slope.
+  // finite.zmx with SURF 0 tilted by 45 deg in y, as the two Scheimpflug files of the OISC
+  // corpus.
+  const std::string base = read_file(kZmxDir + "finite.zmx");
+  const std::string tilted =
+      in_surface(base, 0, "TYPE", "  TYPE TILTSURF\r\n  PARM 1 0.25\r\n  PARM 2 -1.0");
+  const ZmxImport r = import_zmx(tilted, schott());
+  REQUIRE(r.system.object.slope[0].value == 0.25);
+  REQUIRE(r.system.object.slope[1].value == -1.0);
+  // without the tilt the same system
+  const ZmxImport plane = import_zmx(base, schott());
+  rtt::model::System untilted = r.system;
+  untilted.object.slope = {};
+  CHECK(untilted == plane.system);
+  // the export writes it back as TILTSURF, and the import reads the same slopes
+  const rtt::io::ZmxExport e = rtt::io::export_zmx(r.system, schott());
+  REQUIRE(e.text.find("TYPE TILTSURF") != std::string::npos);
+  const ZmxImport back = import_zmx(e.text, schott());
+  CHECK(back.system.object.slope == r.system.object.slope);
+  // an object at infinity cannot be tilted
+  const std::string infinite =
+      in_surface(in_surface(tilted, 0, "DISZ", "  DISZ INFINITY"), 0, "TYPE", "  TYPE TILTSURF");
+  try {
+    static_cast<void>(import_zmx(infinite, schott()));
+    FAIL("no ZmxError");
+  } catch (const ZmxError& error) {
+    CHECK(error.code() == "zmx.surface_unsupported");
+  }
+}

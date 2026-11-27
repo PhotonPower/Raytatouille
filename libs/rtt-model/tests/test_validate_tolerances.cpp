@@ -619,3 +619,22 @@ TEST_CASE("tolerances: target_invalid names the base type of the surface",
   CHECK(at_node.find("conic or even asphere base") != std::string::npos);
   CHECK(at_node.find("plane") == std::string::npos);
 }
+
+TEST_CASE("tolerances: rows of the object slopes are no targets", "[model][tolerances][358]") {
+  // decision on #358 after the review: as the object distance (ADR 0055)
+  for (const bool compensator : {false, true}) {
+    INFO((compensator ? "compensator" : "item"));
+    System s = valid();
+    s.parameters.push_back(row("TILT", -1.0));
+    s.object.at_infinity = false;
+    s.object.distance = Param(100.0);
+    s.object.slope[1] = Param::bound("TILT");
+    if (compensator) {
+      s.tolerances.compensators[0].target = at(A::Parameter, "TILT");
+      CHECK(reports(s, "tolerances.compensator_target", "/tolerances/compensators/0/parameter"));
+    } else {
+      s.tolerances.items[6].target = at(A::Parameter, "TILT");
+      CHECK(reports(s, "tolerances.target_invalid", "/tolerances/items/6/parameter"));
+    }
+  }
+}

@@ -1541,9 +1541,16 @@ model::System Importer::build() {
   if (surfaces_.size() < 3)
     fail("zmx.parse", 0, "the file needs an object, a surface and an image");
   const ZSurface& obj = surfaces_.front();
-  if (obj.type != "STANDARD" || obj.curv.value != 0.0) {
+  // A tilted object plane (UG "Tilted": z = x tan(theta_x) + y tan(theta_y), PARM 1 and 2) is
+  // object.slope (ADR 0055, #358); finite object only.
+  const bool tilted_object = obj.type == "TILTSURF";
+  if ((obj.type != "STANDARD" && !tilted_object) || obj.curv.value != 0.0) {
     fail("zmx.surface_unsupported", obj.curv.value != 0.0 ? obj.curv.line : obj.type_line,
-         "the object surface must be a plane STANDARD surface");
+         "the object surface must be a plane STANDARD or TILTSURF surface");
+  }
+  if (tilted_object && obj.infinite) {
+    fail("zmx.surface_unsupported", obj.type_line,
+         "a tilted object surface needs a finite object (ADR 0055)");
   }
   std::optional<std::string> object_medium;
   if (obj.infinite) {
@@ -1554,6 +1561,10 @@ model::System Importer::build() {
   } else {
     sys.object.at_infinity = false;
     sys.object.distance = length(obj.disz.value);
+    if (tilted_object) {
+      const auto tangent = [&](int i) { return obj.parm.contains(i) ? obj.parm.at(i).value : 0.0; };
+      sys.object.slope = {tangent(1), tangent(2)};  // dimensionless
+    }
     if (!obj.glass.empty()) {
       if (is_mirror(obj)) fail("zmx.object_medium_unsupported", obj.glass_line, "MIRROR at 0");
       object_medium = resolve_glass(obj);

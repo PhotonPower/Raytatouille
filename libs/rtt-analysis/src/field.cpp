@@ -100,6 +100,47 @@ Point2 paraxial_chief(const CompiledSystem& system,
                       double z) {
   const bool infinite = system.object().at_infinity;
   const std::uint16_t ref = system.reference_wavelength();
+  // Tilted object plane z = z_obj + sx x + sy y (ADR 0055): the object point leaves the plane
+  // z_obj, so the chief ray is no longer a scaled unit ray. The object point as in rtt-trace
+  // (object height: x, y kept; field angle: the chief ray through the EP centre of the reference
+  // wavelength meets the plane), then the paraxial ray from it through the EP centre of
+  // `wavelength`, in its meridian.
+  const double tilt_x = system.object().slope[0].value;
+  const double tilt_y = system.object().slope[1].value;
+  if (!infinite && (tilt_x != 0.0 || tilt_y != 0.0)) {
+    const double z_obj = system.object_z();
+    math::Vec3 point(field.x, field.y, 0.0);
+    if (system.fields().type == model::FieldType::AngleDeg) {
+      const double tx = std::tan(field.x * std::numbers::pi / 180.0);
+      const double ty = std::tan(field.y * std::numbers::pi / 180.0);
+      const std::optional<double> z_ep_ref = entrance_pupil_z(system, path, ref);
+      if (!z_ep_ref) {
+        throw std::invalid_argument(
+            "analysis: a field angle with a finite object needs a finite entrance pupil");
+      }
+      const double k = tilt_x * tx + tilt_y * ty;
+      if (!(std::abs(1.0 - k) > 0.0)) {
+        throw std::invalid_argument(
+            "analysis: the chief ray of the field angle is parallel to the tilted object plane");
+      }
+      const double zp = (z_obj - k * *z_ep_ref) / (1.0 - k);
+      point = math::Vec3((zp - *z_ep_ref) * tx, (zp - *z_ep_ref) * ty, zp);
+    } else {
+      point.z() = z_obj + tilt_x * field.x + tilt_y * field.y;  // object height
+    }
+    const double r = std::hypot(point.x(), point.y());
+    if (r == 0.0) return {0.0, 0.0};
+    const std::optional<double> z_ep = entrance_pupil_z(system, path, wavelength);
+    // as rtt-trace: the point on the side of the EP plane where z_obj lies
+    if (z_ep && (*z_ep == point.z() || (*z_ep < point.z()) != (*z_ep < z_obj))) {
+      throw std::invalid_argument(
+          "analysis: the object point of the field lies on or beyond the plane of the entrance "
+          "pupil (tilted object plane, ADR 0055)");
+    }
+    const double u = z_ep ? -r / (*z_ep - point.z()) : 0.0;
+    const double h = height_at(paraxial::trace_ray(system, path, wavelength, point.z(), r, u), z);
+    return {h * point.x() / r, h * point.y() / r};
+  }
   double sx = 0.0;
   double sy = 0.0;
   switch (system.fields().type) {

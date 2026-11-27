@@ -840,3 +840,24 @@ def test_0_11_zernike_tolerance_is_accepted():
 def test_0_11_zernike_term_errors_are_rejected(term):
     assert not VALIDATOR.is_valid(_with_items(
         [{"id": "z", "surface": "L1.S1", "term": term, "kind": "zernike", "limit": 2e-4}]))
+
+
+def test_0_12_object_slope_is_accepted():
+    doc = load(ROOT / "tests" / "reference" / "m1" / "tilted_object_ideal_lens.rtt.json")
+    assert doc["object"]["slope"] == [0.0, -1.0]
+    VALIDATOR.validate(doc)
+    doc["object"]["slope"] = [{"value": 0.1, "variable": True}, {"param": "tilt"}]
+    VALIDATOR.validate(doc)
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda o: o.__setitem__("slope", [1.0]),
+    lambda o: o.__setitem__("slope", [1.0, 2.0, 3.0]),
+    lambda o: o.__setitem__("slope", 1.0),
+    lambda o: o.__setitem__("slope", [1.0, "a"]),
+])
+def test_0_12_object_slope_errors_are_rejected(mutate):
+    doc = load(ROOT / "tests" / "reference" / "m1" / "tilted_object_ideal_lens.rtt.json")
+    mutate(doc["object"])
+    with pytest.raises(jsonschema.ValidationError):
+        VALIDATOR.validate(doc)

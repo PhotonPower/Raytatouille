@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.11.0",
+  "schema_version": "0.12.0",
   "name": "Spherical mirror R = -200 mm with an XY polynomial (rotationally symmetric to fourth order, x^6 correction) behind a stop (ADR 0051, point 4)",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [

@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.11.0",
+  "schema_version": "0.12.0",
   "name": "Plano-convex singlet of m1/singlet_const with a plane 45 deg fold mirror 40 mm behind the lens (paraxial model of folded paths, ADR 0054)",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [
