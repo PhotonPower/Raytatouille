@@ -703,3 +703,25 @@ TEST_CASE("NoConvergence counts only if the hidden crossing could be the nearest
     CHECK(h.local.t == Approx(107.363 / std::cos(0.72)).epsilon(1e-14));
   }
 }
+
+TEST_CASE("known limit: the first Newton crossing at grazing incidence",
+          "[nonseq][scene][newton]") {
+  // ADR 0057, point 3, "Bekannte Grenze": the Newton intersection starts at the base conic and
+  // may find the farther of two crossings inside the aperture. A chord of a thin asphere that
+  // grazes it between r = 5 and r = 5.5 crosses it at both points; stage 1 accepts either.
+  constexpr double a4 = 1e-6;
+  System s = singlet();
+  Surface t;
+  t.id = SurfaceId("T");
+  t.shape.base = rtt::model::EvenAsphere{kR, 0.0, {rtt::model::Param(a4)}};
+  t.aperture = CircularAperture{kRim, 0.0};
+  s.root.children[1] = Node{Element{"T", ElementKind::ThinElement, Pose::along_z(5.0), {}, {t}}};
+  const Scene scene = Scene::build(compiled(s));
+  const Vec3 p1(5.0, 0.0, 5.0 + asphere_sag(a4, 5.0));
+  const Vec3 p2(5.5, 0.0, 5.0 + asphere_sag(a4, 5.5));
+  const Vec3 dir = (p2 - p1).normalized();
+  const SceneHit h = scene.closest_hit(ray(p1 - 2.0 * dir, dir));
+  REQUIRE(h.status == HitStatus::Hit);
+  CHECK(scene.faces()[h.face].kind == FaceKind::Thin);
+  CHECK(std::min((h.point - p1).norm(), (h.point - p2).norm()) < 1e-9);
+}

@@ -20,8 +20,10 @@ namespace rtt::trace {
 
 /// State of a ray. Problems while tracing are status flags, never exceptions (ADR 0009).
 enum class RayStatus : std::uint8_t {
-  Alive,          ///< still being traced
-  Missed,         ///< did not intersect the next surface
+  Alive,  ///< still being traced
+  /// did not intersect the next surface; non-sequential (ADR 0057, Nachtrag PR 1): hit no face
+  /// any more (escaped)
+  Missed,
   Vignetted,      ///< hit a surface outside its aperture
   Tir,            ///< total internal reflection where refraction was requested
   NoConvergence,  ///< iterative intersection did not converge
