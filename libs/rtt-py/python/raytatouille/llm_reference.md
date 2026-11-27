@@ -41,14 +41,14 @@ analyses parallelise internally (`threads=`). `import raytatouille as rt`.
 | Indices of lists | `field`, `wavelength` are 0-based indices; `path` is an index or a name |
 | Determinism | bitwise equal for any thread count; randomness only with a seed |
 
-## Minimal system file (schema 0.12.0)
+## Minimal system file (schema 0.13.0)
 
 ```python
 import json
 import raytatouille as rt
 
 SINGLET = {
-    "schema_version": "0.12.0",
+    "schema_version": "0.13.0",
     "name": "Singlet",
     "units": {"length": "mm", "wavelength": "um"},
     "wavelengths": [{"um": 0.4861}, {"um": 0.5876, "reference": True}, {"um": 0.6563}],
@@ -251,7 +251,8 @@ lens = d["root"]["children"][1]
 lens["surfaces"][0]["shape"]["base"]["radius"] = {"value": 51.68, "variable": True}
 d["root"]["children"][2]["pose"]["position"][2] = {"value": 106.442, "variable": True}
 d["optimization"] = {
-    "operands": [{"type": "efl", "path": "main", "target": 100.0, "weight": 100.0}],
+    # an exact constraint (ADR 0056); a weighted operand would be {"target": 100.0, "weight": 100.0}
+    "operands": [{"type": "efl", "path": "main", "target": 100.0, "constraint": "equal"}],
     "generators": [{"type": "rms_spot", "path": "main"}]}
 res = rt.optim.optimize(rt.System.from_json(json.dumps(d)),
                         options=rt.optim.OptimizeOptions(max_iterations=30))

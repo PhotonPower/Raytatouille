@@ -526,8 +526,8 @@ def load_json(text: str) -> Result:
     aperture_vertices from 0.1.21, obscurations from 0.1.22, terms from 0.1.23; CompiledElement
     and the segments of DimensionReport: active from 0.1.20; FirstOrder: folds and image_space
     from 0.1.24; the operands of OptimResult: constraint from 0.1.25); the data then contain
-    them as the type's reading rule says (RayBatch: wave = dir, mode_index 0, ADR 0026, point 3; no Q and no
-    P per slot: q and prt None, polarization False, since Q cannot be recomputed without the
+    them as the type's reading rule says (RayBatch: wave = dir, mode_index 0, ADR 0026, point
+    3; no Q and no P per slot: q and prt None, polarization False, since Q cannot be recomputed without the
     normals, ADR 0034; SurfaceLayout: the x section equals the y section, ADR 0042, point 5, and
     no normalization radius and no axicon angle, ADR 0043, point 4; active is true, since an
     older file knows no inactive element, ADR 0049, point 7; no aperture vertices, since an

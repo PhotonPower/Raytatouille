@@ -885,3 +885,10 @@ def test_0_13_criterion_has_no_constraint():
     doc["tolerances"] = {"criteria": [{"id": "efl", "max": 101.0, "operand": {
         "type": "efl", "path": "main", "constraint": "equal"}}]}
     assert not VALIDATOR.is_valid(doc)
+
+
+def test_0_13_constraint_in_the_compensator_merit_is_accepted():
+    doc = load(ROOT / "tests" / "reference" / "m5" / "singlet_constraint.rtt.json")
+    doc["tolerances"] = {"compensator_merit": {"operands": [
+        {"type": "efl", "path": "main", "target": 100.0, "constraint": "equal"}]}}
+    VALIDATOR.validate(doc)

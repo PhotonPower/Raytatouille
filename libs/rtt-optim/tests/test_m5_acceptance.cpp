@@ -609,8 +609,10 @@ TEST_CASE("M5 acceptance, case 1 with the EFL as an exact constraint (#196)", "[
   // - the reference: the golden-section bracket of 1e-6 mm;
   // - flat minimum: the merit is known to sigma_F = ||f|| sigma_f with sigma_f = kMeritPrecision
   //   ||f(p0)||inf (ADR 0030, point 9), so the run cannot place R1 better than sqrt(2 sigma_F / H);
-  // - the solver's difference step h = eps_f^(1/3) max(|p|, 1) moves the reduced gradient
-  //   t^T J~^T f by (J~ - J)^T f . t, the fixed point by that over H;
+  // - the solver's difference step h = eps_f^(1/3) max(|p|, 1): its fixed point satisfies
+  //   J~^T f + C~^T w = 0 with C t = 0 along the curve, so the reduced gradient is off by
+  //   t^T (J~ - J)^T f + w (C~ - C) t, the fixed point by that over H; w = -(C J^T f) / (C C^T)
+  //   is the multiplier at the reference (review of #196);
   // - the step test (ftol = 0, default xtol: with a residual left the gradient noise gives steps
   //   along the flat direction that a smaller xtol would never accept): at most twice the last
   //   step ||D h|| / d_R1, a posteriori from the last solve (as the step-test bounds of #166).
@@ -649,6 +651,18 @@ TEST_CASE("M5 acceptance, case 1 with the EFL as an exact constraint (#196)", "[
   for (std::size_t i = 1; i < f_ref.size(); ++i) {
     for (std::size_t c = 0; c < 3; ++c) bias += (j_solver[i][c] - j_acc[i][c]) * t[c] * f_ref[i];
   }
+  // The multiplier w = -(C J^T f) / (C C^T) with C = row 0 of the accurate Jacobian, and the
+  // bias of row 0 along t times w.
+  double cjf = 0.0;
+  double cc = 0.0;
+  for (std::size_t c = 0; c < 3; ++c) {
+    double jf = 0.0;
+    for (std::size_t i = 1; i < f_ref.size(); ++i) jf += j_acc[i][c] * f_ref[i];
+    cjf += j_acc[0][c] * jf;
+    cc += j_acc[0][c] * j_acc[0][c];
+  }
+  const double w = -cjf / cc;
+  for (std::size_t c = 0; c < 3; ++c) bias += w * (j_solver[0][c] - j_acc[0][c]) * t[c];
   const double shift_fd = std::abs(bias) / h_f;
   // D of the solver: column norms of the start Jacobian, all rows (ADR 0030, point 6).
   const Mat j_start = jacobian_at(merit, merit.start(),
@@ -661,7 +675,8 @@ TEST_CASE("M5 acceptance, case 1 with the EFL as an exact constraint (#196)", "[
   options.ftol = 0.0;
   const OptimResult r = rtt::optim::optimize(s, lib, nullptr, options);
   INFO("status " << static_cast<int>(r.status) << ", iterations " << r.iterations);
-  REQUIRE(r.status != rtt::optim::LmStatus::Failed);
+  // The step term below is a posteriori and assumes the end by the step test (ftol = 0).
+  REQUIRE(r.status == rtt::optim::LmStatus::ConvergedStep);
   REQUIRE(!r.history.empty());
   const double step = 2.0 * r.history.back().step_norm / d_r1;
   const double tol = 2.0 * (1e-6 + flat + shift_fd + step);

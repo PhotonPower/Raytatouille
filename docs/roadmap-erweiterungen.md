@@ -124,7 +124,7 @@ Ideenliste aus der Umsetzung von M7 (0.9.0), gesammelt von den Agenten; neu zu b
   - Spot/OPD-Operanden wie die Generatoren behandeln, deren Strahlmenge seit #289 die des Starts bleibt (#299); was danach von #281 bleibt, wird dort neu bewertet.
   - Differenzenschrittweite je Variable für steife Probleme (#290).
   - Zielungsart als Lauf-Option von `optimize` (#291).
-  - Exakte Gleichheitsbedingungen statt Strafgewicht (#196).
+  - Exakte Gleichheitsbedingungen statt Strafgewicht (#196, umgesetzt: ADR 0056, Schema 0.13).
 - **Modell, Trace, Analyse:**
   - Bezug des Objektabstands `object.reference` (#288, braucht einen Schemasprung).
   - Apertur als reale NA n sin U statt paraxial (#296, aus #287).

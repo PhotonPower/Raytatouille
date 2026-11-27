@@ -189,7 +189,9 @@ using IterationCallback = std::function<void(const IterationState& state)>;
 ///         generator, ADR 0049, or if there are only exact constraints, ADR 0056), and/or
 ///         optim.constraints_too_many (more exact constraints than variables), or with
 ///         merit.operand_unsupported; OptimError with optim.constraint_infeasible if the start
-///         cannot be projected onto the exact constraints (ADR 0056, point 5)
+///         cannot be projected onto the exact constraints (ADR 0056, point 5); with exact
+///         constraints, std::invalid_argument if options.constraint_tolerance is not finite and
+///         > 0
 /// @throws the exception of an analysis at the start (ParaxialError, AnalysisError,
 ///         NoStopError), or std::invalid_argument naming the operand or generator if its value
 ///         or a residual is not defined at the start (ADR 0030, point 10)

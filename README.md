@@ -21,7 +21,7 @@ alles auch aus Python. Davor: Beugung (M6) mit Pupillenfunktion, Zernike-Fit (No
 FFT-PSF, MTF und Encircled Energy, Jones-Pupille mit Diattenuations-, Retardance- und Stokes-Karten,
 Interferogramm zweier Pfade und die ideale Linse; Optimierung mit Levenberg-Marquardt,
 Merit-Funktion und Parametertabelle mit Konfigurationen (M5; exakte Bedingungen wie eine feste
-Brennweite als Bindung in der Parametertabelle, #196); explizite Pfade durch Strahlteiler, Ghosts,
+Brennweite als `"constraint": "equal"` am Operanden, ADR 0056); explizite Pfade durch Strahlteiler, Ghosts,
 Gitter und einachsige Kristalle (M4); sequenzielles Raytracing mit Ray Aiming und paraxialer Analyse
 (M1); Glaskataloge (AGF), Luft und dn/dT, Spot, Ray Fans, OPD, Verzeichnung, Seidel und Python-API
 (M2); Polarisations-Raytracing mit Fresnel (komplexer Index), Coatings (Transfermatrix, Kataloge),

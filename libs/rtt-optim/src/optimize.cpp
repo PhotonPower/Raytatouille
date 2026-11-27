@@ -113,6 +113,14 @@ OptimResult run(const model::System& system,
   const auto is_constraint = [&constraints](std::size_t i) {
     return std::find(constraints.begin(), constraints.end(), i) != constraints.end();
   };
+  // Declared as a constraint in the file, active or not: such an operand is never part of F, so
+  // it counts neither in the weights of phi nor in the table with its weight (ADR 0056, point 7;
+  // review of #196). Only the active ones go to the solver.
+  const auto declared_constraint = [&system, n_operands](std::size_t i) {
+    return i < n_operands &&
+           std::visit([](const auto& o) { return o.common.constraint.has_value(); },
+                      system.optimization.operands[i]);
+  };
   std::size_t objective_operands = 0;
   for (std::size_t i = 0; i < n_operands; ++i) {
     if (!inactive[i] && !is_constraint(i)) ++objective_operands;
@@ -185,7 +193,7 @@ OptimResult run(const model::System& system,
   // state alike.
   double weights = 0.0;
   for (std::size_t i = 0; i < n_operands; ++i) {
-    if (is_constraint(i)) continue;  // a constraint is not part of F (ADR 0056, point 7)
+    if (declared_constraint(i)) continue;  // not part of F (ADR 0056, point 7)
     weights +=
         std::visit([](const auto& o) { return o.common.weight; }, system.optimization.operands[i]);
   }
@@ -284,7 +292,7 @@ OptimResult run(const model::System& system,
   for (std::size_t i = 0; i < end.values.size(); ++i) {
     const model::Operand& op = system.optimization.operands[i];
     const double target = std::visit([](const auto& o) { return o.common.target; }, op);
-    const bool constraint = is_constraint(i);
+    const bool constraint = declared_constraint(i);
     const double weight =
         constraint ? 0.0 : std::visit([](const auto& o) { return o.common.weight; }, op);
     const double r = end.residuals[i];

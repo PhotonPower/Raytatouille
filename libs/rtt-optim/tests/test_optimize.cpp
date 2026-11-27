@@ -1131,3 +1131,34 @@ TEST_CASE("optimize: a constraint missed in the final state is a warning", "[opt
   CHECK(r.status == LmStatus::Failed);
   CHECK(has(r.diagnostics, "optim.constraint_violated", "/optimization/operands/1"));
 }
+
+TEST_CASE("optimize: several constraints around an ordinary operand", "[optim][196]") {
+  // Order of the file: constraint X = 2, efl (ordinary), constraint Y = 3. The solver takes the
+  // constraints last (ADR 0056, point 8); the table keeps the file order, and an infeasible
+  // constraint is reported at its own pointer, here the second (E = Y Y = -1 instead of Y = 3).
+  System s = singlet();
+  radius(s, 1, 0).variable = true;
+  s.parameters = {row("X", 1.0, true), row("Y", 1.0, true)};
+  s.optimization.operands = {constraint_on("X", 2.0), efl(80.0), constraint_on("Y", 3.0)};
+  const MaterialLibrary lib;
+  const OptimResult r = optimize(s, lib);
+  REQUIRE(r.status != LmStatus::Failed);
+  REQUIRE(r.operands.size() == 3);
+  CHECK(r.operands[0].constraint);
+  CHECK_FALSE(r.operands[1].constraint);
+  CHECK(r.operands[2].constraint);
+  CHECK(std::abs(r.operands[0].value - 2.0) <= 1e-12 * 2.0);
+  CHECK(std::abs(r.operands[2].value - 3.0) <= 1e-12 * 3.0);
+  CHECK(std::abs(r.operands[1].value - 80.0) < 1e-6);
+  CHECK(r.operands[1].contribution == 100.0);  // the only part of F
+  // An infeasible second constraint is named at its pointer.
+  System bad = s;
+  bad.parameters.push_back(row("E", rtt::model::ParameterExpression{"Y * Y"}));
+  bad.optimization.operands[2] = constraint_on("E", -1.0);
+  try {
+    static_cast<void>(optimize(bad, lib));
+    FAIL("no OptimError");
+  } catch (const OptimError& e) {
+    CHECK(has(e.diagnostics(), "optim.constraint_infeasible", "/optimization/operands/2"));
+  }
+}

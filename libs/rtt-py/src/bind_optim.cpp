@@ -177,7 +177,8 @@ void bind_optim(nb::module_& m) {
           "residuals", [](const MeritEvaluation& e) { return doubles(e.residuals); },
           nb::rv_policy::reference,
           "sqrt(weight) (value - target) per operand, then the residuals of the generators in "
-          "file order (read-only copy).")
+          "file order (read-only copy). For an exact constraint (ADR 0056) the entry is "
+          "value - target and not part of the merit F.")
       .def_ro("undefined", &MeritEvaluation::undefined,
               "Why an operand has no value (empty string if it has one), operand order.")
       .def_ro("warnings", &MeritEvaluation::warnings,

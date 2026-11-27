@@ -1463,8 +1463,8 @@ Compensator read_compensator(const Json& j, const Ctx& c) {
 /// The operand of a criterion: an operand of ADR 0030 without target and weight (ADR 0035,
 /// point 7); the model keeps target 0 and weight 1.
 Operand read_criterion_operand(const Json& j, const Ctx& c) {
-  if (!j.is_object()) return read_operand(j, c);  // reports the structural error
-  for (const char* key : {"target", "weight"}) {
+  if (!j.is_object()) return read_operand(j, c);                // reports the structural error
+  for (const char* key : {"target", "weight", "constraint"}) {  // constraint: ADR 0056
     if (find(j, key) != nullptr) {
       c.at(key).fail("the operand of a criterion has no " + std::string(key));
     }
@@ -2500,15 +2500,16 @@ class Writer {
     return o;
   }
 
-  /// A criterion: its operand without target and weight (ADR 0035, point 7). Values other than
-  /// target 0 and weight 1 can only come from the API; validate rejects them
-  /// (tolerances.criterion_bounds), the writer drops them.
+  /// A criterion: its operand without target, weight and constraint (ADR 0035, point 7; ADR
+  /// 0056). Values other than target 0, weight 1 and no constraint can only come from the API;
+  /// validate rejects them (tolerances.criterion_bounds), the writer drops them.
   OJson criterion(const Criterion& k) const {
     OJson o;
     o["id"] = k.id;
     OJson op = std::visit([this](const auto& x) { return operand(x); }, k.operand);
     op.erase("target");
     op.erase("weight");
+    op.erase("constraint");  // ADR 0056: validate rejects it there (tolerances.criterion_bounds)
     o["operand"] = std::move(op);
     if (k.min) o["min"] = num(*k.min);
     if (k.max) o["max"] = num(*k.max);

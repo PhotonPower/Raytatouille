@@ -108,3 +108,20 @@ def test_a_constraint_in_the_compensator_merit() -> None:
     weighted = _compensated(False)
     assert abs(weighted["plus"]["criteria"][0]["value"] - weighted["efl0"]) > 1e-3
     assert not weighted["plus"]["criteria"][0]["satisfied"]
+
+
+def test_constraints_of_the_compensator_merit_are_checked_once() -> None:
+    # more constraints than compensators: an input error of the run, not of every trial
+    d = json.loads((REFERENCE_DIR / "m1" / "two_lenses_stop_between.rtt.json").read_text())
+    d["tolerances"] = {
+        "items": [{"id": "l1-dz", "node": "L1", "kind": "shift_z", "limit": 0.2}],
+        "compensators": [{"node": "image", "param": "/pose/position/2", "travel_min": -5.0,
+                          "travel_max": 5.0}],
+        "compensator_merit": {
+            "operands": [{"type": "efl", "path": "main", "target": 38.0, "constraint": "equal"},
+                         {"type": "bfl", "path": "main", "target": 30.0, "constraint": "equal"}],
+            "generators": [{"type": "rms_spot", "path": "main"}]},
+        "criteria": [{"id": "efl", "operand": {"type": "efl", "path": "main"}, "max": 40.0}]}
+    with pytest.raises(rt.OptimError) as e:
+        rt.tolerance.sensitivity(rt.System.from_json(json.dumps(d)), confirm=False)
+    assert [x.code for x in e.value.diagnostics] == ["optim.constraints_too_many"]

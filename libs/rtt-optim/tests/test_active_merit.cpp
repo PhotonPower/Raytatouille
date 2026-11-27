@@ -233,3 +233,30 @@ TEST_CASE("active: a variable Param in an inactive node is no variable", "[activ
     CHECK(has_code(e, "optim.variable_inactive"));
   }
 }
+
+TEST_CASE("active: a constraint at an inactive surface is left out and not part of phi",
+          "[active][196]") {
+  // A ray_y constraint at the inactive window is left out like any operand (ADR 0049, point 4),
+  // so only efl and the IMG ray remain for the solver; it still counts as a constraint: weight 0
+  // and no share in the table, and not in the weights of phi (ADR 0056, point 7). phi is then
+  // 2 F / 2 (the two ordinary operands), as for the system without the constraint.
+  const MaterialLibrary lib;
+  System a = with_inactive_window();
+  rtt::model::RayOperand c = ray_y("W.S1", 1.0);
+  c.common.constraint = rtt::model::ConstraintKind::Equal;
+  a.optimization.operands = {c, efl(100.0), ray_y("IMG", 1.0)};
+  System b = with_inactive_window();
+  b.optimization.operands = {efl(100.0), ray_y("IMG", 1.0)};
+  rtt::optim::OptimizeOptions options;
+  options.max_iterations = 3;
+  const rtt::optim::OptimResult ra = rtt::optim::optimize(a, lib, nullptr, options);
+  const rtt::optim::OptimResult rb = rtt::optim::optimize(b, lib, nullptr, options);
+  REQUIRE(ra.operands.size() == 3);
+  CHECK(ra.operands[0].constraint);
+  CHECK(ra.operands[0].weight == 0.0);
+  CHECK(ra.operands[0].contribution == 0.0);
+  REQUIRE(ra.history.size() == rb.history.size());
+  REQUIRE(!ra.history.empty());
+  for (std::size_t k = 0; k < ra.history.size(); ++k) CHECK(ra.history[k].phi == rb.history[k].phi);
+  CHECK(ra.history.front().phi > 0.0);  // content guard
+}

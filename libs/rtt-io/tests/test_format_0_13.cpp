@@ -86,6 +86,13 @@ TEST_CASE("reading a constraint: weight and value are checked", "[io][0.13]") {
   json with_weight = j;
   with_weight["optimization"]["operands"][0]["weight"] = 1.0;
   CHECK(error_pointer(with_weight.dump()) == "/optimization/operands/0/weight");
+  // the operand of a criterion has no constraint (like target and weight, ADR 0056)
+  json crit = j;
+  crit["tolerances"]["criteria"] = json::array(
+      {json{{"id", "efl"},
+            {"operand", json{{"type", "efl"}, {"path", "main"}, {"constraint", "equal"}}},
+            {"max", 101.0}}});
+  CHECK(error_pointer(crit.dump()) == "/tolerances/criteria/0/operand/constraint");
   json unknown = j;
   unknown["optimization"]["operands"][0]["constraint"] = "less";
   CHECK(error_pointer(unknown.dump()) == "/optimization/operands/0/constraint");
