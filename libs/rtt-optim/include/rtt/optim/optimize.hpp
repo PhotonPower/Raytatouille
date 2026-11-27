@@ -18,6 +18,7 @@
 #include "rtt/optim/levenberg_marquardt.hpp"
 #include "rtt/optim/overlay.hpp"
 #include "rtt/trace/run_control.hpp"
+#include "rtt/trace/sources.hpp"
 
 namespace rtt::optim {
 
@@ -50,6 +51,9 @@ struct OptimizeOptions {
   /// makes h smaller, but must stay above the noise of the evaluation (real aiming), else the
   /// noise dominates the Jacobian (ADR 0030, addendum #281).
   double function_precision = kMeritPrecision;
+  /// Aiming of every ray of the merit function, also of the parabasal rays of a trial (ADR 0030,
+  /// addendum #291), as `aiming` of the analyses; real by default, bit for bit as before.
+  trace::Aiming aiming = trace::Aiming::Real;
 };
 
 /// One solve of the run (ADR 0030, point 12).

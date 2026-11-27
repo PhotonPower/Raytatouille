@@ -89,7 +89,7 @@ OptimResult run(const model::System& system,
     result.diagnostics = inactive_variables(system);
     return result;
   }
-  const MeritFunction merit(system, materials, coatings, overlay);
+  const MeritFunction merit(system, materials, coatings, overlay, options.aiming);
   const std::vector<Variable>& variables = merit.variables();
   // ADR 0030, point 10 (addendum #167): a run without variables or without a merit function is
   // an input error, never a silent "converged".

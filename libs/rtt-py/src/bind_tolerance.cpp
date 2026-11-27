@@ -621,8 +621,8 @@ void bind_tolerance(nb::module_& m) {
       [](const model::System& system, const material::MaterialLibrary* materials,
          const coating::CoatingLibrary* coatings, std::optional<std::uint64_t> trials,
          std::optional<std::uint64_t> seed, const std::vector<double>& percentiles, double z,
-         bool keep_trials, const optim::OptimizeOptions& compensators, std::optional<int> threads,
-         const std::optional<trace::CancelToken>& cancel,
+         bool keep_trials, const optim::OptimizeOptions& compensators, trace::Aiming aiming,
+         std::optional<int> threads, const std::optional<trace::CancelToken>& cancel,
          const std::optional<nb::callable>& progress) {
         const trace::RunControl control = run_control(cancel, progress);
         // A copy while the GIL is held, as for optimize (rt.System is mutable from Python).
@@ -638,12 +638,13 @@ void bind_tolerance(nb::module_& m) {
         options.z = z;
         options.keep_trials = keep_trials;
         options.trial.compensators = compensators;
+        options.trial.aiming = aiming;
         return released(threads, [&] {
           return tolerance::monte_carlo(input, library, coatings, options, &control);
         });
       },
       "system"_a, "materials"_a.none(), "coatings"_a.none(), "trials"_a.none(), "seed"_a.none(),
-      "percentiles"_a, "z"_a, "keep_trials"_a, "compensators"_a, "threads"_a.none(),
+      "percentiles"_a, "z"_a, "keep_trials"_a, "compensators"_a, "aiming"_a, "threads"_a.none(),
       "cancel"_a.none(), "progress"_a.none(),
       "Monte Carlo of system.tolerances (ADR 0036, point 7); `materials` and `coatings` must "
       "not change during the run.");
@@ -651,8 +652,8 @@ void bind_tolerance(nb::module_& m) {
       "tolerance_sensitivity",
       [](const model::System& system, const material::MaterialLibrary* materials,
          const coating::CoatingLibrary* coatings, bool confirm,
-         const optim::OptimizeOptions& compensators, std::optional<int> threads,
-         const std::optional<trace::CancelToken>& cancel,
+         const optim::OptimizeOptions& compensators, trace::Aiming aiming,
+         std::optional<int> threads, const std::optional<trace::CancelToken>& cancel,
          const std::optional<nb::callable>& progress) {
         const trace::RunControl control = run_control(cancel, progress);
         // A copy while the GIL is held, as for optimize (rt.System is mutable from Python).
@@ -664,12 +665,13 @@ void bind_tolerance(nb::module_& m) {
         tolerance::SensitivityOptions options;
         options.confirm = confirm;
         options.trial.compensators = compensators;
+        options.trial.aiming = aiming;
         return released(threads, [&] {
           return tolerance::sensitivity(input, library, coatings, options, &control);
         });
       },
       "system"_a, "materials"_a.none(), "coatings"_a.none(), "confirm"_a, "compensators"_a,
-      "threads"_a.none(), "cancel"_a.none(), "progress"_a.none(),
+      "aiming"_a, "threads"_a.none(), "cancel"_a.none(), "progress"_a.none(),
       "Sensitivity, RSS and inverse sensitivity of system.tolerances (ADR 0036, point 6); "
       "`materials` and `coatings` must not change during the run.");
 }

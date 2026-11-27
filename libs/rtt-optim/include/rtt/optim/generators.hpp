@@ -34,7 +34,7 @@
 /// another set is invalid, so a run cannot lower the sum of squares by losing rays. If no ray of
 /// a field (spot) or of a field and wavelength (wavefront) arrives, or the chief ray of a spot
 /// with reference "chief" does not, its residuals are NaN: the evaluation is invalid (ADR 0030,
-/// point 10). All rays use real aiming.
+/// point 10). All rays use the aiming of the run, real by default (ADR 0030, addendum #291).
 
 #include <cstddef>
 #include <cstdint>
@@ -44,6 +44,7 @@
 
 #include "rtt/compile/compiled_system.hpp"
 #include "rtt/model/optimization.hpp"
+#include "rtt/trace/sources.hpp"
 
 namespace rtt::optim {
 
@@ -77,9 +78,12 @@ struct GeneratorStats {
 ///         these before a run)
 /// @throws as analysis::opd_points (rms_wavefront: chief ray lost or missing the sphere) and
 ///         trace::make_rays
+/// @param aiming     aiming of all rays (ADR 0030, addendum #291); real by default, bit for bit
+///                   as before
 void generator_residuals(const model::Generator& generator,
                          const compile::CompiledSystem& system,
                          std::span<double> out,
-                         GeneratorStats& stats);
+                         GeneratorStats& stats,
+                         trace::Aiming aiming = trace::Aiming::Real);
 
 }  // namespace rtt::optim

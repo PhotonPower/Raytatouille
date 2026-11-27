@@ -219,7 +219,8 @@ Value first_order_value(const compile::CompiledSystem& cs, const model::FirstOrd
 /// (rtt/trace/ray_paths.hpp): slot e + 1 is the state after event e.
 Value ray_value(const compile::CompiledSystem& cs,
                 const model::RayOperand& op,
-                const analysis::NominalReference* nominal) {
+                const analysis::NominalReference* nominal,
+                trace::Aiming aiming) {
   const compile::PathId path = path_id(cs, op.path);
   const std::uint16_t wl = op.wavelength.value_or(cs.reference_wavelength());
   const std::optional<std::uint32_t> surface = cs.find_surface(op.surface);
@@ -237,9 +238,9 @@ Value ray_value(const compile::CompiledSystem& cs,
   // With an overlay aimed with the nominal aiming data (#255; ADR 0030, addendum #256).
   trace::RayBatch rays =
       nominal != nullptr
-          ? trace::make_rays(cs, path, fields, wl, trace::SinglePupilPoint{op.px, op.py},
-                             trace::Aiming::Real, nominal->aim(wl))
-          : trace::make_rays(cs, path, fields, wl, trace::SinglePupilPoint{op.px, op.py});
+          ? trace::make_rays(cs, path, fields, wl, trace::SinglePupilPoint{op.px, op.py}, aiming,
+                             nominal->aim(wl))
+          : trace::make_rays(cs, path, fields, wl, trace::SinglePupilPoint{op.px, op.py}, aiming);
   trace::RayPaths recorded;
   static_cast<void>(trace::SequentialTracer().trace(cs, path, rays, recorded));
   const std::size_t slot = *event + 1;
@@ -341,11 +342,13 @@ bool MeritEvaluation::valid() const noexcept {
 MeritFunction::MeritFunction(const model::System& system,
                              const material::MaterialLibrary& materials,
                              const coating::CoatingLibrary* coatings,
-                             const TrialOverlay* overlay)
+                             const TrialOverlay* overlay,
+                             trace::Aiming aiming)
     : system_(&system),
       materials_(&materials),
       coatings_(coatings),
       overlay_(overlay),
+      aiming_(aiming),
       variables_(collect_variables(system)) {
   // The model first, also when no operand needs compile (only param_value operands).
   std::vector<model::Diagnostic> errors = model::validate(system);
@@ -616,17 +619,18 @@ MeritEvaluation MeritFunction::evaluate(std::span<const double> values) const {
           const std::optional<compile::CompiledSystem>& inf = variants[k];
           const detail::ParabasalValue p = detail::parabasal_value(
               *f, cs, inf ? &inf.value() : nullptr, nominal->wavelengths.at(wl), nominal->reference,
-              system.object.at_infinity, path, wl, overlay_->parabasal_step);
+              system.object.at_infinity, path, wl, overlay_->parabasal_step, aiming_);
           v.value = p.value;
           v.undefined = p.undefined;
         } else {
           v = first_order_value(cs, *f);
         }
       } else if (const auto* r = std::get_if<model::RayOperand>(&op)) {
-        v = ray_value(cs, *r, nominal != nullptr ? &nominal->reference : nullptr);
+        v = ray_value(cs, *r, nominal != nullptr ? &nominal->reference : nullptr, aiming_);
       } else if (const auto* s = std::get_if<model::SpotRmsOperand>(&op)) {
         analysis::SpotOptions options;
         options.sampling = trace::HexapolarPupil{s->rings};
+        options.aiming = aiming_;
         if (nominal != nullptr) options.reference = nominal->reference;
         const std::optional<std::uint16_t> wl =
             s->polychromatic ? std::nullopt
@@ -641,6 +645,7 @@ MeritEvaluation MeritFunction::evaluate(std::span<const double> values) const {
         const auto& o = std::get<model::OpdRmsOperand>(op);
         analysis::OpdOptions options;
         options.grid = o.grid;
+        options.aiming = aiming_;
         if (nominal != nullptr) options.reference = nominal->reference;
         const analysis::OpdMap map =
             analysis::opd_map(cs, path_id(cs, o.path), o.field,
@@ -677,7 +682,7 @@ MeritEvaluation MeritFunction::evaluate(std::span<const double> values) const {
       nominal = &nominal_path(*overlay_, k, *slot, path_id(*slot, *gc.path)).reference;
     }
     detail::generator_residuals(
-        generators[g], *slot, nominal,
+        generators[g], *slot, nominal, aiming_,
         std::span<double>(out.residuals).subspan(offset, generator_sizes_[g]), out.generators[g]);
     offset += generator_sizes_[g];
   }

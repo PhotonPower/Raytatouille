@@ -62,7 +62,7 @@ from ._core import (
     VariableValue,
 )
 from .errors import OptimError, RaytatouilleWarning
-from .trace import CancelToken, ProgressCallback
+from .trace import Aiming, CancelToken, ProgressCallback
 
 IterationCallback = Callable[[IterationState], object]
 """``on_iteration(state)`` of optimize(): called after every accepted solve (#378)."""
@@ -117,6 +117,7 @@ def optimize(
     materials: MaterialLibrary | None = None,
     coatings: CoatingLibrary | None = None,
     options: OptimizeOptions | None = None,
+    aiming: Aiming | None = None,
     threads: int | None = None,
     cancel: CancelToken | None = None,
     progress: ProgressCallback | None = None,
@@ -125,6 +126,8 @@ def optimize(
     """Optimizes the variables of ``system`` against its merit function (ADR 0030) with
     Levenberg-Marquardt. ``materials`` (None: only VACUUM, AIR and CONST:) and ``coatings``
     as in rt.compile; ``options`` the solver settings (None: the defaults of OptimizeOptions).
+    ``aiming`` (rt.trace.Aiming) aims every ray of the merit function, as ``aiming`` of the
+    analyses (ADR 0030, addendum #291); None takes ``options.aiming`` (default REAL).
     The system is copied before the run; the libraries are used by reference, so do not add
     catalogues to them from another thread during the run (as for every analysis).
 
@@ -150,9 +153,12 @@ def optimize(
     """
     raised: list[BaseException] = []
     live = None if on_iteration is None else _recording(on_iteration, raised)
-    result = _core.optimize(system, materials, coatings,
-                            OptimizeOptions() if options is None else options, threads, cancel,
-                            progress, live)
+    run = OptimizeOptions() if options is None else options
+    if aiming is not None:
+        run = OptimizeOptions(max_iterations=run.max_iterations, ftol=run.ftol, xtol=run.xtol,
+                              gtol=run.gtol, tau=run.tau,
+                              function_precision=run.function_precision, aiming=aiming)
+    result = _core.optimize(system, materials, coatings, run, threads, cancel, progress, live)
     if raised:
         warnings.warn(
             f"on_iteration raised {raised[0]!r}; the run ended with status CANCELLED and the "

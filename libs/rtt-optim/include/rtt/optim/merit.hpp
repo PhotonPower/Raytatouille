@@ -22,6 +22,7 @@
 #include "rtt/optim/generators.hpp"
 #include "rtt/optim/overlay.hpp"
 #include "rtt/optim/variables.hpp"
+#include "rtt/trace/sources.hpp"
 
 namespace rtt::optim {
 
@@ -79,13 +80,16 @@ struct MeritEvaluation {
 /// - efl, bfl, magnification: paraxial::first_order(cs, path, wavelength); efl and bfl are not
 ///   defined for an afocal path, magnification not for an object at infinity (a start error).
 /// - image_fnumber: paraxial::prescription(cs, path, wavelength).paraxial_working_f_number.
-/// - ray_x, ray_y: one ray from trace::make_rays (SinglePupilPoint, real aiming) traced with
+/// - ray_x, ray_y: one ray from trace::make_rays (SinglePupilPoint, the aiming of the
+///   constructor, real by default; ADR 0030, addendum #291) traced with
 ///   recording; the coordinate of its hit point at the event of `surface` (occurrence) in the
 ///   local coordinates of that surface, mm. Not defined if the ray is not Alive after that
 ///   event (lost before or at it); a loss after it does not matter.
-/// - spot_rms: analysis::spot with HexapolarPupil{rings} and real aiming; stats.rms_centroid or
+/// - spot_rms: analysis::spot with HexapolarPupil{rings} and the aiming of the constructor;
+///   stats.rms_centroid or
 ///   stats.rms_chief, mm. Polychromatic: all system wavelengths with their weights.
-/// - opd_rms: analysis::opd_map with OpdOptions{grid}; rms, waves at the reference wavelength.
+/// - opd_rms: analysis::opd_map with OpdOptions{grid} and the aiming of the constructor; rms, waves
+/// at the reference wavelength.
 /// - param_value: the value of the table row in the configuration (model::evaluate_parameters).
 /// The wavelength of an operand is an index into System::wavelengths; none: the reference.
 /// Generators rms_spot and rms_wavefront (ADR 0030, point 4; generators.hpp), each in
@@ -111,6 +115,9 @@ class MeritFunction {
   /// @param materials material library for compile; must outlive this object
   /// @param coatings  coating library for compile, or nullptr; must outlive this object
   /// @param overlay   overlay of a tolerance trial, or nullptr; must outlive this object
+  /// @param aiming    aiming of every ray of the operands and generators, also of the parabasal
+  ///                  rays of a trial (ADR 0030, addendum #291); real by default, bit for bit as
+  ///                  before
   /// @throws compile::CompileError if the start system does not compile in a used configuration
   ///         (with the overlay's perturbation)
   /// @throws std::invalid_argument if the overlay's nominal basis has another number of
@@ -129,12 +136,16 @@ class MeritFunction {
   MeritFunction(const model::System& system,
                 const material::MaterialLibrary& materials,
                 const coating::CoatingLibrary* coatings,
-                const TrialOverlay* overlay = nullptr);
+                const TrialOverlay* overlay = nullptr,
+                trace::Aiming aiming = trace::Aiming::Real);
   /// No temporary system: the object keeps a reference to it.
   MeritFunction(model::System&& system,
                 const material::MaterialLibrary& materials,
                 const coating::CoatingLibrary* coatings,
-                const TrialOverlay* overlay = nullptr) = delete;
+                const TrialOverlay* overlay = nullptr,
+                trace::Aiming aiming = trace::Aiming::Real) = delete;
+  /// The aiming of the rays (constructor).
+  [[nodiscard]] trace::Aiming aiming() const noexcept { return aiming_; }
 
   /// The variables, in the order of ADR 0030, point 5.
   [[nodiscard]] const std::vector<Variable>& variables() const noexcept { return variables_; }
@@ -163,6 +174,7 @@ class MeritFunction {
   const material::MaterialLibrary* materials_;
   const coating::CoatingLibrary* coatings_;
   const TrialOverlay* overlay_;
+  trace::Aiming aiming_ = trace::Aiming::Real;
   std::vector<Variable> variables_;
   std::vector<std::size_t> configurations_;            ///< configuration of each operand
   std::vector<std::size_t> compiled_;                  ///< configurations to compile, ascending

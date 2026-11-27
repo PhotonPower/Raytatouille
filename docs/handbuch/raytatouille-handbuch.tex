@@ -3457,7 +3457,11 @@ undo stellt den Start wieder her: True
 \end{longtable}
 
 \code{OptimizeOptions(*, max_iterations=100, ftol=√ε, xtol=√ε, gtol=0, tau=1e-3,
-function_precision=1e-9)} steuert den Löser. \code{cancel} beendet den Lauf mit Status
+function_precision=1e-9, aiming=Aiming.REAL)} steuert den Löser. \code{aiming} zielt alle Strahlen
+der Merit-Funktion wie \code{aiming} der Analysen (ADR~0030, Nachtrag \#291); kurz geht es auch
+mit \code{optimize(..., aiming=rt.trace.Aiming.PARAXIAL)}, und \code{MeritFunction(...,
+aiming=...)} sowie \code{sensitivity} und \code{monte_carlo} der Toleranzierung nehmen dieselbe
+Wahl für Kriterien und Kompensatoren. \code{cancel} beendet den Lauf mit Status
 \code{CANCELLED} und dem letzten akzeptierten Stand -- \emph{ohne} Ausnahme;
 \code{progress} meldet die Stufen \code{"jacobian"} und \code{"optimize"}.
 
@@ -4990,6 +4994,7 @@ optimize(
     materials: MaterialLibrary | None = None,
     coatings: CoatingLibrary | None = None,
     options: OptimizeOptions | None = None,
+    aiming: Aiming | None = None,
     threads: int | None = None,
     cancel: CancelToken | None = None,
     progress: ProgressCallback | None = None,
@@ -5013,6 +5018,7 @@ sensitivity(
     coatings: CoatingLibrary | None = None,
     confirm: bool = True,
     compensators: OptimizeOptions | None = None,
+    aiming: Aiming | None = None,
     threads: int | None = None,
     cancel: CancelToken | None = None,
     progress: ProgressCallback | None = None
@@ -5028,6 +5034,7 @@ monte_carlo(
     z: float = 1.959963984540054,
     keep_trials: bool = True,
     compensators: OptimizeOptions | None = None,
+    aiming: Aiming | None = None,
     threads: int | None = None,
     cancel: CancelToken | None = None,
     progress: ProgressCallback | None = None
@@ -5801,7 +5808,8 @@ Datei wie \code{rt.optim.optimize} und schreibt das optimierte System in kanonis
 \code{-o} (sonst stdout); \code{-o} darf die Eingabedatei sein. \code{--result} schreibt dazu das
 \code{OptimResult}. Die Abbruchkriterien heißen wie in \code{OptimizeOptions}
 (\code{--max-iterations}, \code{--ftol}, \code{--xtol}, \code{--gtol}, \code{--tau},
-\code{--function-precision}). Endet der Lauf mit \code{FAILED}, schreibt \code{rtt} nur
+\code{--function-precision}); \code{--aiming real|paraxial} wählt die Zielung aller Strahlen der
+Gütefunktion (Standard \code{real}, ADR~0030, Nachtrag \#291). Endet der Lauf mit \code{FAILED}, schreibt \code{rtt} nur
 \code{--result} und endet mit 1.
 
 \paragraph{Abbrechen und Fortschritt.} Strg-C bricht \code{trace}, \code{analyze} und

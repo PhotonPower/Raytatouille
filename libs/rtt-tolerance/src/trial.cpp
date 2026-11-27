@@ -632,7 +632,7 @@ std::vector<CriterionValue> criteria_values(const ContextData& d,
   s.optimization = d.criteria;
   std::optional<optim::MeritEvaluation> all;
   try {
-    const optim::MeritFunction merit(s, *d.materials, d.coatings, &overlay);
+    const optim::MeritFunction merit(s, *d.materials, d.coatings, &overlay, d.options.aiming);
     all = merit.evaluate(merit.start());
   } catch (const std::exception&) {
     // Any error of one criterion (OptimError, CompileError, an analysis error): below, criterion
@@ -648,7 +648,7 @@ std::vector<CriterionValue> criteria_values(const ContextData& d,
   for (std::size_t k = 0; k < n; ++k) {
     s.optimization = model::Optimization{{d.criteria.operands[k]}, {}};
     try {
-      const optim::MeritFunction merit(s, *d.materials, d.coatings, &overlay);
+      const optim::MeritFunction merit(s, *d.materials, d.coatings, &overlay, d.options.aiming);
       const optim::MeritEvaluation e = merit.evaluate(merit.start());
       fill(k, e, 0);
       warnings.insert(warnings.end(), e.warnings.begin(), e.warnings.end());
@@ -734,8 +734,9 @@ TrialResult run(const ContextData& d,
       if (control != nullptr) cancel_only.cancel = control->cancel;
       optim::OptimResult result;
       try {
-        result = optim::optimize(trial, *d.materials, d.coatings, d.options.compensators,
-                                 cancel_only, overlay);
+        optim::OptimizeOptions run = d.options.compensators;
+        run.aiming = d.options.aiming;  // one choice for criteria and compensators (#291)
+        result = optim::optimize(trial, *d.materials, d.coatings, run, cancel_only, overlay);
       } catch (const std::exception& x) {
         return invalid_result(d, std::move(r),
                               std::string("the compensator run is not possible: ") + x.what());
@@ -904,12 +905,12 @@ TrialContext prepare(const model::System& nominal,
     s.optimization = d->criteria;
     d->criteria_inactive.assign(d->criteria.operands.size(), false);
     if (!s.optimization.empty()) {
-      const optim::MeritFunction merit(s, materials, coatings, &overlay);
+      const optim::MeritFunction merit(s, materials, coatings, &overlay, options.aiming);
       d->criteria_inactive = merit.inactive_operands();
     }
     if (!d->compensators.empty()) {
       s.optimization = d->compensator_merit;
-      static_cast<void>(optim::MeritFunction(s, materials, coatings, &overlay));
+      static_cast<void>(optim::MeritFunction(s, materials, coatings, &overlay, options.aiming));
     }
   }
   // Phi_0 (ADR 0036, points 2 and 6): the trial at zero, compensators included.

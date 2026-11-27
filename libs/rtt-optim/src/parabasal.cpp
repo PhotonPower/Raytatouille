@@ -104,7 +104,8 @@ Bundle trace_bundle(const compile::CompiledSystem& system,
                     compile::PathId path,
                     std::uint16_t wavelength,
                     const trace::AimReference& reference,
-                    double delta) {
+                    double delta,
+                    trace::Aiming aiming) {
   const std::array<std::array<double, 2>, 5> pupil = {
       {{0.0, 0.0}, {delta, 0.0}, {-delta, 0.0}, {0.0, delta}, {0.0, -delta}}};
   // The axis point of the object (ADR 0036, point 2): field value 0 in the field type of the
@@ -113,8 +114,8 @@ Bundle trace_bundle(const compile::CompiledSystem& system,
   Bundle b;
   b.rays = trace::RayBatch(pupil.size());
   for (std::size_t i = 0; i < pupil.size(); ++i) {
-    const trace::AimedRay aimed = trace::aim_ray(system, path, axis, wavelength, pupil[i][0],
-                                                 pupil[i][1], trace::Aiming::Real, reference);
+    const trace::AimedRay aimed =
+        trace::aim_ray(system, path, axis, wavelength, pupil[i][0], pupil[i][1], aiming, reference);
     b.rays.pos_x()[i] = aimed.ray.pos.x();
     b.rays.pos_y()[i] = aimed.ray.pos.y();
     b.rays.pos_z()[i] = aimed.ray.pos.z();
@@ -165,7 +166,8 @@ ParabasalValue parabasal_value(const model::FirstOrderOperand& op,
                                bool object_at_infinity,
                                compile::PathId path,
                                std::uint16_t wavelength,
-                               double delta) {
+                               double delta,
+                               trace::Aiming aiming) {
   using Q = model::FirstOrderQuantity;
   const bool parallel = op.quantity == Q::Efl || op.quantity == Q::Bfl;
   if (parallel && !nominal.efl) return undefined("the path is afocal (no EFL)");
@@ -192,7 +194,7 @@ ParabasalValue parabasal_value(const model::FirstOrderOperand& op,
   } else {
     aim = &reference.aim(wavelength);
   }
-  const Bundle b = trace_bundle(system, path, wavelength, *aim, delta);
+  const Bundle b = trace_bundle(system, path, wavelength, *aim, delta, aiming);
   if (!b.undefined.empty()) return undefined(b.undefined);
 
   const std::vector<compile::CompiledEvent>& events = system.path(path).events;
