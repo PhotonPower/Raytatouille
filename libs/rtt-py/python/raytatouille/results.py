@@ -54,7 +54,7 @@ __all__ = [
 ]
 
 FORMAT = "raytatouille-result"
-SCHEMA_VERSION = "0.1.24"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
+SCHEMA_VERSION = "0.1.25"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84);
 # 0.1.3: status Evanescent, status arrays one entry longer (#127); 0.1.4: PathTransmission,
 # PathOplDifference, GhostRanking (#133); 0.1.5: RayBatch wave_x/y/z, mode_index (#134);
 # 0.1.6: RaytraceReport, SystemReport, DimensionReport (#177);
@@ -77,6 +77,7 @@ SCHEMA_VERSION = "0.1.24"  # 0.1.1: LoadWarning (#71); 0.1.2: Prescription (#84)
 # 0.1.22: SurfaceLayout obscurations (#320)
 # 0.1.23: SurfaceLayout terms; ToleranceItem term (#316)
 # 0.1.24: FirstOrder folds, image_space (UnfoldedFrame) (#357)
+# 0.1.25: OperandValue constraint (#196)
 _VERSION = re.compile(r"0\.1\.[0-9]+")
 
 # Attributes per bound class (raytatouille._core), in output order. "name=method()" calls a
@@ -202,7 +203,7 @@ _FIELDS: dict[str, tuple[str, ...]] = {
     "DimensionReport": ("segments",),
     # optimization (#169); OptimResult.system is not data (ADR 0023, addendum #169)
     "OptimIterations": ("k", "phi", "mu", "rho", "step_norm", "accepted", "evaluations"),
-    "OperandValue": ("pointer", "value", "target", "weight", "contribution"),
+    "OperandValue": ("pointer", "value", "target", "weight", "contribution", "constraint"),
     "GeneratorValue": ("pointer", "rms", "weight", "contribution", "rays_launched",
                        "rays_lost"),
     "VariableValue": ("pointer", "row", "configuration", "start", "end", "changed", "at_bound"),
@@ -524,14 +525,15 @@ def load_json(text: str) -> Result:
     normalization_radius and axicon_angle_deg from 0.1.18, active from 0.1.20,
     aperture_vertices from 0.1.21, obscurations from 0.1.22, terms from 0.1.23; CompiledElement
     and the segments of DimensionReport: active from 0.1.20; FirstOrder: folds and image_space
-    from 0.1.24); the data then contain them as the
-    type's reading rule says (RayBatch: wave = dir, mode_index 0, ADR 0026, point 3; no Q and no
+    from 0.1.24; the operands of OptimResult: constraint from 0.1.25); the data then contain
+    them as the type's reading rule says (RayBatch: wave = dir, mode_index 0, ADR 0026, point 3; no Q and no
     P per slot: q and prt None, polarization False, since Q cannot be recomputed without the
     normals, ADR 0034; SurfaceLayout: the x section equals the y section, ADR 0042, point 5, and
     no normalization radius and no axicon angle, ADR 0043, point 4; active is true, since an
     older file knows no inactive element, ADR 0049, point 7; no aperture vertices, since an
     older file has no polygon aperture, and empty lists of obscurations and terms, ADR 0050,
-    ADR 0051; no fold and image space as the global frame, ADR 0054).
+    ADR 0051; no fold and image space as the global frame, ADR 0054; no exact constraint,
+    ADR 0056).
     """
     envelope = json.loads(text, parse_constant=_no_constant, object_pairs_hook=_unique_keys)
     if not isinstance(envelope, dict):
@@ -567,6 +569,14 @@ def load_json(text: str) -> Result:
         if isinstance(segments, dict) and "active" not in segments:
             n = len(np.atleast_1d(segments.get("element", [])))
             data = {**data, "segments": {**segments, "active": np.ones(n, dtype=np.bool_)}}
+    if type_name == "OptimResult" and minor < 25:
+        # Nested in OptimResult (#196): before 0.1.25 no operand was an exact constraint
+        # (ADR 0056).
+        operands = data.get("operands")
+        if isinstance(operands, list):
+            data = {**data, "operands": [
+                {**o, "constraint": False} if isinstance(o, dict) and "constraint" not in o else o
+                for o in operands]}
     return Result(type_name, version, data)
 
 

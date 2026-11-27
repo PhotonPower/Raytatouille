@@ -15,14 +15,26 @@
 
 namespace rtt::model {
 
-/// What every operand has (ADR 0030, point 1): residual sqrt(weight) (value - target).
+/// Kind of an exact constraint (ADR 0056, point 6); an enumeration so that inequalities can follow
+/// (file: "constraint").
+enum class ConstraintKind : std::uint8_t {
+  Equal,  ///< value = target exactly (file: "equal")
+};
+
+/// What every operand has (ADR 0030, point 1): residual sqrt(weight) (value - target), or with a
+/// constraint the condition value = target, held exactly by the solver (ADR 0056).
 struct OperandCommon {
-  /// Target in the unit of the operand's value (mm, waves, dimensionless; see the operand).
+  /// Target in the unit of the operand's value (mm, waves, dimensionless; see the operand); with
+  /// a constraint the exact value.
   double target = 0.0;
-  double weight = 1.0;  ///< >= 0 and finite (validate: merit.weight_invalid)
+  /// >= 0 and finite (validate: merit.weight_invalid). A constraint has no weight: it stays 1
+  /// (validate: merit.constraint_weight), the file has none.
+  double weight = 1.0;
   /// Name of a configuration (ADR 0029); none: configuration 0 (the first, or the nominal one
   /// without a configurations section).
   std::optional<std::string> configuration;
+  /// Exact constraint instead of a weighted residual (ADR 0056); none: an ordinary operand.
+  std::optional<ConstraintKind> constraint;
   bool operator==(const OperandCommon&) const = default;
 };
 

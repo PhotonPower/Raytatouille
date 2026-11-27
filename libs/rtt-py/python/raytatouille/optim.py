@@ -157,7 +157,8 @@ def optimize(
     if aiming is not None:
         run = OptimizeOptions(max_iterations=run.max_iterations, ftol=run.ftol, xtol=run.xtol,
                               gtol=run.gtol, tau=run.tau,
-                              function_precision=run.function_precision, aiming=aiming)
+                              function_precision=run.function_precision, aiming=aiming,
+                              constraint_tolerance=run.constraint_tolerance)
     result = _core.optimize(system, materials, coatings, run, threads, cancel, progress, live)
     if raised:
         warnings.warn(

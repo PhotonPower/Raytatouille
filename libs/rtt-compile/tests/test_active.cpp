@@ -387,7 +387,7 @@ TEST_CASE("active: switching off never adds an error", "[active]") {
   // Ray operands at every surface of the explicit path, and the system aperture from the stop.
   for (const char* id : {"STO", "W.S1", "L1.S2", "IMG"}) {
     rtt::model::RayOperand op;
-    op.common = {0.0, 1.0, std::nullopt};
+    op.common = {0.0, 1.0, std::nullopt, std::nullopt};
     op.path = "explicit";
     op.surface = SurfaceId(id);
     op.py = 1.0;

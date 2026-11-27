@@ -54,6 +54,10 @@ struct OptimizeOptions {
   /// Aiming of every ray of the merit function, also of the parabasal rays of a trial (ADR 0030,
   /// addendum #291), as `aiming` of the analyses; real by default, bit for bit as before.
   trace::Aiming aiming = trace::Aiming::Real;
+  /// eps_c of the exact constraints (ADR 0056, point 3): a constraint value v with target t is
+  /// met if |v - t| <= eps_c max(|t|, 1) (unit of the operand); finite and > 0. Without
+  /// constraints it has no effect.
+  double constraint_tolerance = 1e-12;
 };
 
 /// One solve of the run (ADR 0030, point 12).
@@ -75,9 +79,11 @@ struct OperandValue {
   std::string pointer;  ///< /optimization/operands/i
   double value = 0.0;   ///< value of the operand, unit of the operand
   double target = 0.0;  ///< target of the operand, unit of the operand
-  double weight = 0.0;  ///< weight w >= 0, dimensionless
-  /// Share w (v - t)^2 / sum_j w_j (v_j - t_j)^2 of the merit, percent; 0 if the sum is 0.
+  double weight = 0.0;  ///< weight w >= 0, dimensionless; 0 for a constraint
+  /// Share w (v - t)^2 / sum_j w_j (v_j - t_j)^2 of the merit, percent; 0 if the sum is 0 and
+  /// for a constraint (ADR 0056, point 7: constraints are not part of the merit).
   double contribution = 0.0;
+  bool constraint = false;  ///< an exact constraint (ADR 0056), held to constraint_tolerance
 };
 
 /// One generator in the final state (ADR 0030, addendum #168).
@@ -151,15 +157,17 @@ struct IterationState {
 using IterationCallback = std::function<void(const IterationState& state)>;
 
 /// Optimizes the variables of `system` against its merit function System::optimization
-/// (ADR 0030). Every evaluation sets the values in a copy, compiles every used configuration
-/// and evaluates the operands (MeritFunction). The input is not changed.
+/// (ADR 0030). Operands with a constraint (ADR 0056) are held exactly: the solver minimizes the
+/// other operands and the generators subject to value = target for each of them. Every evaluation
+/// sets the values in a copy, compiles every used configuration and evaluates the operands
+/// (MeritFunction). The input is not changed.
 ///
 /// Known limit (ADR 0030, addendum #170): an equality condition stated as an operand with a
 /// large weight together with a residual that cannot vanish (e.g. a fixed EFL and a minimal
 /// RMS spot) makes a narrow, curved valley; the run may then end with ConvergedStep far from the
-/// optimum. Hold such conditions exactly through the parameter table (an expression row binding
-/// the dependent value, ADR 0029), as in tests/reference/m5/singlet_solve.rtt.json; exact
-/// equality constraints in the solver are #196.
+/// optimum. Hold such conditions exactly as a constraint operand ("constraint": "equal",
+/// ADR 0056; tests/reference/m5/singlet_constraint.rtt.json) or through the parameter table (an
+/// expression row binding the dependent value, ADR 0029; m5/singlet_solve.rtt.json).
 ///
 /// @param system    a valid system with at least one variable and one operand or generator
 /// @param materials material library for compile
@@ -178,7 +186,10 @@ using IterationCallback = std::function<void(const IterationState& state)>;
 /// @throws compile::CompileError if the system is invalid or does not compile at the start
 /// @throws OptimError with optim.no_variables and/or optim.no_operands (both if both apply;
 ///         no_operands also if every operand is left out at an inactive surface and there is no
-///         generator, ADR 0049), or with merit.operand_unsupported
+///         generator, ADR 0049, or if there are only exact constraints, ADR 0056), and/or
+///         optim.constraints_too_many (more exact constraints than variables), or with
+///         merit.operand_unsupported; OptimError with optim.constraint_infeasible if the start
+///         cannot be projected onto the exact constraints (ADR 0056, point 5)
 /// @throws the exception of an analysis at the start (ParaxialError, AnalysisError,
 ///         NoStopError), or std::invalid_argument naming the operand or generator if its value
 ///         or a residual is not defined at the start (ADR 0030, point 10)

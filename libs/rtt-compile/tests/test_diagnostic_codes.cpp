@@ -819,6 +819,13 @@ std::vector<Case> cases() {
          o.field = 9;
          s.optimization.operands = {o};
        }},
+      {"merit.constraint_weight", "/optimization/operands/0/weight",
+       [](System& s) {
+         rtt::model::SpotRmsOperand o = spot_rms("main");
+         o.common.constraint = rtt::model::ConstraintKind::Equal;
+         o.common.weight = 2.0;
+         s.optimization.operands = {o};
+       }},
       {"merit.weight_invalid", "/optimization/operands/0/weight",
        [](System& s) {
          rtt::model::SpotRmsOperand o = spot_rms("main");

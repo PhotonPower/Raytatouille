@@ -72,7 +72,7 @@ Param& radius(System& s, std::size_t child, std::size_t surface) {
 OperandCommon common(double target,
                      double weight = 1.0,
                      std::optional<std::string> configuration = std::nullopt) {
-  return {target, weight, std::move(configuration)};
+  return {target, weight, std::move(configuration), std::nullopt};
 }
 
 FirstOrderOperand efl(double target, std::optional<std::string> configuration = std::nullopt) {
@@ -1027,4 +1027,107 @@ TEST_CASE("aperture as Param: optimize the stop radius at stop_size (#281 d, ADR
   CHECK(std::get<rtt::model::CircularAperture>(*element(r.system, 0).surfaces[0].aperture)
             .radius.value == r.variables[0].end);
   CHECK(r.variables[0].changed);
+}
+
+// --- Exact constraints (#196, ADR 0056) ---------------------------------------------------------
+
+namespace {
+
+rtt::model::ParamValueOperand constraint_on(std::string parameter, double target) {
+  rtt::model::ParamValueOperand o;
+  o.parameter = std::move(parameter);
+  o.common.target = target;
+  o.common.constraint = rtt::model::ConstraintKind::Equal;
+  return o;
+}
+
+bool has(const std::vector<rtt::model::Diagnostic>& d,
+         std::string_view code,
+         std::string_view location) {
+  return std::any_of(d.begin(), d.end(), [&](const rtt::model::Diagnostic& x) {
+    return x.code == code && x.location == location;
+  });
+}
+
+}  // namespace
+
+TEST_CASE("optimize: a constraint on a parameter row is met exactly", "[optim][196]") {
+  // Rows X (variable) and the radius R1 of the singlet; minimize (efl - 80)^2 subject to X = 2:
+  // X does not act on the efl, so the run moves R1 for the efl and X to 2 by the start projection
+  // (a linear constraint, exact in one correction). The result table marks the constraint.
+  System s = singlet();
+  radius(s, 1, 0).variable = true;
+  s.parameters = {row("X", 1.0, true)};
+  s.optimization.operands = {efl(80.0), constraint_on("X", 2.0)};
+  const MaterialLibrary lib;
+  const OptimResult r = optimize(s, lib);
+  REQUIRE(r.status != LmStatus::Failed);
+  REQUIRE(r.operands.size() == 2);
+  CHECK(std::abs(r.operands[1].value - 2.0) <= 1e-12 * 2.0);
+  CHECK(r.operands[1].constraint);
+  CHECK(r.operands[1].weight == 0.0);
+  CHECK(r.operands[1].contribution == 0.0);
+  CHECK_FALSE(r.operands[0].constraint);
+  CHECK(r.operands[0].weight == 1.0);
+  CHECK(std::abs(r.operands[0].value - 80.0) < 1e-6);  // content guard: the efl is reached too
+  CHECK_FALSE(has(r.diagnostics, "optim.constraint_violated", "/optimization/operands/1"));
+}
+
+TEST_CASE("optimize: errors of exact constraints at the start", "[optim][196]") {
+  const MaterialLibrary lib;
+  const auto codes = [&](const System& s) {
+    try {
+      static_cast<void>(optimize(s, lib));
+    } catch (const OptimError& e) {
+      return e.diagnostics();
+    }
+    return std::vector<rtt::model::Diagnostic>{};
+  };
+  SECTION("more constraints than variables") {
+    System s = singlet();
+    s.parameters = {row("X", 1.0, true), row("Y", 1.0, false)};
+    s.optimization.operands = {efl(80.0), constraint_on("X", 2.0), constraint_on("Y", 1.0)};
+    CHECK(has(codes(s), "optim.constraints_too_many", "/optimization"));
+  }
+  SECTION("only constraints: nothing to minimize") {
+    System s = singlet();
+    s.parameters = {row("X", 1.0, true)};
+    s.optimization.operands = {constraint_on("X", 2.0)};
+    CHECK(has(codes(s), "optim.no_operands", ""));
+  }
+  SECTION("a constraint that cannot be met: E = X X = -1") {
+    System s = singlet();
+    s.parameters = {row("X", 1.0, true), row("E", rtt::model::ParameterExpression{"X * X"})};
+    s.optimization.operands = {efl(80.0), constraint_on("E", -1.0)};
+    CHECK(has(codes(s), "optim.constraint_infeasible", "/optimization/operands/1"));
+  }
+}
+
+TEST_CASE("optimize: dependent constraints fail the run", "[optim][196]") {
+  // X = 1.5 and D = 2 X = 3 agree but are linearly dependent: the projection of the start finds
+  // C D^-2 C^T singular (ADR 0056, point 2), the run ends with status Failed and the input.
+  System s = singlet();
+  radius(s, 1, 0).variable = true;
+  s.parameters = {row("X", 1.0, true), row("D", rtt::model::ParameterExpression{"2 * X"})};
+  s.optimization.operands = {efl(80.0), constraint_on("X", 1.5), constraint_on("D", 3.0)};
+  const MaterialLibrary lib;
+  const OptimResult r = optimize(s, lib);
+  CHECK(r.status == LmStatus::Failed);
+  CHECK(r.patch == "[]");
+  CHECK(has(r.diagnostics, "optim.constraints_dependent", "/optimization"));
+}
+
+TEST_CASE("optimize: a constraint missed in the final state is a warning", "[optim][196]") {
+  // The start Jacobian has no valid column (row E as in "a Jacobian column without a valid
+  // evaluation fails the run" above), so the run fails before the start is projected and the
+  // constraint X = 2 stays at X = 1.79769 (ADR 0056, point 7).
+  System s = singlet();
+  s.parameters = {row("X", 1.79769, true),
+                  row("E", rtt::model::ParameterExpression{
+                               "1e308 * (1 + 1e300 * (X - 1.79769) * (X - 1.79769))"})};
+  s.optimization.operands = {efl(80.0), constraint_on("X", 2.0)};
+  const MaterialLibrary lib;
+  const OptimResult r = optimize(s, lib);
+  CHECK(r.status == LmStatus::Failed);
+  CHECK(has(r.diagnostics, "optim.constraint_violated", "/optimization/operands/1"));
 }

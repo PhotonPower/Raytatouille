@@ -27,7 +27,7 @@ from raytatouille import model
 #: Every optional key is missing, so each first instance of a class in this system carries the
 #: parser's defaults. Required keys have arbitrary values; the stop-size aperture has no value.
 DEFAULTS_TEXT = """{
-  "schema_version": "0.12.0",
+  "schema_version": "0.13.0",
   "units": {"length": "mm", "wavelength": "um"},
   "wavelengths": [{"um": 0.5}],
   "aperture": {"type": "stop_size"},
@@ -77,6 +77,7 @@ ENUM_NAMES: dict[type, dict[str, str]] = {
                           "relative_to_sibling": "RELATIVE_TO_SIBLING"},
     model.PoseOrder: {"translate_first": "TRANSLATE_FIRST", "rotate_first": "ROTATE_FIRST"},
     model.SpotReference: {"centroid": "CENTROID", "chief": "CHIEF"},
+    model.ConstraintKind: {"equal": "EQUAL"},  # exact constraints (ADR 0056, #196)
     # The tolerance set (ADR 0035, #253).
     model.ToleranceKind: {k: k.upper() for k in (
         "radius", "curvature_relative", "conic", "thickness", "param", "parameter", "decenter_x",

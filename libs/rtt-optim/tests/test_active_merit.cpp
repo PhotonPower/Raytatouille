@@ -80,7 +80,7 @@ System with_inactive_window() {
 
 rtt::model::RayOperand ray_y(const std::string& surface, double py) {
   rtt::model::RayOperand op;
-  op.common = {0.0, 1.0, std::nullopt};
+  op.common = {0.0, 1.0, std::nullopt, std::nullopt};
   op.coordinate = rtt::model::RayCoordinate::Y;
   op.path = "main";
   op.surface = SurfaceId(surface);
@@ -90,7 +90,7 @@ rtt::model::RayOperand ray_y(const std::string& surface, double py) {
 
 rtt::model::FirstOrderOperand efl(double target) {
   rtt::model::FirstOrderOperand op;
-  op.common = {target, 1.0, std::nullopt};
+  op.common = {target, 1.0, std::nullopt, std::nullopt};
   op.quantity = rtt::model::FirstOrderQuantity::Efl;
   op.path = "main";
   return op;

@@ -7,7 +7,7 @@
   "additionalProperties": false,
   "required": ["schema_version", "units", "wavelengths", "aperture", "fields", "root", "paths"],
   "properties": {
-    "schema_version": {"type": "string", "pattern": "^0\\.12\\.[0-9]+$"},
+    "schema_version": {"type": "string", "pattern": "^0\\.13\\.[0-9]+$"},
     "name": {"type": "string"},
     "units": {
       "type": "object",
@@ -263,7 +263,7 @@
         "operand": {
           "$ref": "#/$defs/operand_fields",
           "required": ["type"],
-          "properties": {"target": false, "weight": false}
+          "properties": {"target": false, "weight": false, "constraint": false}
         },
         "min": {"type": "number"},
         "max": {"type": "number"},
@@ -277,9 +277,11 @@
       "items": {"$ref": "#/$defs/index"}
     },
     "operand": {
-      "description": "One operand (ADR 0030, points 1 and 3): residual sqrt(weight) (value - target). target is required; weight defaults to 1; configuration names a configuration (missing: configuration 0).",
+      "description": "One operand (ADR 0030, points 1 and 3): residual sqrt(weight) (value - target). target is required; weight defaults to 1; configuration names a configuration (missing: configuration 0). With constraint \"equal\" the operand is an exact constraint value = target (ADR 0056) and has no weight.",
       "$ref": "#/$defs/operand_fields",
-      "required": ["type", "target"]
+      "required": ["type", "target"],
+      "if": {"required": ["constraint"]},
+      "then": {"properties": {"weight": false}}
     },
     "operand_fields": {
       "description": "The keys of an operand per type (ADR 0030, point 3); which of type and target are required is set where it is used.",
@@ -295,7 +297,8 @@
             "configuration": {"type": "string"},
             "wavelength": {"$ref": "#/$defs/index"},
             "target": {"type": "number"},
-            "weight": {"type": "number"}
+            "weight": {"type": "number"},
+            "constraint": {"enum": ["equal"]}
           }
         },
         {
@@ -313,7 +316,8 @@
             "py": {"type": "number"},
             "wavelength": {"$ref": "#/$defs/index"},
             "target": {"type": "number"},
-            "weight": {"type": "number"}
+            "weight": {"type": "number"},
+            "constraint": {"enum": ["equal"]}
           }
         },
         {
@@ -330,7 +334,8 @@
             "reference": {"enum": ["centroid", "chief"]},
             "rings": {"type": "integer"},
             "target": {"type": "number"},
-            "weight": {"type": "number"}
+            "weight": {"type": "number"},
+            "constraint": {"enum": ["equal"]}
           },
           "if": {"required": ["polychromatic"], "properties": {"polychromatic": {"const": true}}},
           "then": {"properties": {"wavelength": false}}
@@ -347,7 +352,8 @@
             "wavelength": {"$ref": "#/$defs/index"},
             "grid": {"type": "integer"},
             "target": {"type": "number"},
-            "weight": {"type": "number"}
+            "weight": {"type": "number"},
+            "constraint": {"enum": ["equal"]}
           }
         },
         {
@@ -359,7 +365,8 @@
             "parameter": {"type": "string"},
             "configuration": {"type": "string"},
             "target": {"type": "number"},
-            "weight": {"type": "number"}
+            "weight": {"type": "number"},
+            "constraint": {"enum": ["equal"]}
           }
         }
       ]

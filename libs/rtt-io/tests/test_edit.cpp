@@ -243,8 +243,13 @@ void edit_form_keys(const json& e) {
     REQUIRE(o.contains("type"));
     const std::string type = o["type"].get<std::string>();
     REQUIRE(operands.contains(type));
-    has_keys(o, operands.at(type), {"configuration", "wavelength", "occurrence"},
-             "/optimization/operands");
+    // An exact constraint has "constraint" instead of "weight" (ADR 0056, point 6).
+    Keys required = operands.at(type);
+    if (o.contains("constraint")) {
+      required.erase("weight");
+      required.insert("constraint");
+    }
+    has_keys(o, required, {"configuration", "wavelength", "occurrence"}, "/optimization/operands");
   }
   const std::map<std::string, Keys> generators = {
       {"rms_spot", {"type", "path", "reference", "rings", "arms", "weight"}},
