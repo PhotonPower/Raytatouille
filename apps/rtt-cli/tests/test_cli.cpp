@@ -498,17 +498,28 @@ TEST_CASE("progress lines on stderr with the option progress", "[cli]") {
 }
 
 TEST_CASE("rtt optimize --aiming reaches OptimizeOptions (#291)", "[cli][291]") {
-  const std::string file = kRef + "/m5/singlet_optim.rtt.json";
+  // m1/two_lenses_stop_between (the stop between the lenses, so the aimings differ) with the
+  // image distance variable and the rms_spot generator, as a file
+  const fs::path dir = fs::temp_directory_path() / "rtt_cli_tests";
+  fs::create_directories(dir);
+  const fs::path file = dir / "two_lenses_optim.rtt.json";
+  {
+    std::ofstream out(file, std::ios::binary);
+    out << R"({"schema_version": "0.12.0", "name": "Two singlets, stop between, stop-size aperture", "units": {"length": "mm", "wavelength": "um"}, "wavelengths": [{"um": 0.5876, "reference": true}], "aperture": {"type": "stop_size"}, "fields": {"points": [{}, {"y": 5.0}, {"x": -3.0, "y": 4.0}]}, "root": {"type": "assembly", "name": "system", "children": [{"type": "lens", "name": "L1", "pose": {"position": [0.0, 0.0, 10.0]}, "material": "CONST:1.5168", "surfaces": [{"id": "L1.S1", "shape": {"base": {"type": "conic", "radius": 60.0}}}, {"id": "L1.S2", "pose": {"position": [0.0, 0.0, 5.0]}, "shape": {"base": {"type": "conic", "radius": -60.0}}}]}, {"type": "stop", "name": "stop", "pose": {"position": [0.0, 0.0, 20.0]}, "surfaces": [{"id": "STO", "aperture": {"type": "circular", "radius": 4.0}}]}, {"type": "lens", "name": "L2", "pose": {"position": [0.0, 0.0, 25.0]}, "material": "CONST:1.5168", "surfaces": [{"id": "L2.S1", "shape": {"base": {"type": "conic", "radius": 45.0}}}, {"id": "L2.S2", "pose": {"position": [0.0, 0.0, 4.0]}}]}, {"type": "detector", "name": "image", "pose": {"position": [0.0, 0.0, {"value": 80.0, "variable": true}]}, "surfaces": [{"id": "IMG"}]}]}, "paths": [{"name": "main", "events": "auto"}], "optimization": {"generators": [{"type": "rms_spot", "path": "main"}]}})";
+  }
   const rtt::material::MaterialLibrary lib;
   rtt::optim::OptimizeOptions paraxial;
   paraxial.aiming = rtt::trace::Aiming::Paraxial;
   const rtt::optim::OptimResult r =
       rtt::optim::optimize(rtt::io::load_system(file), lib, nullptr, paraxial);
-  const Run run_ = run({"optimize", file, "--aiming", "paraxial"});
+  const Run run_ = run({"optimize", file.string(), "--aiming", "paraxial"});
   INFO(run_.err);
   REQUIRE(run_.code == 0);
   CHECK(run_.out == rtt::io::to_json(r.system));
-  CHECK(r.iterations > 0);  // content guard
-  CHECK(run({"optimize", file, "--aiming", "sideways"}).code == 2);
-  CHECK(run({"optimize", file, "--help"}).out.find("--aiming") != std::string::npos);
+  // content guard: without --aiming (real) the optimized image distance differs
+  const Run real = run({"optimize", file.string()});
+  REQUIRE(real.code == 0);
+  CHECK(real.out != run_.out);
+  CHECK(run({"optimize", file.string(), "--aiming", "sideways"}).code == 2);
+  CHECK(run({"optimize", file.string(), "--help"}).out.find("--aiming") != std::string::npos);
 }

@@ -14,7 +14,9 @@
 
 #include "rtt/analysis/spot.hpp"
 #include "rtt/compile/compiled_system.hpp"
+#include "rtt/compile/perturbation.hpp"
 #include "rtt/io/json_io.hpp"
+#include "rtt/math/types.hpp"
 #include "rtt/model/optimization.hpp"
 #include "rtt/model/system.hpp"
 #include "rtt/optim/generators.hpp"
@@ -109,21 +111,34 @@ TEST_CASE("optimize with paraxial aiming", "[optim][291]") {
 }
 
 TEST_CASE("the parabasal operands of a trial follow the aiming", "[optim][291]") {
-  // efl of a trial with the overlay of the nominal system (ADR 0030, addendum #256): with either
-  // aiming close to the paraxial EFL of the nominal system, and not bit for bit the same
-  System s = rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m1/singlet_const.rtt.json");
-  rtt::model::FirstOrderOperand efl;
-  efl.path = "main";
-  efl.quantity = rtt::model::FirstOrderQuantity::Efl;
-  efl.common.target = 100.0;
-  s.optimization.operands.push_back(efl);
-  const rtt::optim::TrialOverlay overlay{{}, rtt::optim::nominal_basis(s, library(), nullptr)};
-  const auto value = [&](Aiming aiming) {
+  // efl and image_fnumber of a trial (ADR 0030, addendum #256) whose first lens, before the
+  // stop, is decentred by 0.5 mm: the chief and parabasal rays aimed real and paraxially are
+  // different rays (in the nominal system they coincide, the real aiming starts at the paraxial
+  // solution), and both values stay close to the nominal ones.
+  System s =
+      rtt::io::load_system(std::string(RTT_REFERENCE_DIR) + "/m1/two_lenses_stop_between.rtt.json");
+  for (const auto q :
+       {rtt::model::FirstOrderQuantity::Efl, rtt::model::FirstOrderQuantity::ImageFNumber}) {
+    rtt::model::FirstOrderOperand op;
+    op.path = "main";
+    op.quantity = q;
+    s.optimization.operands.push_back(op);
+  }
+  rtt::compile::Perturbation decentred;
+  decentred.nodes["L1"].translation_mm = rtt::math::Vec3(0.0, 0.5, 0.0);
+  const rtt::optim::TrialOverlay overlay{decentred,
+                                         rtt::optim::nominal_basis(s, library(), nullptr)};
+  const auto values = [&](Aiming aiming) {
     const rtt::optim::MeritFunction merit(s, library(), nullptr, &overlay, aiming);
-    return merit.evaluate(merit.start()).values[0];
+    return merit.evaluate(merit.start()).values;
   };
-  const double real = value(Aiming::Real);
-  const double paraxial = value(Aiming::Paraxial);
-  CHECK(std::abs(real - 100.05) < 0.05);
-  CHECK(std::abs(paraxial - 100.05) < 0.05);
+  const std::vector<double> real = values(Aiming::Real);
+  const std::vector<double> paraxial = values(Aiming::Paraxial);
+  REQUIRE(real.size() == 2);
+  for (std::size_t i = 0; i < 2; ++i) {
+    INFO("operand " << i);
+    CHECK(real[i] != paraxial[i]);                                      // content guard
+    CHECK(std::abs(real[i] - paraxial[i]) < 1e-3 * std::abs(real[i]));  // nearly the same
+  }
+  CHECK(std::abs(real[0] - 38.2) < 0.05);  // the EFL of the two lenses
 }

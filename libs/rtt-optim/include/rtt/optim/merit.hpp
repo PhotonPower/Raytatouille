@@ -80,13 +80,15 @@ struct MeritEvaluation {
 /// - efl, bfl, magnification: paraxial::first_order(cs, path, wavelength); efl and bfl are not
 ///   defined for an afocal path, magnification not for an object at infinity (a start error).
 /// - image_fnumber: paraxial::prescription(cs, path, wavelength).paraxial_working_f_number.
-/// - ray_x, ray_y: one ray from trace::make_rays (SinglePupilPoint, real aiming) traced with
+/// - ray_x, ray_y: one ray from trace::make_rays (SinglePupilPoint, the aiming of the
+///   constructor, real by default; ADR 0030, addendum #291) traced with
 ///   recording; the coordinate of its hit point at the event of `surface` (occurrence) in the
 ///   local coordinates of that surface, mm. Not defined if the ray is not Alive after that
 ///   event (lost before or at it); a loss after it does not matter.
-/// - spot_rms: analysis::spot with HexapolarPupil{rings} and real aiming; stats.rms_centroid or
+/// - spot_rms: analysis::spot with HexapolarPupil{rings} and the aiming of the constructor;
+///   stats.rms_centroid or
 ///   stats.rms_chief, mm. Polychromatic: all system wavelengths with their weights.
-/// - opd_rms: analysis::opd_map with OpdOptions{grid}; rms, waves at the reference wavelength.
+/// - opd_rms: analysis::opd_map with OpdOptions{grid} and the aiming of the constructor; rms, waves at the reference wavelength.
 /// - param_value: the value of the table row in the configuration (model::evaluate_parameters).
 /// The wavelength of an operand is an index into System::wavelengths; none: the reference.
 /// Generators rms_spot and rms_wavefront (ADR 0030, point 4; generators.hpp), each in

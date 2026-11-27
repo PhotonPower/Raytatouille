@@ -61,3 +61,12 @@ def test_tolerance_runs_take_the_aiming() -> None:
     paraxial = rt.tolerance.sensitivity(system, confirm=False, aiming=rt.trace.Aiming.PARAXIAL)
     assert real.nominal.criteria[0].value != pytest.approx(paraxial.nominal.criteria[0].value,
                                                             rel=1e-12)
+    # None takes compensators.aiming, an explicit aiming replaces it
+    from_options = rt.tolerance.sensitivity(
+        system, confirm=False,
+        compensators=rt.optim.OptimizeOptions(aiming=rt.trace.Aiming.PARAXIAL))
+    assert from_options.nominal.criteria[0].value == paraxial.nominal.criteria[0].value
+    replaced = rt.tolerance.sensitivity(
+        system, confirm=False, aiming=rt.trace.Aiming.REAL,
+        compensators=rt.optim.OptimizeOptions(aiming=rt.trace.Aiming.PARAXIAL))
+    assert replaced.nominal.criteria[0].value == real.nominal.criteria[0].value

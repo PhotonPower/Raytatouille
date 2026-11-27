@@ -5018,7 +5018,7 @@ sensitivity(
     coatings: CoatingLibrary | None = None,
     confirm: bool = True,
     compensators: OptimizeOptions | None = None,
-    aiming: Aiming = Aiming.REAL,
+    aiming: Aiming | None = None,
     threads: int | None = None,
     cancel: CancelToken | None = None,
     progress: ProgressCallback | None = None
@@ -5034,7 +5034,7 @@ monte_carlo(
     z: float = 1.959963984540054,
     keep_trials: bool = True,
     compensators: OptimizeOptions | None = None,
-    aiming: Aiming = Aiming.REAL,
+    aiming: Aiming | None = None,
     threads: int | None = None,
     cancel: CancelToken | None = None,
     progress: ProgressCallback | None = None
@@ -5808,7 +5808,8 @@ Datei wie \code{rt.optim.optimize} und schreibt das optimierte System in kanonis
 \code{-o} (sonst stdout); \code{-o} darf die Eingabedatei sein. \code{--result} schreibt dazu das
 \code{OptimResult}. Die Abbruchkriterien heißen wie in \code{OptimizeOptions}
 (\code{--max-iterations}, \code{--ftol}, \code{--xtol}, \code{--gtol}, \code{--tau},
-\code{--function-precision}). Endet der Lauf mit \code{FAILED}, schreibt \code{rtt} nur
+\code{--function-precision}); \code{--aiming real|paraxial} wählt die Zielung aller Strahlen der
+Gütefunktion (Standard \code{real}, ADR~0030, Nachtrag \#291). Endet der Lauf mit \code{FAILED}, schreibt \code{rtt} nur
 \code{--result} und endet mit 1.
 
 \paragraph{Abbrechen und Fortschritt.} Strg-C bricht \code{trace}, \code{analyze} und
