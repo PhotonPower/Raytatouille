@@ -8,15 +8,20 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <numbers>
 #include <optional>
 #include <span>
 #include <stdexcept>
+#include <string>
+#include <tuple>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "rtt/coating/transfer_matrix.hpp"
+#include "rtt/diagnostics/codes.hpp"
 #include "rtt/math/philox.hpp"
 #include "rtt/model/path.hpp"
 #include "rtt/model/surface.hpp"
@@ -61,6 +66,7 @@ struct Branch {
   std::uint32_t last_face = kNoFace;
   std::uint32_t depth = 0;
   std::uint32_t draws = 0;
+  std::vector<PathStep> steps;  ///< events so far, only with TraceOptions::path_report
 };
 
 /// Read-only data of a run, shared by all blocks.
@@ -75,14 +81,96 @@ struct Run {
   /// Per face with ideal_anti_reflection or ideal_beam_splitter: a copy of its surface with
   /// Fresnel interaction, for the reflection at TIR (ADR 0057, Nachtrag PR 3, b); none otherwise.
   std::vector<std::optional<CompiledSurface>> fresnel_twin;
+  /// Irradiance detectors (index into the detectors of trace()) per face.
+  std::vector<std::vector<std::uint32_t>> irradiance_of_face;
+  /// Intensity detectors (index into the detectors of trace()).
+  std::vector<std::uint32_t> intensity;
+  std::span<const Detector> detectors;
+  /// Half widths (x, y) of the rectangle of each irradiance detector, mm (0 for others).
+  std::vector<std::array<double, 2>> half_width;
+};
+
+/// One count of a detector cell; cell = (wavelength * rows + row) * cols + col.
+struct CellCount {
+  std::uint32_t detector = 0;
+  std::uint64_t cell = 0;
+  double power = 0.0;
+  double weight = 0.0;
+};
+
+/// FNV-1a, 64 bit (Fowler, Noll, Vo; offset basis 14695981039346656037, prime 1099511628211),
+/// over the bytes of `value`, least significant first (independent of the platform).
+template <typename T>
+void fnv1a(std::uint64_t& h, T value) noexcept {
+  auto v = static_cast<std::uint64_t>(value);
+  for (std::size_t k = 0; k < sizeof(T); ++k) {
+    h ^= (v >> (8 * k)) & 0xffU;
+    h *= 1099511628211ULL;
+  }
+}
+
+/// Paths of one source: equal (end, face, steps) are merged; the FNV-1a hash finds candidates,
+/// which are compared in full (ADR 0057, point 8).
+class PathTable {
+ public:
+  struct Entry {
+    PathEnd end = PathEnd::Escaped;
+    std::uint32_t face = kNoFace;
+    std::vector<PathStep> steps;
+    std::uint64_t rays = 0;
+    double power = 0.0;
+  };
+
+  void add(PathEnd end,
+           std::uint32_t face,
+           const std::vector<PathStep>& steps,
+           double power,
+           std::uint64_t rays) {
+    std::uint64_t h = 14695981039346656037ULL;
+    fnv1a(h, static_cast<std::uint8_t>(end));
+    fnv1a(h, face);
+    for (const PathStep& st : steps) {
+      fnv1a(h, st.face);
+      fnv1a(h, static_cast<std::uint8_t>(st.kind));
+      fnv1a(h, static_cast<std::uint32_t>(st.order));
+    }
+    std::vector<std::uint32_t>& slots = index_[h];
+    for (const std::uint32_t k : slots) {
+      Entry& e = entries_[k];
+      if (e.end == end && e.face == face && e.steps == steps) {
+        e.rays += rays;
+        e.power += power;
+        return;
+      }
+    }
+    slots.push_back(static_cast<std::uint32_t>(entries_.size()));
+    entries_.push_back({end, face, steps, rays, power});
+  }
+
+  [[nodiscard]] const std::vector<Entry>& entries() const noexcept { return entries_; }
+
+ private:
+  std::vector<Entry> entries_;
+  std::unordered_map<std::uint64_t, std::vector<std::uint32_t>> index_;
 };
 
 /// Sums of one block.
 struct Partial {
   std::vector<Balance> balance;
+  std::vector<CellCount> cells;
+  std::vector<DetectorHit> hits;
+  std::vector<PathTable> paths;  ///< per source
   std::uint64_t rays = 0;
   std::uint64_t events = 0;
   bool done = false;
+};
+
+/// Where a start ray's results go.
+struct Sink {
+  Balance& balance;
+  Partial& partial;
+  std::uint32_t source = 0;
+  std::uint64_t index = 0;
 };
 
 Balance empty_balance(std::size_t faces) {
@@ -153,13 +241,59 @@ void candidates(const Face& face,
   for (std::size_t k = 0; k < n; ++k) out.push_back({kinds[k], 0});
 }
 
+/// Counts a hit on irradiance detector `d` (ADR 0057, point 7): pixel of the local point in the
+/// rectangle (points on the rim within kApertureTolerance go to the edge pixel).
+void count_irradiance(const Run& run,
+                      std::uint32_t d,
+                      const SceneHit& hit,
+                      const math::Vec3& direction,
+                      std::uint16_t wl,
+                      double power,
+                      double weight,
+                      Sink& sink) {
+  const auto& det = std::get<IrradianceDetector>(run.detectors[d]);
+  const double hx = run.half_width[d][0];
+  const double hy = run.half_width[d][1];
+  const auto bin = [](double v, double half, std::uint32_t n) {
+    const double f = std::floor((v + half) / (2.0 * half) * n);
+    return static_cast<std::uint32_t>(std::clamp(f, 0.0, static_cast<double>(n - 1)));
+  };
+  const std::uint32_t col = bin(hit.local.point.x(), hx, det.nx);
+  const std::uint32_t row = bin(hit.local.point.y(), hy, det.ny);
+  const std::uint64_t cell = (static_cast<std::uint64_t>(wl) * det.ny + row) * det.nx + col;
+  sink.partial.cells.push_back({d, cell, power, weight});
+  if (run.options.record_hits) {
+    sink.partial.hits.push_back({d, sink.source, sink.index, wl, hit.point, direction, power});
+  }
+}
+
+/// Counts an escaped ray on every intensity detector (ADR 0057, point 7; Nachtrag PR 4, h).
+void count_escaped(
+    const Run& run, const RayState& ray, std::uint16_t wl, double power, Partial& partial) {
+  for (const std::uint32_t d : run.intensity) {
+    const auto& det = std::get<IntensityDetector>(run.detectors[d]);
+    const math::Vec3 v = det.pose.rotation().transpose() * ray.dir;
+    const double theta = std::atan2(std::hypot(v.x(), v.y()), v.z());
+    if (theta > det.max_angle) continue;
+    double phi = std::atan2(v.y(), v.x());
+    if (phi < 0.0) phi += 2.0 * std::numbers::pi;
+    const auto row = static_cast<std::uint32_t>(
+        std::min(std::floor(theta / det.max_angle * det.n_theta), det.n_theta - 1.0));
+    const auto col = static_cast<std::uint32_t>(
+        std::min(std::floor(phi / (2.0 * std::numbers::pi) * det.n_phi), det.n_phi - 1.0));
+    const std::uint64_t cell =
+        (static_cast<std::uint64_t>(wl) * det.n_theta + row) * det.n_phi + col;
+    partial.cells.push_back({d, cell, power, ray.weight});
+  }
+}
+
 /// Traces one start ray with all its branches into `b`.
-void trace_ray(const Run& run,
-               const StartRay& start,
-               std::uint32_t source,
-               std::uint64_t index,
-               Balance& b,
-               std::uint64_t& events) {
+void trace_ray(const Run& run, const StartRay& start, Sink& sink) {
+  Balance& b = sink.balance;
+  std::uint64_t& events = sink.partial.events;
+  const std::uint32_t source = sink.source;
+  const std::uint64_t index = sink.index;
+  const bool report = run.options.path_report;
   const auto& faces = run.scene.faces();
   const auto& media = run.system.media();
   const std::uint16_t wl = start.wavelength;
@@ -187,16 +321,23 @@ void trace_ray(const Run& run,
   stack.push_back(first);
 
   while (!stack.empty()) {
-    Branch br = stack.back();
+    Branch br = std::move(stack.back());
     stack.pop_back();
+    const auto finish = [&](PathEnd end, std::uint32_t face, double power) {
+      if (report) sink.partial.paths[source].add(end, face, br.steps, power, 1);
+    };
     for (;;) {
       const SceneHit hit = run.scene.closest_hit(br.ray, br.last_face);
       if (hit.status == geom::HitStatus::Missed) {
-        b.escaped += p0 * br.ray.weight;
+        const double power = p0 * br.ray.weight;
+        b.escaped += power;
+        count_escaped(run, br.ray, wl, power, sink.partial);
+        finish(PathEnd::Escaped, kNoFace, power);
         break;
       }
       if (hit.status != geom::HitStatus::Hit) {
         b.not_modelled += p0 * br.ray.weight;
+        finish(PathEnd::NotModelled, kNoFace, p0 * br.ray.weight);
         break;
       }
       const Face& face = faces[hit.face];
@@ -215,15 +356,24 @@ void trace_ray(const Run& run,
       const RayState moved = trace::move_to_hit(br.ray, s, hit.local, hit.face, base);
       b.volume += p0 * (br.ray.weight - moved.weight);
       const double w_in = moved.weight;
-      const auto absorb = [&] { b.absorbed[hit.face] += p0 * w_in; };
+      const auto absorb = [&] {
+        b.absorbed[hit.face] += p0 * w_in;
+        finish(PathEnd::Absorbed, hit.face, p0 * w_in);
+      };
 
       if (hit.region == HitRegion::Absorbed) {
         absorb();
         break;
       }
       if (face.kind == FaceKind::Detector) {
+        // Irradiance detectors count from both sides (ADR 0057, point 7); a Detector face
+        // without one counts only in the balance (Nachtrag PR 4, c).
+        for (const std::uint32_t d : run.irradiance_of_face[hit.face]) {
+          count_irradiance(run, d, hit, br.ray.dir, wl, p0 * w_in, w_in, sink);
+        }
         if (!face.transparent) {
           b.detected[hit.face] += p0 * w_in;
+          finish(PathEnd::Detected, hit.face, p0 * w_in);
           break;
         }
         b.passed[hit.face] += p0 * w_in;
@@ -310,10 +460,14 @@ void trace_ray(const Run& run,
       ++events;
       if (!any_possible) {
         b.not_modelled += p0 * w_in;
+        finish(PathEnd::NotModelled, hit.face, p0 * w_in);
         break;
       }
       b.absorbed[hit.face] += p0 * (w_in - total);  // loss of the event
-      if (!(total > 0.0)) break;
+      if (!(total > 0.0)) {
+        finish(PathEnd::Absorbed, hit.face, p0 * w_in);
+        break;
+      }
 
       const std::uint32_t depth = br.depth + 1;
       const auto next_mode = [&](EventKind k) {
@@ -322,12 +476,8 @@ void trace_ray(const Run& run,
         if (inside && k == EventKind::Refract) return CrystalMode::None;
         return br.mode;
       };
-      const auto keep = [&](double weight) {
-        if (depth > o.max_depth || weight < o.min_relative_power) {
-          b.cut += p0 * weight;
-          return false;
-        }
-        return true;
+      const auto cut = [&](double weight) {
+        return depth > o.max_depth || weight < o.min_relative_power;
       };
       if (o.splitting == Splitting::MonteCarlo) {
         // Branch i with p_i = w_i / W; the ray keeps P_i and gets the weight W (Nachtrag Review
@@ -347,41 +497,378 @@ void trace_ray(const Run& run,
         br.mode = next_mode(cands[pick].kind);
         br.last_face = hit.face;
         br.depth = depth;
-        if (!keep(total)) break;
+        if (report) br.steps.push_back({hit.face, cands[pick].kind, cands[pick].order});
+        if (cut(total)) {
+          b.cut += p0 * total;
+          finish(PathEnd::Cut, kNoFace, p0 * total);
+          break;
+        }
         continue;
       }
       // Full splitting: push the branches in reverse so that the first candidate runs first.
       for (std::size_t i = results.size(); i-- > 0;) {
         if (!(results[i].weight > 0.0)) continue;
-        if (!keep(results[i].weight)) continue;
         Branch nb;
         nb.ray = results[i];
         nb.mode = next_mode(cands[i].kind);
         nb.last_face = hit.face;
         nb.depth = depth;
-        stack.push_back(nb);
+        if (report) {
+          nb.steps.reserve(br.steps.size() + 1);
+          nb.steps = br.steps;
+          nb.steps.push_back({hit.face, cands[i].kind, cands[i].order});
+        }
+        if (cut(results[i].weight)) {
+          b.cut += p0 * results[i].weight;
+          if (report)
+            sink.partial.paths[source].add(PathEnd::Cut, kNoFace, nb.steps, p0 * results[i].weight,
+                                           1);
+          continue;
+        }
+        stack.push_back(std::move(nb));
       }
       break;
     }
   }
 }
 
+/// One input source: generated (Source) or an explicit list (RaySource).
+struct Input {
+  const Source* generated = nullptr;
+  const RaySource* list = nullptr;
+  std::vector<std::uint16_t> wavelengths;  ///< generated: the wavelengths in run order
+  std::vector<double> ray_power;           ///< generated: Phi_lambda / M per wavelength slot
+  std::uint64_t m = 0;                     ///< generated: start rays per wavelength
+  std::uint64_t count = 0;                 ///< start rays in total
+};
+
+void check_options(const TraceOptions& options) {
+  if (options.max_depth == 0) throw std::invalid_argument("nonseq::trace: max_depth must be > 0");
+  if (!(std::isfinite(options.min_relative_power) && options.min_relative_power >= 0.0)) {
+    throw std::invalid_argument("nonseq::trace: min_relative_power must be finite and >= 0");
+  }
+  if (!(options.report_min_share >= 0.0 && options.report_min_share <= 1.0)) {
+    throw std::invalid_argument("nonseq::trace: report_min_share must be in [0, 1]");
+  }
+}
+
+/// Checks the detectors (ADR 0057, point 7; Nachtrag PR 4, b) and returns the empty fields.
+std::vector<DetectorField> prepare_detectors(const compile::CompiledSystem& system,
+                                             const Scene& scene,
+                                             std::span<const Detector> detectors,
+                                             std::size_t wls) {
+  std::vector<model::Diagnostic> errors;
+  const auto report = [&](diagnostics::DiagnosticCode code, std::string location,
+                          std::string message) {
+    errors.push_back(
+        {code.severity(), std::move(location), std::move(message), std::string(code.str())});
+  };
+  std::vector<DetectorField> fields;
+  for (const Detector& detector : detectors) {
+    DetectorField f;
+    if (const auto* irr = std::get_if<IrradianceDetector>(&detector)) {
+      if (irr->face >= scene.faces().size() ||
+          scene.faces()[irr->face].kind != FaceKind::Detector) {
+        throw std::invalid_argument("nonseq::trace: irradiance detector on a face of no Detector");
+      }
+      if (irr->nx == 0 || irr->ny == 0)
+        throw std::invalid_argument("nonseq::trace: detector with 0 pixels");
+      const CompiledSurface& s = scene.surfaces()[scene.faces()[irr->face].surface];
+      const std::string& loc = system.surfaces()[scene.faces()[irr->face].system_surface].location;
+      const auto* rect =
+          s.aperture ? std::get_if<model::RectangularAperture>(&*s.aperture) : nullptr;
+      if (rect == nullptr) {
+        report("nonseq.detector_aperture", loc + "/aperture",
+               "an irradiance detector needs a rectangular aperture");
+      }
+      if (!std::holds_alternative<geom::Plane<double>>(s.shape)) {
+        report("nonseq.detector_shape", loc + "/shape",
+               "an irradiance detector needs a plane surface without terms");
+      }
+      f.rows = irr->ny;
+      f.cols = irr->nx;
+      if (rect != nullptr) {
+        // A_pixel = (2 h_x / n_x)(2 h_y / n_y).
+        f.cell_size = {(2.0 * rect->half_width_x.value / irr->nx) *
+                       (2.0 * rect->half_width_y.value / irr->ny)};
+      }
+    } else {
+      const auto& in = std::get<IntensityDetector>(detector);
+      if (!(in.max_angle > 0.0 && in.max_angle <= std::numbers::pi))
+        throw std::invalid_argument("nonseq::trace: intensity max_angle must be in (0, pi]");
+      if (in.n_theta == 0 || in.n_phi == 0)
+        throw std::invalid_argument("nonseq::trace: detector with 0 cells");
+      if (!in.pose.rotation().allFinite())
+        throw std::invalid_argument("nonseq::trace: intensity detector pose not finite");
+      f.rows = in.n_theta;
+      f.cols = in.n_phi;
+      // Delta Omega = Delta phi (cos theta_1 - cos theta_2) (NBS TN 910-1, Eq. (A2-9)), as
+      // 2 Delta phi sin((theta_2 - theta_1)/2) sin((theta_1 + theta_2)/2) against
+      // cancellation (ADR 0057, point 7).
+      const double dt = in.max_angle / in.n_theta;
+      const double dp = 2.0 * std::numbers::pi / in.n_phi;
+      for (std::uint32_t r = 0; r < in.n_theta; ++r) {
+        const double t1 = r * dt;
+        const double t2 = (r + 1) * dt;
+        f.cell_size.push_back(2.0 * dp * std::sin(0.5 * (t2 - t1)) * std::sin(0.5 * (t1 + t2)));
+      }
+    }
+    const std::size_t cells = wls * f.rows * f.cols;
+    f.value.assign(cells, 0.0);
+    f.hits.assign(cells, 0);
+    f.weights.assign(cells, 0.0);
+    fields.push_back(std::move(f));
+  }
+  if (!errors.empty()) throw SceneError(std::move(errors));
+  return fields;
+}
+
+/// The report of one source from its merged table (ADR 0057, point 8; Nachtrag PR 4, d).
+PathReport make_report(const PathTable& table, double source, double min_share) {
+  PathReport rep;
+  rep.source = source;
+  std::vector<const PathTable::Entry*> entries;
+  for (const PathTable::Entry& e : table.entries()) entries.push_back(&e);
+  // By end point, then power descending, then the steps (a total order: deterministic).
+  const auto step_key = [](const PathStep& st) {
+    return std::tuple(st.face, static_cast<int>(st.kind), st.order);
+  };
+  std::sort(entries.begin(), entries.end(), [&](const auto* a, const auto* b) {
+    if (a->end != b->end) return a->end < b->end;
+    if (a->face != b->face) return a->face < b->face;
+    if (a->power != b->power) return a->power > b->power;
+    return std::lexicographical_compare(
+        a->steps.begin(), a->steps.end(), b->steps.begin(), b->steps.end(),
+        [&](const PathStep& x, const PathStep& y) { return step_key(x) < step_key(y); });
+  });
+  for (const PathTable::Entry* e : entries) {
+    if (rep.endpoints.empty() || rep.endpoints.back().end != e->end ||
+        rep.endpoints.back().face != e->face) {
+      rep.endpoints.push_back({e->end, e->face, 0.0, 0, {}});
+    }
+    PathEndpoint& ep = rep.endpoints.back();
+    ep.power += e->power;
+    ep.rays += e->rays;
+    const double share = source > 0.0 ? e->power / source : 0.0;
+    if (share >= min_share) ep.paths.push_back({e->steps, e->rays, e->power, share});
+  }
+  std::stable_sort(rep.endpoints.begin(), rep.endpoints.end(),
+                   [](const PathEndpoint& a, const PathEndpoint& b) { return a.power > b.power; });
+  return rep;
+}
+
+/// Blocks summed per wave: bounds the memory of the block results; the sums run in block order
+/// for every wave size, so it does not change the result.
+constexpr std::size_t kWave = 64;
+
+NonseqResult run_trace(const compile::CompiledSystem& system,
+                       const Scene& scene,
+                       std::vector<Input> inputs,
+                       std::span<const Detector> detectors,
+                       const TraceOptions& options,
+                       const trace::RunControl& control) {
+  const std::size_t wls = system.wavelengths_um().size();
+  const std::size_t faces = scene.faces().size();
+  NonseqResult result;
+  result.detectors = prepare_detectors(system, scene, detectors, wls);
+
+  // At most 2^62 start rays in total, so that the offsets cannot overflow.
+  constexpr std::uint64_t kMaxTotal = std::uint64_t{1} << 62;
+  std::vector<std::uint64_t> offsets{0};
+  for (const Input& in : inputs) {
+    if (in.count > kMaxTotal - offsets.back())
+      throw std::invalid_argument("nonseq::trace: more than 2^62 start rays in total");
+    offsets.push_back(offsets.back() + in.count);
+  }
+  const std::uint64_t total = offsets.back();
+
+  Run run{system, scene, options, wls, {}, {}, {}, {}, detectors, {}};
+  run.reversed.resize(system.coatings().size());
+  for (std::size_t c = 0; c < system.coatings().size(); ++c) {
+    for (const auto& layers : system.coatings()[c].layers) {
+      run.reversed[c].emplace_back(layers.rbegin(), layers.rend());
+    }
+  }
+  run.fresnel_twin.resize(faces);
+  for (std::size_t f = 0; f < faces; ++f) {
+    const CompiledSurface& s = scene.surfaces()[scene.faces()[f].surface];
+    if (std::holds_alternative<model::IdealAntiReflection>(s.interaction) ||
+        std::holds_alternative<model::IdealBeamSplitter>(s.interaction)) {
+      CompiledSurface twin = s;
+      twin.interaction = model::Fresnel{};
+      run.fresnel_twin[f] = std::move(twin);
+    }
+  }
+  run.irradiance_of_face.resize(faces);
+  run.half_width.assign(detectors.size(), {0.0, 0.0});
+  for (std::uint32_t d = 0; d < detectors.size(); ++d) {
+    if (const auto* irr = std::get_if<IrradianceDetector>(&detectors[d])) {
+      run.irradiance_of_face[irr->face].push_back(d);
+      // prepare_detectors() checked the rectangular aperture.
+      const CompiledSurface& s = scene.surfaces()[scene.faces()[irr->face].surface];
+      if (s.aperture) {
+        const auto& aperture = *s.aperture;
+        const auto& rect = std::get<model::RectangularAperture>(aperture);
+        run.half_width[d] = {rect.half_width_x.value, rect.half_width_y.value};
+      }
+    } else {
+      run.intensity.push_back(d);
+    }
+  }
+
+  const std::size_t blocks =
+      static_cast<std::size_t>((total + kNonseqBlockSize - 1) / kNonseqBlockSize);
+  trace::RunMonitor monitor(control, static_cast<std::size_t>(total), "nonsequential trace");
+  std::vector<Partial> partials;
+  const auto run_block = [&](std::size_t blk, Partial& p) {
+    if (monitor.stop()) return;
+    p.balance.assign(inputs.size() * wls, empty_balance(faces));
+    if (options.path_report) p.paths.assign(inputs.size(), PathTable{});
+    const std::uint64_t begin = blk * kNonseqBlockSize;
+    const std::uint64_t end = std::min<std::uint64_t>(begin + kNonseqBlockSize, total);
+    auto src = static_cast<std::size_t>(std::upper_bound(offsets.begin(), offsets.end(), begin) -
+                                        offsets.begin() - 1);
+    for (std::uint64_t g = begin; g < end; ++g) {
+      while (g >= offsets[src + 1]) ++src;
+      const Input& in = inputs[src];
+      const std::uint64_t local = g - offsets[src];
+      StartRay start;
+      std::uint64_t index = local;
+      if (in.generated != nullptr) {
+        // Wavelength-major: every wavelength runs the same M start rays (Nachtrag PR 4, g).
+        const auto slot = static_cast<std::size_t>(local / in.m);
+        index = local % in.m;
+        const SourceRay sr =
+            source_ray(*in.generated, static_cast<std::uint32_t>(src), index, options.seed);
+        start = {sr.position, sr.direction, in.ray_power[slot], in.wavelengths[slot]};
+      } else {
+        start = in.list->rays[static_cast<std::size_t>(local)];
+      }
+      Balance& bal = p.balance[src * wls + start.wavelength];
+      bal.source += start.power;
+      Sink sink{bal, p, static_cast<std::uint32_t>(src), index};
+      trace_ray(run, start, sink);
+      ++p.rays;
+    }
+    p.done = true;
+    monitor.add(static_cast<std::size_t>(end - begin));
+  };
+
+  result.balance.assign(inputs.size() * wls, empty_balance(faces));
+  std::vector<PathTable> tables(options.path_report ? inputs.size() : 0);
+  for (std::size_t wave = 0; wave < blocks; wave += kWave) {
+    const std::size_t n = std::min(kWave, blocks - wave);
+    partials.assign(n, Partial{});
+    oneapi::tbb::parallel_for(oneapi::tbb::blocked_range<std::size_t>(0, n, 1),
+                              [&](const oneapi::tbb::blocked_range<std::size_t>& range) {
+                                for (std::size_t k = range.begin(); k != range.end(); ++k) {
+                                  run_block(wave + k, partials[k]);
+                                }
+                              });
+    // Sum in block order (rule 7).
+    for (const Partial& p : partials) {
+      if (!p.done) continue;
+      result.rays += p.rays;
+      result.events += p.events;
+      for (std::size_t k = 0; k < p.balance.size(); ++k) {
+        Balance& r = result.balance[k];
+        const Balance& q = p.balance[k];
+        r.source += q.source;
+        r.volume += q.volume;
+        r.escaped += q.escaped;
+        r.cut += q.cut;
+        r.not_modelled += q.not_modelled;
+        for (std::size_t f = 0; f < faces; ++f) {
+          r.detected[f] += q.detected[f];
+          r.absorbed[f] += q.absorbed[f];
+          r.passed[f] += q.passed[f];
+        }
+      }
+      for (const CellCount& c : p.cells) {
+        DetectorField& f = result.detectors[c.detector];
+        f.value[c.cell] += c.power;
+        f.hits[c.cell] += 1;
+        f.weights[c.cell] += c.weight;
+      }
+      result.hits.insert(result.hits.end(), p.hits.begin(), p.hits.end());
+      for (std::size_t s = 0; s < p.paths.size(); ++s) {
+        for (const PathTable::Entry& e : p.paths[s].entries()) {
+          tables[s].add(e.end, e.face, e.steps, e.power, e.rays);
+        }
+      }
+    }
+    if (monitor.stop()) break;  // cancelled: no later block starts
+  }
+  try {
+    monitor.finish();
+  } catch (const trace::Cancelled&) {
+    result.cancelled = true;
+  }
+  // Power sums to E = sum(Phi) / A_pixel and I = sum(Phi) / Delta Omega.
+  for (std::size_t d = 0; d < detectors.size(); ++d) {
+    DetectorField& f = result.detectors[d];
+    const bool irradiance = std::holds_alternative<IrradianceDetector>(detectors[d]);
+    for (std::size_t c = 0; c < f.value.size(); ++c) {
+      f.value[c] /= irradiance ? f.cell_size[0] : f.cell_size[(c / f.cols) % f.rows];
+    }
+  }
+  for (std::size_t s = 0; s < tables.size(); ++s) {
+    double source = 0.0;
+    for (std::size_t w = 0; w < wls; ++w) source += result.balance[s * wls + w].source;
+    result.paths.push_back(make_report(tables[s], source, options.report_min_share));
+  }
+  return result;
+}
+
 }  // namespace
 
 NonseqResult trace(const compile::CompiledSystem& system,
                    const Scene& scene,
-                   std::span<const RaySource> sources,
+                   std::span<const Source> sources,
+                   std::span<const Detector> detectors,
                    const TraceOptions& options,
                    const trace::RunControl& control) {
   const std::size_t wls = system.wavelengths_um().size();
   if (sources.size() > 0xffff)
     throw std::invalid_argument("nonseq::trace: more than 65535 sources");
-  if (options.max_depth == 0) throw std::invalid_argument("nonseq::trace: max_depth must be > 0");
-  if (!(std::isfinite(options.min_relative_power) && options.min_relative_power >= 0.0)) {
-    throw std::invalid_argument("nonseq::trace: min_relative_power must be finite and >= 0");
+  check_options(options);
+  const std::vector<double>& g = system.wavelength_weights();
+  std::vector<Input> inputs;
+  for (const Source& src : sources) {
+    check_source(src, wls);
+    Input in;
+    in.generated = &src;
+    if (src.wavelengths.empty()) {
+      for (std::size_t w = 0; w < wls; ++w) in.wavelengths.push_back(static_cast<std::uint16_t>(w));
+    } else {
+      in.wavelengths = src.wavelengths;
+    }
+    double gsum = 0.0;
+    for (const std::uint16_t w : in.wavelengths) gsum += g[w];
+    if (!(gsum > 0.0))
+      throw std::invalid_argument("nonseq::trace: the source wavelengths have weight 0");
+    in.m = source_ray_count(src);
+    // Phi_lambda / M with Phi_lambda = Phi g_lambda / sum(g) (Nachtrag PR 4, g).
+    for (const std::uint16_t w : in.wavelengths) {
+      in.ray_power.push_back(src.power * g[w] / gsum / static_cast<double>(in.m));
+    }
+    in.count = in.m * in.wavelengths.size();
+    inputs.push_back(std::move(in));
   }
-  // Global ray index -> (source, index within the source).
-  std::vector<std::uint64_t> offsets{0};
+  return run_trace(system, scene, std::move(inputs), detectors, options, control);
+}
+
+NonseqResult trace(const compile::CompiledSystem& system,
+                   const Scene& scene,
+                   std::span<const RaySource> sources,
+                   std::span<const Detector> detectors,
+                   const TraceOptions& options,
+                   const trace::RunControl& control) {
+  const std::size_t wls = system.wavelengths_um().size();
+  if (sources.size() > 0xffff)
+    throw std::invalid_argument("nonseq::trace: more than 65535 sources");
+  check_options(options);
+  std::vector<Input> inputs;
   for (const RaySource& src : sources) {
     for (const StartRay& r : src.rays) {
       if (r.wavelength >= wls)
@@ -393,88 +880,45 @@ NonseqResult trace(const compile::CompiledSystem& system,
         throw std::invalid_argument("nonseq::trace: direction zero, or ray not finite");
       }
     }
-    offsets.push_back(offsets.back() + src.rays.size());
+    Input in;
+    in.list = &src;
+    in.count = src.rays.size();
+    inputs.push_back(std::move(in));
   }
-  const std::uint64_t total = offsets.back();
-  const std::size_t faces = scene.faces().size();
+  return run_trace(system, scene, std::move(inputs), detectors, options, control);
+}
 
-  Run run{system, scene, options, wls, {}, {}};
-  run.reversed.resize(system.coatings().size());
-  for (std::size_t c = 0; c < system.coatings().size(); ++c) {
-    for (const auto& layers : system.coatings()[c].layers) {
-      run.reversed[c].emplace_back(layers.rbegin(), layers.rend());
-    }
-  }
-
-  run.fresnel_twin.resize(faces);
-  for (std::size_t f = 0; f < faces; ++f) {
-    const CompiledSurface& s = scene.surfaces()[scene.faces()[f].surface];
-    if (std::holds_alternative<model::IdealAntiReflection>(s.interaction) ||
-        std::holds_alternative<model::IdealBeamSplitter>(s.interaction)) {
-      CompiledSurface twin = s;
-      twin.interaction = model::Fresnel{};
-      run.fresnel_twin[f] = std::move(twin);
-    }
-  }
-
-  const std::size_t blocks =
-      static_cast<std::size_t>((total + kNonseqBlockSize - 1) / kNonseqBlockSize);
-  std::vector<Partial> partials(blocks);
-  trace::RunMonitor monitor(control, static_cast<std::size_t>(total), "nonsequential trace");
-  const auto run_block = [&](std::size_t blk) {
-    if (monitor.stop()) return;
-    Partial& p = partials[blk];
-    p.balance.assign(sources.size() * wls, empty_balance(faces));
-    const std::uint64_t begin = blk * kNonseqBlockSize;
-    const std::uint64_t end = std::min<std::uint64_t>(begin + kNonseqBlockSize, total);
-    auto src = static_cast<std::size_t>(std::upper_bound(offsets.begin(), offsets.end(), begin) -
-                                        offsets.begin() - 1);
-    for (std::uint64_t g = begin; g < end; ++g) {
-      while (g >= offsets[src + 1]) ++src;
-      const std::uint64_t index = g - offsets[src];
-      const StartRay& start = sources[src].rays[static_cast<std::size_t>(index)];
-      Balance& bal = p.balance[src * wls + start.wavelength];
-      bal.source += start.power;
-      trace_ray(run, start, static_cast<std::uint32_t>(src), index, bal, p.events);
-      ++p.rays;
-    }
-    p.done = true;
-    monitor.add(static_cast<std::size_t>(end - begin));
+std::optional<model::Path> to_sequential_path(const compile::CompiledSystem& system,
+                                              const Scene& scene,
+                                              const PathEndpoint& end,
+                                              const RayPath& path,
+                                              std::string name) {
+  model::Path out;
+  out.name = std::move(name);
+  const auto surface_of = [&](std::uint32_t f) -> std::optional<model::SurfaceId> {
+    const Face& face = scene.faces().at(f);
+    if (face.kind == FaceKind::Mantle || face.kind == FaceKind::Shoulder) return std::nullopt;
+    return system.surfaces()[face.system_surface].id;
   };
-  oneapi::tbb::parallel_for(oneapi::tbb::blocked_range<std::size_t>(0, blocks, 1),
-                            [&](const oneapi::tbb::blocked_range<std::size_t>& range) {
-                              for (std::size_t blk = range.begin(); blk != range.end(); ++blk) {
-                                run_block(blk);
-                              }
-                            });
-  NonseqResult result;
-  try {
-    monitor.finish();
-  } catch (const trace::Cancelled&) {
-    result.cancelled = true;
+  for (const PathStep& st : path.steps) {
+    const auto id = surface_of(st.face);
+    if (!id) return std::nullopt;
+    out.events.push_back({*id, st.kind, st.order});
   }
-  // Sum in block order (rule 7).
-  result.balance.assign(sources.size() * wls, empty_balance(faces));
-  for (const Partial& p : partials) {
-    if (!p.done) continue;
-    result.rays += p.rays;
-    result.events += p.events;
-    for (std::size_t k = 0; k < p.balance.size(); ++k) {
-      Balance& r = result.balance[k];
-      const Balance& q = p.balance[k];
-      r.source += q.source;
-      r.volume += q.volume;
-      r.escaped += q.escaped;
-      r.cut += q.cut;
-      r.not_modelled += q.not_modelled;
-      for (std::size_t f = 0; f < faces; ++f) {
-        r.detected[f] += q.detected[f];
-        r.absorbed[f] += q.absorbed[f];
-        r.passed[f] += q.passed[f];
-      }
-    }
+  if (end.end == PathEnd::Detected) {
+    const auto id = surface_of(end.face);
+    if (!id) return std::nullopt;
+    out.events.push_back({*id, model::EventKind::Transmit, 0});
   }
-  return result;
+  return out;
+}
+
+NonseqResult trace(const compile::CompiledSystem& system,
+                   const Scene& scene,
+                   std::span<const RaySource> sources,
+                   const TraceOptions& options,
+                   const trace::RunControl& control) {
+  return trace(system, scene, sources, std::span<const Detector>{}, options, control);
 }
 
 }  // namespace rtt::nonseq
